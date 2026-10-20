@@ -268,9 +268,9 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
                 truncated = overCacheCap,
                 columns = ds.Columns?.Select(c => c.Name).ToArray(),
                 next =
-                    $"API returned {rows.Count} rows. For show/render/export: call render_none_interactive ONCE with dataset_name='{ds.Name}' and limit for top-N. " +
-                    "Do NOT call data_analyze or execute_sql for display slicing. Use layout=cards and cardsPerRow when asked for cards. " +
-                    "Do not pass dataJson or copy rows. Export with the same limit; pass pageGrid or cardsPerPage when the user names columns×rows. " +
+                    $"API returned {rows.Count} rows, cached as '{ds.Name}'. " +
+                    "If this looks like data analysis: ask_user first (contextKey=confirm_kpi_dashboard) — kpi_dashboard (batch analysis) vs fetch_display (only fetch and show). " +
+                    "After kpi_dashboard: data_analyze (count/distribution) then render layout=dashboard with kpis+chart (op=count|distinct; chart yField=count). After fetch_display or show-only: render_none_interactive with limit (cards if asked). Do not invent analysis via export_csv/read_csv. " +
                     $"Tell the user the total cached is {rows.Count}."
             }, Formatting.Indented);
             return true;

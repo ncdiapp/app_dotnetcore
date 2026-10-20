@@ -222,9 +222,21 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 return new FormCell { Text = token.Value<bool>() ? "true" : "false" };
             if (token.Type == JTokenType.Date)
                 return new FormCell { Text = token.Value<DateTime>().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) };
-            if (token.Type == JTokenType.Object || token.Type == JTokenType.Array)
+            if (token.Type == JTokenType.Object)
+            {
+                var o = (JObject)token;
+                var url = o["url"]?.ToString() ?? o["Url"]?.ToString();
+                if (!string.IsNullOrWhiteSpace(url))
+                    return new FormCell { Text = url, IsImage = true };
+                var fileId = o["fileId"]?.ToString() ?? o["FileId"]?.ToString();
+                if (!string.IsNullOrWhiteSpace(fileId))
+                    return new FormCell { Text = fileId, IsImage = true };
                 return new FormCell { Text = token.ToString(Newtonsoft.Json.Formatting.None) };
-            return new FormCell { Text = token.ToString() };
+            }
+            if (token.Type == JTokenType.Array)
+                return new FormCell { Text = token.ToString(Newtonsoft.Json.Formatting.None) };
+            var text = token.ToString();
+            return new FormCell { Text = text, IsImage = CardSheet.IsImageValue(text) };
         }
 
         private static string StringOf(JToken token)
@@ -304,6 +316,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
     {
         public string Text { get; set; } = "";
         public bool IsNumber { get; set; }
+        /// <summary>When true (or Text looks like an image URL), HTML grid writes an img tag.</summary>
+        public bool IsImage { get; set; }
         public byte[] ImageBytes { get; set; }
     }
 }

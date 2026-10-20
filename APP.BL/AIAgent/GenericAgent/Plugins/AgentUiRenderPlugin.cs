@@ -126,6 +126,17 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
                 if (UiTemplateMerge.IsDashboardLayout(layout))
                 {
+                    if (context.IsDeterministic != true
+                        && !AgentUiPathConfirmBL.IsKpiDashboardConfirmed(context.ChatSessionKey))
+                    {
+                        return Err(
+                            "layout=" + layout + " requires KPI/Dashboard confirmation first. " +
+                            "Call ask_user with contextKey='" + AgentUiPathConfirmBL.ContextKey +
+                            "', mode=single_choice, prompt='" + AgentUiPathConfirmBL.AskUserPromptHint() +
+                            "', optionsJson=" + AgentUiPathConfirmBL.AskUserOptionsJson() + ". " +
+                            "Only after the user picks kpi_dashboard, call this render again.");
+                    }
+
                     if (!UiRenderSpec.TryParse(specJson, out dashSpec, out var specErr))
                         return Err(specErr);
                     var valErr = dashSpec.ValidateForLayout(layout);
@@ -469,14 +480,36 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 if (row is JObject obj)
                 {
                     foreach (var col in columns)
-                    {
-                        var v = obj[col];
-                        cells.Add(new FormCell { Text = v?.Type == JTokenType.Null ? "" : v?.ToString() ?? "" });
-                    }
+                        cells.Add(CellFromToken(obj[col]));
                 }
                 data.Add(cells);
             }
             return data;
+        }
+
+        private static FormCell CellFromToken(JToken v)
+        {
+            if (v == null || v.Type == JTokenType.Null)
+                return new FormCell();
+            if (v is JObject o)
+            {
+                var url = o["url"]?.ToString() ?? o["Url"]?.ToString();
+                if (!string.IsNullOrWhiteSpace(url))
+                    return new FormCell { Text = url, IsImage = true };
+                var fileId = o["fileId"]?.ToString() ?? o["FileId"]?.ToString();
+                if (!string.IsNullOrWhiteSpace(fileId))
+                    return new FormCell { Text = fileId, IsImage = true };
+            }
+            if (v.Type == JTokenType.Integer || v.Type == JTokenType.Float)
+            {
+                return new FormCell
+                {
+                    Text = ((JValue)v).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    IsNumber = true
+                };
+            }
+            var text = v.Type == JTokenType.String ? v.ToString() : v.ToString(Formatting.None);
+            return new FormCell { Text = text, IsImage = CardSheet.IsImageValue(text) };
         }
 
         private static string Err(string message) =>

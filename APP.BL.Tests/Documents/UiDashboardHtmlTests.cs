@@ -82,6 +82,21 @@ public class UiDashboardHtmlTests
     }
 
     [Fact]
+    public void Build_dashboard_grid_shows_all_rows_by_default()
+    {
+        var rows = new JArray(Enumerable.Range(1, 25).Select(i =>
+            new JObject { ["Id"] = i, ["Name"] = "r" + i }));
+        var spec = new UiRenderSpec
+        {
+            Kpis = { new UiKpiSpec { Label = "Total", Field = "", Op = "count" } }
+        };
+        var html = UiDashboardHtml.Build("dashboard", rows, spec, "All", false, false, null, null);
+        Assert.Equal(25, System.Text.RegularExpressions.Regex.Matches(html, "<tr>").Count - 1); // minus header
+        Assert.Contains(">r25<", html);
+        Assert.Contains(">r1<", html);
+    }
+
+    [Fact]
     public void MapLegacyUi_chart_and_kpi_dashboard()
     {
         Assert.Equal("chart", UiTemplateMerge.MapLegacyUi("chart", out var from1));
@@ -98,7 +113,25 @@ public class UiDashboardHtmlTests
     {
         var rows = SampleRows();
         Assert.Equal("3", UiDashboardHtml.ComputeKpi(rows, "OrderId", "count"));
+        Assert.Equal("3", UiDashboardHtml.ComputeKpi(rows, null, "count"));
         Assert.Equal("133.33", UiDashboardHtml.ComputeKpi(rows, "Amount", "avg"));
+        Assert.Equal("2", UiDashboardHtml.ComputeKpi(rows, "Region", "distinct"));
+        // Categorical + default sum → distinct fallback
+        Assert.Equal("2", UiDashboardHtml.ComputeKpi(rows, "Region", "sum"));
+    }
+
+    [Fact]
+    public void ExtractSeries_groups_and_counts()
+    {
+        var rows = SampleRows();
+        var bySum = UiDashboardHtml.ExtractSeries(rows, "Region", "Amount");
+        Assert.Equal(2, bySum.Count);
+        Assert.Equal(("East", 150), bySum.First(p => p.Label == "East"));
+        Assert.Equal(("West", 250), bySum.First(p => p.Label == "West"));
+
+        var byCount = UiDashboardHtml.ExtractSeries(rows, "Region", "count");
+        Assert.Equal(2, byCount.First(p => p.Label == "East").Value);
+        Assert.Equal(1, byCount.First(p => p.Label == "West").Value);
     }
 
     [Fact]
@@ -108,5 +141,35 @@ public class UiDashboardHtmlTests
             new JObject { ["X"] = "r" + i, ["Y"] = i }));
         var series = UiDashboardHtml.ExtractSeries(rows, "X", "Y");
         Assert.Equal(40, series.Count);
+    }
+
+    [Fact]
+    public void Build_dashboard_auto_charts_from_categorical_kpis()
+    {
+        var styleRows = JArray.Parse("""
+            [
+              { "ReferenceId": 1, "Classification": "MC", "Size": "S" },
+              { "ReferenceId": 2, "Classification": "MC", "Size": "M" },
+              { "ReferenceId": 3, "Classification": "Army", "Size": "S" },
+              { "ReferenceId": 4, "Classification": "MC", "Size": "L" }
+            ]
+            """);
+        var spec = new UiRenderSpec
+        {
+            Title = "Style Search Analysis",
+            Kpis =
+            {
+                new UiKpiSpec { Label = "Total", Field = "", Op = "count" },
+                new UiKpiSpec { Label = "CLASSIFICATION", Field = "Classification", Op = "sum" },
+                new UiKpiSpec { Label = "SIZE", Field = "Size", Op = "sum" }
+            }
+        };
+        var html = UiDashboardHtml.Build("dashboard", styleRows, spec, null, false, false, null, null);
+        Assert.Contains("kpi-value", html);
+        Assert.Contains(">4<", html); // total count
+        Assert.Contains(">2<", html); // distinct Classification / Size
+        Assert.Contains("chart-panel", html);
+        Assert.Contains("CLASSIFICATION (count)", html);
+        Assert.Contains("<svg", html);
     }
 }

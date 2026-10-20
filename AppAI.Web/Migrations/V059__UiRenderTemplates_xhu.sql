@@ -56,7 +56,7 @@ VALUES (
 GO
 
 DECLARE @uiType nvarchar(300) = N'App.BL.AIAgent.GenericAgent.Plugins.AgentUiRenderPlugin';
-DECLARE @renderSchema nvarchar(max) = N'{"layout":{"type":"string","description":"form | table | cards | kpi | chart | dashboard. Default table for flat cache. For kpi|chart|dashboard: prefer a shaped dataset / optional data_analyze, then pass specJson."},"dataset_name":{"type":"string","description":"Chat session cache name. Preferred."},"title":{"type":"string","description":"Optional title"},"content":{"type":"string","description":"Form JSON or row array when dataset_name is omitted."},"specJson":{"type":"string","description":"Required for layout kpi|chart|dashboard. JSON: {title?, kpis:[{label,field,op}], chart:{type,xField,yField,title}, blocks:[{type:kpi|chart|table,...}]}. Render paints only."},"limit":{"type":"integer","description":"First N rows after cache is chosen"},"cardsPerRow":{"type":"integer","description":"Cards sharing one row. 1-6"},"cardRows":{"type":"integer","description":"Card rows on one page. Default 3"},"actionsJson":{"type":"string","description":"Interactive only: toolbar actions [{id,label}]"}}';
+DECLARE @renderSchema nvarchar(max) = N'{"layout":{"type":"string","description":"form | table | cards | kpi | chart | dashboard. Default table. For kpi|chart|dashboard: ONLY after ask_user confirm (contextKey=confirm_kpi_dashboard). Then optional data_analyze + specJson."},"dataset_name":{"type":"string","description":"Chat session cache name. Preferred."},"title":{"type":"string","description":"Optional title"},"content":{"type":"string","description":"Form JSON or row array when dataset_name is omitted."},"specJson":{"type":"string","description":"Required for layout kpi|chart|dashboard after user confirm. JSON: {title?, kpis:[{label,field,op}], chart:{type,xField,yField,title}, blocks:[{type:kpi|chart|table,...}]}. Render paints only."},"limit":{"type":"integer","description":"First N rows after cache is chosen"},"cardsPerRow":{"type":"integer","description":"Cards sharing one row. 1-6"},"cardRows":{"type":"integer","description":"Card rows on one page. Default 3"},"actionsJson":{"type":"string","description":"Interactive only: toolbar actions [{id,label}]"}}';
 DECLARE @tmpl nvarchar(max) = N'{"form":"{{code_default}}","table":"{{code_default}}","cards":"{{code_default}}","kpi":"{{code_default}}","chart":"{{code_default}}","dashboard":"{{code_default}}"}';
 DECLARE @metaNone nvarchar(200) = N'{"mode":"NoneInteractive"}';
 DECLARE @metaInter nvarchar(200) = N'{"mode":"Interactive"}';
@@ -166,13 +166,6 @@ WHERE SystemPrompt LIKE N'%data_render%'
   AND SystemPrompt NOT LIKE N'%render_none_interactive%';
 GO
 
--- Prompt nudge: chart / dashboard via render + specJson (optional data_analyze only for those layouts)
-UPDATE dbo.AppAgentSkillSet
-SET SystemPrompt = SystemPrompt + N'
-
-## render kpi / chart / dashboard
-When the user asks for a chart, KPI cards, or dashboard: prefer a shaped cached dataset (optional data_analyze), then render_none_interactive with layout=kpi|chart|dashboard, dataset_name, and specJson ({kpis:[{label,field,op}], chart:{type,xField,yField}, blocks:[{type,xField,yField,...}]}). Do not invent HTML. For plain table/cards show or export, use render/export with limit — do not call data_analyze just for top-N. Export chart/dashboard with the same layout + specJson (charts become PNG).'
-WHERE IsActive = 1
-  AND (SystemPrompt LIKE N'%render_none_interactive%' OR SystemPrompt LIKE N'%data_render%')
-  AND SystemPrompt NOT LIKE N'%layout=kpi|chart|dashboard%';
+-- Prompt nudge superseded by V060 "Data analysis intent — ask the user" (kpi_dashboard vs fetch_display).
 GO
+

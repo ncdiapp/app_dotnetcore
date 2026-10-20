@@ -167,16 +167,47 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 for (var i = 0; i < table.Columns.Count; i++)
                 {
                     var cell = i < row.Count ? row[i] : new FormCell();
-                    var css = cell.IsNumber ? DocumentStyles.NumberCss : DocumentStyles.CellCss;
-                    sb.Append("<td");
-                    if (cell.IsNumber) sb.Append(" data-num=\"1\"");
-                    sb.Append(" style=\"").Append(css).Append("\">");
-                    sb.Append(WebUtility.HtmlEncode(cell.Text ?? ""));
-                    sb.Append("</td>");
+                    AppendGridCell(sb, cell);
                 }
                 sb.Append("</tr>");
             }
             sb.Append("</table></td></tr>");
+        }
+
+        private static void AppendGridCell(StringBuilder sb, FormCell cell)
+        {
+            cell ??= new FormCell();
+            var text = cell.Text ?? "";
+            var isImage = cell.IsImage
+                          || (cell.ImageBytes != null && cell.ImageBytes.Length > 0)
+                          || CardSheet.IsImageValue(text);
+            var css = cell.IsNumber && !isImage ? DocumentStyles.NumberCss : DocumentStyles.CellCss;
+            sb.Append("<td");
+            if (cell.IsNumber && !isImage) sb.Append(" data-num=\"1\"");
+            if (isImage) sb.Append(" data-role=\"image\"");
+            sb.Append(" style=\"").Append(css).Append("\">");
+            if (isImage)
+                AppendGridImage(sb, cell, text);
+            else
+                sb.Append(WebUtility.HtmlEncode(text));
+            sb.Append("</td>");
+        }
+
+        private static void AppendGridImage(StringBuilder sb, FormCell cell, string text)
+        {
+            string src = null;
+            if (cell.ImageBytes != null && cell.ImageBytes.Length > 0)
+                src = "data:" + CardImageMime(cell.ImageBytes) + ";base64," + Convert.ToBase64String(cell.ImageBytes);
+            else if (!string.IsNullOrWhiteSpace(text))
+                src = text.Trim();
+            if (string.IsNullOrEmpty(src))
+            {
+                sb.Append("&nbsp;");
+                return;
+            }
+            sb.Append("<img src=\"");
+            sb.Append(WebUtility.HtmlEncode(src));
+            sb.Append("\" alt=\"\" style=\"border:0;max-width:120px;max-height:80px;width:auto;height:auto;object-fit:contain;display:block;\" />");
         }
 
         private static void CellRow(StringBuilder sb, string role, int level, string css, string text)

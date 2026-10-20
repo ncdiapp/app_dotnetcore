@@ -48,10 +48,10 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                             obj["dataset_cached"] = true;
                             obj["dataset_name"] = ds.Name;
                             obj["next_hint"] =
-                                $"Dataset cached as '{ds.Name}'. For show/render/export: call render_none_interactive (or render_interactive) ONCE with dataset_name='{ds.Name}' and limit for top-N. " +
-                                "Do NOT call data_analyze or execute_sql for display slicing. layout=table|cards (kpi|chart|dashboard need user-asked visuals + specJson). " +
-                                "Use layout=cards and cardsPerRow when asked for cards. Do not copy rows into content. " +
-                                "Export with the same limit; pass pageGrid or cardsPerPage when the user names columns×rows.";
+                                $"Dataset cached as '{ds.Name}'. " +
+                                "If this turn looks like data analysis: call ask_user first (contextKey=confirm_kpi_dashboard) — options kpi_dashboard (batch KPI/Dashboard analysis) vs fetch_display (only fetch and show). " +
+                                "After kpi_dashboard: data_analyze (count/distribution) then render layout=dashboard with kpis+chart. " +
+                                "After fetch_display (or show/export-only): render_none_interactive with dataset_name='" + ds.Name + "' and limit (layout=table|cards). Do not invent analysis via export_csv/read_csv.";
                             return obj.ToString(Formatting.None);
                         }
                     }
@@ -70,8 +70,9 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                     truncated = rows.Count > AgentDataAnalyzeCacheBL.MaxCachedRows,
                     columns = ds.Columns.Select(c => c.Name).ToArray(),
                     next_hint =
-                        $"Dataset cached as '{ds.Name}'. For show/render/export: call render_none_interactive ONCE with dataset_name='{ds.Name}' and limit for top-N. " +
-                        "Do NOT call data_analyze or execute_sql for display slicing. Use layout=cards and cardsPerRow when asked for cards. Export with the same limit."
+                        $"Dataset cached as '{ds.Name}'. columns={string.Join(",", ds.Columns.Select(c => c.Name).Take(40))}. " +
+                        "If analysis-like: ask_user (confirm_kpi_dashboard) — kpi_dashboard vs fetch_display — before data_analyze or KPI render. " +
+                        "fetch_display / show-export: render_none_interactive with limit only."
                 }, Formatting.None);
             }
             catch

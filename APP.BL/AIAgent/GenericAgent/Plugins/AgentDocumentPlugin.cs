@@ -162,6 +162,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
                 if (UiTemplateMerge.IsDashboardLayout(mode))
                 {
+                    if (context.IsDeterministic != true
+                        && !AgentUiPathConfirmBL.IsKpiDashboardConfirmed(context.ChatSessionKey))
+                        throw new InvalidOperationException(
+                            "layout=" + mode + " requires ask_user KPI/Dashboard confirmation first (contextKey='" +
+                            AgentUiPathConfirmBL.ContextKey + "', option kpi_dashboard).");
                     if (extension == ".csv" || extension == ".xlsx")
                         throw new InvalidOperationException("layout=" + mode + " supports html, pdf, docx, pptx. Use layout=table for csv/excel.");
                     if (!UiRenderSpec.TryParse(specJson, out var spec, out var specErr))

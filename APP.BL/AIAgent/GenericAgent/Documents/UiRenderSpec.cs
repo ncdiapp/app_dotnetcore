@@ -19,6 +19,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         public const int MaxKpis = 12;
         public const int MaxCharts = 9;
         public const int MaxTables = 3;
+        /// <summary>Hard cap for template-rendered grid rows (same order as AgentUiRenderPlugin.MaxRows).</summary>
+        public const int MaxTableRows = 50000;
 
         public static bool TryParse(string specJson, out UiRenderSpec spec, out string error)
         {
@@ -77,14 +79,18 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 if (Kpis.Count > MaxKpis)
                     return "layout=kpi allows at most " + MaxKpis + " KPIs.";
                 foreach (var k in Kpis)
-                    if (string.IsNullOrWhiteSpace(k.Field))
-                        return "Each KPI needs a field.";
+                {
+                    var op = (k.Op ?? "").Trim().ToLowerInvariant();
+                    // count/rows may omit field (total row count)
+                    if (string.IsNullOrWhiteSpace(k.Field) && op is not ("count" or "rows"))
+                        return "Each KPI needs a field (except op=count).";
+                }
                 return null;
             }
             if (layout == "chart")
             {
-                if (Chart == null || string.IsNullOrWhiteSpace(Chart.XField) || string.IsNullOrWhiteSpace(Chart.YField))
-                    return "layout=chart requires specJson.chart with xField and yField.";
+                if (Chart == null || string.IsNullOrWhiteSpace(Chart.XField))
+                    return "layout=chart requires specJson.chart with xField (yField optional; defaults to count).";
                 return null;
             }
             if (layout == "dashboard")
@@ -93,7 +99,18 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 {
                     // Allow shorthand: kpis + chart without blocks
                     if ((Kpis != null && Kpis.Count > 0) || Chart != null)
+                    {
+                        if (Kpis != null)
+                        {
+                            foreach (var k in Kpis)
+                            {
+                                var op = (k.Op ?? "").Trim().ToLowerInvariant();
+                                if (string.IsNullOrWhiteSpace(k.Field) && op is not ("count" or "rows"))
+                                    return "Each KPI needs a field (except op=count).";
+                            }
+                        }
                         return null;
+                    }
                     return "layout=dashboard requires specJson.blocks, or kpis and/or chart.";
                 }
                 var charts = Blocks.Count(b => b.Type == "chart");
@@ -148,7 +165,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
     {
         public string Label { get; set; }
         public string Field { get; set; }
-        /// <summary>sum | avg | count | min | max — applied over the shaped dataset rows.</summary>
+        /// <summary>sum | avg | count | distinct | nonempty | min | max — over dataset rows. Non-numeric sum/avg falls back to distinct.</summary>
         public string Op { get; set; } = "sum";
     }
 
@@ -156,6 +173,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
     {
         public string Type { get; set; } = "bar";
         public string XField { get; set; }
+        /// <summary>Numeric field to sum, or "count" / omit to count rows per xField.</summary>
         public string YField { get; set; }
         public string Title { get; set; }
     }

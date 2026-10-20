@@ -1,3 +1,4 @@
+using App.BL.AIAgent.GenericAgent.Documents;
 using App.BL.AIAgent.GenericAgent.Plugins;
 
 namespace APP.BL.Tests.Documents;
@@ -34,5 +35,22 @@ public class DataAnalyzeGateTests
     public void Allows_explicit_analysis_ask(string ask)
     {
         Assert.Null(AgentDataAnalyzePlugin.ValidateUserAsk(ask));
+    }
+
+    [Fact]
+    public void Analysis_path_confirm_store()
+    {
+        Assert.True(AgentUiPathConfirmBL.LooksLikeKpiDashboardChoice(new[] { "kpi_dashboard" }, null));
+        Assert.True(AgentUiPathConfirmBL.LooksLikeFetchDisplayChoice(new[] { "fetch_display" }, null));
+        Assert.False(AgentUiPathConfirmBL.LooksLikeKpiDashboardChoice(new[] { "fetch_display" }, null));
+
+        var key = "test-session-" + System.Guid.NewGuid().ToString("N");
+        Assert.False(AgentUiPathConfirmBL.IsKpiDashboardConfirmed(key));
+        AgentUiPathConfirmBL.MarkKpiDashboard(key);
+        Assert.True(AgentUiPathConfirmBL.IsKpiDashboardConfirmed(key));
+        AgentUiPathConfirmBL.MarkFetchDisplay(key);
+        Assert.True(AgentUiPathConfirmBL.IsFetchDisplayOnly(key));
+        Assert.False(AgentUiPathConfirmBL.IsKpiDashboardConfirmed(key));
+        AgentUiPathConfirmBL.Clear(key);
     }
 }

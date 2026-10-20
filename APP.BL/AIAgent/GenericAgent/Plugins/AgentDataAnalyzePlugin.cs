@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using App.BL.AIAgent.GenericAgent.DataAnalyze;
+using App.BL.AIAgent.GenericAgent.Documents;
 using APP.Framework.Plugin;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -40,6 +41,36 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             var gate = ValidateUserAsk(user_ask);
             if (gate != null)
                 return Task.FromResult(JsonConvert.SerializeObject(new { ok = false, error = gate, skipped = true }));
+
+            if (context.IsDeterministic != true)
+            {
+                if (AgentUiPathConfirmBL.IsFetchDisplayOnly(context.ChatSessionKey))
+                {
+                    return Task.FromResult(JsonConvert.SerializeObject(new
+                    {
+                        ok = false,
+                        skipped = true,
+                        error =
+                            "User chose fetch-and-display only. Do not call data_analyze. " +
+                            "Use render_none_interactive / export_* for the data the user asked to show."
+                    }));
+                }
+                if (!AgentUiPathConfirmBL.IsKpiDashboardConfirmed(context.ChatSessionKey))
+                {
+                    return Task.FromResult(JsonConvert.SerializeObject(new
+                    {
+                        ok = false,
+                        skipped = true,
+                        error =
+                            "Analysis-like work needs user confirmation first. Call ask_user with contextKey='" +
+                            AgentUiPathConfirmBL.ContextKey + "', mode=single_choice, prompt='" +
+                            AgentUiPathConfirmBL.AskUserPromptHint() + "', optionsJson=" +
+                            AgentUiPathConfirmBL.AskUserOptionsJson() + ". " +
+                            "After kpi_dashboard: call data_analyze (count/distribution) then render layout=dashboard with kpis+chart. " +
+                            "After fetch_display: only fetch and show/export — no data_analyze."
+                    }));
+                }
+            }
 
             if (string.IsNullOrWhiteSpace(operation))
             {
@@ -164,7 +195,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         private static bool HasAnalyzeIntent(string s)
         {
             return Regex.IsMatch(s,
-                @"\b(analy[sz]|aggregat|summar|average|\bavg\b|\bsum\b|total|kpi|dashboard|distribution|breakdown|group\s*by|how many|metric|trend|chart|histogram|percentile|correlate)\b");
+                @"\b(analy[sz]|aggregat|summar|average|\bavg\b|\bsum\b|total|kpi|dashboard|distribution|break\s*down|breakdown|group(?:ed)?\s*by|how many|metric|trend|chart|histogram|percentile|correlate)\b")
+                || Regex.IsMatch(s, @"\bby\s+[a-z][a-z0-9_ /-]{1,40}\b");
         }
+
     }
 }

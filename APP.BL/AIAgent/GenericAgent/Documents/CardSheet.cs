@@ -199,9 +199,15 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return token.Type == JTokenType.String ? token.ToString() : token.ToString(Newtonsoft.Json.Formatting.None);
         }
 
-        private static readonly Regex ResourceImage = new Regex(@"/api/resources/\S+/image/", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex FileImage = new Regex(@"/api/files/(?:regular|image|thumbnail|latest)/\d+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex ExtImage = new Regex(@"^https?://\S+\.(?:png|jpe?g|gif|webp|svg|bmp)(?:\?\S*)?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex ResourceImage = new Regex(
+            @"/api/resources/\S+/(?:image|regular|thumbnail)(/|\?|$)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex FileImage = new Regex(
+            @"/api/files/(?:regular|image|thumbnail|latest)/\d+",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex ExtImage = new Regex(
+            @"^https?://\S+\.(?:png|jpe?g|gif|webp|svg|bmp)(?:\?\S*)?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         public static bool IsImageValue(string value)
         {

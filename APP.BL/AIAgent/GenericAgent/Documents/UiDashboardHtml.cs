@@ -40,34 +40,45 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             if (layout == "kpi")
             {
                 AppendKpis(sb, rows, spec.Kpis);
+                foreach (var chart in ResolveCharts(spec, rows, allowAuto: true))
+                    AppendChart(sb, rows, chart, forExport, ref chartIndex);
             }
             else if (layout == "chart")
             {
-                if (spec.Chart != null)
-                    AppendChart(sb, rows, spec.Chart, forExport, ref chartIndex);
-                AppendMiniTable(sb, rows, 12);
+                foreach (var chart in ResolveCharts(spec, rows, allowAuto: false))
+                    AppendChart(sb, rows, chart, forExport, ref chartIndex);
+                AppendMiniTable(sb, rows);
             }
             else // dashboard
             {
                 if (spec.Blocks != null && spec.Blocks.Count > 0)
                 {
+                    var hadChart = false;
                     foreach (var block in spec.Blocks)
                     {
                         if (block.Type == "kpi")
                             AppendKpis(sb, rows, block.Kpis != null && block.Kpis.Count > 0 ? block.Kpis : spec.Kpis);
                         else if (block.Type == "chart" && block.Chart != null)
+                        {
                             AppendChart(sb, rows, block.Chart, forExport, ref chartIndex);
+                            hadChart = true;
+                        }
                         else if (block.Type == "table")
-                            AppendMiniTable(sb, rows, block.Limit ?? 20, block.Title);
+                            AppendMiniTable(sb, rows, block.Limit, block.Title);
+                    }
+                    if (!hadChart)
+                    {
+                        foreach (var chart in ResolveCharts(spec, rows, allowAuto: true))
+                            AppendChart(sb, rows, chart, forExport, ref chartIndex);
                     }
                 }
                 else
                 {
                     if (spec.Kpis != null && spec.Kpis.Count > 0)
                         AppendKpis(sb, rows, spec.Kpis);
-                    if (spec.Chart != null)
-                        AppendChart(sb, rows, spec.Chart, forExport, ref chartIndex);
-                    AppendMiniTable(sb, rows, 15);
+                    foreach (var chart in ResolveCharts(spec, rows, allowAuto: true))
+                        AppendChart(sb, rows, chart, forExport, ref chartIndex);
+                    AppendMiniTable(sb, rows);
                 }
             }
 
@@ -121,7 +132,12 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             sb.Append("</section>");
         }
 
-        private static void AppendMiniTable(StringBuilder sb, JArray rows, int limit, string title = null)
+        /// <summary>
+        /// Template/program grid: show all loaded rows by default.
+        /// Only truncate when <paramref name="limit"/> is explicitly set (e.g. block.Limit).
+        /// Hard cap matches render MaxRows (50000).
+        /// </summary>
+        private static void AppendMiniTable(StringBuilder sb, JArray rows, int? limit = null, string title = null)
         {
             if (rows == null || rows.Count == 0) return;
             var cols = new List<string>();
@@ -135,7 +151,10 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             foreach (var c in cols)
                 sb.Append("<th>").Append(Enc(c)).Append("</th>");
             sb.Append("</tr></thead><tbody>");
-            var n = Math.Min(limit, rows.Count);
+            var n = rows.Count;
+            if (limit.HasValue && limit.Value > 0)
+                n = Math.Min(limit.Value, n);
+            n = Math.Min(n, UiRenderSpec.MaxTableRows);
             for (var i = 0; i < n; i++)
             {
                 if (rows[i] is not JObject row) continue;
@@ -143,7 +162,9 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 foreach (var c in cols)
                 {
                     var v = row[c];
-                    sb.Append("<td>").Append(Enc(v?.Type == JTokenType.Null ? "" : v?.ToString() ?? "")).Append("</td>");
+                    sb.Append("<td>");
+                    AppendTableCell(sb, v);
+                    sb.Append("</td>");
                 }
                 sb.Append("</tr>");
             }
@@ -175,21 +196,35 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 
         public static string ComputeKpi(JArray rows, string field, string op)
         {
-            op = (op ?? "sum").ToLowerInvariant();
-            if (string.IsNullOrWhiteSpace(field) || rows == null) return "—";
-            if (op == "count") return rows.Count.ToString(CultureInfo.InvariantCulture);
+            op = (op ?? "sum").Trim().ToLowerInvariant();
+            if (rows == null) return "—";
+            // count = row count (field optional)
+            if (op is "count" or "rows")
+                return rows.Count.ToString(CultureInfo.InvariantCulture);
+
+            if (string.IsNullOrWhiteSpace(field)) return "—";
+
+            if (op is "distinct" or "nunique" or "unique")
+                return DistinctNonEmpty(rows, field).ToString(CultureInfo.InvariantCulture);
+
+            if (op is "nonempty" or "filled")
+                return NonEmptyCount(rows, field).ToString(CultureInfo.InvariantCulture);
+
             var nums = new List<double>();
             foreach (var row in rows.OfType<JObject>())
             {
                 var t = row[field];
                 if (t == null || t.Type == JTokenType.Null) continue;
-                if (double.TryParse(t.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var d))
+                if (TryParseNumber(t.ToString(), out var d))
                     nums.Add(d);
             }
-            if (nums.Count == 0) return "—";
+            // Categorical fields with sum/avg/min/max → distinct count (agent often passes dimension names as KPIs)
+            if (nums.Count == 0)
+                return DistinctNonEmpty(rows, field).ToString(CultureInfo.InvariantCulture);
+
             double v = op switch
             {
-                "avg" => nums.Average(),
+                "avg" or "average" or "mean" => nums.Average(),
                 "min" => nums.Min(),
                 "max" => nums.Max(),
                 _ => nums.Sum()
@@ -199,21 +234,152 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return v.ToString("0.##", CultureInfo.InvariantCulture);
         }
 
+        /// <summary>
+        /// Group by xField. Sum y when numeric; otherwise count rows per category
+        /// (yField empty / "count" / non-numeric). Caps at 40 groups by value desc.
+        /// </summary>
         public static List<(string Label, double Value)> ExtractSeries(JArray rows, string xField, string yField)
         {
             var list = new List<(string, double)>();
-            if (rows == null) return list;
+            if (rows == null || string.IsNullOrWhiteSpace(xField)) return list;
+
+            var useCount = string.IsNullOrWhiteSpace(yField)
+                           || yField.Equals("count", StringComparison.OrdinalIgnoreCase)
+                           || yField.Equals("_count", StringComparison.OrdinalIgnoreCase);
+
+            var sums = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var anyNumeric = false;
+
             foreach (var row in rows.OfType<JObject>())
             {
-                var x = row[xField]?.ToString() ?? "";
+                var xTok = row[xField];
+                if (xTok == null || xTok.Type == JTokenType.Null) continue;
+                var x = xTok.ToString()?.Trim() ?? "";
+                if (x.Length == 0) continue;
+
+                counts[x] = counts.TryGetValue(x, out var c) ? c + 1 : 1;
+                if (useCount) continue;
+
                 var yTok = row[yField];
-                double y = 0;
-                if (yTok != null && yTok.Type != JTokenType.Null)
-                    double.TryParse(yTok.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out y);
-                list.Add((x, y));
-                if (list.Count >= 40) break;
+                if (yTok == null || yTok.Type == JTokenType.Null) continue;
+                if (TryParseNumber(yTok.ToString(), out var y))
+                {
+                    anyNumeric = true;
+                    sums[x] = sums.TryGetValue(x, out var s) ? s + y : y;
+                }
+            }
+
+            IEnumerable<KeyValuePair<string, double>> ranked;
+            if (useCount || !anyNumeric)
+                ranked = counts.Select(kv => new KeyValuePair<string, double>(kv.Key, kv.Value));
+            else
+                ranked = sums;
+
+            foreach (var kv in ranked.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key).Take(40))
+                list.Add((kv.Key, kv.Value));
+            return list;
+        }
+
+        /// <summary>
+        /// Explicit chart(s) from spec, or auto count-by charts from KPI dimension fields
+        /// when the model omitted chart (common after kpi_dashboard on raw detail rows).
+        /// </summary>
+        public static List<UiChartSpec> ResolveCharts(UiRenderSpec spec, JArray rows, bool allowAuto)
+        {
+            var list = new List<UiChartSpec>();
+            if (spec?.Chart != null
+                && !string.IsNullOrWhiteSpace(spec.Chart.XField))
+            {
+                list.Add(spec.Chart);
+                return list;
+            }
+
+            if (!allowAuto || rows == null || rows.Count == 0 || spec?.Kpis == null)
+                return list;
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var k in spec.Kpis)
+            {
+                if (list.Count >= 3) break;
+                var field = k?.Field?.Trim();
+                if (string.IsNullOrEmpty(field) || !seen.Add(field)) continue;
+                var op = (k.Op ?? "").Trim().ToLowerInvariant();
+                // Skip pure row-count KPIs with no dimension
+                if (op is "count" or "rows") continue;
+                var distinct = DistinctNonEmpty(rows, field);
+                if (distinct < 2 || distinct > 40) continue;
+                // Skip high-cardinality ids (almost unique per row)
+                if (distinct > rows.Count * 0.6) continue;
+                list.Add(new UiChartSpec
+                {
+                    Type = "bar",
+                    XField = field,
+                    YField = "count",
+                    Title = (string.IsNullOrWhiteSpace(k.Label) ? field : k.Label) + " (count)"
+                });
             }
             return list;
+        }
+
+        private static int DistinctNonEmpty(JArray rows, string field)
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var row in rows.OfType<JObject>())
+            {
+                var t = row[field];
+                if (t == null || t.Type == JTokenType.Null) continue;
+                var s = t.ToString()?.Trim() ?? "";
+                if (s.Length > 0) set.Add(s);
+            }
+            return set.Count;
+        }
+
+        private static int NonEmptyCount(JArray rows, string field)
+        {
+            var n = 0;
+            foreach (var row in rows.OfType<JObject>())
+            {
+                var t = row[field];
+                if (t == null || t.Type == JTokenType.Null) continue;
+                if (!string.IsNullOrWhiteSpace(t.ToString())) n++;
+            }
+            return n;
+        }
+
+        private static bool TryParseNumber(string text, out double d)
+        {
+            d = 0;
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            text = text.Trim();
+            // Avoid treating codes like "MC-PD-50" or pure ids with letters as numbers
+            if (text.Any(c => char.IsLetter(c))) return false;
+            return double.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out d);
+        }
+
+        private static void AppendTableCell(StringBuilder sb, JToken v)
+        {
+            if (v == null || v.Type == JTokenType.Null)
+                return;
+            string text;
+            var image = false;
+            if (v is JObject o)
+            {
+                text = o["url"]?.ToString() ?? o["Url"]?.ToString() ?? o["fileId"]?.ToString() ?? o.ToString(Newtonsoft.Json.Formatting.None);
+                image = o["url"] != null || o["Url"] != null || CardSheet.IsImageValue(text);
+            }
+            else
+            {
+                text = v.Type == JTokenType.String ? v.ToString() : v.ToString();
+                image = CardSheet.IsImageValue(text);
+            }
+            if (image && !string.IsNullOrWhiteSpace(text))
+            {
+                sb.Append("<img src=\"").Append(Enc(text.Trim()))
+                    .Append("\" alt=\"\" style=\"border:0;max-width:120px;max-height:80px;object-fit:contain;display:block\"/>");
+                return;
+            }
+            sb.Append(Enc(text ?? ""));
         }
 
         private static string Enc(string s) => WebUtility.HtmlEncode(s ?? "");

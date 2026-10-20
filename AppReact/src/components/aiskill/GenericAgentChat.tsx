@@ -1779,15 +1779,6 @@ const GenericAgentChat: React.FC<Props> = ({
             {sidebarOpen && (
                 <div style={{ width: openRender ? (renderWidth ?? Math.max(280, Math.round(((chatRootRef.current?.clientWidth ?? 900) - 8) / 2))) : toolsWidth }} className={`shrink-0 border flex flex-col min-w-0 min-h-0 ${regionBorder} ${windowCard}`}>
                     <div className={`flex items-center gap-1 px-2 py-1.5 border-b ${regionBorder}`}>
-                        {openRender && (
-                        <button
-                            type="button"
-                            className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'result' ? ' font-medium' : ' opacity-70'}`}
-                            onClick={() => setRightTab('result')}
-                        >
-                            Result
-                        </button>
-                        )}
                         <button
                             type="button"
                             className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'tools' ? ' font-medium' : ' opacity-70'}`}
@@ -1802,6 +1793,15 @@ const GenericAgentChat: React.FC<Props> = ({
                             onClick={() => setRightTab('files')}
                         >
                             Files
+                        </button>
+                        )}
+                        {openRender && (
+                        <button
+                            type="button"
+                            className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'result' ? ' font-medium' : ' opacity-70'}`}
+                            onClick={() => setRightTab('result')}
+                        >
+                            Result
                         </button>
                         )}
                         <button className="text-xs opacity-50 hover:opacity-100 ml-auto" onClick={() => setSidebarOpen(false)}>

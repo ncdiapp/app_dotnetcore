@@ -152,7 +152,7 @@ public class ApiTools
                 cache_scope    = isGlobal ? "global" : "session",
                 rows           = dataset.Rows.Count,
                 columns        = dataset.Columns.Select(c => c.Name).ToArray(),
-                next_hint      = $"Dataset cached as '{dataset.Name}'. For show/export: use render_none_interactive / export_* with dataset_name and limit. Do not call data_analyze for display slicing."
+                next_hint      = $"Dataset cached as '{dataset.Name}'. If user asked to analyze/breakdown/group by: call data_analyze with this dataset_name. If show/export only: render/export with limit — do not call data_analyze for display-only. KPI/chart/dashboard Result layout needs ask_user confirm first."
             };
             return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
         }
