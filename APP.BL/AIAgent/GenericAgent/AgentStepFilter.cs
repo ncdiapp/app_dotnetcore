@@ -36,6 +36,14 @@ namespace App.BL.AIAgent.GenericAgent
                 ? BuildCallAgentArgsPreview(ctx.Arguments, targetSkillKey)
                 : Truncate(SafeSerialize(ctx.Arguments), 2000);
 
+            // Think Mode: why this tool (causal) — Tool Activity still gets raw tool_call/result.
+            await Fire(_callbacks?.OnStep, new AgentStepEvent
+            {
+                Type        = "thinking",
+                Description = AgentThinkNarrator.IntentBeforeTool(toolName, ctx.Arguments, toolLabel),
+                IsSuccess   = true
+            });
+
             await Fire(_callbacks?.OnStep, new AgentStepEvent
             {
                 Type        = "tool_call",
@@ -65,6 +73,13 @@ namespace App.BL.AIAgent.GenericAgent
                 var resultText = ok ? TryGetResult(ctx) : null;
                 if (ok && (resultText == null || resultText == "null"))
                     resultText = "{\"ok\":true}";
+
+                await Fire(_callbacks?.OnStep, new AgentStepEvent
+                {
+                    Type        = "thinking",
+                    Description = AgentThinkNarrator.OutcomeAfterTool(toolName, ctx.Arguments, resultText, ok),
+                    IsSuccess   = ok
+                });
                 await Fire(_callbacks?.OnStep, new AgentStepEvent
                 {
                     Type        = "tool_result",

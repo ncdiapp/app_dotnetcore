@@ -17,7 +17,8 @@ import { DataRenderPanel } from './dataRender';
 import InteractiveDashboardPanel, { isInteractiveDashboard } from './InteractiveDashboardPanel';
 import UiRenderFrame, { hasUiHtml } from './UiRenderFrame';
 import { placeRender, renderKey } from './dataRender/placeRender';
-import { RenderBuilding, RenderChip, TurnToolHeader } from './dataRender/RenderChrome';
+import { RenderBuilding, RenderChip } from './dataRender/RenderChrome';
+import { ReasoningLoopPanel } from './dataRender/ReasoningLoopPanel';
 import { AgentMarkdown, FollowupChips, splitFollowups, type AgentFileLink } from './AgentMarkdown';
 
 const SESSION_START = '[session_start]';
@@ -26,6 +27,8 @@ const RUN_IN_PROGRESS = '[run_in_progress]';
 type StoredChatMessage = {
     role: string;
     content?: string;
+    thinking?: string;
+    Thinking?: string;
     toolSteps?: Array<{ toolName: string; label?: string; args?: string; result?: string; isSuccess?: boolean; durationMs?: number }>;
     dataRenders?: DataRenderEvent[];
     DataRenders?: DataRenderEvent[];
@@ -164,6 +167,8 @@ interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
     isStreaming?: boolean;
+    /** Reasoning loop narrative (tool choice / recovery) — not raw tool dumps. */
+    thinking?: string;
     /** Persisted with session; restored into Tool Activity on reload. */
     toolSteps?: ToolStep[];
     /** Non-blocking data_render panels attached to this assistant turn. */
@@ -613,6 +618,7 @@ const GenericAgentChat: React.FC<Props> = ({
         chatSessionKey: chatSessionKeyRef.current,
         messages: messagesRef.current.map(m => ({
             ...m,
+            thinking: m.thinking || undefined,
             toolSteps: m.toolSteps ? [...m.toolSteps] : undefined,
             dataRenders: m.dataRenders ? [...m.dataRenders] : undefined,
         })),
@@ -675,15 +681,47 @@ const GenericAgentChat: React.FC<Props> = ({
         onStep: (step: { Type: string; ToolName?: string; Description: string; IsSuccess: boolean; Details?: string }) => {
             if (!mountedRef.current) return;
             const s = step;
-                    if (!s.ToolName) return;
             const idx = currentTurnIndexRef.current;
-                    if (s.Type === 'tool_call') {
-                        pendingCallRef.current.set(s.ToolName, { args: s.Details, startedAt: Date.now() });
+            const appendThinking = (line: string) => {
+                const bit = (line || '').trim();
+                if (!bit) return;
+                setMessages(prev => {
+                    const last = prev[prev.length - 1];
+                    if (last?.role === 'assistant' && (last.isStreaming || isRunningRef.current)) {
+                        const prevThink = (last.thinking || '').trim();
+                        if (prevThink.endsWith(bit) || prevThink.includes(bit)) {
+                            return last.isStreaming ? prev : [...prev.slice(0, -1), { ...last, isStreaming: true }];
+                        }
+                        const nextThink = prevThink ? `${prevThink}\n\n${bit}` : bit;
+                        return [...prev.slice(0, -1), { ...last, thinking: nextThink, isStreaming: true }];
+                    }
+                    return [...prev, { role: 'assistant' as const, content: '', thinking: bit, isStreaming: true }];
+                });
+            };
+            if (s.Type === 'thinking') {
+                appendThinking(s.Description || s.Details || '');
+                return;
+            }
+            if (!s.ToolName) return;
+            if (s.Type === 'tool_call') {
+                // Pre-tool streamed prose was model reasoning — move into Reasoning loop, clear answer draft.
+                setMessages(prev => {
+                    const last = prev[prev.length - 1];
+                    if (!(last?.role === 'assistant' && last.isStreaming)) return prev;
+                    const draft = (last.content || '').trim();
+                    if (!draft) return prev;
+                    const prevThink = (last.thinking || '').trim();
+                    const nextThink = (!prevThink)
+                        ? draft
+                        : (prevThink.includes(draft) ? prevThink : `${prevThink}\n\n${draft}`);
+                    return [...prev.slice(0, -1), { ...last, thinking: nextThink, content: '' }];
+                });
+                pendingCallRef.current.set(s.ToolName, { args: s.Details, startedAt: Date.now() });
                 addStep(idx, { toolName: s.ToolName, label: s.Description, args: s.Details, isSuccess: true });
-                    } else if (s.Type === 'tool_result') {
-                        const pending = pendingCallRef.current.get(s.ToolName);
-                        const durationMs = pending ? Date.now() - pending.startedAt : undefined;
-                        pendingCallRef.current.delete(s.ToolName);
+            } else if (s.Type === 'tool_result') {
+                const pending = pendingCallRef.current.get(s.ToolName);
+                const durationMs = pending ? Date.now() - pending.startedAt : undefined;
+                pendingCallRef.current.delete(s.ToolName);
                 const resultLabel = extractCallAgentKeyFromLabel(s.Description)
                     ? s.Description.split('—')[0].trim()
                     : undefined;
@@ -743,6 +781,7 @@ const GenericAgentChat: React.FC<Props> = ({
                             ...last,
                             content: done.FinalResponse || last.content,
                             isStreaming: false,
+                            thinking: last.thinking || undefined,
                             toolSteps: stepsForMsg.length > 0 ? stepsForMsg : undefined,
                             dataRenders: last.dataRenders,
                         }];
@@ -1000,11 +1039,13 @@ const GenericAgentChat: React.FC<Props> = ({
                             const skipPendingPlaceholder = !!pendingOnMsg && !isAskSummary;
                             if (!skipPendingPlaceholder) {
                                 const dataRenders = parseStoredDataRenders(storedMsg);
+                                const thinkingText = String(storedMsg.thinking ?? storedMsg.Thinking ?? '').trim();
                                 restoredMsgs.push({
                                     role: 'assistant',
                                     content: isAskSummary
                                         ? formatAskUserQuestionSummary(content)
                                         : content,
+                                    thinking: thinkingText || undefined,
                                     toolSteps: steps,
                                     dataRenders,
                                     askUserSummary: isAskSummary || undefined,
@@ -1092,6 +1133,7 @@ const GenericAgentChat: React.FC<Props> = ({
                 .map(m => ({
                     role: m.role === 'user' ? 'user' : 'assistant',
                     content: m.content,
+                    ...(m.role === 'assistant' && m.thinking ? { thinking: m.thinking } : {}),
                     ...(m.role === 'assistant' && m.toolSteps && m.toolSteps.length > 0
                         ? { toolSteps: m.toolSteps }
                         : {}),
@@ -1449,15 +1491,18 @@ const GenericAgentChat: React.FC<Props> = ({
                             : { body: m.content, followups: [] as string[] };
                         const showBubble = !!(split.body || m.isStreaming || m.askUserSummary || m.askUserAnswer);
                         const hasRenders = m.role === 'assistant' && (m.dataRenders?.length ?? 0) > 0;
-                        const hasTools = m.role === 'assistant' && ((m.toolSteps?.length ?? 0) > 0 || !!m.isStreaming);
+                        const showThinking = m.role === 'assistant' && !!(m.thinking?.trim() || (m.isStreaming && isRunning && !split.body));
                         const hasFollowups = m.role === 'assistant' && !m.isStreaming && split.followups.length > 0;
                         const largeOpen = hasRenders && m.dataRenders!.some(dr => placeRender(dr).panel);
-                        if (!showBubble && !hasRenders && !hasFollowups && !hasTools) return null;
+                        if (!showBubble && !hasRenders && !hasFollowups && !showThinking) return null;
                         return (
                         <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                             <div className={m.role === 'user' ? 'max-w-xl' : 'w-full min-w-0 flex flex-col gap-2'}>
-                            {m.role === 'assistant' && (m.toolSteps?.length ?? 0) > 0 && (
-                                <TurnToolHeader steps={m.toolSteps!} running={!!m.isStreaming && !split.body} />
+                            {showThinking && (
+                                <ReasoningLoopPanel
+                                    text={m.thinking || ''}
+                                    isLive={!!(m.isStreaming || (i === messages.length - 1 && isRunning && !pendingAskUser))}
+                                />
                             )}
                             {showBubble && (
                                     <div className={
@@ -1529,10 +1574,12 @@ const GenericAgentChat: React.FC<Props> = ({
 
                     {isRunning && !pendingAskUser && (
                         <div className={`flex items-center gap-2 text-xs ${theme.label}`}>
-                            <i className="fa-solid fa-spinner fa-spin" />
-                            <span>{turnActivities.find(t => t.turnIndex === currentTurnIndex)?.steps.length
-                                ? `Running tools…`
-                                : 'Thinking…'}</span>
+                            {!(messages[messages.length - 1]?.role === 'assistant' && messages[messages.length - 1]?.thinking) && (
+                                <>
+                                    <i className="fa-solid fa-spinner fa-spin" />
+                                    <span>Reasoning…</span>
+                                </>
+                            )}
                             <button
                                 type="button"
                                 className={`${btn} ml-1`}

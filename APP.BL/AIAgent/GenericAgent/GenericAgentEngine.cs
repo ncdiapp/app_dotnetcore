@@ -52,6 +52,23 @@ namespace App.BL.AIAgent.GenericAgent
         /// <summary>Capability marker tool in library data-analyze. Presence (subscribed, not excluded) enables followups inject.</summary>
         private const string DataAnalyzeToolName = "data_analyze";
         private const string PromptHintToolType = "PromptHint";
+        /// <summary>
+        /// Platform hard rule — always appended to Instructions. Not stored in AppAgentSkillSet;
+        /// admins cannot turn it off. Prefer tools over model-invented data/UI/files.
+        /// </summary>
+        private const string ToolsPreferHardRule = @"
+
+## Tools Prefer (platform hard rule — cannot be disabled)
+For ANY task, if a registered or built-in tool can do the work, you MUST call that tool. Never do the work only inside the model when a tool exists.
+This applies to every capability that has a tool, including but not limited to:
+- Fetch / query data (SQL, API, search)
+- Aggregations and analysis (GROUP BY, SUM, count, distribution) → data_analyze or SQL tools
+- Result UI (KPI, chart, dashboard, grid) → render_interactive / render_none_interactive
+- Exports and documents (CSV, Excel, Word, PDF, PPTX) → export_* / document tools
+- Any other subscribed or built-in tool that matches the user intent
+FinalResponse may briefly explain outcomes and point to Result / files. It must NOT invent numeric tables, HTML dashboards, or file contents that a tool should produce.
+If several tools could work, choose the most specific and call it. If no suitable tool is available, say that clearly — do not fake the output.";
+
         private const string FollowupsPromptHint = @"
 
 ## Follow-up suggestions (soft chips)
@@ -86,7 +103,8 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
                     return;
                 }
 
-                var systemPrompt = skillSet.SystemPrompt ?? "";
+                // Hard rule: always inject (not editable via SkillSet UI / migrations).
+                var systemPrompt = (skillSet.SystemPrompt ?? "") + ToolsPreferHardRule;
 
                 var userId    = identity.HasValue && identity.Value.UserId != null                      ? Convert.ToInt32(identity.Value.UserId)                      : 0;
                 var companyId = identity.HasValue && identity.Value.CurrentWorkingCompanyId != null     ? Convert.ToInt32(identity.Value.CurrentWorkingCompanyId)      : 0;
@@ -219,12 +237,43 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
 
                     await Safe(callbacks?.OnStep, new AgentStepEvent
                     {
-                        Type = "thinking", Description = "Analyzing your request…", IsSuccess = true
+                        Type = "thinking",
+                        Description = AgentThinkNarrator.Opening(userMessage),
+                        IsSuccess = true
                     }).ConfigureAwait(false);
 
                     var fullResponse = new StringBuilder();
                     var thread = new ChatHistoryAgentThread(history);
-                    await foreach (var chunk in agent.InvokeStreamingAsync(thread, cancellationToken: ct).ConfigureAwait(false))
+                    // Capture model prose that accompanies tool rounds as Think Mode (not the final answer).
+                    var invokeOptions = new AgentInvokeOptions
+                    {
+                        OnIntermediateMessage = async msg =>
+                        {
+                            if (msg == null) return;
+                            var prose = (msg.Content ?? "").Trim();
+                            if (string.IsNullOrEmpty(prose)) return;
+                            var hasTool = false;
+                            if (msg.Items != null)
+                            {
+                                foreach (var item in msg.Items)
+                                {
+                                    if (item is FunctionCallContent)
+                                    {
+                                        hasTool = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!hasTool) return;
+                            await Safe(callbacks?.OnStep, new AgentStepEvent
+                            {
+                                Type = "thinking",
+                                Description = TruncateThink(prose, 2000),
+                                IsSuccess = true
+                            }).ConfigureAwait(false);
+                        }
+                    };
+                    await foreach (var chunk in agent.InvokeStreamingAsync(thread, invokeOptions, cancellationToken: ct).ConfigureAwait(false))
                     {
                         var text = chunk.Message.Content ?? "";
                         if (!string.IsNullOrEmpty(text))
@@ -737,6 +786,12 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
             if (trimmed.StartsWith("{") || trimmed.StartsWith("["))
                 return $"{{\"note\":\"Result truncated ({omitted} chars omitted)\",\"preview\":{Newtonsoft.Json.JsonConvert.ToString(preview)}}}";
             return preview + $"… [{omitted} chars truncated]";
+        }
+
+        private static string TruncateThink(string s, int max)
+        {
+            if (string.IsNullOrEmpty(s) || s.Length <= max) return s ?? "";
+            return s.Substring(0, max) + "…";
         }
 
         private static async Task Safe<T>(Func<T, Task>? callback, T arg)
