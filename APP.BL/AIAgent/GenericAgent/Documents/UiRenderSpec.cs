@@ -143,7 +143,21 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 Title = b["title"]?.ToString() ?? b["Title"]?.ToString()
             };
             if (type == "chart")
-                block.Chart = ParseChart(b);
+            {
+                // Prefer nested chart object; otherwise fields live on the block itself
+                if (b["chart"] is JObject nested || b["Chart"] is JObject)
+                    block.Chart = ParseChart((b["chart"] ?? b["Chart"]) as JObject);
+                else
+                    block.Chart = ParseChart(b);
+                if (block.Chart != null
+                    && (block.Chart.Type == "chart" || block.Chart.Type == "kpi" || string.IsNullOrWhiteSpace(block.Chart.Type)))
+                    block.Chart.Type = "bar";
+                // Block title "by" is useless — clear so renderer builds a real title
+                if (string.IsNullOrWhiteSpace(block.Chart.Title)
+                    && !string.IsNullOrWhiteSpace(block.Title)
+                    && !block.Title.Trim().Equals("by", StringComparison.OrdinalIgnoreCase))
+                    block.Chart.Title = block.Title;
+            }
             if (type == "kpi" && b["kpis"] is JArray ka)
             {
                 block.Kpis = new List<UiKpiSpec>();

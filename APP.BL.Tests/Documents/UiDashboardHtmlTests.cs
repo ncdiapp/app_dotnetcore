@@ -97,6 +97,53 @@ public class UiDashboardHtmlTests
     }
 
     [Fact]
+    public void Build_skips_empty_chart_blocks_and_still_draws_grid()
+    {
+        var rows = JArray.Parse("""
+            [
+              { "Classification": "MC", "Size": "S" },
+              { "Classification": "MC", "Size": "M" },
+              { "Classification": "Army", "Size": "S" }
+            ]
+            """);
+        var spec = new UiRenderSpec
+        {
+            Title = "Style Search Analysis",
+            Kpis =
+            {
+                new UiKpiSpec { Label = "Total Styles", Field = "", Op = "count" },
+                new UiKpiSpec { Label = "UNIQUE CLASSIFICATIONS", Field = "Classification", Op = "distinct" }
+            },
+            Blocks =
+            {
+                new UiDashBlockSpec { Type = "kpi" },
+                new UiDashBlockSpec { Type = "chart", Chart = new UiChartSpec { Type = "bar", Title = "by" } },
+                new UiDashBlockSpec { Type = "chart", Chart = new UiChartSpec { Type = "chart" } }
+            }
+        };
+        var html = UiDashboardHtml.Build("dashboard", rows, spec, null, false, false, null, null);
+        Assert.DoesNotContain(">by<", html);
+        Assert.DoesNotContain("No data", html);
+        Assert.Contains("chart-panel", html);
+        Assert.Contains("UNIQUE CLASSIFICATIONS (count)", html);
+        Assert.Contains("data-table", html);
+        Assert.Contains(">Army<", html);
+    }
+
+    [Fact]
+    public void Build_kpi_layout_includes_grid()
+    {
+        var rows = SampleRows();
+        var spec = new UiRenderSpec
+        {
+            Kpis = { new UiKpiSpec { Label = "Total", Field = "", Op = "count" } }
+        };
+        var html = UiDashboardHtml.Build("kpi", rows, spec, "KPIs", false, false, null, null);
+        Assert.Contains("data-table", html);
+        Assert.Contains(">East<", html);
+    }
+
+    [Fact]
     public void MapLegacyUi_chart_and_kpi_dashboard()
     {
         Assert.Equal("chart", UiTemplateMerge.MapLegacyUi("chart", out var from1));

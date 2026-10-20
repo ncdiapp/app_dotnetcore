@@ -40,46 +40,47 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             if (layout == "kpi")
             {
                 AppendKpis(sb, rows, spec.Kpis);
-                foreach (var chart in ResolveCharts(spec, rows, allowAuto: true))
-                    AppendChart(sb, rows, chart, forExport, ref chartIndex);
+                AppendResolvedCharts(sb, rows, spec, forExport, ref chartIndex, allowAuto: true);
+                AppendMiniTable(sb, rows); // always show grid for template path
             }
             else if (layout == "chart")
             {
-                foreach (var chart in ResolveCharts(spec, rows, allowAuto: false))
-                    AppendChart(sb, rows, chart, forExport, ref chartIndex);
+                AppendResolvedCharts(sb, rows, spec, forExport, ref chartIndex, allowAuto: false);
                 AppendMiniTable(sb, rows);
             }
             else // dashboard
             {
+                var paintedChart = false;
+                var paintedTable = false;
                 if (spec.Blocks != null && spec.Blocks.Count > 0)
                 {
-                    var hadChart = false;
                     foreach (var block in spec.Blocks)
                     {
                         if (block.Type == "kpi")
                             AppendKpis(sb, rows, block.Kpis != null && block.Kpis.Count > 0 ? block.Kpis : spec.Kpis);
                         else if (block.Type == "chart" && block.Chart != null)
                         {
-                            AppendChart(sb, rows, block.Chart, forExport, ref chartIndex);
-                            hadChart = true;
+                            if (TryAppendChart(sb, rows, block.Chart, forExport, ref chartIndex))
+                                paintedChart = true;
                         }
                         else if (block.Type == "table")
+                        {
                             AppendMiniTable(sb, rows, block.Limit, block.Title);
+                            paintedTable = true;
+                        }
                     }
-                    if (!hadChart)
-                    {
-                        foreach (var chart in ResolveCharts(spec, rows, allowAuto: true))
-                            AppendChart(sb, rows, chart, forExport, ref chartIndex);
-                    }
+                    // Empty chart blocks (title "by", No data) must not block auto charts
+                    if (!paintedChart)
+                        paintedChart = AppendResolvedCharts(sb, rows, spec, forExport, ref chartIndex, allowAuto: true);
                 }
                 else
                 {
                     if (spec.Kpis != null && spec.Kpis.Count > 0)
                         AppendKpis(sb, rows, spec.Kpis);
-                    foreach (var chart in ResolveCharts(spec, rows, allowAuto: true))
-                        AppendChart(sb, rows, chart, forExport, ref chartIndex);
-                    AppendMiniTable(sb, rows);
+                    paintedChart = AppendResolvedCharts(sb, rows, spec, forExport, ref chartIndex, allowAuto: true);
                 }
+                if (!paintedTable)
+                    AppendMiniTable(sb, rows);
             }
 
             if (interactive && !string.IsNullOrWhiteSpace(actionsJson))
@@ -105,20 +106,49 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             sb.Append("</section>");
         }
 
-        private static void AppendChart(StringBuilder sb, JArray rows, UiChartSpec chart, bool forExport, ref int chartIndex)
+        private static bool AppendResolvedCharts(
+            StringBuilder sb, JArray rows, UiRenderSpec spec, bool forExport, ref int chartIndex, bool allowAuto)
         {
-            if (chart == null) return;
+            var any = false;
+            foreach (var chart in ResolveCharts(spec, rows, allowAuto))
+            {
+                if (TryAppendChart(sb, rows, chart, forExport, ref chartIndex))
+                    any = true;
+            }
+            return any;
+        }
+
+        /// <summary>Returns false when chart has no usable series (skips empty "by" / No data widgets).</summary>
+        public static bool TryAppendChart(StringBuilder sb, JArray rows, UiChartSpec chart, bool forExport, ref int chartIndex)
+        {
+            if (chart == null || sb == null) return false;
+            var xField = ResolveColumn(rows, chart.XField);
+            if (string.IsNullOrWhiteSpace(xField)) return false;
+            var yField = string.IsNullOrWhiteSpace(chart.YField) || IsCountY(chart.YField)
+                ? "count"
+                : (ResolveColumn(rows, chart.YField) ?? chart.YField);
+            var points = ExtractSeries(rows, xField, yField);
+            if (points == null || points.Count == 0) return false;
+
             chartIndex++;
             var id = "chart-" + chartIndex;
-            var title = string.IsNullOrWhiteSpace(chart.Title) ? (chart.YField + " by " + chart.XField) : chart.Title;
-            var points = ExtractSeries(rows, chart.XField, chart.YField);
+            var title = chart.Title?.Trim();
+            if (string.IsNullOrWhiteSpace(title) || title.Equals("by", StringComparison.OrdinalIgnoreCase)
+                || title.Equals("by ", StringComparison.OrdinalIgnoreCase))
+            {
+                title = IsCountY(yField)
+                    ? (xField + " (count)")
+                    : (yField + " by " + xField);
+            }
+            var chartType = (chart.Type ?? "bar").Trim().ToLowerInvariant();
+            if (chartType is "chart" or "kpi" or "") chartType = "bar";
+
             sb.Append("<section class=\"chart-panel\" data-role=\"chart\" data-chart-id=\"")
                 .Append(id).Append("\">");
             sb.Append("<h2 class=\"chart-title\">").Append(Enc(title)).Append("</h2>");
-            var svg = chart.Type == "line" ? ChartSvg.Line(points, 640, 280) : ChartSvg.Bar(points, 640, 280);
+            var svg = chartType == "line" ? ChartSvg.Line(points, 640, 280) : ChartSvg.Bar(points, 640, 280);
             if (forExport)
             {
-                // Rasterizer replaces .chart-surface inner SVG with <img data-URI>
                 sb.Append("<div class=\"chart-surface\" data-rasterize=\"1\">");
                 sb.Append(svg);
                 sb.Append("</div>");
@@ -130,7 +160,13 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 sb.Append("</div>");
             }
             sb.Append("</section>");
+            return true;
         }
+
+        private static bool IsCountY(string yField) =>
+            string.IsNullOrWhiteSpace(yField)
+            || yField.Equals("count", StringComparison.OrdinalIgnoreCase)
+            || yField.Equals("_count", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// Template/program grid: show all loaded rows by default.
@@ -251,9 +287,13 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             var anyNumeric = false;
 
+            xField = ResolveColumn(rows, xField) ?? xField;
+            if (!useCount)
+                yField = ResolveColumn(rows, yField) ?? yField;
+
             foreach (var row in rows.OfType<JObject>())
             {
-                var xTok = row[xField];
+                var xTok = GetProp(row, xField);
                 if (xTok == null || xTok.Type == JTokenType.Null) continue;
                 var x = xTok.ToString()?.Trim() ?? "";
                 if (x.Length == 0) continue;
@@ -261,7 +301,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 counts[x] = counts.TryGetValue(x, out var c) ? c + 1 : 1;
                 if (useCount) continue;
 
-                var yTok = row[yField];
+                var yTok = GetProp(row, yField);
                 if (yTok == null || yTok.Type == JTokenType.Null) continue;
                 if (TryParseNumber(yTok.ToString(), out var y))
                 {
@@ -288,11 +328,21 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         public static List<UiChartSpec> ResolveCharts(UiRenderSpec spec, JArray rows, bool allowAuto)
         {
             var list = new List<UiChartSpec>();
-            if (spec?.Chart != null
-                && !string.IsNullOrWhiteSpace(spec.Chart.XField))
+            if (spec?.Chart != null && !string.IsNullOrWhiteSpace(spec.Chart.XField))
             {
-                list.Add(spec.Chart);
-                return list;
+                var resolved = ResolveColumn(rows, spec.Chart.XField);
+                if (resolved != null)
+                {
+                    list.Add(new UiChartSpec
+                    {
+                        Type = spec.Chart.Type,
+                        XField = resolved,
+                        YField = spec.Chart.YField,
+                        Title = spec.Chart.Title
+                    });
+                    return list;
+                }
+                // Bad xField — fall through to auto charts when allowed
             }
 
             if (!allowAuto || rows == null || rows.Count == 0 || spec?.Kpis == null)
@@ -302,15 +352,15 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             foreach (var k in spec.Kpis)
             {
                 if (list.Count >= 3) break;
-                var field = k?.Field?.Trim();
+                var field = ResolveColumn(rows, k?.Field);
                 if (string.IsNullOrEmpty(field) || !seen.Add(field)) continue;
                 var op = (k.Op ?? "").Trim().ToLowerInvariant();
                 // Skip pure row-count KPIs with no dimension
                 if (op is "count" or "rows") continue;
                 var distinct = DistinctNonEmpty(rows, field);
                 if (distinct < 2 || distinct > 40) continue;
-                // Skip high-cardinality ids (almost unique per row)
-                if (distinct > rows.Count * 0.6) continue;
+                // Skip near-unique id columns (only when there are enough rows to tell)
+                if (rows.Count >= 20 && distinct >= rows.Count * 0.8) continue;
                 list.Add(new UiChartSpec
                 {
                     Type = "bar",
@@ -322,12 +372,47 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return list;
         }
 
+        /// <summary>Case-insensitive column match against the first data row.</summary>
+        public static string ResolveColumn(JArray rows, string field)
+        {
+            if (string.IsNullOrWhiteSpace(field) || rows == null) return null;
+            field = field.Trim();
+            var sample = rows.OfType<JObject>().FirstOrDefault();
+            if (sample == null) return field;
+            if (sample.Property(field) != null) return field;
+            foreach (var p in sample.Properties())
+            {
+                if (string.Equals(p.Name, field, StringComparison.OrdinalIgnoreCase))
+                    return p.Name;
+            }
+            // Soft match: strip spaces/underscores (Size Range ↔ Size_Range ↔ SizeRange)
+            static string Norm(string s) =>
+                new string((s ?? "").Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+            var want = Norm(field);
+            if (want.Length == 0) return null;
+            foreach (var p in sample.Properties())
+            {
+                if (Norm(p.Name) == want)
+                    return p.Name;
+            }
+            return null;
+        }
+
+        private static JToken GetProp(JObject row, string field)
+        {
+            if (row == null || string.IsNullOrEmpty(field)) return null;
+            var p = row.Property(field) ?? row.Properties()
+                .FirstOrDefault(x => string.Equals(x.Name, field, StringComparison.OrdinalIgnoreCase));
+            return p?.Value;
+        }
+
         private static int DistinctNonEmpty(JArray rows, string field)
         {
+            field = ResolveColumn(rows, field) ?? field;
             var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var row in rows.OfType<JObject>())
             {
-                var t = row[field];
+                var t = GetProp(row, field);
                 if (t == null || t.Type == JTokenType.Null) continue;
                 var s = t.ToString()?.Trim() ?? "";
                 if (s.Length > 0) set.Add(s);
@@ -337,10 +422,11 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 
         private static int NonEmptyCount(JArray rows, string field)
         {
+            field = ResolveColumn(rows, field) ?? field;
             var n = 0;
             foreach (var row in rows.OfType<JObject>())
             {
-                var t = row[field];
+                var t = GetProp(row, field);
                 if (t == null || t.Type == JTokenType.Null) continue;
                 if (!string.IsNullOrWhiteSpace(t.ToString())) n++;
             }
