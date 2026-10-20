@@ -55,6 +55,17 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         public const string PdfPrintCss =
             "@page{size:A4 portrait;margin:15mm}thead{display:table-header-group}tr{page-break-inside:avoid}";
 
+        /// <summary>Dashboard/KPI export: landscape + shrink tables so wide grids fit page width.</summary>
+        public const string DashboardPrintCss =
+            "@page{size:A4 landscape;margin:8mm}"
+            + "thead{display:table-header-group}tr{page-break-inside:avoid}"
+            + ".agent-ui{padding:8px!important;background:#fff!important}"
+            + ".chart-panel{page-break-inside:avoid;margin-bottom:12px}"
+            + ".chart-surface img,.chart-surface svg{max-width:100%!important;height:auto!important;display:block}"
+            + ".data-table{overflow:visible!important;padding:4px!important;page-break-inside:auto}"
+            + ".data-table table{width:100%!important;table-layout:fixed!important;border-collapse:collapse}"
+            + ".data-table th,.data-table td{word-break:break-word;overflow-wrap:anywhere;white-space:normal;vertical-align:top}";
+
         public const string BuiltInTemplateName = "built-in";
     }
 }

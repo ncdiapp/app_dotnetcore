@@ -14,11 +14,17 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         public string Title { get; set; }
         public List<UiKpiSpec> Kpis { get; set; } = new List<UiKpiSpec>();
         public UiChartSpec Chart { get; set; }
+        /// <summary>Optional multi-chart list (preferred over single chart when LLM picks types per dimension).</summary>
+        public List<UiChartSpec> Charts { get; set; } = new List<UiChartSpec>();
         public List<UiDashBlockSpec> Blocks { get; set; } = new List<UiDashBlockSpec>();
 
         public const int MaxKpis = 12;
         public const int MaxCharts = 9;
         public const int MaxTables = 3;
+
+        /// <summary>Allowed chart.type values for LLM / render (keep in sync with InteractiveDashboardPanel).</summary>
+        public const string AvailableChartTypes =
+            "bar | hbar | line | scatter | pie | donut | area";
         /// <summary>Hard cap for template-rendered grid rows (same order as AgentUiRenderPlugin.MaxRows).</summary>
         public const int MaxTableRows = 50000;
 
@@ -54,6 +60,12 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 var chartTok = obj["chart"] ?? obj["Chart"];
                 if (chartTok is JObject co)
                     spec.Chart = ParseChart(co);
+                if (obj["charts"] is JArray chartsArr || obj["Charts"] is JArray)
+                {
+                    var arr = (obj["charts"] ?? obj["Charts"]) as JArray;
+                    foreach (var c in arr.OfType<JObject>())
+                        spec.Charts.Add(ParseChart(c));
+                }
                 if (obj["blocks"] is JArray blocks || obj["Blocks"] is JArray)
                 {
                     var arr = (obj["blocks"] ?? obj["Blocks"]) as JArray;
@@ -185,6 +197,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 
     public sealed class UiChartSpec
     {
+        /// <summary>bar | hbar | line | scatter | pie | donut | area — LLM should pick per chart meaning.</summary>
         public string Type { get; set; } = "bar";
         public string XField { get; set; }
         /// <summary>Numeric field to sum, or "count" / omit to count rows per xField.</summary>

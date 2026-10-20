@@ -287,9 +287,16 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 
         /// <summary>Same body as email HTML, plus print CSS for preview and Playwright PDF.</summary>
         public static string ForPrint(string html)
+            => InjectStyle(html, DocumentStyles.PdfPrintCss);
+
+        /// <summary>KPI/chart/dashboard PDF/DOCX/PPTX: landscape + grid fonts fitted to page width.</summary>
+        public static string ForDashboardPrint(string html)
+            => InjectStyle(html, DocumentStyles.DashboardPrintCss + UiDashboardHtml.BuildGridPageFitCss(html));
+
+        private static string InjectStyle(string html, string css)
         {
             var page = html ?? "";
-            const string tag = "<style>" + DocumentStyles.PdfPrintCss + "</style>";
+            var tag = "<style>" + css + "</style>";
             var head = page.IndexOf("<head>", StringComparison.OrdinalIgnoreCase);
             if (head >= 0)
                 return page.Insert(head + 6, tag);

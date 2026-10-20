@@ -167,8 +167,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         throw new InvalidOperationException(
                             "layout=" + mode + " requires ask_user KPI/Dashboard confirmation first (contextKey='" +
                             AgentUiPathConfirmBL.ContextKey + "', option kpi_dashboard).");
-                    if (extension == ".csv" || extension == ".xlsx")
-                        throw new InvalidOperationException("layout=" + mode + " supports html, pdf, docx, pptx. Use layout=table for csv/excel.");
+                    if (extension == ".csv")
+                        throw new InvalidOperationException("layout=" + mode + " supports html, pdf, docx, pptx, xlsx. Use layout=table for csv.");
                     if (!UiRenderSpec.TryParse(specJson, out var spec, out var specErr))
                         throw new InvalidOperationException(specErr);
                     var valErr = spec.ValidateForLayout(mode);
@@ -181,9 +181,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     dashHtml = raster.Html;
                     var missing = raster.Missing;
                     if (preview)
-                        return PreviewHtml(context, path, HtmlForm.ForPrint(dashHtml), rows.Count, false, missing, "playwright");
+                        return PreviewHtml(context, path, HtmlForm.ForDashboardPrint(dashHtml), rows.Count, false, missing, "playwright");
                     path = WithExtension(path, extension);
-                    var dashWritten = await WriteDashboardBytes(extension, dashHtml, ct).ConfigureAwait(false);
+                    var dashWritten = await WriteDashboardBytes(extension, dashHtml, rows, spec.Title, ct).ConfigureAwait(false);
                     return Saved(context, path, dashWritten.Bytes, rows.Count, false, missing, dashWritten.Engine);
                 }
 
@@ -247,21 +247,24 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             throw new InvalidOperationException("Pass dataset_name or content JSON array for layout kpi/chart/dashboard.");
         }
 
-        private static async Task<(byte[] Bytes, string Engine)> WriteDashboardBytes(string extension, string html, CancellationToken ct)
+        private static async Task<(byte[] Bytes, string Engine)> WriteDashboardBytes(
+            string extension, string html, JArray rows, string title, CancellationToken ct)
         {
             if (extension == ".html")
                 return (System.Text.Encoding.UTF8.GetBytes(html), "html");
             if (extension == ".pdf")
-                return (await AppReportPdfService.RenderHtmlToPdfAsync(HtmlForm.ForPrint(html)).ConfigureAwait(false), "playwright");
+                return (await AppReportPdfService.RenderHtmlToPdfAsync(HtmlForm.ForDashboardPrint(html)).ConfigureAwait(false), "playwright");
             if (extension == ".docx")
             {
-                var printHtml = System.Text.Encoding.UTF8.GetBytes(HtmlForm.ForPrint(html));
+                var printHtml = System.Text.Encoding.UTF8.GetBytes(HtmlForm.ForDashboardPrint(html));
                 if (LibreOfficeConvert.IsInstalled())
                     return (LibreOfficeConvert.Convert(printHtml, ".html", "docx"), "libreoffice");
                 throw new InvalidOperationException("LibreOffice is required to export dashboard layouts to Word.");
             }
             if (extension == ".pptx")
-                throw new InvalidOperationException("layout kpi/chart/dashboard → pptx is not supported yet. Export pdf or html.");
+                return (await DashboardOffice.WritePptxAsync(html, title, ct).ConfigureAwait(false), "shapecrawler+playwright");
+            if (extension == ".xlsx")
+                return (DashboardOffice.WriteXlsx(rows, html, title), "openxml");
             throw new InvalidOperationException("Unsupported export for dashboard layout.");
         }
 

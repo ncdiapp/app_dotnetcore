@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { FlexChart, FlexChartSeries, FlexPie } from '@mescius/wijmo.react.chart';
-import { ChartType } from '@mescius/wijmo.chart';
+import { ChartElement, ChartType } from '@mescius/wijmo.chart';
 import '@mescius/wijmo.styles/wijmo.css';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import type { DataRenderChartConfig, DataRenderMeta } from './types';
@@ -11,19 +11,59 @@ interface Props {
     data: Record<string, unknown>[];
 }
 
+const PALETTE = [
+    '#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed',
+    '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5',
+];
+
 function mapTypeToWijmo(type: string): ChartType {
     const t = (type || 'bar').toLowerCase();
     if (t === 'line') return ChartType.Line;
     if (t === 'area') return ChartType.Area;
-    // bar → Column (vertical bars); Wijmo ChartType.Bar is horizontal
+    if (t === 'hbar' || t === 'bar_h') return ChartType.Bar;
+    if (t === 'scatter' || t === 'point') return ChartType.Scatter;
+    // bar / column → vertical
     return ChartType.Column;
 }
 
-/** Default Wijmo chart implementation for data_render (bar/line/area/pie). */
+const AXIS_LABEL_SIZE = '9px';
+const AXIS_LABEL_COLOR = '#6b7280';
+const AXIS_LABEL_MAX = 22;
+
+function shortLabel(text: unknown, max = AXIS_LABEL_MAX): string {
+    const s = text == null ? '' : String(text);
+    if (s.length <= max) return s;
+    return s.slice(0, Math.max(1, max - 1)) + '…';
+}
+
+/** Axis has no fontSize prop — set size/color on the render engine in itemFormatter. */
+function applyAxisLabels(chart: any) {
+    if (!chart) return;
+    for (const ax of [chart.axisX, chart.axisY].filter(Boolean)) {
+        try { ax.labelPadding = 2; } catch { /* ignore */ }
+        ax.itemFormatter = (engine: any, label: any) => {
+            if (engine) {
+                engine.fontSize = AXIS_LABEL_SIZE;
+                engine.textFill = AXIS_LABEL_COLOR;
+            }
+            if (label && label.text != null) label.text = shortLabel(label.text);
+            return label;
+        };
+    }
+}
+
+/** Default Wijmo chart implementation for data_render (licensed via AppReact license.js). */
 export const DataRenderChartWijmo: React.FC<Props> = ({ meta, chartConfig, data }) => {
     const { theme, t } = useTheme();
-    const allowedTypes = chartConfig.allowedTypes ?? ['bar', 'line', 'area'];
+    const allowedTypes = chartConfig.allowedTypes ?? ['bar', 'line', 'area', 'pie'];
+    // chartConfig.type = LLM / suggested default; user can switch via allowedTypes picker
     const [chartType, setChartType] = useState(chartConfig.type ?? allowedTypes[0] ?? 'bar');
+
+    useEffect(() => {
+        if (chartConfig.type) setChartType(chartConfig.type);
+    }, [chartConfig.type]);
+
+    const effectiveType = chartType;
 
     const xField = chartConfig.xField ?? 'period';
     const yField = chartConfig.yField ?? 'value';
@@ -47,12 +87,54 @@ export const DataRenderChartWijmo: React.FC<Props> = ({ meta, chartConfig, data 
     }, [data, groupBy, xField, yField]);
 
     const btn = `px-2 py-0.5 text-xs rounded-[4px] border ${theme.button_default}`;
-    const isPie = (chartType || '').toLowerCase() === 'pie';
+    const tLower = (effectiveType || '').toLowerCase();
+    const isPie = tLower === 'pie' || tLower === 'donut';
     const chartHostStyle: React.CSSProperties = {
         width: '100%',
         height: '100%',
         border: 'none',
         outline: 'none',
+    };
+
+    const onChartInitialized = (s: any) => {
+        const chart = s?.hostElement ? s : s;
+        if (!chart || isPie) return;
+        try {
+            chart.palette = PALETTE;
+            applyAxisLabels(chart);
+            // Single series: color each point/bar
+            chart.itemFormatter = (engine: any, ht: any, defaultRender: () => void) => {
+                if (ht && ht.pointIndex >= 0 && ht.chartElement === ChartElement.SeriesSymbol) {
+                    const c = PALETTE[ht.pointIndex % PALETTE.length];
+                    engine.fill = c;
+                    engine.stroke = c;
+                }
+                defaultRender();
+            };
+            chart.invalidate();
+        } catch { /* ignore */ }
+    };
+
+    const onPieInitialized = (s: any) => {
+        try {
+            const pie = s?.hostElement ? s : s;
+            if (pie) {
+                pie.palette = PALETTE;
+                if (tLower === 'donut') pie.innerRadius = 0.5;
+                // Smaller slice labels via dataLabel itemFormatter
+                if (pie.dataLabel) {
+                    pie.dataLabel.connectingLine = true;
+                    pie.dataLabel.content = (ht: any) => shortLabel(ht?.name ?? ht?.item?.[xField] ?? '', 16);
+                }
+                pie.itemFormatter = (engine: any, ht: any, defaultRender: () => void) => {
+                    if (engine && ht?.chartElement === ChartElement.DataLabel) {
+                        engine.fontSize = AXIS_LABEL_SIZE;
+                        engine.textFill = AXIS_LABEL_COLOR;
+                    }
+                    defaultRender();
+                };
+            }
+        } catch { /* ignore */ }
     };
 
     return (
@@ -65,12 +147,13 @@ export const DataRenderChartWijmo: React.FC<Props> = ({ meta, chartConfig, data 
                     )}
                 </div>
                 {allowedTypes.length > 1 && (
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 flex-wrap">
                         {allowedTypes.map(typeKey => (
                             <button
                                 key={typeKey}
                                 type="button"
-                                className={`${btn}${chartType === typeKey ? ' font-semibold' : ''}`}
+                                className={`${btn}${effectiveType === typeKey ? ' font-semibold' : ''}`}
+                                title={typeKey === chartConfig.type ? 'Default type' : undefined}
                                 onClick={() => setChartType(typeKey)}
                             >
                                 {typeKey.charAt(0).toUpperCase() + typeKey.slice(1)}
@@ -90,6 +173,8 @@ export const DataRenderChartWijmo: React.FC<Props> = ({ meta, chartConfig, data 
                             itemsSource={chartData}
                             binding={yField}
                             bindingName={xField}
+                            palette={PALETTE as any}
+                            initialized={onPieInitialized as any}
                         />
                     ) : (
                         <FlexChart
@@ -97,8 +182,10 @@ export const DataRenderChartWijmo: React.FC<Props> = ({ meta, chartConfig, data 
                             style={chartHostStyle}
                             itemsSource={chartData}
                             bindingX={xField}
-                            chartType={mapTypeToWijmo(chartType)}
+                            chartType={mapTypeToWijmo(effectiveType)}
+                            palette={PALETTE as any}
                             legend={{ position: seriesKeys.length > 1 ? 'Right' : 'None' } as any}
+                            initialized={onChartInitialized as any}
                         >
                             {seriesKeys.map(key => (
                                 <FlexChartSeries key={key} binding={key} name={key} />

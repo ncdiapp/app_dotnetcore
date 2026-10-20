@@ -92,6 +92,10 @@ export interface DataRenderEvent {
     Html?: string | null;
     /** Session-relative path when HTML was spilled to disk */
     HtmlPath?: string | null;
+    /** Interactive Wijmo page URL (legacy CDN iframe). Prefer DataJson+SpecJson. */
+    HtmlUrl?: string | null;
+    /** Interactive dashboard spec (kpis/chart) for React Wijmo host */
+    SpecJson?: string | null;
 }
 
 export interface UiRenderEvent {
@@ -101,6 +105,9 @@ export interface UiRenderEvent {
     Title?: string | null;
     Html?: string | null;
     HtmlPath?: string | null;
+    HtmlUrl?: string | null;
+    DataJson?: string | null;
+    SpecJson?: string | null;
     ActionsJson?: string | null;
     RowCount?: number;
     Truncated?: boolean;
@@ -120,6 +127,9 @@ export function uiRenderToDataRender(evt: UiRenderEvent): DataRenderEvent {
         Layout: evt.Layout,
         Html: evt.Html,
         HtmlPath: evt.HtmlPath,
+        HtmlUrl: evt.HtmlUrl,
+        DataJson: evt.DataJson,
+        SpecJson: evt.SpecJson,
     };
 }
 

@@ -14,6 +14,7 @@ import {
 import GenericAgentFilesPanel from './GenericAgentFilesPanel';
 import { chatModulesFromEnabledTools, chatModulesFromLibraries, type AgentChatUiModule } from './agentUiModules';
 import { DataRenderPanel } from './dataRender';
+import InteractiveDashboardPanel, { isInteractiveDashboard } from './InteractiveDashboardPanel';
 import UiRenderFrame, { hasUiHtml } from './UiRenderFrame';
 import { placeRender, renderKey } from './dataRender/placeRender';
 import { RenderBuilding, RenderChip, TurnToolHeader } from './dataRender/RenderChrome';
@@ -1282,6 +1283,11 @@ const GenericAgentChat: React.FC<Props> = ({
         setAskAnswers({});
         setAskSelectedIds([]);
         setAskFreeText('');
+        // Clear Result panel (ui_render / data_render) with the chat
+        setOpenRender(null);
+        setOpenRenderKey(null);
+        liveResultOpen.current = false;
+        setRightTab('tools');
         if (!testMode) await genericAgentSvc.ClearSession(skillKey, chatSessionKeyRef.current || undefined);
         sessionStartFiredRef.current = true;
         if (/^Interactive$/i.test(skillExecutionModeRef.current || 'Interactive')) {
@@ -1372,29 +1378,26 @@ const GenericAgentChat: React.FC<Props> = ({
         <div ref={chatRootRef} className="w-full h-full flex flex-row overflow-hidden">
             {/* ── Left: chat ── */}
             <div className={`w-1 flex-auto border ${regionBorder} ${windowCard}`}>
-                <div className={`flex items-center gap-3 px-3 py-2.5 border-b shrink-0 ${regionBorder}`}>
+                <div className={`flex items-center gap-1 px-2 py-1.5 border-b shrink-0 ${regionBorder}`}>
                     {showChatListButton && (
                         <button
                             type="button"
-                            className={`w-8 h-8 rounded-[4px] text-sm shrink-0 ${theme.button_default}`}
+                            className={`w-6 h-6 rounded-[4px] text-xs shrink-0 ${theme.button_default}`}
                             title="Chats"
                             onClick={onOpenChatList}
                         >
                             <i className="fa-solid fa-bars" aria-hidden />
                         </button>
                     )}
-                    <div className={`min-w-0 flex items-center gap-2 px-2 py-1 rounded-[4px] border ${regionBorder}`}>
-                        <i className={`fa-solid fa-comments text-xs ${t('text_label')}`} aria-hidden />
-                        <div className="min-w-0">
-                            <div className={`text-sm font-medium truncate leading-tight ${t('text_default')}`}>{chatTitle || 'New Conversation'}</div>
-                            <div className={`text-xs truncate mt-0.5 ${theme.label}`}>{skillLabel}</div>
-                        </div>
+                    <div className={`min-w-0 w-1 flex-auto truncate text-xs leading-none ${t('text_default')}`}>
+                        <span className="font-medium">{chatTitle || 'New Conversation'}</span>
+                        {skillLabel ? <span className={`ml-1.5 font-normal ${theme.label}`}>{skillLabel}</span> : null}
                     </div>
-                    <div className="ml-auto flex items-center gap-2 shrink-0">
+                    <div className="ml-auto flex items-center gap-1 shrink-0">
                         {(messages.length > 0 || pendingAskUser) && (
                             <button
                                 type="button"
-                                className={`w-8 h-8 rounded-[4px] text-sm ${theme.button_default}`}
+                                className={`w-6 h-6 rounded-[4px] text-xs ${theme.button_default}`}
                                 onClick={() => { void handleClear(); }}
                                 title="Clear conversation"
                             >
@@ -1403,7 +1406,7 @@ const GenericAgentChat: React.FC<Props> = ({
                         )}
                         <button
                             type="button"
-                            className={`w-8 h-8 rounded-[4px] text-sm ${theme.button_default}${sidebarOpen ? ' font-semibold' : ''}`}
+                            className={`w-6 h-6 rounded-[4px] text-xs ${theme.button_default}${sidebarOpen ? ' font-medium' : ' opacity-70'}`}
                             onClick={() => setSidebarOpen(o => !o)}
                             title="Tool activity"
                         >
@@ -1811,7 +1814,13 @@ const GenericAgentChat: React.FC<Props> = ({
 
                     {rightTab === 'result' && openRender ? (
                         <div className="w-full h-1 flex-auto overflow-hidden min-h-0 p-2">
-                            {hasUiHtml(openRender) ? (
+                            {isInteractiveDashboard(openRender) ? (
+                                <InteractiveDashboardPanel
+                                    event={openRender}
+                                    disabled={blocked}
+                                    onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
+                                />
+                            ) : hasUiHtml(openRender) ? (
                                 <UiRenderFrame
                                     event={openRender}
                                     skillKey={skillKey}

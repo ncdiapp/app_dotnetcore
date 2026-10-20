@@ -50,7 +50,7 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                             obj["next_hint"] =
                                 $"Dataset cached as '{ds.Name}'. " +
                                 "If this turn looks like data analysis: call ask_user first (contextKey=confirm_kpi_dashboard) — options kpi_dashboard (batch KPI/Dashboard analysis) vs fetch_display (only fetch and show). " +
-                                "After kpi_dashboard: data_analyze (count/distribution) then render layout=dashboard with kpis+chart. " +
+                                "After kpi_dashboard: data_analyze then prefer render_interactive layout=dashboard (Wijmo Result); export uses none_interactive/SVG. " +
                                 "After fetch_display (or show/export-only): render_none_interactive with dataset_name='" + ds.Name + "' and limit (layout=table|cards). Do not invent analysis via export_csv/read_csv.";
                             return obj.ToString(Formatting.None);
                         }

@@ -284,13 +284,21 @@ namespace APP.Components.EntityDto
         public string RenderId { get; set; }
         /// <summary>"NoneInteractive" | "Interactive"</summary>
         public string Mode { get; set; }
-        /// <summary>form | table | cards</summary>
+        /// <summary>form | table | cards | kpi | chart | dashboard</summary>
         public string Layout { get; set; }
         public string Title { get; set; }
         /// <summary>Merged HTML when under size cap; otherwise null and HtmlPath is set.</summary>
         public string Html { get; set; }
         /// <summary>Session-relative path under AgentOutput when Html was spilled to disk.</summary>
         public string HtmlPath { get; set; }
+        /// <summary>
+        /// Relative API path for legacy interactive HTML. Prefer SpecJson+DataJson + React Wijmo (licensed) for Result.
+        /// </summary>
+        public string HtmlUrl { get; set; }
+        /// <summary>Interactive dashboard: row array JSON for React Wijmo host (same license as main app).</summary>
+        public string DataJson { get; set; }
+        /// <summary>Interactive dashboard: kpis/chart/blocks spec JSON.</summary>
+        public string SpecJson { get; set; }
         public string ActionsJson { get; set; }
         public int RowCount { get; set; }
         public bool Truncated { get; set; }

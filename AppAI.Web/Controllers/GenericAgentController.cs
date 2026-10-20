@@ -15,6 +15,7 @@ using APP.Framework.Validation;
 using AppAI.Web.Controllers.Base;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using SessionBL = App.BL.AIAgent.GenericAgent.AppGenericAgentSessionBL;
@@ -269,6 +270,9 @@ public class GenericAgentController : SecureBaseController
                             uiRenderEvent.Layout,
                             Html = uiRenderEvent.Html,
                             HtmlPath = uiRenderEvent.HtmlPath,
+                            HtmlUrl = uiRenderEvent.HtmlUrl,
+                            DataJson = uiRenderEvent.DataJson,
+                            SpecJson = uiRenderEvent.SpecJson,
                             uiRenderEvent.ActionsJson,
                             uiRenderEvent.Timestamp
                         }));
@@ -815,6 +819,46 @@ public class GenericAgentController : SecureBaseController
                 ValidationItemType.Error, ex.Message));
         }
         return result;
+    }
+
+    /// <summary>
+    /// Serves interactive KPI/dashboard HTML (Wijmo CDN page) for Result iframe src.
+    /// Auth same as agent files; returns text/html (not JSON envelope).
+    /// </summary>
+    [HttpGet]
+    public IActionResult AgentUiInteractiveHtml(
+        [FromQuery] string skillKey,
+        [FromQuery] string sessionKey,
+        [FromQuery] string path,
+        [FromQuery] string token = null)
+    {
+        // Optional token path (print-like): reusable within TTL
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            var tokenSvc = HttpContext.RequestServices.GetService<AppAI.Web.Services.AgentUiRenderTokenService>();
+            if (tokenSvc != null && tokenSvc.TryGet(token, out var payload) && !string.IsNullOrEmpty(payload?.Html))
+                return Content(payload.Html, "text/html; charset=utf-8");
+            return NotFound("Interactive render token expired or invalid.");
+        }
+
+        if (!TryFilesIdentity(out var ai, out var companyId, out var err))
+            return Unauthorized(err?.ValidationResult?.Items?.FirstOrDefault()?.Message ?? "Unauthorized");
+
+        var boxed = new OperationCallResult<object>();
+        if (!AuthorizeAgentFiles(skillKey, sessionKey, null, Convert.ToInt32(ai.UserId), boxed))
+            return Forbid();
+
+        try
+        {
+            var file = GenericAgentFileBL.ReadText(sessionKey, path, companyId);
+            if (file == null || string.IsNullOrEmpty(file.Content))
+                return NotFound("Interactive HTML not found.");
+            return Content(file.Content, "text/html; charset=utf-8");
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 
     [HttpPost]

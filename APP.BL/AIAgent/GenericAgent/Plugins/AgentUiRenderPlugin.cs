@@ -159,28 +159,71 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     if (!string.IsNullOrWhiteSpace(title)) formDoc.Title = title.Trim();
                 }
 
-                var html = UiTemplateMerge.MergeForRender(
-                    layout, formDoc, cardSheet, dashRows, dashSpec, interactive, forExport: false, renderId, actionsJson);
+                string html;
                 string htmlPath = null;
-                var bytes = Encoding.UTF8.GetByteCount(html);
-                if (bytes > UiTemplateMerge.InlineHtmlMaxBytes)
+                string htmlUrl = null;
+                var mode = interactive ? "Interactive" : "NoneInteractive";
+                var pageTitle = string.IsNullOrWhiteSpace(title)
+                    ? (dashSpec?.Title ?? formDoc?.Title ?? cardSheet?.Title)
+                    : title.Trim();
+
+                string dataJson = null;
+                string emitSpecJson = null;
+
+                // Interactive KPI/chart/dashboard → React Wijmo in Result (main-app license, no CDN watermark).
+                // Also keep SVG HTML for export twin / fallback.
+                if (interactive && UiTemplateMerge.IsDashboardLayout(layout) && dashRows != null && dashSpec != null)
                 {
+                    dataJson = dashRows.ToString(Formatting.None);
+                    // Ensure charts[] carries a type per series (LLM or SuggestChartType)
+                    var resolvedCharts = UiDashboardHtml.ResolveCharts(dashSpec, dashRows, allowAuto: true);
+                    if (resolvedCharts.Count > 0)
+                    {
+                        dashSpec.Charts = resolvedCharts;
+                        if (dashSpec.Chart == null)
+                            dashSpec.Chart = resolvedCharts[0];
+                    }
+                    emitSpecJson = JsonConvert.SerializeObject(new
+                    {
+                        title = dashSpec.Title,
+                        kpis = dashSpec.Kpis,
+                        chart = dashSpec.Chart,
+                        charts = dashSpec.Charts,
+                        blocks = dashSpec.Blocks,
+                        availableChartTypes = UiRenderSpec.AvailableChartTypes
+                    }, Formatting.None);
+                    // SVG snapshot (none-CDN) kept on disk for export; Result UI uses DataJson+SpecJson
+                    var svgHtml = UiTemplateMerge.MergeForRender(
+                        layout, null, null, dashRows, dashSpec, interactive: false, forExport: false, renderId, actionsJson);
                     htmlPath = "render/" + renderId + ".html";
-                    GenericAgentFileBL.WriteText(context.ChatSessionKey, htmlPath, html, context.CompanyId);
+                    GenericAgentFileBL.WriteText(context.ChatSessionKey, htmlPath, svgHtml, context.CompanyId);
                     html = null;
+                    htmlUrl = null;
+                }
+                else
+                {
+                    html = UiTemplateMerge.MergeForRender(
+                        layout, formDoc, cardSheet, dashRows, dashSpec, interactive, forExport: false, renderId, actionsJson);
+                    var bytes = Encoding.UTF8.GetByteCount(html);
+                    if (bytes > UiTemplateMerge.InlineHtmlMaxBytes)
+                    {
+                        htmlPath = "render/" + renderId + ".html";
+                        GenericAgentFileBL.WriteText(context.ChatSessionKey, htmlPath, html, context.CompanyId);
+                        html = null;
+                    }
                 }
 
-                var mode = interactive ? "Interactive" : "NoneInteractive";
                 var evt = new AgentUiRenderEvent
                 {
                     RenderId = renderId,
                     Mode = mode,
                     Layout = layout,
-                    Title = string.IsNullOrWhiteSpace(title)
-                        ? (dashSpec?.Title ?? formDoc?.Title ?? cardSheet?.Title)
-                        : title.Trim(),
+                    Title = pageTitle,
                     Html = html,
                     HtmlPath = htmlPath,
+                    HtmlUrl = htmlUrl,
+                    DataJson = dataJson,
+                    SpecJson = emitSpecJson,
                     RowCount = rowCount,
                     Truncated = truncated,
                     ActionsJson = interactive ? actionsJson : null,
@@ -237,7 +280,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     dataset_name = resolvedDataset,
                     mappedFrom,
                     htmlPath,
-                    note = "Result HTML is on the SSE ui_render event (or session file when htmlPath is set)."
+                    htmlUrl,
+                    note = interactive && dataJson != null
+                        ? "Interactive Result uses DataJson+SpecJson (React Wijmo, app license — no CDN watermark)."
+                        : "Result HTML is on the SSE ui_render event (or session file when htmlPath is set)."
                 });
             }
             catch (Exception ex)
