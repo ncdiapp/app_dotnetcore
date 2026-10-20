@@ -1,8 +1,10 @@
 # Agent Chat UI
 
-Date: 2026-10-19. Replaces `AI-Agent-Chat-Render-Panel.md`. Export engines stay in `AI-Agent-Document-Export-Tools-V2.md`.
+Date: 2026-10-19. Replaces `AI-Agent-Chat-Render-Panel.md`. Updated 2026-10-20 for Result iframe (see UI render and document export design).
 
-The reference is `C:\Dev\MCP\CGS.BlueCherry.MCP.Client`, mainly `ChatWindow.tsx`, `ChatInput.tsx`, `MessageItem.tsx`, `ToolCallBlock.tsx`, `ArtifactCard.tsx`, and `ArtifactPanel.tsx`. Copy the layout and the motion. Colors, type, and borders come from `useTheme()`. Do not copy that project's hardcoded hex values, Inter-only rules, iframe HTML artifacts, or Tailwind CDN.
+Export engines, UI templates, `render_none_interactive` / `render_interactive`, and Result **iframe** hosting are specified in [`AI-Agent-Ui-Render-And-Document-Export.md`](AI-Agent-Ui-Render-And-Document-Export.md). This file keeps chat chrome (header, transcript, composer, chips, motion).
+
+The reference is `C:\Dev\MCP\CGS.BlueCherry.MCP.Client`, mainly `ChatWindow.tsx`, `ChatInput.tsx`, `MessageItem.tsx`, `ToolCallBlock.tsx`, `ArtifactCard.tsx`, and `ArtifactPanel.tsx`. Copy the layout and the motion. Colors, type, and borders come from `useTheme()`. Do not copy that project's hardcoded hex values, Inter-only rules, or Tailwind CDN. **Do** host Result HTML in an iframe per [`AI-Agent-Ui-Render-And-Document-Export.md`](AI-Agent-Ui-Render-And-Document-Export.md) (MCP stores rendering instructions in skill `content` and lets the model write artifacts; we merge templates in C# instead).
 
 ## Page
 
@@ -56,7 +58,7 @@ Eight is the cut. A result of 8 rows is still readable in the thread. 9 rows ope
 
 The chip is the reference `ArtifactCard`: at most a short card wide, icon, title, one fact line such as `684 records`, the caption `Open in panel` or `Showing in panel`, and a chevron. The whole chip is the button. While the event is still streaming, the chip is a slow-pulsing rounded frame with three dots and "Building…". It is not a live grid.
 
-The panel is the right side of the split, default 55% of the row, dragged by the user and stored as `agentRenderPanelPct`. It hosts the existing `DataRenderPanel` for the open render. One render is open. The open chip uses the accent border. Close leaves the chips. Maximize covers the chat only after the user clicks maximize. Restore returns the split.
+The panel is the right side of the split, default 55% of the row, dragged by the user and stored as `agentRenderPanelPct`. It hosts the **Result iframe** for the open `ui_render` document. One render is open. The open chip uses the accent border. Close leaves the chips. Maximize covers the chat only after the user clicks maximize. Restore returns the split. Until the iframe cutover ships, existing code may still mount `DataRenderPanel` for legacy `data_render` events.
 
 A new large render on the latest turn opens the panel once. It does not steal the panel if the user has opened an older chip or closed the panel. Switching conversations closes the panel. After history reload, chips are back and the panel stays closed.
 
@@ -64,11 +66,11 @@ The first time a large render opens, the app sidebar collapses once for that con
 
 On a narrow viewport the panel is a layer over the chat, with the same close control. The thread under it still shows chips and small renders, not the full grid.
 
-`DataRenderEvent` stays on the message. The chip reads title, `Ui`, and `RowCount`. Actions in the panel still call `handleDataRenderAction`. The panel is disabled while the turn is blocked.
+`ui_render` (and legacy `DataRenderEvent`) stays on the message. The chip reads title, layout/mode, and `RowCount`. Interactive actions use the postMessage bridge (see UI render and document export design) into the same host action path as today’s `handleDataRenderAction`. The panel is disabled while the turn is blocked.
 
 ## Left out
 
-Microphone, file attach, edit, retry, token counts, an iframe artifact, a CDN stylesheet, and a speech bubble on the avatar. Document export and the chat cache are unchanged. A chip is not an export.
+Microphone, file attach, edit, retry, token counts, a CDN stylesheet, and a speech bubble on the avatar. Document export and the chat cache follow [`AI-Agent-Ui-Render-And-Document-Export.md`](AI-Agent-Ui-Render-And-Document-Export.md). A chip is not an export. AI-authored artifact HTML (MCP style) is out; only C#-merged template HTML enters the Result iframe.
 
 ## Code
 

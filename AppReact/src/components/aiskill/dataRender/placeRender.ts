@@ -24,8 +24,9 @@ export interface PlacedRender {
     panel?: DataRenderEvent;
 }
 
-/** Short KPI and tables of at most 8 rows stay in the thread. Larger grids, charts, and cards open in the panel. */
+/** Short KPI and tables of at most 8 rows stay in the thread. Larger grids, charts, and cards open in the panel. HTML Result always opens in the panel. */
 export function placeRender(event: DataRenderEvent): PlacedRender {
+    if (event.Html || event.HtmlPath) return { panel: event };
     const ui = (event.Ui || 'grid').toLowerCase();
     if (ui === 'kpi_dashboard') {
         const blocks = parseBlocks(event.BlocksJson);

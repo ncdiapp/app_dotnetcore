@@ -36,10 +36,15 @@ namespace App.BL.AIAgent.GenericAgent
         public Func<AgentAskUserEvent, Task<AgentAskUserResponse>> OnAskUser { get; set; }
 
         /// <summary>
-        /// Optional: fire-and-continue UI payload for data_render (grid/card/chart/kpi_dashboard).
+        /// Optional: fire-and-continue UI payload for data_render (legacy).
         /// Does not block the agent; chat renders the panel while the run continues.
         /// </summary>
         public Func<AgentDataRenderEvent, Task> OnDataRender { get; set; }
+
+        /// <summary>
+        /// Optional: fire-and-continue HTML for Result iframe (render_none_interactive / render_interactive).
+        /// </summary>
+        public Func<AgentUiRenderEvent, Task> OnUiRender { get; set; }
 
         /// <summary>
         /// Optional: blocks the agent until the user reviews the schema.

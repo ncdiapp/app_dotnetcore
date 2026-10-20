@@ -1,0 +1,18 @@
+/* Agent Result iframe — vendored, no CDN. Kept in sync with AgentUiCss.Content. */
+.agent-ui{margin:0;padding:16px;font-family:Segoe UI,Arial,Helvetica,sans-serif;background:#f7f8fa;color:#1a1a1a;font-size:14px}
+.agent-ui-header h1{margin:0 0 16px;font-size:18px;font-weight:700;color:#1a1a1a}
+.kpi-row{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px}
+.kpi-card{flex:1 1 140px;min-width:120px;background:#fff;border:1px solid #e2e5e9;border-radius:8px;padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.kpi-label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;font-weight:600}
+.kpi-value{font-size:22px;font-weight:700;margin-top:6px;color:#111827}
+.chart-panel{background:#fff;border:1px solid #e2e5e9;border-radius:8px;padding:12px 16px;margin-bottom:16px}
+.chart-title{margin:0 0 8px;font-size:14px;font-weight:600}
+.chart-surface{width:100%;overflow:auto}
+.chart-surface svg{max-width:100%;height:auto;display:block}
+.data-table{background:#fff;border:1px solid #e2e5e9;border-radius:8px;padding:12px;overflow:auto}
+.data-table table{width:100%;border-collapse:collapse;font-size:12px}
+.data-table th{background:#3d4f5f;color:#fff;text-align:left;padding:6px 8px;font-weight:600}
+.data-table td{border-bottom:1px solid #eee;padding:6px 8px;color:#1a1a1a}
+.agent-ui-actions{margin-top:12px;display:flex;flex-wrap:wrap;gap:8px}
+.agent-ui-actions button{padding:6px 12px;font-size:12px;border:1px solid #c5cad1;border-radius:4px;background:#fff;cursor:pointer}
+.agent-ui-actions button:hover{background:#f0f2f4}

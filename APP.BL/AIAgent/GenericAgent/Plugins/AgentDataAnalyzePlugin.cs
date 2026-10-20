@@ -10,7 +10,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 {
     /// <summary>
     /// BuiltIn data_analyze — deterministic aggregations over ChatSession-cached tabular data
-    /// (or inline dataJson). Pair with data_render for UI; do not dump large tables into FinalResponse.
+    /// (or inline dataJson). Pair with render_none_interactive for UI; do not dump large tables into FinalResponse.
     /// </summary>
     public class AgentDataAnalyzePlugin
     {

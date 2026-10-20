@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import type { RootState } from '../../redux/store';
-import { AskUserEvent, DataRenderEvent, genericAgentSvc, type GenericAgentChatUiSnapshot, type LookupItemDto } from '../../webapi/genericAgentSvc';
+import { AskUserEvent, DataRenderEvent, genericAgentSvc, uiRenderToDataRender, type GenericAgentChatUiSnapshot, type LookupItemDto, type UiRenderEvent } from '../../webapi/genericAgentSvc';
 import { agentSkillSetSvc } from '../../webapi/agentSkillSetSvc';
 import { registerTabDataSaver, unregisterTabDataSaver } from '../../redux/hooks/useTabNavigation';
 import {
@@ -14,6 +14,7 @@ import {
 import GenericAgentFilesPanel from './GenericAgentFilesPanel';
 import { chatModulesFromEnabledTools, chatModulesFromLibraries, type AgentChatUiModule } from './agentUiModules';
 import { DataRenderPanel } from './dataRender';
+import UiRenderFrame, { hasUiHtml } from './UiRenderFrame';
 import { placeRender, renderKey } from './dataRender/placeRender';
 import { RenderBuilding, RenderChip, TurnToolHeader } from './dataRender/RenderChrome';
 import { AgentMarkdown, FollowupChips, splitFollowups, type AgentFileLink } from './AgentMarkdown';
@@ -42,7 +43,7 @@ const parseStoredDataRenders = (m: StoredChatMessage): DataRenderEvent[] | undef
     if (!Array.isArray(raw) || raw.length === 0) return undefined;
     return raw.map((dr: any) => ({
         RenderId: String(dr?.RenderId ?? dr?.renderId ?? ''),
-        Ui: String(dr?.Ui ?? dr?.ui ?? 'grid'),
+        Ui: String(dr?.Ui ?? dr?.ui ?? dr?.Layout ?? dr?.layout ?? 'grid'),
         Title: dr?.Title ?? dr?.title ?? null,
         DataJson: dr?.DataJson ?? dr?.dataJson ?? null,
         ColumnsJson: dr?.ColumnsJson ?? dr?.columnsJson ?? null,
@@ -53,7 +54,11 @@ const parseStoredDataRenders = (m: StoredChatMessage): DataRenderEvent[] | undef
         RowCount: dr?.RowCount ?? dr?.rowCount,
         Truncated: !!(dr?.Truncated ?? dr?.truncated),
         Timestamp: dr?.Timestamp ?? dr?.timestamp,
-    })).filter(dr => dr.Ui);
+        Mode: dr?.Mode ?? dr?.mode ?? null,
+        Layout: dr?.Layout ?? dr?.layout ?? null,
+        Html: dr?.Html ?? dr?.html ?? null,
+        HtmlPath: dr?.HtmlPath ?? dr?.htmlPath ?? null,
+    })).filter(dr => dr.Ui || dr.Html || dr.HtmlPath);
 };
 
 const asLookupItems = (raw: unknown): LookupItemDto[] => {
@@ -582,14 +587,20 @@ const GenericAgentChat: React.FC<Props> = ({
 
     const handleDataRenderAction = (evt: DataRenderEvent, actionId: string, selectionJson?: string) => {
         if (isRunningRef.current || pendingAskUserRef.current) return;
+        const useUiPrefix = hasUiHtml(evt) || !!(evt.Mode || evt.Layout);
         const lines = [
-            '[data_render_action]',
+            useUiPrefix ? '[ui_render_action]' : '[data_render_action]',
             `actionId=${actionId}`,
             `renderId=${evt.RenderId || ''}`,
-            `ui=${evt.Ui || ''}`,
+            `ui=${evt.Ui || evt.Layout || ''}`,
+            `mode=${evt.Mode || ''}`,
         ];
         if (selectionJson) lines.push(`selectionJson=${selectionJson}`);
         void runAgentTurnRef.current({ userMessage: lines.join('\n') });
+    };
+
+    const appendUiRender = (evt: UiRenderEvent) => {
+        appendDataRender(uiRenderToDataRender(evt));
     };
 
     useEffect(() => {
@@ -708,6 +719,10 @@ const GenericAgentChat: React.FC<Props> = ({
         onDataRender: (evt: DataRenderEvent) => {
             if (!mountedRef.current || !evt) return;
             appendDataRender(evt);
+        },
+        onUiRender: (evt: UiRenderEvent) => {
+            if (!mountedRef.current || !evt) return;
+            appendUiRender(evt);
         },
         onDone: (done: { FinalResponse: string }) => {
             if (!mountedRef.current) return;
@@ -1494,7 +1509,7 @@ const GenericAgentChat: React.FC<Props> = ({
                                     })}
                                 </div>
                             )}
-                            {m.role === 'assistant' && m.isStreaming && !hasRenders && (m.toolSteps?.some(s => /data_render/i.test(s.toolName)) ?? false) && (
+                            {m.role === 'assistant' && m.isStreaming && !hasRenders && (m.toolSteps?.some(s => /data_render|render_none_interactive|render_interactive/i.test(s.toolName)) ?? false) && (
                                 <RenderBuilding />
                             )}
                             {hasFollowups && (
@@ -1795,12 +1810,24 @@ const GenericAgentChat: React.FC<Props> = ({
                     </div>
 
                     {rightTab === 'result' && openRender ? (
-                        <div className="w-full h-1 flex-auto overflow-auto p-2">
-                            <DataRenderPanel
-                                event={openRender}
-                                disabled={blocked}
-                                onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
-                            />
+                        <div className="w-full h-1 flex-auto overflow-hidden min-h-0 p-2">
+                            {hasUiHtml(openRender) ? (
+                                <UiRenderFrame
+                                    event={openRender}
+                                    skillKey={skillKey}
+                                    sessionKey={fileSessionKey}
+                                    disabled={blocked}
+                                    onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
+                                />
+                            ) : (
+                                <div className="w-full h-full overflow-auto">
+                                    <DataRenderPanel
+                                        event={openRender}
+                                        disabled={blocked}
+                                        onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
+                                    />
+                                </div>
+                            )}
                         </div>
                     ) : rightTab === 'files' && uiModules.has('files') ? (
                         <div className="w-full h-1 flex-auto overflow-hidden min-h-0">

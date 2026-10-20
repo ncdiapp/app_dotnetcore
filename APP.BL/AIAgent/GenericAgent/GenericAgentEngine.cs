@@ -55,8 +55,8 @@ namespace App.BL.AIAgent.GenericAgent
         private const string FollowupsPromptHint = @"
 
 ## Follow-up suggestions (soft chips)
-After a useful analysis / data_analyze / data_render / KPI answer, if there are natural next questions (deeper breakdown, related metric, drill-down), end your FinalResponse with a fenced code block whose language tag is followups, containing a JSON array of 2–3 short, specific questions (under ~12 words each). Example: [""Break this down by region"",""Which styles have negative margin?""].
-Skip the block for yes/no or clearly finished answers. Chips are non-blocking suggestions (not ask_user). Prefer data_analyze on cached datasets for aggregations (do not re-fetch large tables). Do NOT put chart/dashboard/visualize render requests in chips — use data_render for visuals. Keep ask_user for required Gate/confirmations only.";
+After a useful analysis / data_analyze / render_none_interactive / KPI answer, if there are natural next questions (deeper breakdown, related metric, drill-down), end your FinalResponse with a fenced code block whose language tag is followups, containing a JSON array of 2–3 short, specific questions (under ~12 words each). Example: [""Break this down by region"",""Which styles have negative margin?""].
+Skip the block for yes/no or clearly finished answers. Chips are non-blocking suggestions (not ask_user). Suggest data_analyze in chips only when the user would want deeper metrics or aggregations on an already-cached dataset (do not re-fetch large tables). For a show/render/export-only turn, do not call data_analyze. Do NOT put chart/dashboard/visualize render requests in chips — use render_none_interactive (or render_interactive when actions are needed) for visuals. Keep ask_user for required Gate/confirmations only.";
 
         public static async Task RunAsync(
             string                skillKey,

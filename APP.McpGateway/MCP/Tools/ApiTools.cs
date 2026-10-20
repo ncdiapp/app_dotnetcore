@@ -152,7 +152,7 @@ public class ApiTools
                 cache_scope    = isGlobal ? "global" : "session",
                 rows           = dataset.Rows.Count,
                 columns        = dataset.Columns.Select(c => c.Name).ToArray(),
-                analysis_hint  = $"Dataset cached. Use data_analyze tool with dataset_name='{dataset.Name}' to analyze."
+                next_hint      = $"Dataset cached as '{dataset.Name}'. To show or export rows: call render_none_interactive / export_* with dataset_name and limit for top-N — do not call data_analyze just to slice. Call data_analyze only when the user asked to analyze, aggregate, KPI, or shape a chart/dashboard dataset."
             };
             return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
         }

@@ -17,6 +17,10 @@ export interface DataRenderEvent {
     RowCount?: number;
     Truncated?: boolean;
     Timestamp?: string;
+    Mode?: string | null;
+    Layout?: string | null;
+    Html?: string | null;
+    HtmlPath?: string | null;
 }
 
 export interface DataRenderColumn {

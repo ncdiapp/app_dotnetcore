@@ -70,7 +70,7 @@ export interface AskUserEvent {
     ContextKey?: string;
 }
 
-/** Non-blocking data_render panel (grid | card | chart | kpi_dashboard). */
+/** Non-blocking Result panel (legacy data_render fields + ui_render HTML). */
 export interface DataRenderEvent {
     RenderId: string;
     Ui: string;
@@ -84,6 +84,43 @@ export interface DataRenderEvent {
     RowCount?: number;
     Truncated?: boolean;
     Timestamp?: string;
+    /** ui_render: NoneInteractive | Interactive */
+    Mode?: string | null;
+    /** ui_render: form | table | cards */
+    Layout?: string | null;
+    /** C#-merged HTML for Result iframe */
+    Html?: string | null;
+    /** Session-relative path when HTML was spilled to disk */
+    HtmlPath?: string | null;
+}
+
+export interface UiRenderEvent {
+    RenderId: string;
+    Mode?: string | null;
+    Layout?: string | null;
+    Title?: string | null;
+    Html?: string | null;
+    HtmlPath?: string | null;
+    ActionsJson?: string | null;
+    RowCount?: number;
+    Truncated?: boolean;
+    Timestamp?: string;
+}
+
+export function uiRenderToDataRender(evt: UiRenderEvent): DataRenderEvent {
+    return {
+        RenderId: evt.RenderId,
+        Ui: evt.Layout === 'cards' ? 'card' : evt.Layout === 'form' ? 'form' : 'grid',
+        Title: evt.Title,
+        RowCount: evt.RowCount,
+        Truncated: evt.Truncated,
+        ActionsJson: evt.ActionsJson,
+        Timestamp: evt.Timestamp,
+        Mode: evt.Mode,
+        Layout: evt.Layout,
+        Html: evt.Html,
+        HtmlPath: evt.HtmlPath,
+    };
 }
 
 export interface ConfirmAskUserDto {
@@ -148,6 +185,7 @@ export interface GenericAgentEventHandlers {
     onPlan: (plan: { PlanSummary: string }) => void;
     onAskUser?: (ask: AskUserEvent) => void;
     onDataRender?: (evt: DataRenderEvent) => void;
+    onUiRender?: (evt: UiRenderEvent) => void;
     onDone: (done: { FinalResponse: string }) => void;
     onError: (message: string) => void;
     /** In-memory run gone (web recycle). History is still in the DB — do not treat as a hard error. */
@@ -547,6 +585,7 @@ class GenericAgentService {
                         Plan?: unknown;
                         AskUser?: AskUserEvent;
                         DataRender?: DataRenderEvent;
+                        UiRender?: UiRenderEvent;
                         Done?: { FinalResponse: string };
                         Error?: string;
                     }[];
@@ -565,6 +604,10 @@ class GenericAgentService {
                     if (evt.EventType === 'plan' && evt.Plan) h.onPlan(evt.Plan as never);
                     if (evt.EventType === 'ask_user' && evt.AskUser) h.onAskUser?.(evt.AskUser);
                     if (evt.EventType === 'data_render' && evt.DataRender) h.onDataRender?.(evt.DataRender);
+                    if (evt.EventType === 'ui_render' && evt.UiRender) {
+                        if (h.onUiRender) h.onUiRender(evt.UiRender);
+                        else h.onDataRender?.(uiRenderToDataRender(evt.UiRender));
+                    }
                     if (evt.EventType === 'done') {
                         this.stopPolling();
                         h.onDone(evt.Done ?? { FinalResponse: '' });

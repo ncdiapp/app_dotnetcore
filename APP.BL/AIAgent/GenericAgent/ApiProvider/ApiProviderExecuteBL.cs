@@ -110,7 +110,7 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
                     confirmed = isWrite ? true : (bool?)null,
                     truncated = wasTruncated,
                     response = responseJson ?? truncated,
-                    next = "Present the response to the user. Use data_render if tabular."
+                    next = "Present the response to the user. Use render_none_interactive if tabular."
                 }, Formatting.Indented);
             }
             catch (Exception ex)
@@ -232,7 +232,7 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
 
         /// <summary>
         /// Large API tables must not be sliced into an invalid JSON string for the model.
-        /// Cache every row on the chat session and return a short envelope so data_render
+        /// Cache every row on the chat session and return a short envelope so render_none_interactive
         /// can load the full set via dataset_name (grid cap is AgentDataRenderPlugin).
         /// </summary>
         private static bool TryCacheTabularResponse(
@@ -268,10 +268,10 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
                 truncated = overCacheCap,
                 columns = ds.Columns?.Select(c => c.Name).ToArray(),
                 next =
-                    $"API returned {rows.Count} rows. Call data_render ONCE with dataset_name='{ds.Name}'. " +
-                    "Use ui=card and cardsPerRow when the user asked for cards. When the user asked for the top N, pass limit=N (the panel must not show every row). " +
-                    "Do not pass dataJson and do not copy rows — image columns such as Sketch stay on the cached rows. " +
-                    "Export that panel with layout=cards and the same limit. When the user names a page layout, pass pageGrid (2x2 is two columns and two rows, four cards on the page) or cardsPerPage. Do not pass content. " +
+                    $"API returned {rows.Count} rows. If showing or exporting: call render_none_interactive ONCE with dataset_name='{ds.Name}' and limit for top-N — do NOT call data_analyze or execute_sql just to slice. " +
+                    "Use layout=cards and cardsPerRow when asked for cards. Do not pass dataJson or copy rows — image columns such as Sketch stay on the cache. " +
+                    "Export with layout=cards and the same limit; pass pageGrid or cardsPerPage when the user names columns×rows. Do not pass content. " +
+                    "Call data_analyze only for analyze/aggregate/KPI or to shape kpi|chart|dashboard. " +
                     $"Tell the user the total cached is {rows.Count}."
             }, Formatting.Indented);
             return true;

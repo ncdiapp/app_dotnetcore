@@ -246,6 +246,38 @@ public class GenericAgentController : SecureBaseController
                 return Task.CompletedTask;
             },
 
+            OnUiRender = uiRenderEvent =>
+            {
+                GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto
+                {
+                    EventType = "ui_render",
+                    UiRender = uiRenderEvent
+                });
+                if (uiRenderEvent != null)
+                {
+                    try
+                    {
+                        // Persist a compact chip + html/htmlPath for reload (avoid huge MessagesJson when possible).
+                        persistedDataRenders.Add(JObject.FromObject(new
+                        {
+                            uiRenderEvent.RenderId,
+                            Ui = uiRenderEvent.Layout,
+                            uiRenderEvent.Title,
+                            uiRenderEvent.RowCount,
+                            uiRenderEvent.Truncated,
+                            uiRenderEvent.Mode,
+                            uiRenderEvent.Layout,
+                            Html = uiRenderEvent.Html,
+                            HtmlPath = uiRenderEvent.HtmlPath,
+                            uiRenderEvent.ActionsJson,
+                            uiRenderEvent.Timestamp
+                        }));
+                    }
+                    catch { /* keep run going even if snapshot serialize fails */ }
+                }
+                return Task.CompletedTask;
+            },
+
             OnSchemaReady = async schemaEvent =>
             {
                 GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "schema", Schema = schemaEvent });

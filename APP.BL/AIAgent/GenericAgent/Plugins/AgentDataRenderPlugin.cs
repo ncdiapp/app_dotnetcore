@@ -245,7 +245,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     ? null
                     : "Card panel is " + rowCount + " rows with every column, including images. " +
                       "Export this panel with layout=cards. Use the page layout from the user prompt, not the on-screen columns, when they differ. " +
-                      "pageGrid 2x2 means cardsPerRow=2 and cardRows=2 (four cards on the page). cardsPerPage=4 does the same. Do not pass content or a rewritten row list. " +
+                      "Pass cardsPerRow and cardRows, or pageGrid / cardsPerPage, to match the page the user asked for. Do not pass content or a rewritten row list. " +
                       (limit.HasValue && limit.Value > 0 ? "limit=" + limit.Value + " was applied. " : "") +
                       (resolvedFromDataset == null ? "" : "dataset_name='" + resolvedFromDataset + "'."),
                 columnCount = CountColumns(columnsJson),

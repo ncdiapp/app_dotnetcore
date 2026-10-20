@@ -253,13 +253,13 @@ namespace APP.Components.EntityDto
     }
 
     /// <summary>
-    /// Emitted when the agent calls data_render. UI renders immediately; agent does not wait.
-    /// Ui: "grid" | "card" | "chart" | "kpi_dashboard"
+    /// Emitted when the agent calls data_render (legacy). Prefer <see cref="AgentUiRenderEvent"/>.
+    /// Ui: "grid" | "card" | "chart" | "kpi_dashboard" | "form"
     /// </summary>
     public class AgentDataRenderEvent
     {
         public string RenderId { get; set; }
-        /// <summary>"grid" | "card" | "chart" | "kpi_dashboard"</summary>
+        /// <summary>"grid" | "card" | "chart" | "kpi_dashboard" | "form"</summary>
         public string Ui { get; set; }
         public string Title { get; set; }
         /// <summary>JSON array (grid/chart) or object / fields shape (card). For kpi_dashboard: compact summary.</summary>
@@ -270,6 +270,28 @@ namespace APP.Components.EntityDto
         public string MetaJson { get; set; }
         /// <summary>kpi_dashboard: JSON array of blocks (markdown|kpi|chart|grid|card).</summary>
         public string BlocksJson { get; set; }
+        public int RowCount { get; set; }
+        public bool Truncated { get; set; }
+        public string Timestamp { get; set; } = DateTime.UtcNow.ToString("o");
+    }
+
+    /// <summary>
+    /// Emitted by render_none_interactive / render_interactive. Result iframe shows Html or loads HtmlPath.
+    /// Mode: "NoneInteractive" | "Interactive"
+    /// </summary>
+    public class AgentUiRenderEvent
+    {
+        public string RenderId { get; set; }
+        /// <summary>"NoneInteractive" | "Interactive"</summary>
+        public string Mode { get; set; }
+        /// <summary>form | table | cards</summary>
+        public string Layout { get; set; }
+        public string Title { get; set; }
+        /// <summary>Merged HTML when under size cap; otherwise null and HtmlPath is set.</summary>
+        public string Html { get; set; }
+        /// <summary>Session-relative path under AgentOutput when Html was spilled to disk.</summary>
+        public string HtmlPath { get; set; }
+        public string ActionsJson { get; set; }
         public int RowCount { get; set; }
         public bool Truncated { get; set; }
         public string Timestamp { get; set; } = DateTime.UtcNow.ToString("o");
@@ -346,11 +368,11 @@ namespace APP.Components.EntityDto
 
     /// <summary>
     /// A single event emitted by the agent, queued server-side and returned by polling.
-    /// EventType: "step" | "token" | "done" | "error" | "plan" | "schema" | "ask_user" | "data_render"
+    /// EventType: "step" | "token" | "done" | "error" | "plan" | "schema" | "ask_user" | "data_render" | "ui_render"
     /// </summary>
     public class AgentEventDto
     {
-        /// <summary>EventType: "step" | "token" | "done" | "error" | "plan" | "schema" | "ask_user" | "data_render"</summary>
+        /// <summary>EventType: "step" | "token" | "done" | "error" | "plan" | "schema" | "ask_user" | "data_render" | "ui_render"</summary>
         public string EventType { get; set; }
         public AgentStepEvent Step  { get; set; }
         public string Token         { get; set; }
@@ -366,8 +388,11 @@ namespace APP.Components.EntityDto
         /// <summary>Populated when EventType = "ask_user". UI must call POST /ConfirmAskUser to proceed.</summary>
         public AgentAskUserEvent AskUser { get; set; }
 
-        /// <summary>Populated when EventType = "data_render". Non-blocking UI panel.</summary>
+        /// <summary>Populated when EventType = "data_render". Legacy non-blocking UI panel.</summary>
         public AgentDataRenderEvent DataRender { get; set; }
+
+        /// <summary>Populated when EventType = "ui_render". Result iframe HTML.</summary>
+        public AgentUiRenderEvent UiRender { get; set; }
     }
 
     public class AgentPollResponseDto

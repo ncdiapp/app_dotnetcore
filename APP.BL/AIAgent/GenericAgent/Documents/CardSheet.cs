@@ -39,7 +39,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         }
 
         /// <summary>
-        /// pageGrid "2x2" is two columns and two rows. cardsPerPage wins over a cardRows value the model set to 1.
+        /// pageGrid is columns×rows (any positive ints). cardsPerPage derives rows from cardsPerRow when pageGrid is omitted.
         /// </summary>
         public void ApplyPageGrid(string pageGrid, int cardsPerPage)
         {

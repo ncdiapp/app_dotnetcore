@@ -15,7 +15,7 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
     {
         private static readonly HashSet<string> SkipToolNames = new(StringComparer.OrdinalIgnoreCase)
         {
-            "data_analyze", "data_render", "ask_user",
+            "data_analyze", "data_render", "render_none_interactive", "render_interactive", "ask_user",
             "propose_plan", "call_agent", "write_shared_context", "read_shared_context"
         };
 
@@ -47,12 +47,12 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                         {
                             obj["dataset_cached"] = true;
                             obj["dataset_name"] = ds.Name;
-                            obj["analysis_hint"] =
-                                $"Dataset cached as '{ds.Name}'. Call data_render ONCE with dataset_name='{ds.Name}'. " +
-                                "Use ui=card and cardsPerRow when the user asked for cards. " +
-                                "When the user asked for the top N, pass limit=N so the panel is N cards, not the whole cache. " +
-                                "Do not copy rows into dataJson — image columns such as Sketch are dropped. " +
-                                "Export that panel with layout=cards and the same limit. When the user names a page layout, pass pageGrid (2x2 is two columns and two rows, four cards on the page) or cardsPerPage. Do not pass content.";
+                            obj["next_hint"] =
+                                $"Dataset cached as '{ds.Name}'. If the user asked to show or export rows: call render_none_interactive (or render_interactive) ONCE with dataset_name='{ds.Name}' and limit for top-N — do NOT call data_analyze or execute_sql just to slice top-N. " +
+                                "layout=table|cards (or kpi|chart|dashboard with specJson). Use layout=cards and cardsPerRow when asked for cards. " +
+                                "Do not copy rows into content — image columns such as Sketch are dropped. " +
+                                "Export with layout=cards and the same limit; pass pageGrid or cardsPerPage when the user names columns×rows. Do not pass content. " +
+                                "Call data_analyze only when the user asked to analyze, aggregate, KPI, or shape a chart/dashboard dataset.";
                             return obj.ToString(Formatting.None);
                         }
                     }
@@ -70,10 +70,10 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                     rows = ds.Rows.Count,
                     truncated = rows.Count > AgentDataAnalyzeCacheBL.MaxCachedRows,
                     columns = ds.Columns.Select(c => c.Name).ToArray(),
-                    analysis_hint =
-                        $"Dataset cached as '{ds.Name}'. Call data_render ONCE with dataset_name='{ds.Name}'. " +
-                        "Use ui=card and cardsPerRow when the user asked for cards. When the user asked for the top N, pass limit=N. " +
-                        "Do not copy rows into dataJson. Export that panel with layout=cards and the same limit. Do not pass content."
+                    next_hint =
+                        $"Dataset cached as '{ds.Name}'. If the user asked to show or export rows: call render_none_interactive ONCE with dataset_name='{ds.Name}' and limit for top-N — do NOT call data_analyze or execute_sql just to slice top-N. " +
+                        "Use layout=cards and cardsPerRow when asked for cards. Do not copy rows into content. Export with the same limit. Do not pass content. " +
+                        "Call data_analyze only when the user asked to analyze, aggregate, KPI, or shape a chart/dashboard dataset."
                 }, Formatting.None);
             }
             catch
