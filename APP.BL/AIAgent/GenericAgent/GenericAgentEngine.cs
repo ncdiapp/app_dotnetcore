@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using App.BL.AIAgent.AiSkill;
+using App.BL.AIAgent.GenericAgent.Memory;
 using App.BL.AIAgent.GenericAgent.Plugins;
 using App.BL.DbGenie;
 using App.BL.GenericAgent;
@@ -143,7 +144,7 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
                 var instancePool = new Dictionary<string, object>(StringComparer.Ordinal);
 
                 // Build SK kernel from tenant Application Settings default provider
-                var kernel = BuildKernel(identity);
+                var kernel = KernelFactory.Build(identity);
                 kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks));
                 kernel.AutoFunctionInvocationFilters.Add(new GenericAgentPruneFilter(skillSet.MaxIterations, skillSet.MaxHistoryTokens));
 
@@ -154,6 +155,19 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
                     && systemPrompt.IndexOf("Follow-up suggestions (soft chips)", StringComparison.OrdinalIgnoreCase) < 0)
                 {
                     systemPrompt += FollowupsPromptHint;
+                }
+                // Layer 2/3 memory: saved facts and similar past conversations. On for agents with the InjectMemory
+                // flag, or that subscribe to the platform-memory library (the no-code switch in the library tab).
+                if (identity.HasValue && userId > 0
+                    && (AgentMemoryInjector.IsEnabled(skillSet.CapabilityFlags) || AgentMemoryInjector.HasMemoryTools(toolRows.Select(r => r.ToolName))))
+                {
+                    try
+                    {
+                        systemPrompt += await AgentMemoryInjector.BuildAsync(
+                            identity.Value, skillKey, userId, dsId, userMessage, chatHistory, ct).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception swallowed) { SwallowLog.Write(swallowed, "memory inject must not fail the run"); }
                 }
                 var callableTools = toolRows.Where(r => !IsPromptHintTool(r)).ToList();
                 if (callableTools.Count > 0)
@@ -200,7 +214,15 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
 
                 try
                 {
-                    var history = await BuildChatHistoryAsync(chatHistory, skillSet.RecentWindowSize, kernel).ConfigureAwait(false);
+                    var canPersistSummary = userId > 0 && !string.IsNullOrWhiteSpace(resolvedChatKey);
+                    var storedSummary = canPersistSummary
+                        ? AgentSessionSummaryBL.Load(resolvedChatKey, skillKey, userId, dsId)
+                        : null;
+                    var history = await ChatHistoryBuilder.BuildAsync(
+                        chatHistory, skillSet.RecentWindowSize, skillSet.SummarizeThreshold, kernel,
+                        storedSummary,
+                        canPersistSummary ? s => AgentSessionSummaryBL.Save(resolvedChatKey, skillKey, userId, dsId, s) : null)
+                        .ConfigureAwait(false);
                     history.AddUserMessage(userMessage);
 
                     // Only enable auto tool calling when tools are actually registered;
@@ -279,53 +301,6 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
             {
                 AgentHitlBridge.Current = previousHitl;
             }
-        }
-
-        // ─────────────────────────────────────────────────────────────────────
-        // Kernel builder
-        // ─────────────────────────────────────────────────────────────────────
-
-        private static Kernel BuildKernel(AppClientIdentity? identity)
-        {
-            EmLLMProvider provider;
-            string        apiKey;
-            string        model;
-
-            if (identity.HasValue)
-            {
-                var providerStr = AIConfigSettingBL.GetProvider(identity.Value) ?? "";
-                provider = Enum.TryParse<EmLLMProvider>(providerStr, true, out var parsed) ? parsed : EmLLMProvider.Gemini;
-                apiKey   = AIConfigSettingBL.GetApiKey(identity.Value) ?? "";
-                model    = AIConfigSettingBL.GetModel(identity.Value)  ?? "";
-            }
-            else
-            {
-                provider = KernelProviderHelper.GetProvider();
-                apiKey   = KernelProviderHelper.GetApiKey() ?? "";
-                model    = KernelProviderHelper.GetModel()  ?? "";
-            }
-
-            var builder = Kernel.CreateBuilder();
-            switch (provider)
-            {
-                case EmLLMProvider.Anthropic:
-                    // No official SK connector package for Anthropic — use a custom wrapper.
-                    builder.Services.AddSingleton<IChatCompletionService>(new AnthropicChatCompletionService(model, apiKey));
-                    break;
-                case EmLLMProvider.Gemini:
-                    // Bound hang risk: default HttpClient timeout is 100s and can stall forever on
-                    // some streaming paths. Keep a hard ceiling; CancelRun still cancels via CT.
-                    var geminiHttp = new HttpClient(new GeminiRoleFixHandler())
-                    {
-                        Timeout = TimeSpan.FromMinutes(10)
-                    };
-                    builder.AddGoogleAIGeminiChatCompletion(model, apiKey, httpClient: geminiHttp);
-                    break;
-                default:
-                    builder.AddOpenAIChatCompletion(model, apiKey);
-                    break;
-            }
-            return builder.Build();
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -560,104 +535,6 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
         }
 
         // ─────────────────────────────────────────────────────────────────────
-        // ChatHistory builder
-        // ─────────────────────────────────────────────────────────────────────
-
-        private static async Task<ChatHistory> BuildChatHistoryAsync(
-            List<JObject>? messages, int recentWindowSize, Kernel kernel)
-        {
-            var window = recentWindowSize > 0 ? recentWindowSize : 10;
-            if (messages == null || messages.Count == 0) return new ChatHistory();
-
-            // Fast path: history fits within the window — no summarization needed
-            if (messages.Count <= window)
-                return BuildChatHistory(messages, window);
-
-            // Overflow: summarize older turns, keep recent ones verbatim
-            var oldTurns = messages.Take(messages.Count - window).ToList();
-            var recent   = messages.Skip(messages.Count - window).ToList();
-
-            var finalHistory = new ChatHistory();
-
-            if (oldTurns.Count >= 2)
-            {
-                var summaryText = await SummarizeOldTurnsAsync(oldTurns, kernel).ConfigureAwait(false);
-                if (!string.IsNullOrEmpty(summaryText))
-                    finalHistory.AddSystemMessage($"[Earlier conversation summary: {summaryText}]");
-            }
-
-            foreach (var msg in recent)
-            {
-                var role    = msg["role"]?.ToString() ?? "user";
-                var content = msg["content"];
-                if (content == null || content.Type == JTokenType.Array) continue;
-                var contentStr = content.ToString();
-                if (string.IsNullOrEmpty(contentStr)) continue;
-                if (role == "user")
-                    finalHistory.AddUserMessage(contentStr);
-                else if (role == "assistant" || role == "model")
-                    finalHistory.AddAssistantMessage(contentStr);
-            }
-
-            return finalHistory;
-        }
-
-        private static ChatHistory BuildChatHistory(List<JObject>? messages, int recentWindowSize)
-        {
-            var history = new ChatHistory();
-            if (messages == null || messages.Count == 0) return history;
-
-            var source = messages.Count > recentWindowSize
-                ? messages.Skip(messages.Count - recentWindowSize).ToList()
-                : messages;
-
-            foreach (var msg in source)
-            {
-                var role    = msg["role"]?.ToString() ?? "user";
-                var content = msg["content"];
-
-                // Skip tool-call turns (content is array) or messages with no plain-text content
-                if (content == null || content.Type == JTokenType.Array) continue;
-                var contentStr = content.ToString();
-                if (string.IsNullOrEmpty(contentStr)) continue;
-
-                if (role == "user")
-                    history.AddUserMessage(contentStr);
-                else if (role == "assistant" || role == "model")
-                    history.AddAssistantMessage(contentStr);
-                // roles "tool"/"function" are intentionally skipped
-            }
-            return history;
-        }
-
-        private static async Task<string?> SummarizeOldTurnsAsync(List<JObject> turns, Kernel kernel)
-        {
-            try
-            {
-                var sb = new StringBuilder();
-                foreach (var msg in turns)
-                {
-                    var role    = msg["role"]?.ToString() ?? "user";
-                    var content = msg["content"]?.ToString();
-                    if (string.IsNullOrEmpty(content)) continue;
-                    sb.AppendLine($"{role}: {content}");
-                }
-
-                var prompt = "Summarize the following conversation in 2-3 sentences, preserving key facts, user goals, and any decisions made:\n\n" + sb;
-                var chat = kernel.GetRequiredService<IChatCompletionService>();
-                var h = new ChatHistory();
-                h.AddUserMessage(prompt);
-                var result = await chat.GetChatMessageContentAsync(h).ConfigureAwait(false);
-                return result.Content;
-            }
-            catch (Exception ex)
-            {
-                NLog.LogManager.GetCurrentClassLogger().Warn(ex, "SummarizeOldTurnsAsync failed — no summary injected");
-                return null;
-            }
-        }
-
-        // ─────────────────────────────────────────────────────────────────────
         // Helpers
         // ─────────────────────────────────────────────────────────────────────
 
@@ -799,7 +676,7 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
         //   in every outgoing request body before the bytes leave the process.
         // ─────────────────────────────────────────────────────────────────────
 
-        private sealed class GeminiRoleFixHandler : DelegatingHandler
+        internal sealed class GeminiRoleFixHandler : DelegatingHandler
         {
             private static readonly NLog.Logger DiagLog = NLog.LogManager.GetCurrentClassLogger();
 

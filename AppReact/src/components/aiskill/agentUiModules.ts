@@ -1,9 +1,10 @@
 /** Chat UI modules unlocked by subscribed tool libraries (not AppAgentSkillSet.AgentUi). */
-export type AgentChatUiModule = 'files';
+export type AgentChatUiModule = 'files' | 'memory';
 
 const LIBRARY_CHAT_MODULES: Record<string, AgentChatUiModule> = {
     'agent-files': 'files',
     'platform-document-export': 'files',
+    'platform-memory': 'memory',
 };
 
 export function chatModulesFromLibraries(libraryKeys: string[]): Set<AgentChatUiModule> {

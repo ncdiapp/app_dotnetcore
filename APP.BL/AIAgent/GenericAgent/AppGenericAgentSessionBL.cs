@@ -603,7 +603,11 @@ ELSE
                         P(fixture, "@U", userId)
                     });
                 if (n > 0)
+                {
                     AgentSchemaCacheBL.ClearSession(sessionKey.Trim());
+                    AgentSessionSummaryBL.Reset(sessionKey, skillKey, userId);
+                    Memory.AgentMemorySessionBL.ResetExtraction(0, sessionKey.Trim(), skillKey.Trim(), userId);
+                }
                 return n > 0;
             }
             catch (Exception ex)

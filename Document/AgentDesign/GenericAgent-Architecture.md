@@ -189,7 +189,9 @@ Runtime rule: an agent receives a library tool when it subscribes to the library
 
 | Table | Purpose |
 |---|---|
-| `AppGenericAgentSession` (V021, V034, V035) | Persisted conversation per user and agent or chat: `SessionKey`, `SkillKey`, `UserId`, `MessagesJson`, `DisplayTitle`, `UpdatedAt` |
+| `AppGenericAgentSession` (V021, V034, V035, V054, V055) | Persisted conversation per user and agent or chat: `SessionKey`, `SkillKey`, `UserId`, `MessagesJson`, `DisplayTitle`, `UpdatedAt`; rolling summary (`SummaryText`, `SummarizedTurnCount`, `SummaryFingerprint`); memory extraction bookkeeping (`ExtractedAt`, `ExtractedTurnCount`, `ExtractingAt`, `ExtractRetryCount`, `MemoryOptOut`) |
+| `AppAgentMemoryFact` (V055) | Layer 2 memory: per-user facts, unique on `(UserId, SkillKey, FactKey)`; `Status` confirmed or pending |
+| `AppAgentEpisode` (V055) | Layer 3 memory: append-only summaries of past chats with an embedding for similarity recall |
 | `AppAgentChildMapping` (V036) | Orchestrator → child agents (many-to-many, no self-reference) |
 | `AppAgentSharedContext` (V022) | Blackboard `(ScopeId = WorkflowId, ContextKey, DataJson)` for multi-agent workflows |
 | `AppAgentSkillSetHistory` (V019) | Last 10 system prompt versions per agent |
@@ -220,7 +222,7 @@ public enum AgentCapabilityFlags
 | `MultiTurn` | 2 | Prior messages are converted to `ChatHistory` | All built-in agents |
 | `PlanGate` | 4 | `propose_plan` pauses until `ConfirmPlan` | `app-builder` |
 | `SchemaGate` | 8 | `propose_schema` pauses until `ConfirmSchema` | `app-builder` |
-| `InjectMemory` | 16 | Relevant memory appended to the system prompt | `app-builder` |
+| `InjectMemory` | 16 | Per-user memory: saved facts and similar past conversations are appended to the system prompt, and the agent's idle chats are extracted into memory. Equivalent to subscribing to the `platform-memory` library (the no-code switch; the admin UI does not expose flags). See `GenericAgent-Memory-Architecture.md`. App Builder's older `MemoryContextPlugin` (shared markdown files, no user or tenant) is separate. | `app-builder` |
 | `InjectSchema` | 32 | DB schema summary injected into the system prompt | `db-genie` |
 | `ExternalBackend` | 64 | SK loop skipped; delegated to the Cursor cloud backend | `data-integration` |
 
@@ -320,7 +322,9 @@ kernel.Plugins.Add(KernelPluginFactory.CreateFromFunctions(McpPluginName(server.
 5. The client opens `GET /StreamEvents?sessionId=…` (SSE). The controller verifies session and company ownership, then loops `WaitForEventAsync` (≤30 s), flushing events.
 6. On `OnDone`/`OnError` the client closes the connection; the session is cleaned up after a retention period.
 
-**Conversation persistence.** Conversations are stored server-side in `AppGenericAgentSession` (key `{SkillKey}:{UserId}` by default, or an explicit chat session key), so they survive refresh and tab switches; the auto-title lives in `DisplayTitle`. The client still sends the `Messages` array for the current turn, and `BuildChatHistoryAsync` converts it (with summarisation above `SummarizeThreshold`).
+**Conversation persistence.** Conversations are stored server-side in `AppGenericAgentSession` (key `{SkillKey}:{UserId}` by default, or an explicit chat session key), so they survive refresh and tab switches; the auto-title lives in `DisplayTitle`. The client still sends the `Messages` array and **that array, not the stored `MessagesJson`, is what the model sees** (`GenericAgentController` passes `request.Messages` to the engine; the server copy is written in parallel for reload and audit). `ChatHistoryBuilder.BuildAsync` converts it: history is sent verbatim until its estimated size (chars / 4) passes `SummarizeThreshold`; beyond that the last `RecentWindowSize` turns stay verbatim and older turns are summarised into one system message. The summary is not persisted and is recomputed on every run once the threshold is crossed. Tool-call and tool-result turns are not carried into history.
+
+**Memory layers.** L1 working memory = the history above, with the rolling summary now persisted per chat (V054). L2 facts (per user, key→value, upserted) and L3 episodes (per-chat summaries with embeddings, fuzzy recall) live in two tenant-DB tables, `AppAgentMemoryFact` and `AppAgentEpisode` (V055), derived from `MessagesJson`, which remains the source transcript. Facts and episodes are injected at the start of a run for agents with memory enabled, and are extracted from idle chats by `MemoryExtractionService` (config `AgentMemory:Mode`, default `Off`). Full design, rollout and limits: `GenericAgent-Memory-Architecture.md`.
 
 **Plan gate flow:** `propose_plan` → `OnPlanReady` → controller registers a gate ID, enqueues a `plan` event → background task awaits (≤10 min, then auto-reject) → `ConfirmPlan` (verifies ownership, gate freshness, one-time use) resolves it. The schema gate follows the same pattern. In `Deterministic` mode both gates auto-approve.
 

@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using App.BL.AIAgent.GenericAgent;
+using App.BL.AIAgent.GenericAgent.Memory;
 using SkillSetBL = App.BL.AIAgent.AiSkill.AppAgentSkillSetBL;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
@@ -606,7 +607,12 @@ public class GenericAgentController : SecureBaseController
         {
             var userId = Convert.ToInt32(ai.UserId);
             if (!string.IsNullOrWhiteSpace(sessionKey))
+            {
+                // Memory extraction needs the transcript, so capture it before it is wiped.
+                var transcript = SessionBL.LoadBySessionKey(sessionKey, skillKey, userId, ai.DataSourceId)?.Messages;
+                AgentMemoryJob.QueueExtractOnClear(ai, skillKey, userId, sessionKey, ai.DataSourceId, transcript);
                 SessionBL.ClearBySessionKey(sessionKey, skillKey, userId);
+            }
             else
                 SessionBL.DeleteSession(skillKey, userId);
         }
