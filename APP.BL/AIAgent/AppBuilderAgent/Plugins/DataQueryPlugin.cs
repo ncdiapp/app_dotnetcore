@@ -1,8 +1,11 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
+using App.BL.AIAgent.GenericAgent;
 using App.BL.AIAgent.GenericAgent.DataAnalyze;
 using App.BL.AIAgent.GenericAgent.Documents;
 using App.BL.DbGenie;
+using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.Framework.Plugin;
 using Newtonsoft.Json;
@@ -50,10 +53,14 @@ namespace App.BL.AppBuilderAgent.Plugins
                 bool forceTop;
                 long? countedRows = null;
 
+                // Strip soft preview TOP before fetch when we will apply platform cap / user choice.
+                var sqlToRun = sql;
+
                 if (hasChoice)
                 {
                     rowCap = chosenMax;
                     forceTop = true;
+                    sqlToRun = AgentRowLimitConfirmBL.StripTopOrLimit(sql);
                 }
                 else if (AgentRowLimitConfirmBL.NeedsRowLimitConfirm(sql))
                 {
@@ -85,38 +92,60 @@ namespace App.BL.AppBuilderAgent.Plugins
                     {
                         rowCap = AgentDataAnalyzeCacheBL.MaxCachedRows;
                         forceTop = true; // ensure missing TOP gets a safety cap
+                        sqlToRun = AgentRowLimitConfirmBL.StripTopOrLimit(sql);
                     }
                     else if (deterministic)
                     {
                         // No UI ask — cap at 1000 for deterministic runs.
                         rowCap = 1000;
                         forceTop = true;
+                        sqlToRun = AgentRowLimitConfirmBL.StripTopOrLimit(sql);
                     }
                     else
                     {
-                        return JsonConvert.SerializeObject(new
+                        // Platform HITL — do not rely on the LLM to call ask_user.
+                        var asked = TryAskRowLimitInteractive(sessionKey, totalCount, out var chosen);
+                        if (!asked)
                         {
-                            IsSuccess = false,
-                            ok = false,
-                            need_ask_user = true,
-                            contextKey = AgentRowLimitConfirmBL.ContextKey,
-                            counted_rows = totalCount,
-                            prompt = AgentRowLimitConfirmBL.AskUserPrompt(totalCount),
-                            optionsJson = AgentRowLimitConfirmBL.AskUserOptionsJson(totalCount),
-                            Error = AgentRowLimitConfirmBL.SoftFailMessage(totalCount)
-                        });
+                            return JsonConvert.SerializeObject(new
+                            {
+                                IsSuccess = false,
+                                ok = false,
+                                need_ask_user = true,
+                                contextKey = AgentRowLimitConfirmBL.ContextKey,
+                                counted_rows = totalCount,
+                                prompt = AgentRowLimitConfirmBL.AskUserPrompt(totalCount),
+                                optionsJson = AgentRowLimitConfirmBL.AskUserOptionsJson(totalCount),
+                                Error = AgentRowLimitConfirmBL.SoftFailMessage(totalCount)
+                            });
+                        }
+                        if (chosen == null)
+                        {
+                            return JsonConvert.SerializeObject(new
+                            {
+                                IsSuccess = false,
+                                ok = false,
+                                cancelled = true,
+                                counted_rows = totalCount,
+                                Error = "User cancelled row-limit choice."
+                            });
+                        }
+                        rowCap = AgentRowLimitConfirmBL.MaxRowsForOption(chosen);
+                        forceTop = true;
+                        sqlToRun = AgentRowLimitConfirmBL.StripTopOrLimit(sql);
+                        hasChoice = true;
                     }
                 }
                 else
                 {
-                    // Honor model's explicit TOP; aggregates / GROUP BY skip the gate.
+                    // Honor model's explicit custom TOP; aggregates / GROUP BY skip the gate.
                     rowCap = AgentDataAnalyzeCacheBL.MaxCachedRows;
                     forceTop = false;
                 }
 
                 var result = AppDbGenieBL.ExecuteSQL(new ExecuteSQLRequestDto
                 {
-                    SQL                     = sql,
+                    SQL                     = sqlToRun,
                     DataSourceRegisterId    = ds,
                     RequireConfirmation     = false,
                     IsConfirmed             = true,
@@ -248,5 +277,56 @@ namespace App.BL.AppBuilderAgent.Plugins
 
         private int? ResolveDataSourceId(int? dataSourceId)
             => dataSourceId is > 0 ? dataSourceId : _dataSourceId;
+
+        /// <summary>
+        /// Blocks on chat UI ask_user for row limit. Returns false if HITL not wired;
+        /// chosen=null when user cancelled.
+        /// </summary>
+        private static bool TryAskRowLimitInteractive(string sessionKey, long totalCount, out string chosen)
+        {
+            chosen = null;
+            var onAsk = AgentHitlBridge.Resolve(sessionKey)?.OnAskUser;
+            if (onAsk == null)
+            {
+                NLog.LogManager.GetCurrentClassLogger().Warn(
+                    "Row-limit ask_user skipped: OnAskUser not bound (chatSessionKey={0})", sessionKey ?? "");
+                return false;
+            }
+
+            var options = AgentRowLimitConfirmBL.BuildOptions(totalCount)
+                .Select(o => new LookupItemDto { Id = o.Id, Display = o.Label })
+                .ToList();
+            var askEvent = new AgentAskUserEvent
+            {
+                Prompt = AgentRowLimitConfirmBL.AskUserPrompt(totalCount),
+                Mode = "single_choice",
+                Ui = "button_group",
+                Layout = "vertical",
+                Options = options,
+                ContextKey = AgentRowLimitConfirmBL.ContextKey
+            };
+
+            AgentAskUserResponse response;
+            try
+            {
+                // Tools run under Task.Run — must not block a sync context; ConfigureAwait(false) is required.
+                response = onAsk(askEvent).ConfigureAwait(false).GetAwaiter().GetResult()
+                    ?? new AgentAskUserResponse { Cancelled = true };
+            }
+            catch (Exception ex)
+            {
+                NLog.LogManager.GetCurrentClassLogger().Warn(ex,
+                    "Row-limit ask_user failed (chatSessionKey={0}, counted={1})", sessionKey ?? "", totalCount);
+                return false;
+            }
+
+            if (response.Cancelled) return true; // asked, cancelled
+            if (!AgentRowLimitConfirmBL.LooksLikeChoice(response.SelectedIds, response.FreeText, out var opt))
+                return true; // asked, no parseable choice → treat as cancel
+            if (!string.IsNullOrWhiteSpace(sessionKey))
+                AgentRowLimitConfirmBL.Mark(sessionKey, opt);
+            chosen = opt;
+            return true;
+        }
     }
 }

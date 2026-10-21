@@ -33,21 +33,22 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             sb.Append("<!DOCTYPE html><html><head><meta charset=\"utf-8\"/>");
             sb.Append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/>");
             sb.Append("<title>").Append(Enc(pageTitle)).Append("</title>");
-            sb.Append("<style>").Append(AgentUiCss.Content).Append("</style>");
+            sb.Append("<style>").Append(AgentUiCss.Content).Append(UiSectionChrome.SectionChromeCss()).Append("</style>");
             sb.Append("</head><body class=\"agent-ui\">");
             sb.Append("<header class=\"agent-ui-header\"><h1>").Append(Enc(pageTitle)).Append("</h1></header>");
 
             var chartIndex = 0;
+            var sections = new List<UiStackedSection>();
             if (layout == "kpi")
             {
-                AppendKpis(sb, rows, spec.Kpis);
-                AppendResolvedCharts(sb, rows, spec, forExport, ref chartIndex, allowAuto: true);
-                AppendMiniTable(sb, rows); // always show grid for template path
+                TryAddSection(sections, "KPIs", s => AppendKpis(s, rows, spec.Kpis));
+                TryAddChartsAsSections(sections, rows, spec, forExport, ref chartIndex, allowAuto: true);
+                TryAddSection(sections, "Grid", s => AppendMiniTable(s, rows), gridScroll: !forExport);
             }
             else if (layout == "chart")
             {
-                AppendResolvedCharts(sb, rows, spec, forExport, ref chartIndex, allowAuto: false);
-                AppendMiniTable(sb, rows);
+                TryAddChartsAsSections(sections, rows, spec, forExport, ref chartIndex, allowAuto: false);
+                TryAddSection(sections, "Grid", s => AppendMiniTable(s, rows), gridScroll: !forExport);
             }
             else // dashboard
             {
@@ -58,37 +59,87 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     foreach (var block in spec.Blocks)
                     {
                         if (block.Type == "kpi")
-                            AppendKpis(sb, rows, block.Kpis != null && block.Kpis.Count > 0 ? block.Kpis : spec.Kpis);
+                            TryAddSection(sections, "KPIs", s => AppendKpis(s, rows, block.Kpis != null && block.Kpis.Count > 0 ? block.Kpis : spec.Kpis));
                         else if (block.Type == "chart" && block.Chart != null)
                         {
-                            if (TryAppendChart(sb, rows, block.Chart, forExport, ref chartIndex))
+                            var local = new StringBuilder();
+                            if (TryAppendChart(local, rows, block.Chart, forExport, ref chartIndex))
+                            {
+                                sections.Add(new UiStackedSection
+                                {
+                                    Title = string.IsNullOrWhiteSpace(block.Chart.Title) ? "Chart" : block.Chart.Title.Trim(),
+                                    BodyHtml = local.ToString(),
+                                    ApplyGridMaxHeight = false
+                                });
                                 paintedChart = true;
+                            }
                         }
                         else if (block.Type == "table")
                         {
-                            AppendMiniTable(sb, rows, block.Limit, block.Title);
+                            TryAddSection(sections, string.IsNullOrWhiteSpace(block.Title) ? "Grid" : block.Title,
+                                s => AppendMiniTable(s, rows, block.Limit, block.Title), gridScroll: !forExport);
                             paintedTable = true;
                         }
                     }
-                    // Empty chart blocks (title "by", No data) must not block auto charts
                     if (!paintedChart)
-                        paintedChart = AppendResolvedCharts(sb, rows, spec, forExport, ref chartIndex, allowAuto: true);
+                        paintedChart = TryAddChartsAsSections(sections, rows, spec, forExport, ref chartIndex, allowAuto: true);
                 }
                 else
                 {
                     if (spec.Kpis != null && spec.Kpis.Count > 0)
-                        AppendKpis(sb, rows, spec.Kpis);
-                    paintedChart = AppendResolvedCharts(sb, rows, spec, forExport, ref chartIndex, allowAuto: true);
+                        TryAddSection(sections, "KPIs", s => AppendKpis(s, rows, spec.Kpis));
+                    paintedChart = TryAddChartsAsSections(sections, rows, spec, forExport, ref chartIndex, allowAuto: true);
                 }
                 if (!paintedTable)
-                    AppendMiniTable(sb, rows);
+                    TryAddSection(sections, "Grid", s => AppendMiniTable(s, rows), gridScroll: !forExport);
             }
+
+            if (forExport)
+            {
+                foreach (var sec in sections)
+                    sb.Append(sec.BodyHtml);
+            }
+            else
+                sb.Append(UiSectionChrome.RenderSections(sections, pageTitle));
 
             if (interactive && !string.IsNullOrWhiteSpace(actionsJson))
                 AppendActions(sb, actionsJson, renderId);
 
             sb.Append("</body></html>");
             return sb.ToString();
+        }
+
+        private static void TryAddSection(
+            List<UiStackedSection> sections, string title, Action<StringBuilder> write, bool gridScroll = false)
+        {
+            var local = new StringBuilder();
+            write(local);
+            if (local.Length == 0) return;
+            sections.Add(new UiStackedSection
+            {
+                Title = title,
+                BodyHtml = local.ToString(),
+                ApplyGridMaxHeight = gridScroll
+            });
+        }
+
+        private static bool TryAddChartsAsSections(
+            List<UiStackedSection> sections, JArray rows, UiRenderSpec spec, bool forExport, ref int chartIndex, bool allowAuto)
+        {
+            var any = false;
+            foreach (var chart in ResolveCharts(spec, rows, allowAuto))
+            {
+                var local = new StringBuilder();
+                if (!TryAppendChart(local, rows, chart, forExport, ref chartIndex)) continue;
+                sections.Add(new UiStackedSection
+                {
+                    Title = string.IsNullOrWhiteSpace(chart.Title) ? "Chart" : chart.Title.Trim(),
+                    BodyHtml = local.ToString(),
+                    ApplyGridMaxHeight = false
+                });
+                any = true;
+            }
+            return any;
         }
 
         private static void AppendKpis(StringBuilder sb, JArray rows, List<UiKpiSpec> kpis)

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using App.BL.TenantBusiness;
 using Newtonsoft.Json;
@@ -8,8 +9,9 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 {
     /// <summary>
     /// Loads TemplateContent from render_none_interactive / render_interactive and merges
-    /// FormDocument / CardSheet to HTML. {{code_default}} (or empty) uses HtmlForm writers
-    /// so Result and export_html share the same body.
+    /// data into HTML (MVC View pattern). {{code_default}} / empty → <see cref="UiDefaultViewTemplates"/>
+    /// via Scriban; custom DB HTML is Scriban-bound the same way.
+    /// Interactive Result grids use app Wijmo (React), not CDN — this merge feeds iframe / export.
     /// </summary>
     public static class UiTemplateMerge
     {
@@ -75,6 +77,20 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             bool forExport,
             string renderId,
             string actionsJson)
+            => MergeForRender(layout, formDoc, cardSheet, dashRows, dashSpec, interactive, forExport, renderId, actionsJson, null);
+
+        /// <param name="sectionTitles">LLM titles for stacked controls (keys: table/grid, cards/card). Platform chrome only.</param>
+        public static string MergeForRender(
+            string layout,
+            FormDocument formDoc,
+            CardSheet cardSheet,
+            JArray dashRows,
+            UiRenderSpec dashSpec,
+            bool interactive,
+            bool forExport,
+            string renderId,
+            string actionsJson,
+            IDictionary<string, string> sectionTitles)
         {
             layout = NormalizeLayout(layout);
             var toolName = interactive ? InteractiveTool : NoneInteractiveTool;
@@ -101,31 +117,42 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             }
             else if (IsPageLayout(layout))
             {
-                // table + cards on one HTML page from render_* .TemplateContent["page"] (or code default compose).
                 var body = ResolveLayoutBody(toolName, "page", allowTableFormFallback: false);
-                var pageTitle = formDoc?.Title ?? cardSheet?.Title;
+                var pageTitle = formDoc?.Title ?? cardSheet?.Title ?? dashSpec?.Title;
                 if (IsCodeDefault(body))
-                    html = ComposePageHtml(formDoc, cardSheet, pageTitle);
+                {
+                    if (interactive && !forExport)
+                        html = ComposeInteractivePageHtml(
+                            pageTitle, dashRows, formDoc, cardSheet, sectionTitles, renderId, actionsJson);
+                    else
+                        html = ComposePageHtml(formDoc, cardSheet, pageTitle, sectionTitles);
+                }
                 else
                     html = ApplyTitlePlaceholder(body, pageTitle);
             }
             else if (layout == "cards" && cardSheet != null)
             {
                 var body = ResolveLayoutBody(toolName, "cards");
-                html = IsCodeDefault(body) ? HtmlForm.WriteCards(cardSheet, false) : ApplyTitlePlaceholder(body, cardSheet.Title);
+                html = RenderCardsView(body, cardSheet);
             }
-            else if (formDoc != null)
+            else if (formDoc != null || (layout == "table" && dashRows != null))
             {
                 var key = layout == "form" ? "form" : "table";
                 var body = ResolveLayoutBody(toolName, key);
-                html = IsCodeDefault(body) ? HtmlForm.Write(formDoc) : ApplyTitlePlaceholder(body, formDoc.Title);
+                // Interactive Result grid uses app Wijmo (React + DataJson) — no CDN HTML here.
+                // TemplateContent merge builds none-interactive / export HTML only.
+                if (formDoc != null)
+                    html = RenderTableOrFormView(key, body, formDoc, forExport);
+                else if (dashRows != null)
+                    html = RenderTableFromRows(body, formDoc?.Title ?? dashSpec?.Title ?? "Table", dashRows, forExport);
+                else
+                    html = "<!DOCTYPE html><html><body><p>No data</p></body></html>";
             }
             else
             {
                 html = "<!DOCTYPE html><html><body><p>No data</p></body></html>";
             }
 
-            // Dashboard interactive already embeds actions + postMessage in UiDashboardHtml
             if (IsDashboardLayout(layout))
             {
                 if (!interactive)
@@ -138,6 +165,64 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             else
                 html = StripScripts(html);
 
+            return html;
+        }
+
+        private static string WrapDocumentBody(string html, System.Func<string, string> wrapInner)
+        {
+            if (string.IsNullOrEmpty(html) || wrapInner == null) return html;
+            var m = Regex.Match(html, @"<body[^>]*>([\s\S]*?)</body>", RegexOptions.IgnoreCase);
+            if (!m.Success) return wrapInner(html);
+            var replaced = wrapInner(m.Groups[1].Value);
+            return html.Substring(0, m.Groups[1].Index) + replaced + html.Substring(m.Groups[1].Index + m.Groups[1].Length);
+        }
+
+        private static string RenderCardsView(string body, CardSheet cardSheet)
+        {
+            if (IsCodeDefault(body))
+                body = UiDefaultViewTemplates.CardsNoneInteractive;
+            try
+            {
+                return UiTemplateScriban.Render(body, UiTemplateScriban.ModelFromCards(cardSheet));
+            }
+            catch
+            {
+                return HtmlForm.WriteCards(cardSheet, false);
+            }
+        }
+
+        private static string RenderTableOrFormView(string key, string body, FormDocument formDoc, bool forExport)
+        {
+            if (key == "form")
+            {
+                if (IsCodeDefault(body))
+                    return HtmlForm.Write(formDoc);
+                try { return UiTemplateScriban.Render(body, UiTemplateScriban.ModelFromForm(formDoc)); }
+                catch { return HtmlForm.Write(formDoc); }
+            }
+
+            if (IsCodeDefault(body))
+                body = UiDefaultViewTemplates.TableNoneInteractive;
+            string html;
+            try { html = UiTemplateScriban.Render(body, UiTemplateScriban.ModelFromForm(formDoc)); }
+            catch { html = HtmlForm.Write(formDoc); }
+            if (!forExport)
+                html = WrapDocumentBody(html, inner => UiSectionChrome.WrapGridScroll(inner));
+            return html;
+        }
+
+        private static string RenderTableFromRows(string body, string title, JArray dashRows, bool forExport)
+        {
+            if (IsCodeDefault(body))
+                body = UiDefaultViewTemplates.TableNoneInteractive;
+            string html;
+            try { html = UiTemplateScriban.Render(body, UiTemplateScriban.ModelFromRows(title, dashRows)); }
+            catch
+            {
+                html = "<!DOCTYPE html><html><body><p>" + System.Net.WebUtility.HtmlEncode(title) + "</p></body></html>";
+            }
+            if (!forExport)
+                html = WrapDocumentBody(html, inner => UiSectionChrome.WrapGridScroll(inner));
             return html;
         }
 
@@ -193,14 +278,162 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             }
         }
 
-        /// <summary>Code-default page: stack table then cards in one document (Result iframe).</summary>
-        public static string ComposePageHtml(FormDocument formDoc, CardSheet cardSheet, string title)
+        /// <summary>
+        /// Code-default page (none-interactive): stack table + cards with platform section chrome.
+        /// </summary>
+        public static string ComposePageHtml(
+            FormDocument formDoc,
+            CardSheet cardSheet,
+            string title,
+            IDictionary<string, string> sectionTitles = null)
         {
-            var tableInner = formDoc != null ? ExtractBodyInner(HtmlForm.Write(formDoc)) : "";
-            var cardsInner = cardSheet != null ? ExtractBodyInner(HtmlForm.WriteCards(cardSheet, false)) : "";
-            var encTitle = System.Net.WebUtility.HtmlEncode(title ?? "Result");
-            return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>" + encTitle +
-                   "</title></head><body>" + tableInner + cardsInner + "</body></html>";
+            var pageTitle = title ?? formDoc?.Title ?? cardSheet?.Title ?? "Result";
+            string tableInner = null;
+            string cardsInner = null;
+            if (formDoc != null)
+            {
+                var saved = formDoc.Title;
+                formDoc.Title = null;
+                try { tableInner = ExtractBodyInner(HtmlForm.Write(formDoc)); }
+                finally { formDoc.Title = saved; }
+            }
+            if (cardSheet != null)
+            {
+                var saved = cardSheet.Title;
+                cardSheet.Title = null;
+                try { cardsInner = ExtractBodyInner(HtmlForm.WriteCards(cardSheet, false)); }
+                finally { cardSheet.Title = saved; }
+            }
+
+            var sections = new List<UiStackedSection>();
+            if (!string.IsNullOrWhiteSpace(tableInner))
+            {
+                sections.Add(new UiStackedSection
+                {
+                    Title = ResolveSectionTitle(sectionTitles, "table", pageTitle, "Table view"),
+                    BodyHtml = tableInner,
+                    ApplyGridMaxHeight = true
+                });
+            }
+            if (!string.IsNullOrWhiteSpace(cardsInner))
+            {
+                sections.Add(new UiStackedSection
+                {
+                    Title = ResolveSectionTitle(sectionTitles, "cards", pageTitle, "Card view"),
+                    BodyHtml = cardsInner,
+                    ApplyGridMaxHeight = false
+                });
+            }
+            return UiSectionChrome.ComposeStacked(pageTitle, sections);
+        }
+
+        /// <summary>
+        /// Interactive page: TemplateContent layout (table=Wijmo host, cards=template cards) + platform collapse chrome.
+        /// </summary>
+        public static string ComposeInteractivePageHtml(
+            string title,
+            JArray dashRows,
+            FormDocument formDoc,
+            CardSheet cardSheet,
+            IDictionary<string, string> sectionTitles,
+            string renderId,
+            string actionsJson)
+        {
+            var pageTitle = title ?? formDoc?.Title ?? cardSheet?.Title ?? "Result";
+            var sections = new List<UiStackedSection>();
+            var injectWijmo = false;
+
+            // Table section only when caller loaded formDoc (respects specJson.views).
+            if (formDoc != null)
+            {
+                var tableBody = ResolveLayoutBody(InteractiveTool, "table");
+                string gridInner;
+                if (IsCodeDefault(tableBody) && dashRows != null)
+                {
+                    gridInner = InteractiveTabularHtml.GridHostMarkup();
+                    injectWijmo = true;
+                }
+                else
+                {
+                    var saved = formDoc.Title;
+                    formDoc.Title = null;
+                    try { gridInner = ExtractBodyInner(IsCodeDefault(tableBody) ? HtmlForm.Write(formDoc) : ApplyTitlePlaceholder(tableBody, saved)); }
+                    finally { formDoc.Title = saved; }
+                }
+
+                sections.Add(new UiStackedSection
+                {
+                    Title = ResolveSectionTitle(sectionTitles, "table", pageTitle, "Table view"),
+                    BodyHtml = gridInner,
+                    ApplyGridMaxHeight = false // Wijmo host has its own max-height
+                });
+            }
+
+            if (cardSheet != null)
+            {
+                var cardsBody = ResolveLayoutBody(InteractiveTool, "cards");
+                var saved = cardSheet.Title;
+                cardSheet.Title = null;
+                string cardsInner;
+                try
+                {
+                    cardsInner = ExtractBodyInner(
+                        IsCodeDefault(cardsBody) ? HtmlForm.WriteCards(cardSheet, false) : ApplyTitlePlaceholder(cardsBody, saved));
+                }
+                finally { cardSheet.Title = saved; }
+
+                sections.Add(new UiStackedSection
+                {
+                    Title = ResolveSectionTitle(sectionTitles, "cards", pageTitle, "Card view"),
+                    BodyHtml = cardsInner,
+                    ApplyGridMaxHeight = false
+                });
+            }
+
+            var doc = UiSectionChrome.ComposeStacked(pageTitle, sections);
+            if (injectWijmo && dashRows != null)
+                doc = InteractiveTabularHtml.InjectWijmoGridBoot(doc, dashRows, renderId, actionsJson);
+            return doc;
+        }
+
+        public static string ResolveSectionTitle(
+            IDictionary<string, string> sectionTitles,
+            string viewKey,
+            string pageTitle,
+            string fallbackLabel)
+        {
+            if (sectionTitles != null)
+            {
+                foreach (var key in SectionTitleKeys(viewKey))
+                {
+                    if (sectionTitles.TryGetValue(key, out var t) && !string.IsNullOrWhiteSpace(t))
+                        return t.Trim();
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(pageTitle))
+                return fallbackLabel + " — " + pageTitle.Trim();
+            return fallbackLabel;
+        }
+
+        private static IEnumerable<string> SectionTitleKeys(string viewKey)
+        {
+            var k = (viewKey ?? "").Trim().ToLowerInvariant();
+            if (k is "table" or "grid")
+            {
+                yield return "table";
+                yield return "grid";
+                yield return "Table";
+                yield return "Grid";
+            }
+            else if (k is "cards" or "card")
+            {
+                yield return "cards";
+                yield return "card";
+                yield return "Cards";
+                yield return "Card";
+            }
+            else
+                yield return k;
         }
 
         private static string ExtractBodyInner(string html)

@@ -1002,16 +1002,11 @@ const GenericAgentChat: React.FC<Props> = ({
             });
         }
 
-        const fireSessionStartIfAllowed = (mode: string, allowFirstTurn: boolean) => {
+        // Empty / New Chat / Reset: show welcome chips only — do not auto-run [session_start]
+        // (that produced misleading "Request: [session_start]" Reasoning steps).
+        const fireSessionStartIfAllowed = (_mode: string, _allowFirstTurn: boolean) => {
             if (cancelled || sessionStartFiredRef.current) return;
             sessionStartFiredRef.current = true;
-            if (!/^Interactive$/i.test(mode || 'Interactive')) return;
-            if (!allowFirstTurn) return;
-            void runAgentTurnRef.current({
-                userMessage: SESSION_START,
-                hideUserBubble: true,
-                historyBase: [],
-            });
         };
 
         const boot = async () => {
@@ -1092,10 +1087,24 @@ const GenericAgentChat: React.FC<Props> = ({
                     if (role === 'user' && content === SESSION_START) return false;
                     return true;
                 });
+                const hasRealUser = meaningful.some(m => {
+                    if ((m.role || '').toLowerCase() !== 'user') return false;
+                    const sm = m as StoredChatMessage;
+                    if (sm.askUserAnswer ?? sm.AskUserAnswer) return false;
+                    const content = typeof m.content === 'string' ? m.content : String(m.content ?? '');
+                    return !!(content || '').trim();
+                });
                 const stored = (prior ?? []) as StoredChatMessage[];
                 const pendingFromStore = findPendingAskUser(stored);
                 const runSid = findRunSessionId(stored);
-                if (meaningful.length > 0 || pendingFromStore || runSid) {
+                // Only session_start greeting / think left → same UI as New Chat
+                if (!hasRealUser && !pendingFromStore && !runSid) {
+                    setMessages([]);
+                    setTurnActivities([]);
+                    setCurrentTurnIndex(0);
+                    currentTurnIndexRef.current = 0;
+                    fireSessionStartIfAllowed(mode, allowFirstTurn);
+                } else if (meaningful.length > 0 || pendingFromStore || runSid) {
                     sessionStartFiredRef.current = true;
                     const restoredMsgs: ChatMessage[] = [];
                     const restoredActs: TurnActivity[] = [];
@@ -1441,9 +1450,7 @@ const GenericAgentChat: React.FC<Props> = ({
         setRightTab('tools');
         if (!testMode) await genericAgentSvc.ClearSession(skillKey, chatSessionKeyRef.current || undefined);
         sessionStartFiredRef.current = true;
-        if (/^Interactive$/i.test(skillExecutionModeRef.current || 'Interactive')) {
-            await runAgentTurn({ userMessage: SESSION_START, hideUserBubble: true, historyBase: [] });
-        }
+        // Same as New Chat: welcome chips only — no [session_start] agent turn.
     };
 
     const toggleExpand = (key: string) =>
@@ -1466,11 +1473,15 @@ const GenericAgentChat: React.FC<Props> = ({
         && (pendingAskUser?.Options?.length ?? 0) > 0;
     const blocked = isRunning || !!pendingAskUser;
     const skillLabel = skillDisplayNames[skillKey] || skillKey || 'Agent';
-    const hasConversation = messages.some(m => {
-        if (m.role === 'user' && (m.content || '').trim() === SESSION_START) return false;
-        if (m.askUserSummary || m.askUserAnswer || m.isStreaming) return true;
+    const hasRealUserTurn = messages.some(m =>
+        m.role === 'user'
+        && (m.content || '').trim() !== SESSION_START
+        && !m.askUserAnswer
+        && !!(m.content || '').trim());
+    const hasConversation = hasRealUserTurn || messages.some(m => {
+        if (m.askUserSummary || m.isStreaming) return true;
         if ((m.dataRenders?.length ?? 0) > 0) return true;
-        return !!(m.content || '').trim();
+        return false;
     });
     const showWelcome = !hasConversation && !isRunning && !pendingAskUser && !pendingPlan;
     const hour = new Date().getHours();
@@ -1494,35 +1505,58 @@ const GenericAgentChat: React.FC<Props> = ({
         ta.style.overflowY = ta.scrollHeight > 200 ? 'auto' : 'hidden';
     }, [input]);
 
-    const startToolsResize = (e: React.MouseEvent) => {
+    const startToolsResize = (e: React.PointerEvent<HTMLDivElement>) => {
         e.preventDefault();
+        e.stopPropagation();
+        const handle = e.currentTarget;
+        try { handle.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+
         toolsDragRef.current = true;
         const startX = e.clientX;
-        const hostW = chatRootRef.current?.clientWidth ?? 900;
+        const host = chatRootRef.current;
+        const hostW = host?.clientWidth ?? 900;
         const usingResult = openRender != null;
         const startW = usingResult
             ? (renderWidth ?? Math.max(280, Math.round((hostW - 8) / 2)))
             : toolsWidth;
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
+
+        // Result iframe / Wijmo steal pointermove/up once the cursor enters the panel.
+        // Disable hit-testing on the side panel for the drag duration.
+        host?.setAttribute('data-panel-resizing', '1');
+        const side = host?.querySelector('[data-agent-side-panel]') as HTMLElement | null;
+        const sidePrevPe = side?.style.pointerEvents ?? '';
+        if (side) side.style.pointerEvents = 'none';
+        const iframes = host ? Array.from(host.querySelectorAll('iframe')) : [];
+        const iframePrevPe = iframes.map(f => f.style.pointerEvents);
+        iframes.forEach(f => { f.style.pointerEvents = 'none'; });
+
         let nextW = startW;
-        const onMove = (ev: MouseEvent) => {
+        const onMove = (ev: PointerEvent) => {
             if (!toolsDragRef.current) return;
             const max = Math.max(320, hostW - 280);
             nextW = Math.min(max, Math.max(280, startW - (ev.clientX - startX)));
             if (usingResult) setRenderWidth(nextW);
             else setToolsWidth(nextW);
         };
-        const onUp = () => {
+        const end = () => {
+            if (!toolsDragRef.current) return;
             toolsDragRef.current = false;
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
+            host?.removeAttribute('data-panel-resizing');
+            if (side) side.style.pointerEvents = sidePrevPe;
+            iframes.forEach((f, i) => { f.style.pointerEvents = iframePrevPe[i] ?? ''; });
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', end);
+            window.removeEventListener('pointercancel', end);
+            try { handle.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
             if (usingResult) localStorage.setItem('agentRenderPanelPx', String(nextW));
         };
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', end);
+        window.addEventListener('pointercancel', end);
     };
 
     return (
@@ -1594,13 +1628,15 @@ const GenericAgentChat: React.FC<Props> = ({
                         </div>
                     )}
                     <div className="w-full flex flex-col gap-3">
-                    {messages.map((m, i) => {
+                    {!showWelcome && messages.map((m, i) => {
                         const split = m.role === 'assistant'
                             ? splitFollowups(sanitizeAgentDisplayText(m.content), m.isStreaming)
                             : { body: m.content, followups: [] as string[] };
                         const showBubble = !!(split.body || m.isStreaming || m.askUserSummary || m.askUserAnswer);
                         const hasRenders = m.role === 'assistant' && (m.dataRenders?.length ?? 0) > 0;
-                        const showThinking = m.role === 'assistant' && !!(
+                        const thinkingLooksLikeSessionStart = /\[session_start\]/i.test(m.thinking || '')
+                            || (m.thinkingSteps ?? []).some(s => /\[session_start\]/i.test(s.description || ''));
+                        const showThinking = m.role === 'assistant' && !thinkingLooksLikeSessionStart && !!(
                             m.thinking?.trim()
                             || (m.thinkingSteps?.length ?? 0) > 0
                             || (m.isStreaming && isRunning && !split.body)
@@ -1936,12 +1972,20 @@ const GenericAgentChat: React.FC<Props> = ({
                     role="separator"
                     aria-orientation="vertical"
                     title="Drag to resize"
-                    className="w-2 shrink-0 cursor-col-resize"
-                    onMouseDown={startToolsResize}
+                    className="w-2 shrink-0 cursor-col-resize touch-none"
+                    onPointerDown={startToolsResize}
                 />
             )}
             {sidebarOpen && (
-                <div style={{ width: openRender ? (renderWidth ?? Math.max(280, Math.round(((chatRootRef.current?.clientWidth ?? 900) - 8) / 2))) : toolsWidth }} className={`shrink-0 border flex flex-col min-w-0 min-h-0 ${regionBorder} ${windowCard}`}>
+                <div
+                    data-agent-side-panel
+                    style={{
+                        width: openRender ? (renderWidth ?? Math.max(280, Math.round(((chatRootRef.current?.clientWidth ?? 900) - 8) / 2))) : toolsWidth,
+                        maxWidth: '100%',
+                        minWidth: 0,
+                    }}
+                    className={`shrink-0 border flex flex-col min-w-0 min-h-0 overflow-hidden ${regionBorder} ${windowCard}`}
+                >
                     <div className={`flex items-center gap-1 px-2 py-1.5 border-b ${regionBorder}`}>
                         <button
                             type="button"
@@ -1974,21 +2018,25 @@ const GenericAgentChat: React.FC<Props> = ({
                     </div>
 
                     {rightTab === 'result' && openRender ? (
-                        <div className="w-full h-1 flex-auto overflow-hidden min-h-0 p-2">
+                        <div className="w-full h-1 flex-auto overflow-hidden min-w-0 min-h-0 max-w-full p-2 box-border">
                             {isInteractiveDashboard(openRender) ? (
-                                <InteractiveDashboardPanel
-                                    event={openRender}
-                                    disabled={blocked}
-                                    onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
-                                />
+                                <div className="w-full h-full min-w-0 max-w-full overflow-hidden">
+                                    <InteractiveDashboardPanel
+                                        event={openRender}
+                                        disabled={blocked}
+                                        onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
+                                    />
+                                </div>
                             ) : isInteractivePage(openRender) ? (
-                                <InteractivePagePanel
-                                    event={openRender}
-                                    disabled={blocked}
-                                    onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
-                                />
+                                <div className="w-full h-full min-w-0 max-w-full overflow-hidden">
+                                    <InteractivePagePanel
+                                        event={openRender}
+                                        disabled={blocked}
+                                        onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
+                                    />
+                                </div>
                             ) : isInteractiveTabular(openRender) ? (
-                                <div className="w-full h-full overflow-auto">
+                                <div className="w-full h-full min-w-0 max-w-full overflow-auto">
                                     <DataRenderPanel
                                         event={openRender}
                                         disabled={blocked}
@@ -1996,15 +2044,17 @@ const GenericAgentChat: React.FC<Props> = ({
                                     />
                                 </div>
                             ) : hasUiHtml(openRender) ? (
-                                <UiRenderFrame
-                                    event={openRender}
-                                    skillKey={skillKey}
-                                    sessionKey={fileSessionKey}
-                                    disabled={blocked}
-                                    onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
-                                />
+                                <div className="w-full h-full min-w-0 max-w-full overflow-hidden">
+                                    <UiRenderFrame
+                                        event={openRender}
+                                        skillKey={skillKey}
+                                        sessionKey={fileSessionKey}
+                                        disabled={blocked}
+                                        onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
+                                    />
+                                </div>
                             ) : (
-                                <div className="w-full h-full overflow-auto">
+                                <div className="w-full h-full min-w-0 max-w-full overflow-auto">
                                     <DataRenderPanel
                                         event={openRender}
                                         disabled={blocked}

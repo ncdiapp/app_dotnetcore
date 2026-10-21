@@ -302,6 +302,9 @@ const InteractiveDashboardPanel: React.FC<Props> = ({ event, disabled, onAction 
 
     const btn = `px-2 py-0.5 text-xs rounded-[4px] border ${theme.button_default}`;
     const title = event.Title || spec.title || 'Dashboard';
+    const sectionCount =
+        (kpiItems.length > 0 ? 1 : 0) + charts.length + 1; /* grid always */
+    const useCollapse = sectionCount >= 2;
 
     return (
         <div className={`w-full h-full overflow-auto p-2 ${theme.mainContentSection}`}>
@@ -326,21 +329,20 @@ const InteractiveDashboardPanel: React.FC<Props> = ({ event, disabled, onAction 
             </div>
 
             {kpiItems.length > 0 && (
-                <div className="mb-3">
+                <DashboardSection title="KPIs" collapse={useCollapse}>
                     <DataRenderKpiRow items={kpiItems} />
-                </div>
+                </DashboardSection>
             )}
 
-            <div className="flex flex-col gap-3 mb-3">
-                {charts.map(cf => {
-                    const yLabel = cf.yField || 'count';
-                    const title = cf.label.includes(yLabel) || /count/i.test(cf.label)
-                        ? cf.label
-                        : `${cf.label} (${yLabel})`;
-                    return (
+            {charts.map(cf => {
+                const yLabel = cf.yField || 'count';
+                const chartTitle = cf.label.includes(yLabel) || /count/i.test(cf.label)
+                    ? cf.label
+                    : `${cf.label} (${yLabel})`;
+                return (
+                    <DashboardSection key={cf.field} title={chartTitle} collapse={useCollapse}>
                         <DataRenderChartWijmo
-                            key={cf.field}
-                            meta={{ title }}
+                            meta={{ title: chartTitle }}
                             chartConfig={{
                                 type: cf.type,
                                 xField: 'x',
@@ -349,16 +351,20 @@ const InteractiveDashboardPanel: React.FC<Props> = ({ event, disabled, onAction 
                             }}
                             data={seriesFromRows(filteredRows, cf.field, cf.yField)}
                         />
-                    );
-                })}
-            </div>
+                    </DashboardSection>
+                );
+            })}
 
-            <DataRenderGridWijmo
-                colDefs={colDefs}
-                rowData={filteredRows}
-                title="Data"
-                meta={{ total: filteredRows.length }}
-            />
+            <DashboardSection title="Grid" collapse={useCollapse}>
+                <div style={{ maxHeight: 'min(80vh, 800px)', overflow: 'auto' }}>
+                    <DataRenderGridWijmo
+                        colDefs={colDefs}
+                        rowData={filteredRows}
+                        title="Data"
+                        meta={{ total: filteredRows.length }}
+                    />
+                </div>
+            </DashboardSection>
 
             {event.ActionsJson && onAction && (
                 <div className="flex flex-wrap gap-1 mt-3">
@@ -383,13 +389,33 @@ const InteractiveDashboardPanel: React.FC<Props> = ({ event, disabled, onAction 
     );
 };
 
+/** Platform chrome (not TemplateContent): collapse when stacking 2+ controls. */
+const DashboardSection: React.FC<{
+    title: string;
+    collapse: boolean;
+    children: React.ReactNode;
+}> = ({ title, collapse, children }) => {
+    if (!collapse) {
+        return <div className="mb-3">{children}</div>;
+    }
+    return (
+        <details open className="mb-3 rounded-[4px] border border-gray-300 bg-white">
+            <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold list-none">
+                {title}
+            </summary>
+            <div className="px-3 pb-3">{children}</div>
+        </details>
+    );
+};
+
 export default InteractiveDashboardPanel;
 
 export function isInteractiveDashboard(event: DataRenderEvent | null | undefined): boolean {
     if (!event) return false;
     const mode = (event.Mode || '').toLowerCase();
     if (mode !== 'interactive') return false;
+    // chart → TemplateContent iframe; kpi/dashboard → React (HtmlPath may be export twin only).
     const layout = (event.Layout || '').toLowerCase();
-    if (!['kpi', 'chart', 'dashboard'].includes(layout)) return false;
+    if (layout !== 'kpi' && layout !== 'dashboard') return false;
     return !!(event.DataJson && event.SpecJson);
 }

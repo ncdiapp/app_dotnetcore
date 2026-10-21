@@ -603,7 +603,10 @@ ELSE
                         P(fixture, "@U", userId)
                     });
                 if (n > 0)
+                {
                     AgentSchemaCacheBL.ClearSession(sessionKey.Trim());
+                    Documents.AgentRowLimitConfirmBL.Clear(sessionKey.Trim());
+                }
                 return n > 0;
             }
             catch (Exception ex)
@@ -630,7 +633,10 @@ ELSE
                         P(fixture, "@U", userId)
                     });
                 if (n > 0)
+                {
                     AgentSchemaCacheBL.ClearSession(sessionKey.Trim());
+                    Documents.AgentRowLimitConfirmBL.Clear(sessionKey.Trim());
+                }
                 return n > 0;
             }
             catch (Exception ex)

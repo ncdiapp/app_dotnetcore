@@ -122,16 +122,17 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         }
 
         /// <summary>
-        /// Unbounded SELECT (no TOP/LIMIT) that may return many detail rows.
-        /// Scalar aggregates / GROUP BY are excluded (usually small result sets).
+        /// Detail SELECT that may return many rows. Until the user confirms via ask_user,
+        /// ANY model-invented TOP/LIMIT is ignored (COUNT first). Only scalar aggregates /
+        /// GROUP BY skip this gate. After Mark(), <see cref="TryGetMaxRows"/> applies the choice.
         /// </summary>
         public static bool NeedsRowLimitConfirm(string sql)
         {
             if (string.IsNullOrWhiteSpace(sql)) return false;
-            if (HasTopOrLimit(sql)) return false;
             if (IsLikelyScalarAggregate(sql)) return false;
             if (Regex.IsMatch(sql, @"\bGROUP\s+BY\b", RegexOptions.IgnoreCase)) return false;
-            return Regex.IsMatch(sql, @"\bFROM\b", RegexOptions.IgnoreCase);
+            if (!Regex.IsMatch(sql, @"\bFROM\b", RegexOptions.IgnoreCase)) return false;
+            return true;
         }
 
         public static bool HasTopOrLimit(string sql)
@@ -141,12 +142,37 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                    || Regex.IsMatch(sql, @"\bLIMIT\s+\d+", RegexOptions.IgnoreCase);
         }
 
+        /// <summary>Model preview habits — still run COUNT + ask_user when total is large.</summary>
+        public static bool HasSoftPreviewTopOrLimit(string sql)
+        {
+            if (string.IsNullOrWhiteSpace(sql)) return false;
+            return Regex.IsMatch(sql, @"\bTOP\s*\(?\s*(20|100|500|1000)\s*\)?", RegexOptions.IgnoreCase)
+                   || Regex.IsMatch(sql, @"\bLIMIT\s+(20|100|500|1000)\b", RegexOptions.IgnoreCase);
+        }
+
+        /// <summary>Non-soft TOP/LIMIT (user/agent already picked a specific size).</summary>
+        public static bool HasHardCustomTopOrLimit(string sql)
+        {
+            if (!HasTopOrLimit(sql)) return false;
+            return !HasSoftPreviewTopOrLimit(sql);
+        }
+
+        /// <summary>Remove TOP/LIMIT so COUNT reflects the full result set.</summary>
+        public static string StripTopOrLimit(string sql)
+        {
+            if (string.IsNullOrWhiteSpace(sql)) return sql;
+            var s = Regex.Replace(sql, @"\bSELECT\s+TOP\s*\(?\s*\d+\s*\)?\s+", "SELECT ", RegexOptions.IgnoreCase);
+            s = Regex.Replace(s, @"\s+LIMIT\s+\d+(\s+OFFSET\s+\d+)?\s*$", "", RegexOptions.IgnoreCase);
+            return s;
+        }
+
         /// <summary>
-        /// Wrap a detail SELECT as COUNT(*). Strips trailing ORDER BY (invalid in SQL Server subqueries).
+        /// Wrap a detail SELECT as COUNT(*). Strips soft TOP/LIMIT and trailing ORDER BY.
         /// </summary>
         public static string BuildCountSql(string sql)
         {
-            var inner = StripTrailingOrderBy(sql?.Trim() ?? "");
+            var inner = StripTopOrLimit(sql?.Trim() ?? "");
+            inner = StripTrailingOrderBy(inner);
             if (inner.EndsWith(";", StringComparison.Ordinal))
                 inner = inner.Substring(0, inner.Length - 1).TrimEnd();
             return "SELECT COUNT_BIG(*) AS __agent_row_count FROM (\n" + inner + "\n) AS __agent_count_q";

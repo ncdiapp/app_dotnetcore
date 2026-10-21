@@ -142,19 +142,13 @@ export function uiRenderToDataRender(evt: UiRenderEvent): DataRenderEvent {
     };
 }
 
-/** True when Result should use the TemplateContent iframe (preferred for table/cards/page). */
-function hasMergedUiHtml(event: DataRenderEvent): boolean {
-    return !!(event.Html || event.HtmlPath || event.HtmlUrl);
-}
-
 /**
- * Legacy: Interactive table/cards with DataJson → React Wijmo/card list.
- * When Html/HtmlPath is present, TemplateContent iframe wins (see ui_render merge path).
+ * Interactive table/cards → React host using app Wijmo (@mescius + license.js).
+ * HtmlPath is TemplateContent export twin only — DataJson wins for Result.
  */
 export function isInteractiveTabular(event: DataRenderEvent | null | undefined): boolean {
     if (!event) return false;
     if (!/^interactive$/i.test(String(event.Mode || ''))) return false;
-    if (hasMergedUiHtml(event)) return false;
     if (!event.DataJson) return false;
     const layout = String(event.Layout || '').toLowerCase();
     const ui = String(event.Ui || '').toLowerCase();
@@ -162,29 +156,42 @@ export function isInteractiveTabular(event: DataRenderEvent | null | undefined):
 }
 
 /**
- * Legacy: One Result page stacking table + cards in React.
- * Prefer TemplateContent iframe when Html/HtmlPath is set.
+ * Interactive page → React stack (app Wijmo grid + cards). HtmlPath = export twin.
  */
 export function isInteractivePage(event: DataRenderEvent | null | undefined): boolean {
     if (!event) return false;
     if (!/^interactive$/i.test(String(event.Mode || ''))) return false;
-    if (hasMergedUiHtml(event)) return false;
     if (!event.DataJson) return false;
     const layout = String(event.Layout || '').toLowerCase();
     const ui = String(event.Ui || '').toLowerCase();
     return layout === 'page' || ui === 'page';
 }
 
-export function parsePageViews(specJson?: string | null): { views: Array<'table' | 'cards'>; cardsPerRow: number; title?: string } {
+export function parsePageViews(specJson?: string | null): {
+    views: Array<'table' | 'cards'>;
+    cardsPerRow: number;
+    title?: string;
+    sectionTitles?: { table?: string; cards?: string; grid?: string; card?: string };
+} {
     try {
-        const o = specJson ? JSON.parse(specJson) as { views?: string[]; Views?: string[]; cardsPerRow?: number; title?: string } : {};
+        const o = specJson
+            ? JSON.parse(specJson) as {
+                views?: string[];
+                Views?: string[];
+                cardsPerRow?: number;
+                title?: string;
+                sectionTitles?: { table?: string; cards?: string; grid?: string; card?: string };
+                SectionTitles?: { table?: string; cards?: string; grid?: string; card?: string };
+            }
+            : {};
         const raw = o.views ?? o.Views ?? ['table', 'cards'];
         const views = (Array.isArray(raw) ? raw : [])
             .map(v => String(v || '').toLowerCase())
             .map(v => (v === 'grid' || v === 'table' ? 'table' : v === 'card' || v === 'cards' ? 'cards' : null))
             .filter((v): v is 'table' | 'cards' => v != null);
         const cardsPerRow = typeof o.cardsPerRow === 'number' && o.cardsPerRow > 0 ? Math.min(6, o.cardsPerRow) : 3;
-        return { views: views.length ? views : ['table', 'cards'], cardsPerRow, title: o.title };
+        const sectionTitles = o.sectionTitles ?? o.SectionTitles;
+        return { views: views.length ? views : ['table', 'cards'], cardsPerRow, title: o.title, sectionTitles };
     } catch {
         return { views: ['table', 'cards'], cardsPerRow: 3 };
     }
@@ -483,6 +490,31 @@ class GenericAgentService {
         if (!res.ok) return null;
         const data = await res.json();
         return data?.Object ?? null;
+    }
+
+    /** Mint short-lived token URL for Result iframe (Wijmo license / filter popups). */
+    async IssueAgentUiHtmlToken(
+        html: string,
+        renderId?: string | null,
+        sessionKey?: string | null,
+    ): Promise<{ Token: string; HtmlUrl: string } | null> {
+        const res = await fetch(`${BASE}/IssueAgentUiHtmlToken`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({
+                Html: html,
+                RenderId: renderId || '',
+                SessionKey: sessionKey || '',
+            }),
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        const obj = data?.Object ?? data?.object;
+        if (!obj) return null;
+        return {
+            Token: String(obj.Token ?? obj.token ?? ''),
+            HtmlUrl: String(obj.HtmlUrl ?? obj.htmlUrl ?? ''),
+        };
     }
 
     async WriteAgentFile(skillKey: string, sessionKey: string | null | undefined, relativePath: string, content: string, fileScope?: string): Promise<void> {

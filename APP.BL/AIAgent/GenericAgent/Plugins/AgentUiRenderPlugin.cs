@@ -153,16 +153,23 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 else if (UiTemplateMerge.IsPageLayout(layout))
                 {
                     // Show-only: grid + cards on ONE Result page. No KPI ask_user gate.
+                    var views = ParsePageViews(specJson);
                     dashRows = LoadRows(context, datasetName, content, limit: null, out resolvedDataset, out truncated, out rowCount);
-                    cardSheet = CardSheet.FromRows(
-                        title ?? resolvedDataset ?? "Cards", dashRows, cardsPerRow ?? 3, cardRows ?? CardSheet.DefaultCardRows);
-                    if (!string.IsNullOrWhiteSpace(title)) cardSheet.Title = title.Trim();
-                    formDoc = LoadFormOrTable(context, "table", datasetName, content, title, null, out _, out _, out _);
-                    if (!string.IsNullOrWhiteSpace(title) && formDoc != null) formDoc.Title = title.Trim();
+                    if (views.Contains("cards"))
+                    {
+                        cardSheet = CardSheet.FromRows(
+                            title ?? resolvedDataset ?? "Cards", dashRows, cardsPerRow ?? 3, cardRows ?? CardSheet.DefaultCardRows);
+                        if (!string.IsNullOrWhiteSpace(title)) cardSheet.Title = title.Trim();
+                    }
+                    if (views.Contains("table"))
+                    {
+                        formDoc = LoadFormOrTable(context, "table", datasetName, content, title, null, out _, out _, out _);
+                        if (!string.IsNullOrWhiteSpace(title) && formDoc != null) formDoc.Title = title.Trim();
+                    }
                 }
                 else if (layout == "cards")
                 {
-                    // Interactive Result uses React cards + full cache; ignore small limit= habits.
+                    // Interactive cards: TemplateContent iframe; ignore small limit= habits.
                     var effLimit = interactive ? null : limit;
                     if (interactive)
                     {
@@ -203,41 +210,88 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 string dataJson = null;
                 string emitSpecJson = null;
 
-                // Interactive dashboard still uses React host (DataJson + SpecJson); HTML twin for export.
-                // Interactive table/cards/page → TemplateContent iframe (same merge as none-interactive, tool row = render_interactive).
-                if (interactive && UiTemplateMerge.IsDashboardLayout(layout) && dashRows != null && dashSpec != null)
+                // Interactive kpi/dashboard/table/cards/page → React host (app Wijmo via license.js).
+                // TemplateContent HTML is the export / none-interactive twin (Scriban View) — not CDN Wijmo.
+                // Interactive chart (+ all none-interactive) → TemplateContent iframe.
+                var sectionTitles = ParseSectionTitles(specJson);
+                if (interactive
+                    && dashRows != null
+                    && (layout == "kpi" || layout == "dashboard"
+                        || layout == "table" || layout == "cards"
+                        || UiTemplateMerge.IsPageLayout(layout)))
                 {
                     dataJson = dashRows.ToString(Formatting.None);
-                    // Ensure charts[] carries a type per series (LLM or SuggestChartType)
-                    var resolvedCharts = UiDashboardHtml.ResolveCharts(dashSpec, dashRows, allowAuto: true);
-                    if (resolvedCharts.Count > 0)
+                    if (layout == "kpi" || layout == "dashboard")
                     {
-                        dashSpec.Charts = resolvedCharts;
-                        if (dashSpec.Chart == null)
-                            dashSpec.Chart = resolvedCharts[0];
+                        var resolvedCharts = UiDashboardHtml.ResolveCharts(dashSpec, dashRows, allowAuto: true);
+                        if (resolvedCharts.Count > 0 && dashSpec != null)
+                        {
+                            dashSpec.Charts = resolvedCharts;
+                            if (dashSpec.Chart == null)
+                                dashSpec.Chart = resolvedCharts[0];
+                        }
+                        emitSpecJson = JsonConvert.SerializeObject(new
+                        {
+                            title = dashSpec?.Title ?? pageTitle,
+                            kpis = dashSpec?.Kpis,
+                            chart = dashSpec?.Chart,
+                            charts = dashSpec?.Charts,
+                            blocks = dashSpec?.Blocks,
+                            availableChartTypes = UiRenderSpec.AvailableChartTypes
+                        }, Formatting.None);
                     }
-                    emitSpecJson = JsonConvert.SerializeObject(new
+                    else if (UiTemplateMerge.IsPageLayout(layout))
                     {
-                        title = dashSpec.Title,
-                        kpis = dashSpec.Kpis,
-                        chart = dashSpec.Chart,
-                        charts = dashSpec.Charts,
-                        blocks = dashSpec.Blocks,
-                        availableChartTypes = UiRenderSpec.AvailableChartTypes
-                    }, Formatting.None);
-                    var svgHtml = UiTemplateMerge.MergeForRender(
-                        layout, null, null, dashRows, dashSpec, interactive: false, forExport: false, renderId, actionsJson);
+                        emitSpecJson = JsonConvert.SerializeObject(new
+                        {
+                            title = pageTitle,
+                            views = ParsePageViews(specJson),
+                            cardsPerRow = cardsPerRow ?? 3,
+                            sectionTitles
+                        }, Formatting.None);
+                    }
+                    else if (layout == "cards")
+                    {
+                        emitSpecJson = JsonConvert.SerializeObject(new
+                        {
+                            title = pageTitle,
+                            cardsPerRow = cardsPerRow ?? 1,
+                            sectionTitles
+                        }, Formatting.None);
+                    }
+                    else
+                    {
+                        emitSpecJson = JsonConvert.SerializeObject(new { title = pageTitle, sectionTitles }, Formatting.None);
+                    }
+
+                    // Export twin = none-interactive TemplateContent (Scriban / default View)
+                    var twinLayout = layout;
+                    if (twinLayout == "kpi" || twinLayout == "dashboard")
+                        twinLayout = "table";
+                    var twinHtml = UiTemplateMerge.MergeForRender(
+                        twinLayout, formDoc, cardSheet, dashRows, dashSpec,
+                        interactive: false, forExport: false, renderId, actionsJson, sectionTitles);
                     htmlPath = "render/" + renderId + ".html";
-                    GenericAgentFileBL.WriteText(context.ChatSessionKey, htmlPath, svgHtml, context.CompanyId);
+                    GenericAgentFileBL.WriteText(context.ChatSessionKey, htmlPath, twinHtml, context.CompanyId);
                     html = null;
                     htmlUrl = null;
                 }
                 else
                 {
-                    // table / cards / page / form / none-interactive dashboard bits: merge from TemplateContent.
+                    if (layout == "chart" && dashSpec != null && dashRows != null)
+                    {
+                        var resolvedCharts = UiDashboardHtml.ResolveCharts(dashSpec, dashRows, allowAuto: true);
+                        if (resolvedCharts.Count > 0)
+                        {
+                            dashSpec.Charts = resolvedCharts;
+                            if (dashSpec.Chart == null)
+                                dashSpec.Chart = resolvedCharts[0];
+                        }
+                    }
+
                     html = UiTemplateMerge.MergeForRender(
-                        layout, formDoc, cardSheet, dashRows, dashSpec, interactive, forExport: false, renderId, actionsJson);
-                    var bytes = Encoding.UTF8.GetByteCount(html);
+                        layout, formDoc, cardSheet, dashRows, dashSpec, interactive, forExport: false, renderId, actionsJson, sectionTitles);
+                    var bytes = Encoding.UTF8.GetByteCount(html ?? "");
                     if (bytes > UiTemplateMerge.InlineHtmlMaxBytes)
                     {
                         htmlPath = "render/" + renderId + ".html";
@@ -285,7 +339,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     Timestamp = evt.Timestamp
                 };
 
-                var onUi = AgentHitlBridge.Current?.OnUiRender;
+                var onUi = AgentHitlBridge.Resolve(context?.ChatSessionKey)?.OnUiRender;
                 if (onUi != null)
                     await onUi(evt).ConfigureAwait(false);
                 else
@@ -297,10 +351,18 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         htmlPath,
                         html = html != null && html.Length < 200000 ? html : null
                     });
-                    var onData = AgentHitlBridge.Current?.OnDataRender;
+                    var onData = AgentHitlBridge.Resolve(context?.ChatSessionKey)?.OnDataRender;
                     if (onData != null)
                         await onData(legacy).ConfigureAwait(false);
                 }
+
+                string note;
+                if (UiTemplateMerge.IsPageLayout(layout))
+                    note = "layout=page: Interactive Result uses Wijmo Grid + Cards stacked (collapse sections). No view toggle — do not claim one in FinalResponse.";
+                else if (interactive && dataJson != null)
+                    note = "Interactive Result uses DataJson+SpecJson (React Wijmo / cards). htmlPath is an export twin only.";
+                else
+                    note = "Result HTML is on the SSE ui_render event (or session file when htmlPath is set).";
 
                 return JsonConvert.SerializeObject(new
                 {
@@ -315,9 +377,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     mappedFrom,
                     htmlPath,
                     htmlUrl,
-                    note = interactive && dataJson != null
-                        ? "Interactive Result uses DataJson+SpecJson (React Wijmo, app license — no CDN watermark)."
-                        : "Result HTML is on the SSE ui_render event (or session file when htmlPath is set)."
+                    ui_note = note,
+                    note
                 });
             }
             catch (Exception ex)
@@ -537,6 +598,31 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
             catch { /* default */ }
             return new[] { "table", "cards" };
+        }
+
+        /// <summary>
+        /// LLM section titles for stacked collapse chrome (layout=page).
+        /// Keys: table|grid, cards|card — values are short human labels from the user question.
+        /// </summary>
+        private static Dictionary<string, string> ParseSectionTitles(string specJson)
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                if (string.IsNullOrWhiteSpace(specJson)) return map;
+                var o = JObject.Parse(specJson);
+                var titles = o["sectionTitles"] as JObject ?? o["SectionTitles"] as JObject;
+                if (titles == null) return map;
+                foreach (var p in titles.Properties())
+                {
+                    var key = (p.Name ?? "").Trim();
+                    var val = p.Value?.Type == JTokenType.String ? p.Value.ToString() : p.Value?.ToString();
+                    if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(val)) continue;
+                    map[key] = val.Trim();
+                }
+            }
+            catch { /* ignore */ }
+            return map;
         }
 
         private static List<string> ParseColumns(string columnsJson, JArray rows)

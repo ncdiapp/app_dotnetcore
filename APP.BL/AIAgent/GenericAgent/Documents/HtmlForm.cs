@@ -314,98 +314,80 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             var imageWidth = perRow <= 1 ? 320 : perRow == 2 ? 220 : 160;
             var sb = new StringBuilder();
             sb.Append("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head>");
-            sb.Append("<body style=\"margin:0;padding:0;background-color:#f4f6f8;\">");
-            sb.Append("<table data-doc=\"cards\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" ");
-            // 12px gap between cards only (horizontal + vertical); field rows stay tight inside each card.
-            sb.Append("style=\"width:100%;border-collapse:separate;border-spacing:12px 12px;background-color:#f4f6f8;font-family:Arial,Helvetica,sans-serif;\">");
+            sb.Append("<body style=\"margin:0;padding:12px;background-color:#f4f6f8;font-family:Arial,Helvetica,sans-serif;\">");
             if (!string.IsNullOrEmpty(sheet.Title))
             {
-                sb.Append("<tr><td colspan=\"");
-                sb.Append(perRow.ToString(CultureInfo.InvariantCulture));
-                sb.Append("\" data-role=\"title\" align=\"center\" style=\"padding:18px 16px 6px 16px;font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:26px;font-weight:bold;color:#111827;\">");
+                sb.Append("<div data-role=\"title\" style=\"padding:6px 4px 14px 4px;text-align:center;font-size:20px;line-height:26px;font-weight:bold;color:#111827;\">");
                 sb.Append(WebUtility.HtmlEncode(sheet.Title));
-                sb.Append("</td></tr>");
+                sb.Append("</div>");
             }
+            // One self-contained card per cell (not field-rows spanning the grid — that looked like zebra mini-tables).
+            // max-width + table-layout keep the sheet inside the Result pane (avoids forcing chat splitter open).
+            sb.Append("<div style=\"max-width:100%;overflow-x:auto;box-sizing:border-box;\">");
+            sb.Append("<table data-doc=\"cards\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" ");
+            sb.Append("style=\"width:100%;max-width:100%;table-layout:fixed;border-collapse:separate;border-spacing:12px 12px;background-color:#f4f6f8;box-sizing:border-box;\">");
             if (sheet.Cards.Count == 0)
             {
-                sb.Append("<tr><td style=\"padding:16px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280;\">No records.</td></tr>");
+                sb.Append("<tr><td style=\"padding:16px;font-size:13px;color:#6b7280;\">No records.</td></tr>");
             }
             for (var i = 0; i < sheet.Cards.Count; i += perRow)
             {
-                var slice = new List<List<CardField>>();
+                sb.Append("<tr>");
                 for (var c = 0; c < perRow; c++)
-                    slice.Add(i + c < sheet.Cards.Count ? sheet.Cards[i + c] : null);
-                var images = new List<List<CardField>>();
-                var texts = new List<List<CardField>>();
-                var imageCount = 0;
-                var textCount = 0;
-                foreach (var card in slice)
                 {
-                    var pics = new List<CardField>();
-                    var lines = new List<CardField>();
-                    if (card != null)
+                    var idx = i + c;
+                    if (idx >= sheet.Cards.Count)
                     {
-                        foreach (var field in card)
-                        {
-                            if (field.IsImage || (field.ImageBytes != null && field.ImageBytes.Length > 0))
-                                pics.Add(field);
-                            else
-                                lines.Add(field);
-                        }
+                        sb.Append("<td width=\"").Append((100 / perRow).ToString(CultureInfo.InvariantCulture))
+                            .Append("%\" style=\"width:").Append((100 / perRow).ToString(CultureInfo.InvariantCulture))
+                            .Append("%;\"></td>");
+                        continue;
                     }
-                    images.Add(pics);
-                    texts.Add(lines);
-                    imageCount = Math.Max(imageCount, pics.Count);
-                    textCount = Math.Max(textCount, lines.Count);
+                    sb.Append("<td valign=\"top\" width=\"").Append((100 / perRow).ToString(CultureInfo.InvariantCulture))
+                        .Append("%\" data-role=\"card\" style=\"width:")
+                        .Append((100 / perRow).ToString(CultureInfo.InvariantCulture))
+                        .Append("%;max-width:").Append((100 / perRow).ToString(CultureInfo.InvariantCulture))
+                        .Append("%;overflow:hidden;word-break:break-word;background:#ffffff;border:1px solid #e6e8eb;border-radius:8px;padding:12px 14px;vertical-align:top;box-sizing:border-box;\">");
+                    AppendScreenCardBody(sb, sheet.Cards[idx], imageWidth);
+                    sb.Append("</td>");
                 }
-                var last = imageCount + textCount - 1;
-                var rowIndex = 0;
-                for (var p = 0; p < imageCount; p++)
-                {
-                    sb.Append("<tr>");
-                    for (var c = 0; c < perRow; c++)
-                    {
-                        if (slice[c] == null)
-                            continue;
-                        OpenCardCell(sb, perRow, rowIndex == 0, rowIndex == last);
-                        var field = p < images[c].Count ? images[c][p] : null;
-                        sb.Append("<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"width:100%;border-collapse:collapse;\"><tr><td style=\"padding:12px 14px 4px 14px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:14px;color:#6b7280;\">");
-                        sb.Append(WebUtility.HtmlEncode(field == null ? "" : PrettyLabel(field.Label)));
-                        sb.Append("</td></tr></table>");
-                        sb.Append("<table width=\"100%\" height=\"180\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"height:180px;border-collapse:collapse;background-color:#f3f4f6;\"><tr><td align=\"center\" valign=\"middle\" height=\"180\" bgcolor=\"#f3f4f6\" style=\"height:180px;background-color:#f3f4f6;text-align:center;vertical-align:middle;\">");
-                        if (field != null)
-                            AppendCardImage(sb, field, imageWidth);
-                        sb.Append("</td></tr></table>");
-                        sb.Append("</td>");
-                    }
-                    sb.Append("</tr>");
-                    rowIndex++;
-                }
-                for (var t = 0; t < textCount; t++)
-                {
-                    sb.Append("<tr>");
-                    for (var c = 0; c < perRow; c++)
-                    {
-                        if (slice[c] == null)
-                            continue;
-                        OpenCardCell(sb, perRow, rowIndex == 0, rowIndex == last);
-                        sb.Append("<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"width:100%;border-collapse:collapse;\"><tr>");
-                        var field = t < texts[c].Count ? texts[c][t] : null;
-                        var value = field == null || string.IsNullOrWhiteSpace(field.Value) ? "\u2014" : field.Value;
-                        sb.Append("<td valign=\"top\" width=\"108\" style=\"width:108px;padding:1px 8px 1px 12px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:14px;color:#6b7280;vertical-align:top;\">");
-                        sb.Append(WebUtility.HtmlEncode(field == null ? "" : PrettyLabel(field.Label)));
-                        sb.Append("</td><td valign=\"top\" style=\"padding:1px 12px 1px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:14px;color:#111827;vertical-align:top;\">");
-                        sb.Append(WebUtility.HtmlEncode(value));
-                        sb.Append("</td></tr></table></td>");
-                    }
-                    sb.Append("</tr>");
-                    rowIndex++;
-                }
-                if (imageCount + textCount > 0)
-                    sb.Append("<tr><td colspan=\"").Append(perRow.ToString(CultureInfo.InvariantCulture)).Append("\" height=\"12\" style=\"height:12px;font-size:0;line-height:0;\">&nbsp;</td></tr>");
+                sb.Append("</tr>");
             }
-            sb.Append("</table></body></html>");
+            sb.Append("</table></div></body></html>");
             return sb.ToString();
+        }
+
+        /// <summary>All fields for one card inside a single cell (Result / screen).</summary>
+        private static void AppendScreenCardBody(StringBuilder sb, List<CardField> card, int imageWidth)
+        {
+            if (card == null || card.Count == 0)
+            {
+                sb.Append("<div style=\"font-size:12px;color:#9ca3af;\">\u2014</div>");
+                return;
+            }
+            foreach (var field in card)
+            {
+                if (field == null) continue;
+                if (field.IsImage || (field.ImageBytes != null && field.ImageBytes.Length > 0) || CardSheet.IsImageValue(field.Value))
+                {
+                    sb.Append("<div style=\"margin:0 0 10px 0;\">");
+                    sb.Append("<div style=\"font-size:11px;line-height:14px;color:#6b7280;margin:0 0 4px 0;\">");
+                    sb.Append(WebUtility.HtmlEncode(PrettyLabel(field.Label)));
+                    sb.Append("</div>");
+                    sb.Append("<div style=\"background:#f3f4f6;border-radius:4px;min-height:120px;display:flex;align-items:center;justify-content:center;padding:8px;\">");
+                    AppendCardImage(sb, field, imageWidth);
+                    sb.Append("</div></div>");
+                    continue;
+                }
+                var value = string.IsNullOrWhiteSpace(field.Value) ? "\u2014" : field.Value;
+                sb.Append("<div style=\"display:flex;gap:8px;margin:0 0 6px 0;align-items:flex-start;\">");
+                sb.Append("<div style=\"flex:0 0 108px;width:108px;font-size:11px;line-height:16px;color:#6b7280;\">");
+                sb.Append(WebUtility.HtmlEncode(PrettyLabel(field.Label)));
+                sb.Append("</div>");
+                sb.Append("<div style=\"flex:1 1 auto;font-size:12px;line-height:16px;color:#111827;font-weight:500;\">");
+                sb.Append(WebUtility.HtmlEncode(value));
+                sb.Append("</div></div>");
+            }
         }
 
         /// <summary>
@@ -523,20 +505,6 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 
         private static string Mm(double value)
             => value.ToString("0.##", CultureInfo.InvariantCulture) + "mm";
-
-        private static void OpenCardCell(StringBuilder sb, int perRow, bool first, bool last)
-        {
-            sb.Append("<td valign=\"top\" width=\"");
-            sb.Append((100 / perRow).ToString(CultureInfo.InvariantCulture));
-            sb.Append("%\" bgcolor=\"#ffffff\" style=\"width:");
-            sb.Append((100 / perRow).ToString(CultureInfo.InvariantCulture));
-            sb.Append("%;background-color:#ffffff;border-left:1px solid #e6e8eb;border-right:1px solid #e6e8eb;");
-            if (first)
-                sb.Append("border-top:1px solid #e6e8eb;");
-            if (last)
-                sb.Append("border-bottom:1px solid #e6e8eb;");
-            sb.Append("vertical-align:top;\">");
-        }
 
         private static void AppendCardImage(StringBuilder sb, CardField field, int imageWidth)
             => AppendCardImage(sb, field, imageWidth, 0);

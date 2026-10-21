@@ -111,7 +111,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 ContextKey = string.IsNullOrWhiteSpace(contextKey) ? null : contextKey.Trim()
             };
 
-            var onAsk = AgentHitlBridge.Current?.OnAskUser;
+            var onAsk = AgentHitlBridge.Resolve(context?.ChatSessionKey)?.OnAskUser;
             if (onAsk == null)
             {
                 return JsonConvert.SerializeObject(new

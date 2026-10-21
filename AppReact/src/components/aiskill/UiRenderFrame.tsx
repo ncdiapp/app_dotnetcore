@@ -4,25 +4,41 @@ import { endpoints } from '../../webapi/endpoints';
 import { genericAgentSvc, type DataRenderEvent } from '../../webapi/genericAgentSvc';
 import { WIJMO_LICENSE_KEY } from '../../wijmoLicenseKey';
 
-/** Ensure iframe HTML applies the same Wijmo key as the main SPA, immediately after core script. */
+/**
+ * Ensure iframe HTML applies the same Wijmo key as the main SPA, immediately after core script
+ * and again before FlexGrid boot.
+ */
 function ensureWijmoLicenseInHtml(raw: string): string {
     if (!raw || !WIJMO_LICENSE_KEY) return raw;
+    if (!/wijmo/i.test(raw)) return raw;
     const keyLit = JSON.stringify(WIJMO_LICENSE_KEY);
+    const applyFn =
+        `function __agentApplyWijmoLicense(k){var w=window.wijmo;if(!w||!k)return;` +
+        `if(typeof w.setLicenseKey==='function')w.setLicenseKey(k);` +
+        `else if(w.Control&&typeof w.Control.setLicenseKey==='function')w.Control.setLicenseKey(k);}`;
     const inject =
-        `<script>(function(){try{var k=${keyLit};` +
-        `window.__WIJMO_LICENSE_KEY__=k;` +
-        `function apply(){if(window.wijmo&&wijmo.setLicenseKey)wijmo.setLicenseKey(k);}` +
-        `apply();` +
-        `})();</script>`;
-    // Prefer right after core wijmo.min.js (before grid/chart scripts)
+        `<script>(function(){try{var k=${keyLit};window.__WIJMO_LICENSE_KEY__=k;${applyFn};__agentApplyWijmoLicense(k);}` +
+        `catch(e){}})();</script>`;
+
+    let html = raw;
+    html = html.replace(/window\.__WIJMO_LICENSE_KEY__\s*=\s*(?:[^;]|\\;)+;/g, `window.__WIJMO_LICENSE_KEY__=${keyLit};`);
+
     const coreRe = /(<script[^>]+wijmo\.min\.js[^>]*><\/script>)/i;
-    if (coreRe.test(raw)) {
-        return raw.replace(coreRe, `$1${inject}`);
+    if (coreRe.test(html)) {
+        html = html.replace(coreRe, `$1${inject}`);
+    } else if (/<\/head>/i.test(html)) {
+        html = html.replace(/<\/head>/i, `${inject}</head>`);
+    } else {
+        html = inject + html;
     }
-    if (/<\/head>/i.test(raw)) {
-        return raw.replace(/<\/head>/i, `${inject}</head>`);
+
+    const reapply =
+        `<script>(function(){try{var k=window.__WIJMO_LICENSE_KEY__||${keyLit};` +
+        `${applyFn};__agentApplyWijmoLicense(k);}catch(e){}})();</script>`;
+    if (/window\.__AGENT_UI__\s*=/.test(html)) {
+        html = html.replace(/<script>\s*window\.__AGENT_UI__\s*=/, `${reapply}<script>window.__AGENT_UI__=`);
     }
-    return inject + raw;
+    return html;
 }
 
 interface Props {
@@ -42,7 +58,6 @@ function resolveHtmlUrl(url: string | null | undefined): string | null {
     return `${base}/${u}`;
 }
 
-/** iframe src= navigation cannot send CurrentUserSessionId header → 401 → SPA Home. Only use src when token is present. */
 function htmlUrlHasToken(url: string | null | undefined): boolean {
     if (!url) return false;
     return /[?&]token=/.test(url);
@@ -50,37 +65,54 @@ function htmlUrlHasToken(url: string | null | undefined): boolean {
 
 /**
  * Result panel host:
- * - Interactive KPI/dashboard: fetch session HTML with auth headers, srcDoc (Wijmo CDN scripts OK)
- * - Optional HtmlUrl+token: iframe src (print-like)
- * - None-interactive: srcDoc for C#-merged SVG HTML
+ * - Interactive Wijmo HTML → mint token + iframe src on API host (license + filter popups).
+ * - No sandbox on Wijmo pages (sandbox/srcdoc caused evaluation watermark and broken popups).
  */
 const UiRenderFrame: React.FC<Props> = ({ event, skillKey, sessionKey, disabled, onAction }) => {
     const { theme } = useTheme();
     const iframeRef = useRef<HTMLIFrameElement>(null);
-    const [html, setHtml] = useState<string | null>(event.Html ?? null);
+    const [frameSrc, setFrameSrc] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const interactive = (event.Mode || '').toLowerCase() === 'interactive';
     const htmlUrl = resolveHtmlUrl(event.HtmlUrl);
-    const useIframeSrc = htmlUrlHasToken(htmlUrl);
+    const useTokenUrl = htmlUrlHasToken(htmlUrl);
 
     useEffect(() => {
         let cancelled = false;
         setError(null);
+        setFrameSrc(null);
 
-        // Tokenized URL → real navigation (cookies/token query only)
-        if (useIframeSrc && htmlUrl) {
-            setHtml(null);
+        if (useTokenUrl && htmlUrl) {
+            setFrameSrc(htmlUrl);
             return;
         }
 
-        // Prefer authenticated file read (interactive pages write HtmlPath; headers work here)
+        const mountHtml = async (raw: string) => {
+            const html = ensureWijmoLicenseInHtml(raw);
+            if (/wijmo/i.test(html)) {
+                try {
+                    const issued = await genericAgentSvc.IssueAgentUiHtmlToken(html, event.RenderId, sessionKey);
+                    if (cancelled) return;
+                    if (issued?.HtmlUrl) {
+                        setFrameSrc(issued.HtmlUrl);
+                        return;
+                    }
+                } catch {
+                    /* fall through to blob */
+                }
+            }
+            if (cancelled) return;
+            const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            setFrameSrc(url);
+        };
+
         if (event.HtmlPath && sessionKey) {
-            setHtml(null);
             void (async () => {
                 try {
                     const res = await genericAgentSvc.ReadAgentFile(skillKey, sessionKey, event.HtmlPath!);
                     if (cancelled) return;
-                    if (res?.Content) setHtml(ensureWijmoLicenseInHtml(res.Content));
+                    if (res?.Content) await mountHtml(res.Content);
                     else setError('Could not load Result HTML file.');
                 } catch {
                     if (!cancelled) setError('Could not load Result HTML file.');
@@ -90,14 +122,19 @@ const UiRenderFrame: React.FC<Props> = ({ event, skillKey, sessionKey, disabled,
         }
 
         if (event.Html) {
-            setHtml(ensureWijmoLicenseInHtml(event.Html));
-            return;
+            void mountHtml(event.Html);
+            return () => { cancelled = true; };
         }
 
-        setHtml(null);
         setError('Re-run to view in Result (no HTML on this message).');
         return () => { cancelled = true; };
-    }, [event.Html, event.HtmlPath, event.HtmlUrl, event.RenderId, skillKey, sessionKey, useIframeSrc, htmlUrl]);
+    }, [event.Html, event.HtmlPath, event.HtmlUrl, event.RenderId, skillKey, sessionKey, useTokenUrl, htmlUrl]);
+
+    useEffect(() => {
+        return () => {
+            if (frameSrc && frameSrc.startsWith('blob:')) URL.revokeObjectURL(frameSrc);
+        };
+    }, [frameSrc]);
 
     useEffect(() => {
         const onMessage = (ev: MessageEvent) => {
@@ -117,11 +154,6 @@ const UiRenderFrame: React.FC<Props> = ({ event, skillKey, sessionKey, disabled,
         return () => window.removeEventListener('message', onMessage);
     }, [disabled, onAction, event.RenderId]);
 
-    // Interactive / CDN pages need scripts; same-origin for postMessage
-    const sandbox = interactive || !!event.HtmlPath || useIframeSrc
-        ? 'allow-scripts allow-same-origin allow-popups'
-        : 'allow-same-origin';
-
     if (error) {
         return (
             <div className={`text-xs p-3 rounded border ${theme.label}`}>
@@ -130,19 +162,7 @@ const UiRenderFrame: React.FC<Props> = ({ event, skillKey, sessionKey, disabled,
         );
     }
 
-    if (useIframeSrc && htmlUrl) {
-        return (
-            <iframe
-                ref={iframeRef}
-                title={event.Title || 'Result'}
-                className="w-full h-full min-h-[240px] border-0 bg-white"
-                sandbox={sandbox}
-                src={htmlUrl}
-            />
-        );
-    }
-
-    if (!html) {
+    if (!frameSrc) {
         return (
             <div className={`text-xs p-3 ${theme.label}`}>
                 <i className="fa-solid fa-spinner fa-spin mr-2" />
@@ -151,13 +171,16 @@ const UiRenderFrame: React.FC<Props> = ({ event, skillKey, sessionKey, disabled,
         );
     }
 
+    // Wijmo interactive: no sandbox — license hostname + filter Popup need a normal browsing context.
+    const isWijmo = /AgentUiInteractiveHtml|blob:/i.test(frameSrc) && interactive;
     return (
         <iframe
             ref={iframeRef}
             title={event.Title || 'Result'}
-            className="w-full h-full min-h-[240px] border-0 bg-white"
-            sandbox={sandbox}
-            srcDoc={html}
+            className="w-full h-full min-h-[240px] min-w-0 max-w-full border-0 bg-white"
+            style={{ width: '100%', maxWidth: '100%' }}
+            {...(isWijmo ? {} : { sandbox: 'allow-scripts allow-same-origin allow-popups' })}
+            src={frameSrc}
         />
     );
 };

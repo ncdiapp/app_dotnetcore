@@ -822,8 +822,8 @@ public class GenericAgentController : SecureBaseController
     }
 
     /// <summary>
-    /// Serves interactive KPI/dashboard HTML (Wijmo CDN page) for Result iframe src.
-    /// Auth same as agent files; returns text/html (not JSON envelope).
+    /// Serves interactive Result HTML (Wijmo CDN page) for iframe src.
+    /// Prefer token URL so the document origin is the API host (Wijmo license + filter popups).
     /// </summary>
     [HttpGet]
     public IActionResult AgentUiInteractiveHtml(
@@ -859,6 +859,60 @@ public class GenericAgentController : SecureBaseController
         {
             return BadRequest(ex.Message);
         }
+    }
+
+    public class IssueAgentUiHtmlTokenRequest
+    {
+        public string Html { get; set; }
+        public string RenderId { get; set; }
+        public string SessionKey { get; set; }
+    }
+
+    /// <summary>
+    /// Mint a short-lived token for Result iframe src= (avoids about:srcdoc / blob license issues).
+    /// </summary>
+    [HttpPost]
+    public OperationCallResult<object> IssueAgentUiHtmlToken([FromBody] IssueAgentUiHtmlTokenRequest body)
+    {
+        var result = new OperationCallResult<object>();
+        if (!TryFilesIdentity(out var ai, out var companyId, out var err))
+        {
+            result.ValidationResult = err.ValidationResult;
+            return result;
+        }
+        if (body == null || string.IsNullOrWhiteSpace(body.Html))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "IssueAgentUiHtmlToken",
+                ValidationItemType.Error, "Html is required."));
+            return result;
+        }
+        var tokenSvc = HttpContext.RequestServices.GetService<AppAI.Web.Services.AgentUiRenderTokenService>();
+        if (tokenSvc == null)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "IssueAgentUiHtmlToken",
+                ValidationItemType.Error, "Token service unavailable."));
+            return result;
+        }
+        var token = tokenSvc.Issue(new AppAI.Web.Services.AgentUiRenderTokenPayload
+        {
+            Html = body.Html,
+            RenderId = body.RenderId,
+            SessionKey = body.SessionKey,
+            CompanyId = companyId,
+            UserId = Convert.ToInt32(ai.UserId)
+        });
+        var url = Url.Action(nameof(AgentUiInteractiveHtml), "GenericAgent", new { token })
+                  ?? $"/webapi/GenericAgent/AgentUiInteractiveHtml?token={Uri.EscapeDataString(token)}";
+        // Absolute for iframe when SPA is on another port
+        if (url.StartsWith("/"))
+        {
+            var req = HttpContext.Request;
+            url = $"{req.Scheme}://{req.Host}{url}";
+        }
+        result.Object = new { Token = token, HtmlUrl = url };
+        return result;
     }
 
     [HttpPost]

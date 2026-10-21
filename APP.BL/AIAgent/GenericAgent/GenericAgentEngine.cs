@@ -81,15 +81,16 @@ Treat as analysis-like ONLY when the user asks to analyze / group by / break dow
 Do NOT treat plain ""show / display / grid view / card view"" as analysis — no ask_user KPI gate for those.
 
 ### Large data / row limit (Interactive — always)
-For unbounded detail SELECT (no TOP/LIMIT): call execute_sql — the platform COUNTs first.
+For detail SELECT (with or without TOP): call execute_sql — the platform COUNTs the full set first and may ask the user (confirm_row_limit). Do NOT invent TOP yourself.
 - If counted rows ≤ 250: platform fetches all — do not ask.
-- If larger: execute_sql returns need_ask_user with counted_rows + optionsJson. Then call ask_user with that prompt/options (include the count). Options are count-based (e.g. 500 → TOP 100 vs All 500; 1002 → TOP 100 vs All 1002 — no pointless TOP 1000).
-- After the user chooses: re-run execute_sql (omit TOP when they chose all).
-- Do NOT invent TOP 100/1000 yourself. Scalar COUNT(*) / GROUP BY skip this gate.
+- If larger: platform asks TOP 100 / TOP 1000 (when useful) / All N, then fetches.
+- Scalar COUNT(*) / GROUP BY skip this gate.
 
 ### Show grid + card on ONE Result page (not analysis)
 When the user asks to show both grid and card (or table + cards) without analysis:
-- Call render_interactive ONCE with layout=page, dataset_name, and optional specJson {""views"":[""table"",""cards""],""cardsPerRow"":3}.
+- Call render_interactive ONCE with layout=page, dataset_name, and specJson including views + sectionTitles.
+- sectionTitles (required when stacking): short, user-facing labels derived from the user's question — NOT literal ""Grid""/""Cards""/""Table"". Example: {""views"":[""table"",""cards""],""cardsPerRow"":3,""sectionTitles"":{""table"":""Body parts — table"",""cards"":""Body parts — cards""}}.
+- Result shows BOTH views stacked on one page (collapse/expand sections). There is NO view toggle or view selector — do not claim one in FinalResponse.
 - Do NOT emit three separate Results (dashboard + grid + card).
 - Do NOT call ask_user(confirm_kpi_dashboard) just for multi-view show.
 - Prefer render_interactive; for row volume use confirm_row_limit (above), not a silent full fetch.
@@ -122,6 +123,7 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
             log.Info($"[Agent] START skill={skillKey}");
             var previousHitl = AgentHitlBridge.Current;
             AgentHitlBridge.Current = callbacks;
+            string boundChatKey = null;
             try
             {
                 var dsId = identity.HasValue ? identity.Value.DataSourceId : 0;
@@ -143,6 +145,9 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
                 var resolvedChatKey = string.IsNullOrWhiteSpace(chatSessionKey)
                     ? (userId > 0 ? AppGenericAgentSessionBL.MakeFixedKey(skillKey, userId) : "")
                     : chatSessionKey.Trim();
+                // Session fallback when tool dispatch loses AsyncLocal (row-limit ask_user).
+                boundChatKey = resolvedChatKey;
+                AgentHitlBridge.BindSession(boundChatKey, callbacks);
                 var context   = new AgentToolContext
                 {
                     ConnectionString = identity.HasValue ? identity.Value.CurrentUserDbConnectionString ?? "" : "",
@@ -273,12 +278,16 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
 
                     if (enableThinkMode)
                     {
-                        await Safe(callbacks?.OnStep, new AgentStepEvent
+                        var opening = AgentThinkNarrator.Opening(userMessage);
+                        if (!string.IsNullOrWhiteSpace(opening))
                         {
-                            Type = "thinking",
-                            Description = AgentThinkNarrator.Opening(userMessage),
-                            IsSuccess = true
-                        }).ConfigureAwait(false);
+                            await Safe(callbacks?.OnStep, new AgentStepEvent
+                            {
+                                Type = "thinking",
+                                Description = opening,
+                                IsSuccess = true
+                            }).ConfigureAwait(false);
+                        }
                     }
 
                     var fullResponse = new StringBuilder();
@@ -365,6 +374,7 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
             }
             finally
             {
+                AgentHitlBridge.UnbindSession(boundChatKey);
                 AgentHitlBridge.Current = previousHitl;
             }
         }

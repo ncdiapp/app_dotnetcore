@@ -158,6 +158,9 @@ namespace App.BL.AIAgent.GenericAgent
         public static string Opening(string userMessage)
         {
             var u = (userMessage ?? "").Trim();
+            // Internal boot ping — never show as a user-facing Reasoning step.
+            if (string.Equals(u, "[session_start]", StringComparison.OrdinalIgnoreCase))
+                return null;
             if (string.IsNullOrEmpty(u))
                 return "Reading the request and deciding which tools can answer it.";
             var one = Clip(u.Replace("\r\n", " ").Replace("\n", " "), 160);

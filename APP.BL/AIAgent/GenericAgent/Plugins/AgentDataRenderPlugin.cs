@@ -216,7 +216,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 Timestamp = DateTime.UtcNow.ToString("o")
             };
 
-            var onRender = AgentHitlBridge.Current?.OnDataRender;
+            var onRender = AgentHitlBridge.Resolve(context?.ChatSessionKey)?.OnDataRender;
             if (onRender != null)
             {
                 try

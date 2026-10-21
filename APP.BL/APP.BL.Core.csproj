@@ -31,6 +31,7 @@
     <PackageReference Include="MailKit" Version="4.7.1" />
     <PackageReference Include="MimeKit" Version="4.7.1" />
     <PackageReference Include="PdfPig" Version="0.1.16" />
+    <PackageReference Include="Scriban" Version="5.12.1" />
   </ItemGroup>
 
   <!-- HTML parsing -->
