@@ -77,10 +77,11 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             string actionsJson)
         {
             layout = NormalizeLayout(layout);
+            var toolName = interactive ? InteractiveTool : NoneInteractiveTool;
             string html;
             if (IsDashboardLayout(layout))
             {
-                var body = ResolveLayoutBody(interactive ? InteractiveTool : NoneInteractiveTool, layout);
+                var body = ResolveLayoutBody(toolName, layout);
                 if (IsCodeDefault(body))
                 {
                     html = UiDashboardHtml.Build(
@@ -98,15 +99,25 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     html = ApplyTitlePlaceholder(body, dashSpec?.Title ?? formDoc?.Title);
                 }
             }
+            else if (IsPageLayout(layout))
+            {
+                // table + cards on one HTML page from render_* .TemplateContent["page"] (or code default compose).
+                var body = ResolveLayoutBody(toolName, "page", allowTableFormFallback: false);
+                var pageTitle = formDoc?.Title ?? cardSheet?.Title;
+                if (IsCodeDefault(body))
+                    html = ComposePageHtml(formDoc, cardSheet, pageTitle);
+                else
+                    html = ApplyTitlePlaceholder(body, pageTitle);
+            }
             else if (layout == "cards" && cardSheet != null)
             {
-                var body = ResolveLayoutBody(interactive ? InteractiveTool : NoneInteractiveTool, "cards");
+                var body = ResolveLayoutBody(toolName, "cards");
                 html = IsCodeDefault(body) ? HtmlForm.WriteCards(cardSheet, false) : ApplyTitlePlaceholder(body, cardSheet.Title);
             }
             else if (formDoc != null)
             {
                 var key = layout == "form" ? "form" : "table";
-                var body = ResolveLayoutBody(interactive ? InteractiveTool : NoneInteractiveTool, key);
+                var body = ResolveLayoutBody(toolName, key);
                 html = IsCodeDefault(body) ? HtmlForm.Write(formDoc) : ApplyTitlePlaceholder(body, formDoc.Title);
             }
             else
@@ -156,6 +167,12 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         }
 
         public static string ResolveLayoutBody(string toolName, string layout)
+            => ResolveLayoutBody(toolName, layout, allowTableFormFallback: true);
+
+        /// <param name="allowTableFormFallback">
+        /// When false (e.g. layout=page), missing key → code default compose — do not reuse table HTML as the page template.
+        /// </param>
+        public static string ResolveLayoutBody(string toolName, string layout, bool allowTableFormFallback)
         {
             layout = NormalizeLayout(layout);
             try
@@ -164,7 +181,9 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 if (tool == null || string.IsNullOrWhiteSpace(tool.TemplateContent))
                     return CodeDefaultMarker;
                 var map = JObject.Parse(tool.TemplateContent);
-                var token = map[layout] ?? map["table"] ?? map["form"];
+                var token = map[layout];
+                if (token == null && allowTableFormFallback)
+                    token = map["table"] ?? map["form"];
                 var text = token?.ToString();
                 return string.IsNullOrWhiteSpace(text) ? CodeDefaultMarker : text;
             }
@@ -172,6 +191,23 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             {
                 return CodeDefaultMarker;
             }
+        }
+
+        /// <summary>Code-default page: stack table then cards in one document (Result iframe).</summary>
+        public static string ComposePageHtml(FormDocument formDoc, CardSheet cardSheet, string title)
+        {
+            var tableInner = formDoc != null ? ExtractBodyInner(HtmlForm.Write(formDoc)) : "";
+            var cardsInner = cardSheet != null ? ExtractBodyInner(HtmlForm.WriteCards(cardSheet, false)) : "";
+            var encTitle = System.Net.WebUtility.HtmlEncode(title ?? "Result");
+            return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>" + encTitle +
+                   "</title></head><body>" + tableInner + cardsInner + "</body></html>";
+        }
+
+        private static string ExtractBodyInner(string html)
+        {
+            if (string.IsNullOrEmpty(html)) return "";
+            var m = Regex.Match(html, @"<body[^>]*>([\s\S]*?)</body>", RegexOptions.IgnoreCase);
+            return m.Success ? m.Groups[1].Value : html;
         }
 
         public static string GetPrintCss()
@@ -193,10 +229,15 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         public static string NormalizeLayout(string layout)
         {
             var n = (layout ?? "").Trim().ToLowerInvariant();
+            if (n is "page" or "multi" or "gallery" or "split")
+                return "page";
             if (n == "form" || n == "table" || n == "cards" || n == "kpi" || n == "chart" || n == "dashboard")
                 return n;
             return "table";
         }
+
+        /// <summary>One Result page stacking table + cards (show-only; no KPI gate).</summary>
+        public static bool IsPageLayout(string layout) => NormalizeLayout(layout) == "page";
 
         public static string MapLegacyUi(string ui, out string mappedFrom)
         {

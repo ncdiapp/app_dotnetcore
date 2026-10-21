@@ -150,6 +150,7 @@ const AgentChildAgentTab: React.FC<AgentChildAgentTabProps> = ({
                 ExecutionMode: createMode || 'Deterministic',
                 AgentUi: 1,
                 AllowAgentFirstTurn: false,
+                EnableThinkMode: false,
             };
             const upsert = await agentSkillSetSvc.UpsertSkillSet(dto);
             if (!upsert.IsSuccessful && upsert.Object === false) {

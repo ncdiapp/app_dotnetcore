@@ -20,6 +20,8 @@ export interface AppAgentSkillSetDto {
     AgentUi:            number;
     /** When true + Interactive: empty chat fires hidden [session_start]. UI: "Agent Starts Chat First". */
     AllowAgentFirstTurn?: boolean;
+    /** When true: emit Reasoning-loop (Think) steps. Default false (token cost). */
+    EnableThinkMode?:   boolean;
     /** Child-Agents under this agent (Orchestrator when > 0). */
     ChildCount?:        number;
     /** Orchestrators that list this agent as a Child-Agent. */

@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using App.BL.AIAgent.GenericAgent.DataAnalyze;
@@ -66,7 +67,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                             AgentUiPathConfirmBL.ContextKey + "', mode=single_choice, prompt='" +
                             AgentUiPathConfirmBL.AskUserPromptHint() + "', optionsJson=" +
                             AgentUiPathConfirmBL.AskUserOptionsJson() + ". " +
-                            "After kpi_dashboard: call data_analyze (count/distribution) then render layout=dashboard with kpis+chart. " +
+                            "After kpi_dashboard: if the cached dataset is raw rows, call data_analyze (count|distribution|group_by) then render; " +
+                            "if SQL already GROUP BY'd with TotalCount/Count, skip data_analyze and render with chart.yField=that measure. " +
                             "After fetch_display: only fetch and show/export — no data_analyze."
                     }));
                 }
@@ -147,9 +149,68 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }));
             }
 
+            // SQL already GROUP BY'd (few rows + Count/TotalCount) — summary/count-without-group is noise.
+            var opNorm = operation.Trim().ToLowerInvariant();
+            if (LooksAlreadyAggregated(dataset)
+                && (opNorm == "summary"
+                    || (opNorm == "count" && string.IsNullOrWhiteSpace(group_by))))
+            {
+                var measure = GuessMeasureColumn(dataset);
+                return Task.FromResult(JsonConvert.SerializeObject(new
+                {
+                    ok = true,
+                    skipped_redundant = true,
+                    dataset_name = dataset.Name,
+                    operation = opNorm,
+                    rowCount = dataset.Rows.Count,
+                    columns = dataset.Columns.Select(c => new { c.Name, type = c.Type.ToString().ToLowerInvariant() }).ToList(),
+                    text =
+                        $"Dataset '{dataset.Name}' already looks aggregated ({dataset.Rows.Count} rows" +
+                        (measure != null ? $", measure={measure}" : "") +
+                        "). Skip data_analyze — render_interactive layout=dashboard with chart.xField=category column" +
+                        (measure != null ? $", chart.yField={measure}" : ", chart.yField=<measure>") +
+                        ". Do not use yField=count on pre-aggregated SQL results.",
+                    hint =
+                        "Use the cached rows as-is for KPI/chart. data_analyze is for raw/detail caches only."
+                }, Formatting.None));
+            }
+
             var json = AgentDataAnalyzeService.Analyze(
                 dataset, operation, column, group_by, filter, filter_column, lim, order_by);
             return Task.FromResult(json);
+        }
+
+        private static bool LooksAlreadyAggregated(AgentCachedDataset ds)
+        {
+            if (ds?.Rows == null || ds.Rows.Count == 0 || ds.Rows.Count > 80) return false;
+            if (ds.Columns == null || ds.Columns.Count < 2) return false;
+            var measure = GuessMeasureColumn(ds);
+            if (measure == null) return false;
+            // Heuristic: source was SQL/API and result is small with a count-like column
+            var src = ds.SourceTool ?? "";
+            if (src.IndexOf("sql", StringComparison.OrdinalIgnoreCase) >= 0
+                || src.IndexOf("execute", StringComparison.OrdinalIgnoreCase) >= 0
+                || ds.Rows.Count <= 40)
+                return true;
+            return false;
+        }
+
+        private static string GuessMeasureColumn(AgentCachedDataset ds)
+        {
+            if (ds?.Columns == null) return null;
+            foreach (var name in new[]
+                     {
+                         "TotalCount", "total_count", "RecordCount", "Count", "Cnt",
+                         "Qty", "Quantity", "Amount", "Sum", "Total"
+                     })
+            {
+                var hit = ds.Columns.FirstOrDefault(c =>
+                    c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                if (hit != null) return hit.Name;
+            }
+            var soft = ds.Columns.FirstOrDefault(c =>
+                Regex.IsMatch(c.Name ?? "", @"count|total|sum|qty|amount", RegexOptions.IgnoreCase));
+            return soft?.Name;
         }
 
         /// <summary>
@@ -195,8 +256,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         private static bool HasAnalyzeIntent(string s)
         {
             return Regex.IsMatch(s,
-                @"\b(analy[sz]|aggregat|summar|average|\bavg\b|\bsum\b|total|kpi|dashboard|distribution|break\s*down|breakdown|group(?:ed)?\s*by|how many|metric|trend|chart|histogram|percentile|correlate)\b")
-                || Regex.IsMatch(s, @"\bby\s+[a-z][a-z0-9_ /-]{1,40}\b");
+                @"\b(analy[sz]|aggregat|summar|average|\bavg\b|\bsum\b|total|kpi|dashboard|distribution|break\s*down|breakdown|group(?:ed)?\s*by|how many|metric|trend|chart|histogram|percentile|correlate|tolerance|bucket|range[s]?)\b")
+                || Regex.IsMatch(s, @"\bby\s+[a-z][a-z0-9_ /-]{1,40}\b")
+                || Regex.IsMatch(s, @"\b\d+(?:\.\d+)?\s*[-–]\s*\d+(?:\.\d+)?\b"); // e.g. 0-0.2, 0.2-0.4
         }
 
     }

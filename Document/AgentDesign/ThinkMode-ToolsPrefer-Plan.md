@@ -1,6 +1,6 @@
 # Think Mode · Tool I/O Detail · Tools-Prefer — Design & Feasibility Plan
 
-**Status:** Design only (implement after review)  
+**Status:** Items 1–3 implemented (2026-10-20)  
 **Date:** 2026-10-20  
 **Scope:** Items 1–3 from product request. Item 4 (AppAISkill from user prompt) is a separate design doc.
 
@@ -45,6 +45,7 @@
 |------------|---------------|----------------------|
 | Aggregate / GROUP BY / SUM / count | `data_analyze` (gated, session cache) | Model invents tables in markdown |
 | Fetch rows | `execute_sql`, `api_provider_execute`, … | Model paraphrases instead of re-query |
+| Large row fetch | `execute_sql` (COUNT first; ≤250 auto-all; else `ask_user` with count-based options) | Model invents TOP 100/1000 or omits TOP to silently load MaxCachedRows |
 | Result UI | `render_interactive` / `render_none_interactive` | Model dumps HTML/markdown “dashboard” |
 | Export | `export_*` / document plugins | Model pastes CSV in chat |
 
@@ -220,6 +221,7 @@ Optional later (not required for “写死”):
 | Intent | Prefer tool |
 |--------|-------------|
 | Analyze / GROUP BY / SUM | `data_analyze` / SQL |
+| Large / unbounded row fetch | `execute_sql` (COUNT) → maybe `ask_user(confirm_row_limit)` → re-fetch |
 | Result UI | `render_interactive` / `render_none_interactive` |
 | Export | `export_*` / document tools |
 | API / search | `api_provider_*` |

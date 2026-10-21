@@ -100,27 +100,98 @@ function kpiValue(rows: Record<string, unknown>[], k: KpiSpec): string {
     return Math.abs(v) >= 1000 ? Math.round(v).toLocaleString() : String(Math.round(v * 100) / 100);
 }
 
-function seriesCount(rows: Record<string, unknown>[], xField: string): Record<string, unknown>[] {
+function isNumericField(rows: Record<string, unknown>[], field: string): boolean {
+    let n = 0;
+    for (const r of rows) {
+        const t = r?.[field];
+        if (t == null || String(t).trim() === '') continue;
+        if (/[A-Za-z]/.test(String(t))) return false;
+        if (Number.isNaN(Number(t))) return false;
+        n++;
+        if (n >= 8) break;
+    }
+    return n > 0;
+}
+
+/** True when each x category appears ~once (SQL GROUP BY result already aggregated). */
+function looksPreAggregated(rows: Record<string, unknown>[], xField: string): boolean {
+    if (!rows.length || rows.length > 200) return false;
+    const d = distinctCount(rows, xField);
+    return d >= 2 && d === rows.length;
+}
+
+/**
+ * Prefer an explicit measure (TotalCount, Count, …) over row-count when the dataset
+ * is already GROUP BY'd — otherwise every bar is height 1.
+ */
+function inferYField(
+    rows: Record<string, unknown>[],
+    xField: string,
+    preferred?: string | null,
+): string | null {
+    const pref = String(preferred || '').trim();
+    if (pref && !/^_?count$/i.test(pref) && isNumericField(rows, pref)) return pref;
+
+    if (!looksPreAggregated(rows, xField) && rows.length > 20) return null;
+
+    const keys = rows[0] ? Object.keys(rows[0]).filter(k => k !== xField) : [];
+    const preferredNames = [
+        'TotalCount', 'total_count', 'RecordCount', 'record_count',
+        'Count', 'Cnt', 'Qty', 'Quantity', 'Amount', 'Sum', 'Total',
+    ];
+    for (const name of preferredNames) {
+        const hit = keys.find(k => k.toLowerCase() === name.toLowerCase());
+        if (hit && isNumericField(rows, hit)) return hit;
+    }
+    const countish = keys.find(k => /count|total|sum|qty|amount/i.test(k) && isNumericField(rows, k));
+    if (countish) return countish;
+    if (looksPreAggregated(rows, xField)) {
+        const nums = keys.filter(k => isNumericField(rows, k));
+        if (nums.length === 1) return nums[0];
+    }
+    return null;
+}
+
+function seriesFromRows(
+    rows: Record<string, unknown>[],
+    xField: string,
+    yField: string | null,
+): Record<string, unknown>[] {
+    if (!yField) {
+        const map = new Map<string, number>();
+        for (const r of rows) {
+            const x = r?.[xField];
+            if (x == null || String(x).trim() === '') continue;
+            const key = String(x);
+            map.set(key, (map.get(key) ?? 0) + 1);
+        }
+        return Array.from(map.entries())
+            .map(([x, y]) => ({ x, y }))
+            .sort((a, b) => (b.y as number) - (a.y as number))
+            .slice(0, 40);
+    }
     const map = new Map<string, number>();
     for (const r of rows) {
         const x = r?.[xField];
         if (x == null || String(x).trim() === '') continue;
         const key = String(x);
-        map.set(key, (map.get(key) ?? 0) + 1);
+        const n = Number(r?.[yField]);
+        if (Number.isNaN(n)) continue;
+        map.set(key, (map.get(key) ?? 0) + n);
     }
     return Array.from(map.entries())
         .map(([x, y]) => ({ x, y }))
-        .sort((a, b) => b.y - a.y)
+        .sort((a, b) => (b.y as number) - (a.y as number))
         .slice(0, 40);
 }
 
-type ResolvedChart = { field: string; label: string; type: string };
+type ResolvedChart = { field: string; yField: string | null; label: string; type: string };
 
 function resolveCharts(spec: Spec, rows: Record<string, unknown>[]): ResolvedChart[] {
     const out: ResolvedChart[] = [];
     const seen = new Set<string>();
 
-    const push = (fieldRaw: string, label: string, typeRaw?: string) => {
+    const push = (fieldRaw: string, label: string, typeRaw?: string, yRaw?: string) => {
         const field = String(fieldRaw || '').trim();
         if (!field || seen.has(field)) return;
         const d = distinctCount(rows, field);
@@ -128,15 +199,22 @@ function resolveCharts(spec: Spec, rows: Record<string, unknown>[]): ResolvedCha
         if (rows.length >= 20 && d >= rows.length * 0.8) return;
         seen.add(field);
         const typed = normalizeType(typeRaw);
+        const yField = inferYField(rows, field, yRaw);
         out.push({
             field,
+            yField,
             label: label || field,
             type: typed || suggestChartType(rows, field),
         });
     };
 
     for (const c of spec.charts ?? []) {
-        push(String(c.xField ?? c.XField ?? ''), String(c.title ?? c.Title ?? ''), c.type ?? c.Type);
+        push(
+            String(c.xField ?? c.XField ?? ''),
+            String(c.title ?? c.Title ?? ''),
+            c.type ?? c.Type,
+            String(c.yField ?? c.YField ?? ''),
+        );
         if (out.length >= 3) return out;
     }
     if (spec.chart) {
@@ -144,6 +222,7 @@ function resolveCharts(spec: Spec, rows: Record<string, unknown>[]): ResolvedCha
             String(spec.chart.xField ?? spec.chart.XField ?? ''),
             String(spec.chart.title ?? spec.chart.Title ?? ''),
             spec.chart.type ?? spec.chart.Type,
+            String(spec.chart.yField ?? spec.chart.YField ?? ''),
         );
     }
     for (const b of spec.blocks ?? []) {
@@ -154,6 +233,7 @@ function resolveCharts(spec: Spec, rows: Record<string, unknown>[]): ResolvedCha
             String(c?.xField ?? c?.XField ?? b.xField ?? b.XField ?? ''),
             String(c?.title ?? c?.Title ?? b.title ?? ''),
             c?.type ?? c?.Type,
+            String(c?.yField ?? c?.YField ?? ''),
         );
         if (out.length >= 3) return out;
     }
@@ -252,19 +332,25 @@ const InteractiveDashboardPanel: React.FC<Props> = ({ event, disabled, onAction 
             )}
 
             <div className="flex flex-col gap-3 mb-3">
-                {charts.map(cf => (
-                    <DataRenderChartWijmo
-                        key={cf.field}
-                        meta={{ title: `${cf.label} (count)` }}
-                        chartConfig={{
-                            type: cf.type,
-                            xField: 'x',
-                            yField: 'y',
-                            allowedTypes: [...CHART_TYPES],
-                        }}
-                        data={seriesCount(filteredRows, cf.field)}
-                    />
-                ))}
+                {charts.map(cf => {
+                    const yLabel = cf.yField || 'count';
+                    const title = cf.label.includes(yLabel) || /count/i.test(cf.label)
+                        ? cf.label
+                        : `${cf.label} (${yLabel})`;
+                    return (
+                        <DataRenderChartWijmo
+                            key={cf.field}
+                            meta={{ title }}
+                            chartConfig={{
+                                type: cf.type,
+                                xField: 'x',
+                                yField: 'y',
+                                allowedTypes: [...CHART_TYPES],
+                            }}
+                            data={seriesFromRows(filteredRows, cf.field, cf.yField)}
+                        />
+                    );
+                })}
             </div>
 
             <DataRenderGridWijmo

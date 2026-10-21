@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 
 namespace App.BL.AIAgent.GenericAgent.Documents
@@ -124,9 +125,11 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             if (chart == null || sb == null) return false;
             var xField = ResolveColumn(rows, chart.XField);
             if (string.IsNullOrWhiteSpace(xField)) return false;
-            var yField = string.IsNullOrWhiteSpace(chart.YField) || IsCountY(chart.YField)
-                ? "count"
-                : (ResolveColumn(rows, chart.YField) ?? chart.YField);
+            string yField;
+            if (!string.IsNullOrWhiteSpace(chart.YField) && !IsCountY(chart.YField))
+                yField = ResolveColumn(rows, chart.YField) ?? chart.YField;
+            else
+                yField = InferMeasureYField(rows, xField) ?? "count";
             var points = ExtractSeries(rows, xField, yField);
             if (points == null || points.Count == 0) return false;
 
@@ -166,6 +169,75 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             string.IsNullOrWhiteSpace(yField)
             || yField.Equals("count", StringComparison.OrdinalIgnoreCase)
             || yField.Equals("_count", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// When SQL already GROUP BY'd (one row per category) and yField is missing/count,
+        /// prefer TotalCount / Count / … so bars are not all height 1.
+        /// </summary>
+        public static string InferMeasureYField(JArray rows, string xField)
+        {
+            if (rows == null || rows.Count == 0 || string.IsNullOrWhiteSpace(xField)) return null;
+            if (!LooksPreAggregated(rows, xField) && rows.Count > 20) return null;
+
+            var sample = rows.OfType<JObject>().FirstOrDefault();
+            if (sample == null) return null;
+            var keys = sample.Properties()
+                .Select(p => p.Name)
+                .Where(n => !n.Equals(xField, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            foreach (var name in new[]
+                     {
+                         "TotalCount", "total_count", "RecordCount", "record_count",
+                         "Count", "Cnt", "Qty", "Quantity", "Amount", "Sum", "Total"
+                     })
+            {
+                var hit = keys.FirstOrDefault(k => k.Equals(name, StringComparison.OrdinalIgnoreCase));
+                if (hit != null && IsNumericColumn(rows, hit)) return hit;
+            }
+
+            var countish = keys.FirstOrDefault(k =>
+                Regex.IsMatch(k, @"count|total|sum|qty|amount", RegexOptions.IgnoreCase)
+                && IsNumericColumn(rows, k));
+            if (countish != null) return countish;
+
+            if (LooksPreAggregated(rows, xField))
+            {
+                var nums = keys.Where(k => IsNumericColumn(rows, k)).ToList();
+                if (nums.Count == 1) return nums[0];
+            }
+            return null;
+        }
+
+        private static bool LooksPreAggregated(JArray rows, string xField)
+        {
+            if (rows == null || rows.Count == 0 || rows.Count > 200) return false;
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var row in rows.OfType<JObject>())
+            {
+                var t = GetProp(row, xField);
+                if (t == null || t.Type == JTokenType.Null) continue;
+                var s = t.ToString()?.Trim();
+                if (!string.IsNullOrEmpty(s)) set.Add(s);
+            }
+            return set.Count >= 2 && set.Count == rows.Count;
+        }
+
+        private static bool IsNumericColumn(JArray rows, string field)
+        {
+            int n = 0;
+            foreach (var row in rows.OfType<JObject>().Take(12))
+            {
+                var t = GetProp(row, field);
+                if (t == null || t.Type == JTokenType.Null) continue;
+                var s = t.ToString();
+                if (string.IsNullOrWhiteSpace(s)) continue;
+                if (s.Any(char.IsLetter)) return false;
+                if (!TryParseNumber(s, out _)) return false;
+                n++;
+            }
+            return n > 0;
+        }
 
         /// <summary>
         /// Template/program grid: show all loaded rows by default.

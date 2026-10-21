@@ -98,9 +98,11 @@ namespace App.BL.AIAgent.GenericAgent
         public static string OutcomeAfterTool(string toolName, KernelArguments args, string resultText, bool ok)
         {
             var name = (toolName ?? "").Trim();
-            if (!ok)
+            // Soft failures: tool returns JSON { IsSuccess:false, Message } without throwing.
+            var softFail = !ok || IsSoftFailure(resultText);
+            if (softFail)
             {
-                var err = Clip(FirstMeaningfulLine(resultText), 120);
+                var err = Clip(SoftFailureMessage(resultText) ?? FirstMeaningfulLine(resultText), 120);
                 return string.IsNullOrEmpty(err)
                     ? "`" + name + "` failed — will try another path."
                     : "`" + name + "` failed (" + err + ") — will try another path.";
@@ -163,6 +165,41 @@ namespace App.BL.AIAgent.GenericAgent
         }
 
         // ── helpers ──────────────────────────────────────────────────────────
+
+        /// <summary>True when result JSON reports failure without an exception (common for execute_sql).</summary>
+        public static bool IsSoftFailure(string resultText)
+        {
+            if (string.IsNullOrWhiteSpace(resultText)) return false;
+            try
+            {
+                var o = JToken.Parse(resultText) as JObject;
+                if (o == null) return false;
+                var ok = o["IsSuccess"] ?? o["isSuccess"] ?? o["ok"] ?? o["success"];
+                if (ok != null && ok.Type == JTokenType.Boolean && !ok.Value<bool>())
+                    return true;
+                if (ok != null && ok.Type == JTokenType.String
+                    && bool.TryParse(ok.ToString(), out var b) && !b)
+                    return true;
+            }
+            catch { /* not JSON */ }
+            return false;
+        }
+
+        private static string SoftFailureMessage(string resultText)
+        {
+            if (string.IsNullOrWhiteSpace(resultText)) return null;
+            try
+            {
+                var o = JToken.Parse(resultText) as JObject;
+                if (o == null) return null;
+                var msg = o["Message"]?.ToString()
+                    ?? o["message"]?.ToString()
+                    ?? o["error"]?.ToString()
+                    ?? o["Error"]?.ToString();
+                return string.IsNullOrWhiteSpace(msg) ? null : msg.Trim();
+            }
+            catch { return null; }
+        }
 
         private static bool IsAskUser(string name) =>
             string.Equals(name, "ask_user", StringComparison.OrdinalIgnoreCase);

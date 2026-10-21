@@ -88,6 +88,16 @@ Do **not** use `static` in tool names, mode enums, or user-facing copy. Use **no
 
 Over 50000 data rows: error, no file, no Result HTML. Cache keeps first 50000 and marks truncated. Restart drops process memory cache.
 
+**Row-limit ask (Interactive agents):** Unbounded detail `SELECT` (no `TOP`/`LIMIT`): platform runs `COUNT` first. Thresholds (platform constants in `AgentRowLimitConfirmBL`):
+
+| Counted rows | Behavior |
+|--------------|----------|
+| ≤ **250** (`AutoShowMaxRows`) | Auto-fetch all — no `ask_user` |
+| **251–1199** | Ask: **TOP 100** + **All N** (no TOP 1000 — it would be ≈ all) |
+| ≥ **1200** (`Top1000MinTotal`) | Ask: **TOP 100** + **TOP 1000** + **All N** (All capped at MaxCachedRows) |
+
+Prompt always states the counted total. Options are built from that count. Platform must not rewrite the model’s explicit `TOP 100/500/1000` up to MaxCachedRows on its own.
+
 Playwright needs Chromium installed. LibreOffice (`DocumentExport:SofficePath`) for docx paths. Each `soffice` call uses its own temp profile; cleaned up on success or failure.
 
 ---
@@ -172,8 +182,49 @@ Rules:
 - `render_none_interactive` and `render_interactive` must have `TemplateContent` after seed.
 - Every `export_*` / `read_*` / `convert_*` row: both columns **NULL**.
 - Runtime prefers DB; empty DB → code default for that layout (deploy safety).
-- Tenant may edit the two columns (company customization). Visual template editor / copy-Restore table: **later**, out of this build.
+- Tenant may edit the two columns (company customization) via **Tool Template Editor** (see section below).
 - Missing layout key → `{ ok: false, error }` — no file, no panel.
+
+### Code defaults vs DB `TemplateContent` (locked)
+
+| Source | What it is | When used |
+|--------|------------|-----------|
+| **Code default** (`HtmlForm` / `UiDashboardHtml` / page compose, `{{code_default}}`) | Built-in C# HTML for a layout | Seed / empty DB key / Reset |
+| **DB `TemplateContent[layout]`** | Edited Scriban HTML on the **library tool row** | Overrides code default for that tool + layout |
+| **React Result host** | iframe + postMessage (`UiRenderFrame`) | Displays **merged** HTML; does not interpret Scriban |
+
+**Feasibility (decided):** Interactive `table` / `cards` / `page` **do** use TemplateContent — **feasible and adopted**.
+
+Correct pipeline (do **not** run Scriban inside React):
+
+```
+DataJson / FormDocument / CardSheet  (server cache)
+        │
+        ▼
+ UiTemplateMerge  ← TemplateContent from the matching tool row
+   render_none_interactive.*  OR  render_interactive.*
+        │
+        ▼
+ Merged HTML (+ WrapInteractive for interactive)
+        │
+        ▼
+ SSE ui_render → React UiRenderFrame (iframe)
+```
+
+React `DataRenderCard` / Wijmo were a **legacy** path when Interactive tabular sent `DataJson` only. They are **not** the way TemplateContent is “read.” TemplateContent is always merged **on the server**; React only hosts the result. Legacy React tabular/page adapters remain only for old events that still have `DataJson` and no `Html`/`HtmlPath`.
+
+**Two tool rows = two separate TemplateContent stores:**
+
+| Tool | Result | Export |
+|------|--------|--------|
+| `render_none_interactive` | iframe ← that row’s TemplateContent | Same merge (none-interactive) |
+| `render_interactive` | iframe ← **that** row’s TemplateContent (`table`/`cards`/`page`/`form`/…) | Export still uses **none-interactive** templates for fidelity |
+
+Editing Interactive `cards` does **not** change None-Interactive `cards` (independent rows). Template Editor should expose both tools; optional “Copy to other mode” later.
+
+`layout=page`: TemplateContent key `page` on each tool; code default = compose table body + cards body (`ComposePageHtml`).
+
+**Still React + DataJson (exception):** Interactive `kpi` / `chart` / `dashboard` — React dashboard host for now; HTML twin for export. Unification later.
 
 ### Scriban / safety
 
@@ -535,11 +586,111 @@ Use these as acceptance criteria for the build and regressions.
 3. HTML > 512 KB → session file + `htmlPath`.
 4. Library rename `data-ui-render` → `platform-ui-render` in the same migration.
 5. Interactive host action prefix: `[ui_render_action]` (replaces legacy `[data_render_action]` at cutover).
-6. No TemplateContent admin editor in this build — SQL seed (and direct DB edit if needed) only.
+6. Tool Template Editor is a **planned product surface** (see section below) — until shipped, SQL seed + direct DB edit remain the only write paths.
 7. No runtime CDN for Tailwind/Chart.js — vendor or precompile into `wwwroot/agent-ui/` / `PrintCss`.
+
+---
+
+## Tool Template Editor (product design)
+
+**Status:** designed for implementation; not shipped yet.  
+**Goal:** Let platform/tenant admins safely edit `AppAgentLibraryTool.TemplateContent` / `TemplateMetaJson` for render tools (`render_none_interactive`, `render_interactive`) without raw SQL — with validation, preview, save, and reset-to-default.
+
+Previously this doc said “visual template editor / later.” That deferral is replaced by this section. Scope is a **code-oriented Template Editor** (Monaco / structured JSON), not a drag-and-drop form builder (Message Template Layout Editor is a different product).
+
+### Who / where
+
+| Item | Decision |
+|------|----------|
+| Audience | Admin / skill-library maintainers (same gate as Agent Library tool edit) |
+| Entry | Agent Library → tool row (`render_*`) → **Edit templates** → Template Editor page/panel |
+| Storage | Same columns: `TemplateContent` (JSON map layout → HTML/Scriban), `TemplateMetaJson` |
+| Not in scope v1 | Separate template table; per-company fork table; LLM editing templates; drag-drop visual designer |
+
+### Layouts managed
+
+Shipped keys: `form`, `table`, `cards`, `kpi`, `chart`, `dashboard`, `page` (and any future keys seed adds).  
+Editor UI: layout tabs or dropdown; editing one layout at a time; JSON overview of all keys optional.
+
+### Capabilities (v1 must-have)
+
+1. **Load** — Read current DB template for tool + layout; if empty / `{{code_default}}`, show resolved code default (read-only badge: “Using platform default”).
+2. **Edit** — Monaco (HTML + Scriban). Optional side panel: allowed tokens (`title`, `columns`, `rows`, `cards`, `meta`, …) and `data-role` checklist.
+3. **Validate** — Before save and on demand (see Validation below). Block save on errors; warnings may save with confirm.
+4. **Preview** — Server merge with `TemplateMetaJson.sampleJson` or a pasted sample dataset → iframe (same sandbox as Result). Mode toggle: NoneInteractive vs Interactive host chrome if applicable.
+5. **Save** — Persist `TemplateContent[layout]` (+ optional `TemplateMetaJson` fields: `printCss`, `sampleJson`, `mode`). Optimistic concurrency if row has rowversion/updated-at.
+6. **Reset to default** — Remove custom layout key (or set `{{code_default}}`) so runtime falls back to code default. Confirm dialog. Optional “reset all layouts”.
+7. **Diff** — Show vs current code default (text diff) so admins see drift before reset.
+
+### Validation & messaging (mature UX)
+
+| Check | Severity | Message intent |
+|-------|----------|----------------|
+| JSON map parse / layout key present | Error | Invalid TemplateContent JSON / missing layout |
+| HTML parse / balanced tags (best-effort) | Warning | Unclosed tags may break export |
+| Forbidden Scriban (`include`, arbitrary methods) | Error | Same safety rules as runtime merge |
+| `javascript:` / inline event handlers in data-bound attrs | Error | Rejected at merge; fix template |
+| Missing required `data-role` markers for layout | Warning | Export/PPT fidelity may degrade |
+| Size cap (e.g. > 512 KB per layout) | Error | Too large for session/SSE |
+| Preview merge failure | Error | Show Scriban/bind error with line if available |
+| Custom template equals code default | Info | Suggest reset to track platform updates |
+
+Inline markers in the editor + a validation panel (errors first, then warnings). Do not silent-truncate on save.
+
+### API (sketch)
+
+| API | Purpose |
+|-----|---------|
+| `GET …/agent-library-tools/{id}/templates` | Full TemplateContent + TemplateMetaJson + list of layout keys + flags which are custom vs default |
+| `GET …/agent-library-tools/{id}/templates/{layout}/default` | Resolved code-default HTML for diff/reset |
+| `POST …/templates/{layout}/validate` | Body: html + optional sampleJson → `{ errors[], warnings[] }` |
+| `POST …/templates/{layout}/preview` | Body: html + sampleJson + mode → `{ html }` or `{ htmlPath }` |
+| `PUT …/templates/{layout}` | Save one layout (+ meta patch) |
+| `POST …/templates/{layout}/reset` | Clear custom → default |
+
+All admin-authorized; never expose TemplateContent to the LLM tool schema.
+
+### UX notes
+
+- Prefer one page: left = layout list, center = Monaco, right = Preview / Validation.
+- Dirty-state guard on navigate; Save disabled until validate passes (or warnings acknowledged).
+- Preview uses the same merge pipeline as `render_*` / export (no duplicate HTML builders).
+- Document that host React widgets (Wijmo / `DataRenderCard`) are **not** edited here — only iframe Scriban templates.
+
+### Implementation checklist (when building)
+
+- [ ] Admin entry from Agent Library tool editor for `render_none_interactive` / `render_interactive` only
+- [ ] Monaco edit + validate + preview + save + reset + diff vs default
+- [ ] Reuse `UiTemplateMerge` / `HtmlForm` for preview and validation
+- [ ] Tests: invalid Scriban blocked; reset restores code default; preview matches render tool output for sampleJson
+- [ ] Update seed docs: after first custom save, upgrades to code defaults do not overwrite tenant TemplateContent (reset required to pick up new defaults)
+
+### Out of Template Editor v1
+
+Drag-and-drop blocks, per-user templates, Git sync, multi-file includes, editing export tool rows (they stay NULL and share none-interactive templates).
+
+### Decisions locked
+
+| # | Decision |
+|---|----------|
+| 1 | **Interactive table/cards/page use TemplateContent** → server merge → iframe. Separate store = `render_interactive` tool row (not shared with none-interactive). |
+| 7 | **`page` key** on TemplateContent; code default composes table+cards HTML. Editor v1 includes `page`. |
+
+### Open decisions (remaining)
+
+| # | Question | Recommendation |
+|---|----------|----------------|
+| 2 | **Edit scope** | Admin edits company-scoped library tool rows; seed upgrade never overwrites non-default TemplateContent. |
+| 3 | **Sync none ↔ interactive** | Independent rows; optional “Copy to other mode”. |
+| 4 | **Who may edit** | Reuse Agent Library admin gate. |
+| 5 | **sampleJson** | Per-tool in TemplateMetaJson; per-layout override later. |
+| 6 | **Version history** | v1: reset + diff vs code default only. |
+| 8 | **Interactive dashboard** | Keep React+DataJson for now; template iframe later. |
+
+**Card layout edits for Interactive Result:** edit `render_interactive.TemplateContent["cards"]` (or code default via Reset), not React `DataRenderCard`.
 
 ---
 
 ## Out of scope
 
-SQL inside render/export tools. Pivot, merged input cells, logos, per-call colors. Replacing the report engine. Changing `file_write`. Pixel-identical interactive Result vs Word. LibreOffice reproducing all Tailwind flex/grid. Template visual editor / dedicated template table (this build uses tool columns). GemBox as HTML/PDF/DOCX write engine. Embedding Wijmo in the iframe. Runtime CDN stylesheets/scripts. Excel native chart objects.
+SQL inside render/export tools. Pivot, merged input cells, logos, per-call colors. Replacing the report engine. Changing `file_write`. Pixel-identical interactive Result vs Word. LibreOffice reproducing all Tailwind flex/grid. Dedicated template **table** (templates stay on tool columns; Editor writes those columns). GemBox as HTML/PDF/DOCX write engine. Embedding Wijmo in the iframe. Runtime CDN stylesheets/scripts. Excel native chart objects.

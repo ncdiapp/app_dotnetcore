@@ -62,12 +62,44 @@ namespace App.BL.AIAgent.GenericAgent
 For ANY task, if a registered or built-in tool can do the work, you MUST call that tool. Never do the work only inside the model when a tool exists.
 This applies to every capability that has a tool, including but not limited to:
 - Fetch / query data (SQL, API, search)
-- Aggregations and analysis (GROUP BY, SUM, count, distribution) → data_analyze or SQL tools
+- Large/unbounded row fetches → execute_sql (platform COUNTs first; ≤200 rows auto-shows all; larger → ask_user confirm_row_limit with count-based options). Never invent TOP yourself.
+- Aggregations and analysis (GROUP BY, SUM, count, distribution, ranges, breakdowns) → ask_user(confirm_kpi_dashboard) then data_analyze and/or SQL — never FinalResponse-only tables
 - Result UI (KPI, chart, dashboard, grid) → render_interactive / render_none_interactive
 - Exports and documents (CSV, Excel, Word, PDF, PPTX) → export_* / document tools
 - Any other subscribed or built-in tool that matches the user intent
 FinalResponse may briefly explain outcomes and point to Result / files. It must NOT invent numeric tables, HTML dashboards, or file contents that a tool should produce.
 If several tools could work, choose the most specific and call it. If no suitable tool is available, say that clearly — do not fake the output.";
+
+        /// <summary>
+        /// Injected when data_analyze is subscribed. Biases multi-part analysis asks toward
+        /// ask_user(KPI) + data_analyze + render — not LLM-only markdown tables.
+        /// </summary>
+        private const string AnalysisPathHardRule = @"
+
+## Analysis path (platform hard rule — when data_analyze is available)
+Treat as analysis-like ONLY when the user asks to analyze / group by / break down / distribution / ranges / buckets / KPI / metrics / how many / count by / multi-part insight lists.
+Do NOT treat plain ""show / display / grid view / card view"" as analysis — no ask_user KPI gate for those.
+
+### Large data / row limit (Interactive — always)
+For unbounded detail SELECT (no TOP/LIMIT): call execute_sql — the platform COUNTs first.
+- If counted rows ≤ 250: platform fetches all — do not ask.
+- If larger: execute_sql returns need_ask_user with counted_rows + optionsJson. Then call ask_user with that prompt/options (include the count). Options are count-based (e.g. 500 → TOP 100 vs All 500; 1002 → TOP 100 vs All 1002 — no pointless TOP 1000).
+- After the user chooses: re-run execute_sql (omit TOP when they chose all).
+- Do NOT invent TOP 100/1000 yourself. Scalar COUNT(*) / GROUP BY skip this gate.
+
+### Show grid + card on ONE Result page (not analysis)
+When the user asks to show both grid and card (or table + cards) without analysis:
+- Call render_interactive ONCE with layout=page, dataset_name, and optional specJson {""views"":[""table"",""cards""],""cardsPerRow"":3}.
+- Do NOT emit three separate Results (dashboard + grid + card).
+- Do NOT call ask_user(confirm_kpi_dashboard) just for multi-view show.
+- Prefer render_interactive; for row volume use confirm_row_limit (above), not a silent full fetch.
+
+### Analysis-like asks (Interactive mode)
+1. Call ask_user FIRST — contextKey=confirm_kpi_dashboard, mode=single_choice (kpi_dashboard vs fetch_display). Bias kpi_dashboard.
+2. After kpi_dashboard: cache rows → data_analyze → render_interactive layout=dashboard (one Result).
+3. After fetch_display: fetch + render_interactive table and/or layout=page — no data_analyze.
+4. Forbidden: FinalResponse-only numeric tables when data_analyze/render tools exist.
+If kpi_dashboard already confirmed this chat, do not re-ask.";
 
         private const string FollowupsPromptHint = @"
 
@@ -160,18 +192,22 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
                 // alive across multiple tool calls within the same agent run.
                 var instancePool = new Dictionary<string, object>(StringComparer.Ordinal);
 
+                var enableThinkMode = skillSet.EnableThinkMode;
+
                 // Build SK kernel from tenant Application Settings default provider
                 var kernel = BuildKernel(identity);
-                kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks));
+                kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks, enableThinkMode));
                 kernel.AutoFunctionInvocationFilters.Add(new GenericAgentPruneFilter(skillSet.MaxIterations, skillSet.MaxHistoryTokens));
 
                 // Wrap AppAgentToolRegister rows as KernelFunctions (agent-owned + subscribed library tools).
                 // PromptHint rows gate prompt inject only — not registered as callable KernelFunctions.
                 var toolRows = (dsId > 0 ? TbToolBL.GetBySkillKeyWithLibraries(skillKey, dsId) : TbToolBL.GetBySkillKeyWithLibraries(skillKey)) ?? new List<TbToolDto>();
-                if (HasNamedTool(toolRows, DataAnalyzeToolName)
-                    && systemPrompt.IndexOf("Follow-up suggestions (soft chips)", StringComparison.OrdinalIgnoreCase) < 0)
+                if (HasNamedTool(toolRows, DataAnalyzeToolName))
                 {
-                    systemPrompt += FollowupsPromptHint;
+                    if (systemPrompt.IndexOf("## Analysis path (platform hard rule", StringComparison.OrdinalIgnoreCase) < 0)
+                        systemPrompt += AnalysisPathHardRule;
+                    if (systemPrompt.IndexOf("Follow-up suggestions (soft chips)", StringComparison.OrdinalIgnoreCase) < 0)
+                        systemPrompt += FollowupsPromptHint;
                 }
                 var callableTools = toolRows.Where(r => !IsPromptHintTool(r)).ToList();
                 if (callableTools.Count > 0)
@@ -235,12 +271,15 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
                         Arguments    = new KernelArguments(execSettings)
                     };
 
-                    await Safe(callbacks?.OnStep, new AgentStepEvent
+                    if (enableThinkMode)
                     {
-                        Type = "thinking",
-                        Description = AgentThinkNarrator.Opening(userMessage),
-                        IsSuccess = true
-                    }).ConfigureAwait(false);
+                        await Safe(callbacks?.OnStep, new AgentStepEvent
+                        {
+                            Type = "thinking",
+                            Description = AgentThinkNarrator.Opening(userMessage),
+                            IsSuccess = true
+                        }).ConfigureAwait(false);
+                    }
 
                     var fullResponse = new StringBuilder();
                     var thread = new ChatHistoryAgentThread(history);
@@ -249,7 +288,7 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
                     {
                         OnIntermediateMessage = async msg =>
                         {
-                            if (msg == null) return;
+                            if (!enableThinkMode || msg == null) return;
                             var prose = (msg.Content ?? "").Trim();
                             if (string.IsNullOrEmpty(prose)) return;
                             var hasTool = false;
@@ -501,6 +540,9 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
                 description:
                     "System built-in (auto-injected for Interactive agents — not a library/private tool). "
                     + "Ask the user a structured question and wait for their answer. "
+                    + "For large row fetches: call execute_sql first (platform COUNTs). If it returns need_ask_user, call ask_user with that prompt/optionsJson/contextKey=confirm_row_limit (include the counted row total). "
+                    + "For analysis-like asks (group-by / ranges / multi-part metrics): MUST call with contextKey=confirm_kpi_dashboard, mode=single_choice, "
+                    + "optionsJson=[{\"id\":\"kpi_dashboard\",\"label\":\"KPI / Dashboard — batch analysis\"},{\"id\":\"fetch_display\",\"label\":\"Only fetch and show the data I asked for\"}] BEFORE data_analyze or inventing tables. "
                     + "mode=text|single_choice|multi_choice. "
                     + "Choice UI (single_choice + optionsJson): "
                     + "ui=button_group (clickable buttons, default for menus), "

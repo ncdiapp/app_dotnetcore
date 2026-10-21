@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using APP.Components.EntityDto;
@@ -143,20 +144,52 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     if (!string.IsNullOrEmpty(valErr))
                         return Err(valErr);
 
-                    dashRows = LoadRows(context, datasetName, content, limit, out resolvedDataset, out truncated, out rowCount);
+                    // Dashboard KPI/chart/grid need the full cached dataset. Models often pass
+                    // limit=20 from the old execute_sql preview habit — ignore that here.
+                    dashRows = LoadRows(context, datasetName, content, limit: null, out resolvedDataset, out truncated, out rowCount);
                     if (!string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(dashSpec.Title))
                         dashSpec.Title = title.Trim();
                 }
+                else if (UiTemplateMerge.IsPageLayout(layout))
+                {
+                    // Show-only: grid + cards on ONE Result page. No KPI ask_user gate.
+                    dashRows = LoadRows(context, datasetName, content, limit: null, out resolvedDataset, out truncated, out rowCount);
+                    cardSheet = CardSheet.FromRows(
+                        title ?? resolvedDataset ?? "Cards", dashRows, cardsPerRow ?? 3, cardRows ?? CardSheet.DefaultCardRows);
+                    if (!string.IsNullOrWhiteSpace(title)) cardSheet.Title = title.Trim();
+                    formDoc = LoadFormOrTable(context, "table", datasetName, content, title, null, out _, out _, out _);
+                    if (!string.IsNullOrWhiteSpace(title) && formDoc != null) formDoc.Title = title.Trim();
+                }
                 else if (layout == "cards")
                 {
-                    cardSheet = LoadCards(context, datasetName, content, title, cardsPerRow ?? 1, cardRows ?? CardSheet.DefaultCardRows, limit, out resolvedDataset, out truncated);
-                    rowCount = cardSheet.CardCount;
+                    // Interactive Result uses React cards + full cache; ignore small limit= habits.
+                    var effLimit = interactive ? null : limit;
+                    if (interactive)
+                    {
+                        dashRows = LoadRows(context, datasetName, content, null, out resolvedDataset, out truncated, out rowCount);
+                        cardSheet = CardSheet.FromRows(
+                            title ?? resolvedDataset ?? "Cards", dashRows, cardsPerRow ?? 1, cardRows ?? CardSheet.DefaultCardRows);
+                    }
+                    else
+                    {
+                        cardSheet = LoadCards(context, datasetName, content, title, cardsPerRow ?? 1, cardRows ?? CardSheet.DefaultCardRows, effLimit, out resolvedDataset, out truncated);
+                        rowCount = cardSheet.CardCount;
+                    }
                     if (!string.IsNullOrWhiteSpace(title)) cardSheet.Title = title.Trim();
                 }
                 else
                 {
-                    formDoc = LoadFormOrTable(context, layout, datasetName, content, title, limit, out resolvedDataset, out truncated, out rowCount);
-                    if (!string.IsNullOrWhiteSpace(title)) formDoc.Title = title.Trim();
+                    var effLimit = interactive && layout == "table" ? null : limit;
+                    if (interactive && layout == "table")
+                    {
+                        dashRows = LoadRows(context, datasetName, content, null, out resolvedDataset, out truncated, out rowCount);
+                        formDoc = LoadFormOrTable(context, layout, datasetName, content, title, null, out _, out _, out _);
+                    }
+                    else
+                    {
+                        formDoc = LoadFormOrTable(context, layout, datasetName, content, title, effLimit, out resolvedDataset, out truncated, out rowCount);
+                    }
+                    if (!string.IsNullOrWhiteSpace(title) && formDoc != null) formDoc.Title = title.Trim();
                 }
 
                 string html;
@@ -170,8 +203,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 string dataJson = null;
                 string emitSpecJson = null;
 
-                // Interactive KPI/chart/dashboard → React Wijmo in Result (main-app license, no CDN watermark).
-                // Also keep SVG HTML for export twin / fallback.
+                // Interactive dashboard still uses React host (DataJson + SpecJson); HTML twin for export.
+                // Interactive table/cards/page → TemplateContent iframe (same merge as none-interactive, tool row = render_interactive).
                 if (interactive && UiTemplateMerge.IsDashboardLayout(layout) && dashRows != null && dashSpec != null)
                 {
                     dataJson = dashRows.ToString(Formatting.None);
@@ -192,7 +225,6 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         blocks = dashSpec.Blocks,
                         availableChartTypes = UiRenderSpec.AvailableChartTypes
                     }, Formatting.None);
-                    // SVG snapshot (none-CDN) kept on disk for export; Result UI uses DataJson+SpecJson
                     var svgHtml = UiTemplateMerge.MergeForRender(
                         layout, null, null, dashRows, dashSpec, interactive: false, forExport: false, renderId, actionsJson);
                     htmlPath = "render/" + renderId + ".html";
@@ -202,6 +234,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
                 else
                 {
+                    // table / cards / page / form / none-interactive dashboard bits: merge from TemplateContent.
                     html = UiTemplateMerge.MergeForRender(
                         layout, formDoc, cardSheet, dashRows, dashSpec, interactive, forExport: false, renderId, actionsJson);
                     var bytes = Encoding.UTF8.GetByteCount(html);
@@ -234,6 +267,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 {
                     "cards" => "card",
                     "form" => "form",
+                    "page" => "page",
                     "kpi" => "kpi_dashboard",
                     "chart" => "chart",
                     "dashboard" => "kpi_dashboard",
@@ -477,6 +511,32 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
 
             return CardSheet.FromRows(title ?? resolvedDataset ?? "Cards", rows, cardsPerRow, cardRows);
+        }
+
+        /// <summary>specJson.views for layout=page; default table + cards on one Result.</summary>
+        private static string[] ParsePageViews(string specJson)
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(specJson))
+                {
+                    var o = JObject.Parse(specJson);
+                    var arr = o["views"] as JArray ?? o["Views"] as JArray;
+                    if (arr != null && arr.Count > 0)
+                    {
+                        var list = new List<string>();
+                        foreach (var t in arr)
+                        {
+                            var v = (t?.ToString() ?? "").Trim().ToLowerInvariant();
+                            if (v is "table" or "grid") list.Add("table");
+                            else if (v is "cards" or "card") list.Add("cards");
+                        }
+                        if (list.Count > 0) return list.Distinct().ToArray();
+                    }
+                }
+            }
+            catch { /* default */ }
+            return new[] { "table", "cards" };
         }
 
         private static List<string> ParseColumns(string columnsJson, JArray rows)

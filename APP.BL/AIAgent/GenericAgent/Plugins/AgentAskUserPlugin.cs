@@ -171,6 +171,18 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
             }
 
+            var rowLimitConfirmed = false;
+            string rowLimitChoice = null;
+            if (!response.Cancelled
+                && context != null
+                && AgentRowLimitConfirmBL.IsRowLimitConfirmKey(askEvent.ContextKey)
+                && AgentRowLimitConfirmBL.LooksLikeChoice(response.SelectedIds, response.FreeText, out var rowOpt))
+            {
+                AgentRowLimitConfirmBL.Mark(context.ChatSessionKey, rowOpt);
+                rowLimitConfirmed = true;
+                rowLimitChoice = rowOpt;
+            }
+
             return JsonConvert.SerializeObject(new
             {
                 ok = !response.Cancelled,
@@ -179,7 +191,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 selectedIds = response.SelectedIds ?? new List<string>(),
                 freeText = response.FreeText ?? "",
                 kpi_dashboard_confirmed = kpiDashConfirmed,
-                fetch_display_only = fetchDisplayOnly
+                fetch_display_only = fetchDisplayOnly,
+                row_limit_confirmed = rowLimitConfirmed,
+                row_limit_choice = rowLimitChoice
             });
         }
 

@@ -430,6 +430,20 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public bool IsConfirmed { get; set; }
+
+        /// <summary>
+        /// When set, SELECT statements are capped with this TOP/LIMIT instead of the DbGenie default (100).
+        /// Agent tools pass the user-chosen row limit (ask_user confirm_row_limit) or a safety cap.
+        /// </summary>
+        [DataMember]
+        public int? MaxRows { get; set; }
+
+        /// <summary>
+        /// When true, rewrite an existing TOP N to <see cref="MaxRows"/> (user already chose a row limit).
+        /// When false, leave the model's TOP as-is and only add TOP when missing.
+        /// </summary>
+        [DataMember]
+        public bool ForceRewriteExistingTop { get; set; }
     }
 
     /// <summary>

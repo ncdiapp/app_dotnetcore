@@ -8,8 +8,12 @@ using Newtonsoft.Json.Linq;
 namespace App.BL.AIAgent.GenericAgent.DataAnalyze
 {
     /// <summary>
-    /// Intercepts tabular tool results (SqlQuery / HttpRest / BuiltIn / MCP / …),
-    /// caches them under ChatSessionKey, and optionally rewrites large payloads to an envelope.
+    /// Intercepts tabular tool results (SqlQuery / HttpRest / BuiltIn / MCP / …).
+    /// <para>
+    /// <b>Token rule:</b> tools (cache / render / analyze) keep full rows up to
+    /// <see cref="AgentDataAnalyzeCacheBL.MaxCachedRows"/>. What the LLM sees is capped at
+    /// <see cref="AgentDataAnalyzeCacheBL.LlmPreviewMaxRows"/> (envelope + sample).
+    /// </para>
     /// </summary>
     public static class AgentDataAnalyzeHook
     {
@@ -23,8 +27,6 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
         {
             try
             {
-                if (context == null || string.IsNullOrWhiteSpace(context.ChatSessionKey))
-                    return result;
                 if (string.IsNullOrWhiteSpace(result))
                     return result;
                 if (!string.IsNullOrWhiteSpace(toolName) && SkipToolNames.Contains(toolName.Trim()))
@@ -35,50 +37,141 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                 if (!TryExtractRowArray(result, out var rows) || rows == null || rows.Count == 0)
                     return result;
 
-                // Tiny results: leave for the model; still optional to cache for analyze continuity.
+                // No chat session → cannot cache for tools; still protect the LLM with a 20-row preview.
+                if (context == null || string.IsNullOrWhiteSpace(context.ChatSessionKey))
+                    return TruncateRowsForLlm(result, rows);
+
+                // Tools path: cache full extract (BuildDataset applies MaxCachedRows).
                 var ds = AgentDataAnalyzeCacheBL.Put(context.ChatSessionKey, toolName ?? toolType ?? "tool", rows);
-                if (rows.Count < AgentDataAnalyzeCacheBL.AutoEnvelopeMinRows)
+
+                // LLM path: ≤20 rows → annotate and keep rows; >20 → envelope + sample only.
+                if (ds.Rows.Count <= AgentDataAnalyzeCacheBL.LlmPreviewMaxRows)
                 {
-                    // Annotate without stripping — model can still see small tables (including null cells).
                     try
                     {
                         var token = JToken.Parse(result);
                         if (token is JObject obj)
                         {
-                            obj["dataset_cached"] = true;
-                            obj["dataset_name"] = ds.Name;
-                            obj["next_hint"] =
-                                $"Dataset cached as '{ds.Name}'. " +
-                                "If this turn looks like data analysis: call ask_user first (contextKey=confirm_kpi_dashboard) — options kpi_dashboard (batch KPI/Dashboard analysis) vs fetch_display (only fetch and show). " +
-                                "After kpi_dashboard: data_analyze then prefer render_interactive layout=dashboard (Wijmo Result); export uses none_interactive/SVG. " +
-                                "After fetch_display (or show/export-only): render_none_interactive with dataset_name='" + ds.Name + "' and limit (layout=table|cards). Do not invent analysis via export_csv/read_csv.";
+                            ApplyCacheAnnotations(obj, ds);
+                            // Ensure Rows in the LLM payload matches cache (already ≤ preview).
+                            if (obj["Rows"] != null || obj["rows"] != null)
+                                ReplaceRowArray(obj, TakeSample(rows, ds.Rows.Count));
                             return obj.ToString(Formatting.None);
                         }
                     }
-                    catch { /* keep original */ }
+                    catch { /* fall through */ }
                     return result;
                 }
 
-                return JsonConvert.SerializeObject(new
-                {
-                    ok = true,
-                    dataset_cached = true,
-                    dataset_name = ds.Name,
-                    cache_scope = "chat_session",
-                    source_tool = toolName ?? toolType,
-                    rows = ds.Rows.Count,
-                    truncated = rows.Count > AgentDataAnalyzeCacheBL.MaxCachedRows,
-                    columns = ds.Columns.Select(c => c.Name).ToArray(),
-                    next_hint =
-                        $"Dataset cached as '{ds.Name}'. columns={string.Join(",", ds.Columns.Select(c => c.Name).Take(40))}. " +
-                        "If analysis-like: ask_user (confirm_kpi_dashboard) — kpi_dashboard vs fetch_display — before data_analyze or KPI render. " +
-                        "fetch_display / show-export: render_none_interactive with limit only."
-                }, Formatting.None);
+                return BuildLlmEnvelope(ds, toolName ?? toolType, rows);
             }
             catch
             {
                 return result;
             }
+        }
+
+        /// <summary>LLM-facing envelope: totals + columns + first N sample rows. Full data is in cache.</summary>
+        public static string BuildLlmEnvelope(AgentCachedDataset ds, string sourceTool, JArray sourceRows)
+        {
+            var sample = TakeSample(sourceRows, AgentDataAnalyzeCacheBL.LlmPreviewMaxRows);
+            return JsonConvert.SerializeObject(new
+            {
+                ok = true,
+                dataset_cached = true,
+                dataset_name = ds.Name,
+                cache_scope = "chat_session",
+                source_tool = sourceTool,
+                rows = ds.Rows.Count,
+                totalRows = ds.Rows.Count,
+                truncated_for_llm = true,
+                llm_preview_rows = sample.Count,
+                sample_rows = sample,
+                columns = ds.Columns.Select(c => c.Name).ToArray(),
+                next_hint = BuildNextHint(ds)
+            }, Formatting.None);
+        }
+
+        /// <summary>
+        /// When there is no ChatSessionKey, still cap Rows in the JSON for the LLM.
+        /// Preserves RowCount / total when present.
+        /// </summary>
+        public static string TruncateRowsForLlm(string result, JArray rows)
+        {
+            if (rows == null || rows.Count <= AgentDataAnalyzeCacheBL.LlmPreviewMaxRows)
+                return result;
+            try
+            {
+                var token = JToken.Parse(result);
+                if (token is JArray)
+                {
+                    return TakeSample(rows, AgentDataAnalyzeCacheBL.LlmPreviewMaxRows).ToString(Formatting.None);
+                }
+                if (token is JObject obj)
+                {
+                    if (obj["RowCount"] == null && obj["rowCount"] == null && obj["totalRows"] == null)
+                        obj["RowCount"] = rows.Count;
+                    obj["ReturnedRows"] = AgentDataAnalyzeCacheBL.LlmPreviewMaxRows;
+                    obj["truncated_for_llm"] = true;
+                    obj["llm_preview_rows"] = AgentDataAnalyzeCacheBL.LlmPreviewMaxRows;
+                    ReplaceRowArray(obj, TakeSample(rows, AgentDataAnalyzeCacheBL.LlmPreviewMaxRows));
+                    return obj.ToString(Formatting.None);
+                }
+            }
+            catch { /* keep original */ }
+            return result;
+        }
+
+        private static void ApplyCacheAnnotations(JObject obj, AgentCachedDataset ds)
+        {
+            obj["dataset_cached"] = true;
+            obj["dataset_name"] = ds.Name;
+            obj["next_hint"] = BuildNextHint(ds);
+        }
+
+        private static string BuildNextHint(AgentCachedDataset ds)
+        {
+            return
+                $"Dataset cached as '{ds.Name}' ({ds.Rows.Count} rows — full data for tools; LLM only sees up to {AgentDataAnalyzeCacheBL.LlmPreviewMaxRows} sample rows). " +
+                "MUST for analysis-like asks (group-by / ranges / multi-part metrics): ask_user contextKey=confirm_kpi_dashboard FIRST (bias kpi_dashboard). " +
+                "After kpi_dashboard: data_analyze (count|distribution|group_by) on raw caches for each user dimension, then render_interactive layout=dashboard. " +
+                "If SQL already GROUP BY'd with TotalCount|Count, skip redundant summary — render with chart.yField=measure. " +
+                "Do NOT answer with FinalResponse tables alone. Full grid: render_interactive dataset_name='" + ds.Name + "' without limit. " +
+                "fetch_display: render table|cards only, no data_analyze.";
+        }
+
+        private static JArray TakeSample(JArray rows, int n)
+        {
+            var sample = new JArray();
+            if (rows == null || n <= 0) return sample;
+            var take = Math.Min(n, rows.Count);
+            for (int i = 0; i < take; i++)
+                sample.Add(rows[i]);
+            return sample;
+        }
+
+        private static void ReplaceRowArray(JObject obj, JArray sample)
+        {
+            foreach (var key in new[] { "Rows", "rows", "data", "Data", "items", "Items", "result", "Result", "records", "Records" })
+            {
+                if (obj.TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var child) && child is JArray)
+                {
+                    obj[key] = sample;
+                    return;
+                }
+                if (child is JObject nested)
+                {
+                    foreach (var key2 in new[] { "Rows", "rows", "data", "Data", "items", "Items" })
+                    {
+                        if (nested.TryGetValue(key2, StringComparison.OrdinalIgnoreCase, out var inner) && inner is JArray)
+                        {
+                            nested[key2] = sample;
+                            return;
+                        }
+                    }
+                }
+            }
+            obj["Rows"] = sample;
         }
 
         /// <summary>
@@ -102,7 +195,6 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
 
                 if (token is not JObject obj) return false;
 
-                // Prefer well-known keys used by SqlQuery / APIs / MCP.
                 foreach (var key in new[] { "Rows", "rows", "data", "Data", "items", "Items", "result", "Result", "records", "Records" })
                 {
                     if (obj.TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var child)
@@ -112,7 +204,6 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                         rows = arr;
                         return true;
                     }
-                    // One-level nest: { result: { data: [...] } }
                     if (child is JObject nested)
                     {
                         foreach (var key2 in new[] { "Rows", "rows", "data", "Data", "items", "Items" })
@@ -139,14 +230,13 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
         private static bool LooksLikeRowArray(JArray arr)
         {
             if (arr == null || arr.Count == 0) return false;
-            // Require at least one object row (tabular). Pure scalar arrays are not datasets.
             int objCount = 0;
             int check = Math.Min(arr.Count, 8);
             for (int i = 0; i < check; i++)
             {
                 if (arr[i] is JObject) objCount++;
             }
-            return objCount > 0 && objCount * 2 >= check; // majority objects in sample
+            return objCount > 0 && objCount * 2 >= check;
         }
     }
 }

@@ -883,19 +883,26 @@ Be concise and build the query directly without unnecessary back-and-forth.";
         }
 
         /// <summary>
-        /// Applies query limits (TOP 100) to SELECT statements
+        /// Applies SELECT TOP {limit}. Default limit 100 for DbGenie chat.
+        /// Agent tools pass MaxRows from the user row-limit choice (or a safety cap).
+        /// Does not silently rewrite TOP 100/500/1000 — large fetches must go through ask_user(confirm_row_limit).
+        /// When <paramref name="forceRewriteExistingTop"/> is true (user already chose a limit), any existing TOP N is replaced.
         /// </summary>
-        public static string ApplyQueryLimits(string sql, int limit = 100)
+        public static string ApplyQueryLimits(string sql, int limit = 100, bool forceRewriteExistingTop = false)
         {
-            if (string.IsNullOrWhiteSpace(sql))
+            if (string.IsNullOrWhiteSpace(sql) || limit <= 0)
                 return sql;
 
-            // Check if it's a SELECT statement without TOP
+            if (forceRewriteExistingTop)
+            {
+                var anyTop = new Regex(@"\bSELECT\s+TOP\s*\(?\s*\d+\s*\)?\s+", RegexOptions.IgnoreCase);
+                if (anyTop.IsMatch(sql))
+                    return anyTop.Replace(sql, $"SELECT TOP {limit} ", 1);
+            }
+
             var selectPattern = @"\bSELECT\s+(?!TOP\s)";
             if (Regex.IsMatch(sql, selectPattern, RegexOptions.IgnoreCase))
-            {
                 sql = Regex.Replace(sql, @"\bSELECT\s+", $"SELECT TOP {limit} ", RegexOptions.IgnoreCase);
-            }
 
             return sql;
         }
@@ -1275,7 +1282,11 @@ ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION";
                 // Handle SELECT queries
                 if (isSelect)
                 {
-                    var limitedSql = ApplyQueryLimits(request.SQL);
+                    // DbGenie chat default TOP 100; agent tools pass MaxRows from user row-limit choice / safety cap.
+                    var rowCap = request.MaxRows.HasValue && request.MaxRows.Value > 0
+                        ? request.MaxRows.Value
+                        : 100;
+                    var limitedSql = ApplyQueryLimits(request.SQL, rowCap, request.ForceRewriteExistingTop);
                     var dataTable = fixture.RetriveDataTable(limitedSql, new List<DbParameter>());
 
                     if (dataTable != null)

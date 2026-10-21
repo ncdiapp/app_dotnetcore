@@ -316,7 +316,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             sb.Append("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head>");
             sb.Append("<body style=\"margin:0;padding:0;background-color:#f4f6f8;\">");
             sb.Append("<table data-doc=\"cards\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" ");
-            sb.Append("style=\"width:100%;border-collapse:separate;border-spacing:12px 0;background-color:#f4f6f8;font-family:Arial,Helvetica,sans-serif;\">");
+            // 12px gap between cards only (horizontal + vertical); field rows stay tight inside each card.
+            sb.Append("style=\"width:100%;border-collapse:separate;border-spacing:12px 12px;background-color:#f4f6f8;font-family:Arial,Helvetica,sans-serif;\">");
             if (!string.IsNullOrEmpty(sheet.Title))
             {
                 sb.Append("<tr><td colspan=\"");

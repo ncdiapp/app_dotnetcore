@@ -14,9 +14,17 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
     /// </summary>
     public static class AgentDataAnalyzeCacheBL
     {
+        /// <summary>Max rows kept in session cache for tools (render / analyze / export).</summary>
         public const int MaxCachedRows = 50000;
-        /// <summary>When extracted row count &gt;= this, replace tool result with a cache envelope.</summary>
-        public const int AutoEnvelopeMinRows = 15;
+
+        /// <summary>
+        /// Max rows exposed to the LLM in tool_result text. Full data stays in cache for tools.
+        /// Rule: tools = unlimited (up to <see cref="MaxCachedRows"/>); LLM = this preview cap.
+        /// </summary>
+        public const int LlmPreviewMaxRows = 20;
+
+        /// <summary>When extracted row count &gt; <see cref="LlmPreviewMaxRows"/>, replace tool_result with a cache envelope (+ sample).</summary>
+        public const int AutoEnvelopeMinRows = LlmPreviewMaxRows + 1;
 
         private static readonly ConcurrentDictionary<string, ConcurrentDictionary<string, AgentCachedDataset>> Sessions
             = new(StringComparer.OrdinalIgnoreCase);

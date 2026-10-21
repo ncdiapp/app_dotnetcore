@@ -115,9 +115,17 @@ export interface UiRenderEvent {
 }
 
 export function uiRenderToDataRender(evt: UiRenderEvent): DataRenderEvent {
+    const layout = (evt.Layout || '').toLowerCase();
+    // SpecJson for cards/page carries { cardsPerRow } — adapters read cardsPerRow from MetaJson.
+    const metaJson = (layout === 'cards' || layout === 'page') && evt.SpecJson ? evt.SpecJson : undefined;
+    const ui = layout === 'cards' ? 'card'
+        : layout === 'form' ? 'form'
+        : layout === 'page' ? 'page'
+        : layout === 'dashboard' || layout === 'kpi' || layout === 'chart' ? 'kpi_dashboard'
+        : 'grid';
     return {
         RenderId: evt.RenderId,
-        Ui: evt.Layout === 'cards' ? 'card' : evt.Layout === 'form' ? 'form' : 'grid',
+        Ui: ui,
         Title: evt.Title,
         RowCount: evt.RowCount,
         Truncated: evt.Truncated,
@@ -130,7 +138,56 @@ export function uiRenderToDataRender(evt: UiRenderEvent): DataRenderEvent {
         HtmlUrl: evt.HtmlUrl,
         DataJson: evt.DataJson,
         SpecJson: evt.SpecJson,
+        MetaJson: metaJson,
     };
+}
+
+/** True when Result should use the TemplateContent iframe (preferred for table/cards/page). */
+function hasMergedUiHtml(event: DataRenderEvent): boolean {
+    return !!(event.Html || event.HtmlPath || event.HtmlUrl);
+}
+
+/**
+ * Legacy: Interactive table/cards with DataJson → React Wijmo/card list.
+ * When Html/HtmlPath is present, TemplateContent iframe wins (see ui_render merge path).
+ */
+export function isInteractiveTabular(event: DataRenderEvent | null | undefined): boolean {
+    if (!event) return false;
+    if (!/^interactive$/i.test(String(event.Mode || ''))) return false;
+    if (hasMergedUiHtml(event)) return false;
+    if (!event.DataJson) return false;
+    const layout = String(event.Layout || '').toLowerCase();
+    const ui = String(event.Ui || '').toLowerCase();
+    return layout === 'table' || layout === 'cards' || ui === 'grid' || ui === 'card';
+}
+
+/**
+ * Legacy: One Result page stacking table + cards in React.
+ * Prefer TemplateContent iframe when Html/HtmlPath is set.
+ */
+export function isInteractivePage(event: DataRenderEvent | null | undefined): boolean {
+    if (!event) return false;
+    if (!/^interactive$/i.test(String(event.Mode || ''))) return false;
+    if (hasMergedUiHtml(event)) return false;
+    if (!event.DataJson) return false;
+    const layout = String(event.Layout || '').toLowerCase();
+    const ui = String(event.Ui || '').toLowerCase();
+    return layout === 'page' || ui === 'page';
+}
+
+export function parsePageViews(specJson?: string | null): { views: Array<'table' | 'cards'>; cardsPerRow: number; title?: string } {
+    try {
+        const o = specJson ? JSON.parse(specJson) as { views?: string[]; Views?: string[]; cardsPerRow?: number; title?: string } : {};
+        const raw = o.views ?? o.Views ?? ['table', 'cards'];
+        const views = (Array.isArray(raw) ? raw : [])
+            .map(v => String(v || '').toLowerCase())
+            .map(v => (v === 'grid' || v === 'table' ? 'table' : v === 'card' || v === 'cards' ? 'cards' : null))
+            .filter((v): v is 'table' | 'cards' => v != null);
+        const cardsPerRow = typeof o.cardsPerRow === 'number' && o.cardsPerRow > 0 ? Math.min(6, o.cardsPerRow) : 3;
+        return { views: views.length ? views : ['table', 'cards'], cardsPerRow, title: o.title };
+    } catch {
+        return { views: ['table', 'cards'], cardsPerRow: 3 };
+    }
 }
 
 export interface ConfirmAskUserDto {

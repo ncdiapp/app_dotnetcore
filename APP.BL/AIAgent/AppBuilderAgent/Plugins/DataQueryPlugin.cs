@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Linq;
+using App.BL.AIAgent.GenericAgent.DataAnalyze;
+using App.BL.AIAgent.GenericAgent.Documents;
 using App.BL.DbGenie;
 using APP.Components.EntityDto;
-using Newtonsoft.Json;
 using APP.Framework.Plugin;
+using Newtonsoft.Json;
 
 namespace App.BL.AppBuilderAgent.Plugins
 {
@@ -18,10 +20,14 @@ namespace App.BL.AppBuilderAgent.Plugins
 
         // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("execute_sql",
-            "Execute a SQL SELECT query to verify tables were created or check data. Only SELECT is allowed. Optional dataSourceId targets a registered DataSource; omit to use the session default.")]
+            "Execute a SQL SELECT query. Only SELECT is allowed. Optional dataSourceId targets a registered DataSource; omit for session default. "
+            + "For unbounded detail SELECTs the platform COUNTs first: ≤250 rows → fetch all; larger → ask_user confirm_row_limit with count-based options. "
+            + "Do not invent TOP yourself. Scalar COUNT(*) / GROUP BY may omit TOP. "
+            + "Platform caches tools up to MaxCachedRows; LLM only sees ~20 sample rows.")]
         public string ExecuteSql(
             [AgentParam("A SQL SELECT statement. Must start with SELECT.", isRequired: true)] string sql,
-            [AgentParam("Optional DataSourceRegisterId. When omitted or 0, uses the session default data source.")] int? dataSourceId = null)
+            [AgentParam("Optional DataSourceRegisterId. When omitted or 0, uses the session default data source.")] int? dataSourceId = null,
+            AgentToolContext context = null)
         {
             try
             {
@@ -35,25 +41,113 @@ namespace App.BL.AppBuilderAgent.Plugins
                         Error = "Only SELECT statements are allowed. Use create_database_table for DDL."
                     });
 
+                var sessionKey = context?.ChatSessionKey;
+                var hasChoice = AgentRowLimitConfirmBL.TryGetMaxRows(sessionKey, out var chosenMax);
+                var deterministic = context != null && context.IsDeterministic;
                 var ds = ResolveDataSourceId(dataSourceId);
+
+                int rowCap;
+                bool forceTop;
+                long? countedRows = null;
+
+                if (hasChoice)
+                {
+                    rowCap = chosenMax;
+                    forceTop = true;
+                }
+                else if (AgentRowLimitConfirmBL.NeedsRowLimitConfirm(sql))
+                {
+                    // COUNT first — only ask when the real total is large.
+                    var countSql = AgentRowLimitConfirmBL.BuildCountSql(sql);
+                    var countResult = AppDbGenieBL.ExecuteSQL(new ExecuteSQLRequestDto
+                    {
+                        SQL                  = countSql,
+                        DataSourceRegisterId = ds,
+                        RequireConfirmation  = false,
+                        IsConfirmed          = true,
+                        MaxRows              = 1
+                    });
+                    if (!countResult.IsSuccess)
+                        return JsonConvert.SerializeObject(new { countResult.IsSuccess, countResult.Error, step = "count" });
+
+                    if (!AgentRowLimitConfirmBL.TryParseCount(countResult.Results, out var totalCount))
+                        return JsonConvert.SerializeObject(new
+                        {
+                            IsSuccess = false,
+                            Error = "Could not parse COUNT result for row-limit gate."
+                        });
+
+                    countedRows = totalCount;
+                    if (!string.IsNullOrWhiteSpace(sessionKey))
+                        AgentRowLimitConfirmBL.RememberCount(sessionKey, totalCount);
+
+                    if (AgentRowLimitConfirmBL.ShouldAutoShowAll(totalCount))
+                    {
+                        rowCap = AgentDataAnalyzeCacheBL.MaxCachedRows;
+                        forceTop = true; // ensure missing TOP gets a safety cap
+                    }
+                    else if (deterministic)
+                    {
+                        // No UI ask — cap at 1000 for deterministic runs.
+                        rowCap = 1000;
+                        forceTop = true;
+                    }
+                    else
+                    {
+                        return JsonConvert.SerializeObject(new
+                        {
+                            IsSuccess = false,
+                            ok = false,
+                            need_ask_user = true,
+                            contextKey = AgentRowLimitConfirmBL.ContextKey,
+                            counted_rows = totalCount,
+                            prompt = AgentRowLimitConfirmBL.AskUserPrompt(totalCount),
+                            optionsJson = AgentRowLimitConfirmBL.AskUserOptionsJson(totalCount),
+                            Error = AgentRowLimitConfirmBL.SoftFailMessage(totalCount)
+                        });
+                    }
+                }
+                else
+                {
+                    // Honor model's explicit TOP; aggregates / GROUP BY skip the gate.
+                    rowCap = AgentDataAnalyzeCacheBL.MaxCachedRows;
+                    forceTop = false;
+                }
+
                 var result = AppDbGenieBL.ExecuteSQL(new ExecuteSQLRequestDto
                 {
-                    SQL                  = sql,
-                    DataSourceRegisterId = ds,
-                    RequireConfirmation  = false,
-                    IsConfirmed          = true
+                    SQL                     = sql,
+                    DataSourceRegisterId    = ds,
+                    RequireConfirmation     = false,
+                    IsConfirmed             = true,
+                    MaxRows                 = rowCap,
+                    ForceRewriteExistingTop = forceTop
                 });
 
                 if (!result.IsSuccess)
                     return JsonConvert.SerializeObject(new { result.IsSuccess, result.Error });
+
+                // Tools path: return full rows (≤ rowCap / MaxCachedRows). GenericAgent's AgentDataAnalyzeHook
+                // caches them for render/analyze, then rewrites the LLM-facing payload to
+                // LlmPreviewMaxRows (20) sample + envelope. Do not Take(20) here.
+                var all = result.Results
+                    ?? new System.Collections.Generic.List<System.Collections.Generic.Dictionary<string, object>>();
+                var total = all.Count;
+                var hardCap = AgentDataAnalyzeCacheBL.MaxCachedRows;
+                var returned = total > hardCap ? all.Take(hardCap).ToList() : all;
 
                 return JsonConvert.SerializeObject(new
                 {
                     result.IsSuccess,
                     DataSourceId = ds,
                     result.ColumnNames,
-                    RowCount = result.Results?.Count ?? 0,
-                    Rows     = result.Results?.Take(20).ToList()
+                    RowCount = total,
+                    ReturnedRows = returned.Count,
+                    Truncated = total > returned.Count,
+                    counted_rows = countedRows,
+                    row_limit_confirmed = hasChoice,
+                    row_limit_cap = rowCap,
+                    Rows = returned
                 }, Formatting.Indented);
             }
             catch (Exception ex) { return JsonConvert.SerializeObject(new { IsSuccess = false, Error = ex.Message }); }

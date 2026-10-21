@@ -47,6 +47,7 @@ const emptySkillSet = (): AppAgentSkillSetDto => ({
     ExecutionMode: 'Interactive',
     AgentUi: 1,
     AllowAgentFirstTurn: false,
+    EnableThinkMode: false,
 });
 
 const AgentSkillSetManagement: React.FC = () => {
@@ -638,6 +639,7 @@ const handleSave = async () => {
                                                         ExecutionMode: tmpl.ExecutionMode || 'Interactive',
                                                         AgentUi: tmpl.AgentUi > 0 ? tmpl.AgentUi : 1,
                                                         AllowAgentFirstTurn: !!tmpl.AllowAgentFirstTurn,
+                                                        EnableThinkMode: !!tmpl.EnableThinkMode,
                                                     });
                                                     setSelected(null);
                                                     setIsEditing(true);
@@ -833,6 +835,20 @@ const handleSave = async () => {
                                                         <span>Agent Starts Chat First</span>
                                                     </label>
                                                 )}
+                                                <label
+                                                    className={`flex items-center gap-1.5 text-xs cursor-pointer ${theme.label}`}
+                                                    htmlFor="agent-enable-think"
+                                                    title="Emits step-by-step reasoning into chat. Uses extra tokens. Leave off in production; enable for debugging."
+                                                >
+                                                    <input
+                                                        id="agent-enable-think"
+                                                        type="checkbox"
+                                                        checked={!!editItem.EnableThinkMode}
+                                                        onChange={e => update('EnableThinkMode', e.target.checked)}
+                                                        className={`h-3.5 w-3.5 rounded shrink-0 ${theme.inputBox}`}
+                                                    />
+                                                    <span>Reasoning loop (Think)</span>
+                                                </label>
                                             </div>
                                         </div>
                                     )}

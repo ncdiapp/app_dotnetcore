@@ -111,6 +111,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             "{\"id\":\"fetch_display\",\"label\":\"Only fetch and show the data I asked for\"}]";
 
         public static string AskUserPromptHint() =>
-            "This looks like a data-analysis request. How should I proceed?";
+            "This looks like a multi-part data-analysis request (group-by / ranges / KPIs). " +
+            "I recommend KPI/Dashboard so I can run data_analyze and build charts. How should I proceed?";
     }
 }

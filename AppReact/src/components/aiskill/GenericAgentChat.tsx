@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import type { RootState } from '../../redux/store';
-import { AskUserEvent, DataRenderEvent, genericAgentSvc, uiRenderToDataRender, type GenericAgentChatUiSnapshot, type LookupItemDto, type UiRenderEvent } from '../../webapi/genericAgentSvc';
+import { AskUserEvent, DataRenderEvent, genericAgentSvc, isInteractivePage, isInteractiveTabular, uiRenderToDataRender, type GenericAgentChatUiSnapshot, type LookupItemDto, type UiRenderEvent } from '../../webapi/genericAgentSvc';
 import { agentSkillSetSvc } from '../../webapi/agentSkillSetSvc';
 import { registerTabDataSaver, unregisterTabDataSaver } from '../../redux/hooks/useTabNavigation';
 import {
@@ -15,10 +15,11 @@ import GenericAgentFilesPanel from './GenericAgentFilesPanel';
 import { chatModulesFromEnabledTools, chatModulesFromLibraries, type AgentChatUiModule } from './agentUiModules';
 import { DataRenderPanel } from './dataRender';
 import InteractiveDashboardPanel, { isInteractiveDashboard } from './InteractiveDashboardPanel';
+import InteractivePagePanel from './InteractivePagePanel';
 import UiRenderFrame, { hasUiHtml } from './UiRenderFrame';
 import { placeRender, renderKey } from './dataRender/placeRender';
 import { RenderBuilding, RenderChip } from './dataRender/RenderChrome';
-import { ReasoningLoopPanel } from './dataRender/ReasoningLoopPanel';
+import { ReasoningLoopPanel, type ThinkingStep } from './dataRender/ReasoningLoopPanel';
 import { AgentMarkdown, FollowupChips, splitFollowups, type AgentFileLink } from './AgentMarkdown';
 
 const SESSION_START = '[session_start]';
@@ -29,6 +30,8 @@ type StoredChatMessage = {
     content?: string;
     thinking?: string;
     Thinking?: string;
+    thinkingSteps?: ThinkingStep[];
+    ThinkingSteps?: ThinkingStep[];
     toolSteps?: Array<{ toolName: string; label?: string; args?: string; result?: string; isSuccess?: boolean; durationMs?: number }>;
     dataRenders?: DataRenderEvent[];
     DataRenders?: DataRenderEvent[];
@@ -169,6 +172,8 @@ interface ChatMessage {
     isStreaming?: boolean;
     /** Reasoning loop narrative (tool choice / recovery) — not raw tool dumps. */
     thinking?: string;
+    /** Per-step description + expandable SQL/JSON detail. */
+    thinkingSteps?: ThinkingStep[];
     /** Persisted with session; restored into Tool Activity on reload. */
     toolSteps?: ToolStep[];
     /** Non-blocking data_render panels attached to this assistant turn. */
@@ -347,6 +352,62 @@ const formatToolPayload = (raw?: string | null, max = 4000): string => {
     // Not JSON — unescape common sequences for readability
     const unescaped = raw.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"');
     return snippet(unescaped, max);
+};
+
+/** Split backend ## SQL / ## Input / ## Output (or ## Error) sections for labeled Tool Activity. */
+const parseIoSections = (raw?: string | null): Array<{ label: string; body: string }> => {
+    if (raw == null || raw === '' || raw === 'null') return [];
+    const text = raw.replace(/\r\n/g, '\n').trim();
+    const re = /^##\s+(SQL|Input|Output|Error)\s*$/gim;
+    const matches: Array<{ label: string; index: number; headerLen: number }> = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+        matches.push({ label: (m[1] || '').trim(), index: m.index, headerLen: m[0].length });
+    }
+    if (matches.length === 0) return [];
+    const sections: Array<{ label: string; body: string }> = [];
+    for (let i = 0; i < matches.length; i++) {
+        const cur = matches[i];
+        const start = cur.index + cur.headerLen;
+        const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
+        let body = text.slice(start, end).trim();
+        // Strip fenced code wrappers from ToolIoFormatter
+        const fence = body.match(/^```(?:sql|json)?\s*\n?([\s\S]*?)\n?```$/i);
+        if (fence) body = fence[1].trim();
+        if (cur.label && body) sections.push({ label: cur.label, body });
+    }
+    return sections;
+};
+
+const renderIoPayload = (
+    raw: string | null | undefined,
+    themeLabel: string,
+    fallbackLabel: string,
+): React.ReactNode => {
+    const sections = parseIoSections(raw);
+    if (sections.length > 0) {
+        return (
+            <>
+                {sections.map((sec, i) => (
+                    <div key={`${sec.label}-${i}`}>
+                        <div className="text-xs opacity-40 mb-0.5">{sec.label}</div>
+                        <pre className={`text-xs whitespace-pre-wrap break-all opacity-70 ${themeLabel}`}>
+                            {formatToolPayload(sec.body)}
+                        </pre>
+                    </div>
+                ))}
+            </>
+        );
+    }
+    if (!raw) return null;
+    return (
+        <div>
+            <div className="text-xs opacity-40 mb-0.5">{fallbackLabel}</div>
+            <pre className={`text-xs whitespace-pre-wrap break-all opacity-70 ${themeLabel}`}>
+                {formatToolPayload(raw)}
+            </pre>
+        </div>
+    );
 };
 
 /** Normalize tool result text — literal "null" from void tools is not useful. */
@@ -619,6 +680,7 @@ const GenericAgentChat: React.FC<Props> = ({
         messages: messagesRef.current.map(m => ({
             ...m,
             thinking: m.thinking || undefined,
+            thinkingSteps: m.thinkingSteps?.length ? m.thinkingSteps.map(s => ({ ...s })) : undefined,
             toolSteps: m.toolSteps ? [...m.toolSteps] : undefined,
             dataRenders: m.dataRenders ? [...m.dataRenders] : undefined,
         })),
@@ -682,39 +744,73 @@ const GenericAgentChat: React.FC<Props> = ({
             if (!mountedRef.current) return;
             const s = step;
             const idx = currentTurnIndexRef.current;
-            const appendThinking = (line: string) => {
+            const appendThinking = (line: string, details?: string) => {
                 const bit = (line || '').trim();
-                if (!bit) return;
+                if (!bit && !(details || '').trim()) return;
+                const stepItem: ThinkingStep = {
+                    description: bit || '…',
+                    ...(details?.trim() ? { details: details.trim() } : {}),
+                };
                 setMessages(prev => {
                     const last = prev[prev.length - 1];
                     if (last?.role === 'assistant' && (last.isStreaming || isRunningRef.current)) {
                         const prevThink = (last.thinking || '').trim();
-                        if (prevThink.endsWith(bit) || prevThink.includes(bit)) {
+                        const prevSteps = last.thinkingSteps ? [...last.thinkingSteps] : [];
+                        // Only skip exact consecutive duplicates — same tool retries often share
+                        // the same one-line description (e.g. "Querying… FROM table") but have
+                        // different Details (fixed SQL / success after soft failure).
+                        const prevLast = prevSteps[prevSteps.length - 1];
+                        const sameAsLast = !!prevLast
+                            && prevLast.description === stepItem.description
+                            && (prevLast.details || '') === (stepItem.details || '');
+                        if (sameAsLast) {
                             return last.isStreaming ? prev : [...prev.slice(0, -1), { ...last, isStreaming: true }];
                         }
-                        const nextThink = prevThink ? `${prevThink}\n\n${bit}` : bit;
-                        return [...prev.slice(0, -1), { ...last, thinking: nextThink, isStreaming: true }];
+                        const nextThink = prevThink ? (bit ? `${prevThink}\n\n${bit}` : prevThink) : bit;
+                        const nextSteps = [...prevSteps, stepItem];
+                        return [...prev.slice(0, -1), {
+                            ...last,
+                            thinking: nextThink || last.thinking,
+                            thinkingSteps: nextSteps,
+                            isStreaming: true,
+                        }];
                     }
-                    return [...prev, { role: 'assistant' as const, content: '', thinking: bit, isStreaming: true }];
+                    return [...prev, {
+                        role: 'assistant' as const,
+                        content: '',
+                        thinking: bit || undefined,
+                        thinkingSteps: [stepItem],
+                        isStreaming: true,
+                    }];
                 });
             };
             if (s.Type === 'thinking') {
-                appendThinking(s.Description || s.Details || '');
+                appendThinking(s.Description || '', s.Details);
                 return;
             }
             if (!s.ToolName) return;
             if (s.Type === 'tool_call') {
-                // Pre-tool streamed prose was model reasoning — move into Reasoning loop, clear answer draft.
+                // Pre-tool streamed prose: fold into Reasoning only when Think is already active this turn.
                 setMessages(prev => {
                     const last = prev[prev.length - 1];
                     if (!(last?.role === 'assistant' && last.isStreaming)) return prev;
                     const draft = (last.content || '').trim();
                     if (!draft) return prev;
                     const prevThink = (last.thinking || '').trim();
-                    const nextThink = (!prevThink)
-                        ? draft
-                        : (prevThink.includes(draft) ? prevThink : `${prevThink}\n\n${draft}`);
-                    return [...prev.slice(0, -1), { ...last, thinking: nextThink, content: '' }];
+                    const prevSteps = last.thinkingSteps;
+                    if (!prevThink && !(prevSteps?.length)) {
+                        return [...prev.slice(0, -1), { ...last, content: '' }];
+                    }
+                    const nextThink = prevThink.includes(draft) ? prevThink : `${prevThink}\n\n${draft}`;
+                    const nextSteps = prevThink.includes(draft)
+                        ? prevSteps
+                        : [...(prevSteps || []), { description: draft }];
+                    return [...prev.slice(0, -1), {
+                        ...last,
+                        thinking: nextThink,
+                        thinkingSteps: nextSteps,
+                        content: '',
+                    }];
                 });
                 pendingCallRef.current.set(s.ToolName, { args: s.Details, startedAt: Date.now() });
                 addStep(idx, { toolName: s.ToolName, label: s.Description, args: s.Details, isSuccess: true });
@@ -1040,12 +1136,22 @@ const GenericAgentChat: React.FC<Props> = ({
                             if (!skipPendingPlaceholder) {
                                 const dataRenders = parseStoredDataRenders(storedMsg);
                                 const thinkingText = String(storedMsg.thinking ?? storedMsg.Thinking ?? '').trim();
+                                const rawSteps = storedMsg.thinkingSteps ?? storedMsg.ThinkingSteps;
+                                const thinkingSteps = Array.isArray(rawSteps)
+                                    ? rawSteps
+                                        .map((x: any) => ({
+                                            description: String(x?.description ?? x?.Description ?? '').trim(),
+                                            details: String(x?.details ?? x?.Details ?? '').trim() || undefined,
+                                        }))
+                                        .filter(x => x.description)
+                                    : undefined;
                                 restoredMsgs.push({
                                     role: 'assistant',
                                     content: isAskSummary
                                         ? formatAskUserQuestionSummary(content)
                                         : content,
                                     thinking: thinkingText || undefined,
+                                    thinkingSteps: thinkingSteps?.length ? thinkingSteps : undefined,
                                     toolSteps: steps,
                                     dataRenders,
                                     askUserSummary: isAskSummary || undefined,
@@ -1134,6 +1240,9 @@ const GenericAgentChat: React.FC<Props> = ({
                     role: m.role === 'user' ? 'user' : 'assistant',
                     content: m.content,
                     ...(m.role === 'assistant' && m.thinking ? { thinking: m.thinking } : {}),
+                    ...(m.role === 'assistant' && m.thinkingSteps && m.thinkingSteps.length > 0
+                        ? { thinkingSteps: m.thinkingSteps }
+                        : {}),
                     ...(m.role === 'assistant' && m.toolSteps && m.toolSteps.length > 0
                         ? { toolSteps: m.toolSteps }
                         : {}),
@@ -1491,7 +1600,11 @@ const GenericAgentChat: React.FC<Props> = ({
                             : { body: m.content, followups: [] as string[] };
                         const showBubble = !!(split.body || m.isStreaming || m.askUserSummary || m.askUserAnswer);
                         const hasRenders = m.role === 'assistant' && (m.dataRenders?.length ?? 0) > 0;
-                        const showThinking = m.role === 'assistant' && !!(m.thinking?.trim() || (m.isStreaming && isRunning && !split.body));
+                        const showThinking = m.role === 'assistant' && !!(
+                            m.thinking?.trim()
+                            || (m.thinkingSteps?.length ?? 0) > 0
+                            || (m.isStreaming && isRunning && !split.body)
+                        );
                         const hasFollowups = m.role === 'assistant' && !m.isStreaming && split.followups.length > 0;
                         const largeOpen = hasRenders && m.dataRenders!.some(dr => placeRender(dr).panel);
                         if (!showBubble && !hasRenders && !hasFollowups && !showThinking) return null;
@@ -1501,6 +1614,7 @@ const GenericAgentChat: React.FC<Props> = ({
                             {showThinking && (
                                 <ReasoningLoopPanel
                                     text={m.thinking || ''}
+                                    steps={m.thinkingSteps}
                                     isLive={!!(m.isStreaming || (i === messages.length - 1 && isRunning && !pendingAskUser))}
                                 />
                             )}
@@ -1867,6 +1981,20 @@ const GenericAgentChat: React.FC<Props> = ({
                                     disabled={blocked}
                                     onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
                                 />
+                            ) : isInteractivePage(openRender) ? (
+                                <InteractivePagePanel
+                                    event={openRender}
+                                    disabled={blocked}
+                                    onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
+                                />
+                            ) : isInteractiveTabular(openRender) ? (
+                                <div className="w-full h-full overflow-auto">
+                                    <DataRenderPanel
+                                        event={openRender}
+                                        disabled={blocked}
+                                        onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
+                                    />
+                                </div>
                             ) : hasUiHtml(openRender) ? (
                                 <UiRenderFrame
                                     event={openRender}
@@ -1984,17 +2112,11 @@ const GenericAgentChat: React.FC<Props> = ({
                                                     </button>
                                                     {isExpanded && (
                                                         <div className="px-2 py-1.5 flex flex-col gap-1.5">
-                                                            {argsText && (
-                                                                <div>
-                                                                    <div className="text-xs opacity-40 mb-0.5">Args</div>
-                                                                    <pre className={`text-xs whitespace-pre-wrap break-all opacity-70 ${theme.label}`}>{formatToolPayload(argsText)}</pre>
-                                                                </div>
-                                                            )}
-                                                            {resultText && (
-                                                                <div>
-                                                                    <div className="text-xs opacity-40 mb-0.5">{isSuccess ? 'Result' : 'Error'}</div>
-                                                                    <pre className={`text-xs whitespace-pre-wrap break-all opacity-70 ${theme.label}`}>{formatToolPayload(resultText)}</pre>
-                                                                </div>
+                                                            {argsText && renderIoPayload(argsText, theme.label, 'Args')}
+                                                            {resultText && renderIoPayload(
+                                                                resultText,
+                                                                theme.label,
+                                                                isSuccess ? 'Result' : 'Error',
                                                             )}
                                                             {!resultText && hasResult && isSuccess && (
                                                                 <div className={`text-xs opacity-50 ${theme.label}`}>Completed (see Args for written values).</div>

@@ -250,29 +250,15 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
                 return false;
 
             var tooWideForPrompt = responseText.Length > MaxResponseChars;
-            if (rows.Count < AgentDataAnalyzeCacheBL.AutoEnvelopeMinRows && !tooWideForPrompt)
+            // Tools get full cache; LLM only sees envelope when over preview cap (or huge payload).
+            if (rows.Count <= AgentDataAnalyzeCacheBL.LlmPreviewMaxRows && !tooWideForPrompt)
                 return false;
 
             var ds = AgentDataAnalyzeCacheBL.Put(context.ChatSessionKey, actionCode, rows);
-            var cachedCount = ds.Rows?.Count ?? 0;
-            var overCacheCap = rows.Count > AgentDataAnalyzeCacheBL.MaxCachedRows;
-            envelopeJson = JsonConvert.SerializeObject(new
-            {
-                ok = true,
-                actionCode,
-                dataset_cached = true,
-                dataset_name = ds.Name,
-                cache_scope = "chat_session",
-                rows = cachedCount,
-                totalRows = rows.Count,
-                truncated = overCacheCap,
-                columns = ds.Columns?.Select(c => c.Name).ToArray(),
-                next =
-                    $"API returned {rows.Count} rows, cached as '{ds.Name}'. " +
-                    "If this looks like data analysis: ask_user first (contextKey=confirm_kpi_dashboard) — kpi_dashboard (batch analysis) vs fetch_display (only fetch and show). " +
-                    "After kpi_dashboard: data_analyze (count/distribution) then render layout=dashboard with kpis+chart (op=count|distinct; chart yField=count). After fetch_display or show-only: render_none_interactive with limit (cards if asked). Do not invent analysis via export_csv/read_csv. " +
-                    $"Tell the user the total cached is {rows.Count}."
-            }, Formatting.Indented);
+            var env = JObject.Parse(AgentDataAnalyzeHook.BuildLlmEnvelope(ds, actionCode, rows));
+            env["actionCode"] = actionCode;
+            env["next"] = env["next_hint"];
+            envelopeJson = env.ToString(Formatting.Indented);
             return true;
         }
 
