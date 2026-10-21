@@ -444,6 +444,12 @@ namespace APP.Components.EntityDto
         /// </summary>
         [DataMember]
         public bool ForceRewriteExistingTop { get; set; }
+
+        /// <summary>
+        /// When true, do not inject SELECT TOP (e.g. platform COUNT wrappers for row-limit gate).
+        /// </summary>
+        [DataMember]
+        public bool SkipApplyQueryLimits { get; set; }
     }
 
     /// <summary>

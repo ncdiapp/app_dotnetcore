@@ -21,6 +21,9 @@ export interface DataRenderEvent {
     Layout?: string | null;
     Html?: string | null;
     HtmlPath?: string | null;
+    HtmlUrl?: string | null;
+    /** ui_render Interactive: cardsHtml / kpiHtml / hosts / page views */
+    SpecJson?: string | null;
 }
 
 export interface DataRenderColumn {

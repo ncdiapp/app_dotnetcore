@@ -33,8 +33,11 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             var sb = new StringBuilder();
             sb.Append("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>");
             sb.Append(WebUtility.HtmlEncode(pageTitle ?? "Result"));
-            sb.Append("</title><style>");
-            sb.Append("body{margin:0;padding:12px;font-family:Arial,Helvetica,sans-serif;background:#f4f6f8;color:#111827;}");
+            sb.Append("</title>");
+            // Tailwind-equivalent card utilities (SPA public/) — resolved against parent origin in srcDoc.
+            sb.Append("<link rel=\"stylesheet\" href=\"/agent-ui/agent-cards.css\"/>");
+            sb.Append("<style>");
+            sb.Append("body{margin:0;padding:12px;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f4f6f8;color:#111827;}");
             sb.Append("details.agent-ui-section{margin:0 0 12px 0;background:#fff;border:1px solid #e6e8eb;border-radius:8px;overflow:visible;}");
             sb.Append("details.agent-ui-section>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:14px;font-weight:600;user-select:none;}");
             sb.Append("details.agent-ui-section>summary::-webkit-details-marker{display:none;}");

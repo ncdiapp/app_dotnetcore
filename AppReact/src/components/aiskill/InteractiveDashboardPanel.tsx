@@ -1,9 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { useTheme } from '../../redux/hooks/useTheme';
+import type { DataRenderEvent } from '../../webapi/genericAgentSvc';
 import { DataRenderChartWijmo } from './dataRender/DataRenderChartWijmo';
 import { DataRenderGridWijmo } from './dataRender/DataRenderGridWijmo';
 import { DataRenderKpiRow } from './dataRender/DataRenderKpiRow';
-import type { DataRenderEvent } from '../../webapi/genericAgentSvc';
+import TemplateControlLayout, {
+    parseDashboardLayoutsFromSpec,
+    useReboundKpiHtml,
+} from './TemplateControlLayout';
+import TemplateHostMount from './TemplateHostMount';
 
 type KpiSpec = { label?: string; Label?: string; field?: string; Field?: string; op?: string; Op?: string };
 type ChartSpec = {
@@ -255,8 +260,8 @@ interface Props {
 }
 
 /**
- * Interactive KPI/dashboard in Result — uses main-app Wijmo (license.js).
- * Default chart.type comes from LLM spec (or suggestChartType fallback); user can override per chart.
+ * Interactive KPI/dashboard — React owns stack/filter/Wijmo; each control LAYOUT from TemplateContent
+ * (kpiHtml / chartHostHtml / gridHostHtml), same pattern as Interactive page.
  */
 const InteractiveDashboardPanel: React.FC<Props> = ({ event, disabled, onAction }) => {
     const { theme } = useTheme();
@@ -265,6 +270,7 @@ const InteractiveDashboardPanel: React.FC<Props> = ({ event, disabled, onAction 
         [event.DataJson],
     );
     const spec = useMemo(() => parseJson<Spec>(event.SpecJson, {}), [event.SpecJson]);
+    const layouts = useMemo(() => parseDashboardLayoutsFromSpec(event.SpecJson), [event.SpecJson]);
     const charts = useMemo(() => resolveCharts(spec, rows), [spec, rows]);
     const [dimFilter, setDimFilter] = useState('');
 
@@ -280,9 +286,12 @@ const InteractiveDashboardPanel: React.FC<Props> = ({ event, disabled, onAction 
             (spec.kpis ?? []).slice(0, 12).map(k => ({
                 label: String(k.label ?? k.Label ?? k.field ?? k.Field ?? ''),
                 value: kpiValue(filteredRows, k),
+                field: String(k.field ?? k.Field ?? ''),
             })),
         [spec.kpis, filteredRows],
     );
+
+    const kpiHtml = useReboundKpiHtml(layouts.kpiHtml, kpiItems);
 
     const filterOptions = useMemo(() => {
         if (!filterField) return [] as string[];
@@ -305,6 +314,44 @@ const InteractiveDashboardPanel: React.FC<Props> = ({ event, disabled, onAction 
     const sectionCount =
         (kpiItems.length > 0 ? 1 : 0) + charts.length + 1; /* grid always */
     const useCollapse = sectionCount >= 2;
+
+    const chartBody = (cf: ResolvedChart) => {
+        const yLabel = cf.yField || 'count';
+        const chartTitle = cf.label.includes(yLabel) || /count/i.test(cf.label)
+            ? cf.label
+            : `${cf.label} (${yLabel})`;
+        const chart = (
+            <DataRenderChartWijmo
+                meta={{ title: chartTitle }}
+                chartConfig={{
+                    type: cf.type,
+                    xField: 'x',
+                    yField: 'y',
+                    allowedTypes: [...CHART_TYPES],
+                }}
+                data={seriesFromRows(filteredRows, cf.field, cf.yField)}
+            />
+        );
+        if (layouts.chartHostHtml) {
+            return (
+                <TemplateHostMount html={layouts.chartHostHtml} hostId="chartHost">
+                    {chart}
+                </TemplateHostMount>
+            );
+        }
+        return chart;
+    };
+
+    const gridBody = (
+        <div style={{ maxHeight: 'min(80vh, 800px)', overflow: 'auto' }}>
+            <DataRenderGridWijmo
+                colDefs={colDefs}
+                rowData={filteredRows}
+                title="Data"
+                meta={{ total: filteredRows.length }}
+            />
+        </div>
+    );
 
     return (
         <div className={`w-full h-full overflow-auto p-2 ${theme.mainContentSection}`}>
@@ -330,7 +377,11 @@ const InteractiveDashboardPanel: React.FC<Props> = ({ event, disabled, onAction 
 
             {kpiItems.length > 0 && (
                 <DashboardSection title="KPIs" collapse={useCollapse}>
-                    <DataRenderKpiRow items={kpiItems} />
+                    {kpiHtml ? (
+                        <TemplateControlLayout html={kpiHtml} />
+                    ) : (
+                        <DataRenderKpiRow items={kpiItems} />
+                    )}
                 </DashboardSection>
             )}
 
@@ -341,29 +392,19 @@ const InteractiveDashboardPanel: React.FC<Props> = ({ event, disabled, onAction 
                     : `${cf.label} (${yLabel})`;
                 return (
                     <DashboardSection key={cf.field} title={chartTitle} collapse={useCollapse}>
-                        <DataRenderChartWijmo
-                            meta={{ title: chartTitle }}
-                            chartConfig={{
-                                type: cf.type,
-                                xField: 'x',
-                                yField: 'y',
-                                allowedTypes: [...CHART_TYPES],
-                            }}
-                            data={seriesFromRows(filteredRows, cf.field, cf.yField)}
-                        />
+                        {chartBody(cf)}
                     </DashboardSection>
                 );
             })}
 
             <DashboardSection title="Grid" collapse={useCollapse}>
-                <div style={{ maxHeight: 'min(80vh, 800px)', overflow: 'auto' }}>
-                    <DataRenderGridWijmo
-                        colDefs={colDefs}
-                        rowData={filteredRows}
-                        title="Data"
-                        meta={{ total: filteredRows.length }}
-                    />
-                </div>
+                {layouts.gridHostHtml ? (
+                    <TemplateHostMount html={layouts.gridHostHtml} hostId="gridHost">
+                        {gridBody}
+                    </TemplateHostMount>
+                ) : (
+                    gridBody
+                )}
             </DashboardSection>
 
             {event.ActionsJson && onAction && (
@@ -414,7 +455,7 @@ export function isInteractiveDashboard(event: DataRenderEvent | null | undefined
     if (!event) return false;
     const mode = (event.Mode || '').toLowerCase();
     if (mode !== 'interactive') return false;
-    // chart → TemplateContent iframe; kpi/dashboard → React (HtmlPath may be export twin only).
+    // chart-only → TemplateContent iframe; kpi/dashboard → React + TemplateContent control LAYOUTs.
     const layout = (event.Layout || '').toLowerCase();
     if (layout !== 'kpi' && layout !== 'dashboard') return false;
     return !!(event.DataJson && event.SpecJson);

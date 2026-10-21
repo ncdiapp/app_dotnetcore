@@ -161,6 +161,32 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             };
         }
 
+        public static object ModelFromKpis(string title, JArray rows, IEnumerable<UiKpiSpec> kpis)
+        {
+            rows ??= new JArray();
+            var items = new List<object>();
+            if (kpis != null)
+            {
+                foreach (var k in kpis.Take(UiRenderSpec.MaxKpis))
+                {
+                    if (k == null) continue;
+                    var label = string.IsNullOrWhiteSpace(k.Label) ? (k.Field ?? "") : k.Label;
+                    items.Add(new
+                    {
+                        label = Enc(label),
+                        value = Enc(UiDashboardHtml.ComputeKpi(rows, k.Field, k.Op)),
+                        field = Enc(k.Field ?? ""),
+                        op = Enc(k.Op ?? "")
+                    });
+                }
+            }
+            return new
+            {
+                title = Enc(title),
+                items
+            };
+        }
+
         private static string Enc(string s) => WebUtility.HtmlEncode(s ?? "");
     }
 }

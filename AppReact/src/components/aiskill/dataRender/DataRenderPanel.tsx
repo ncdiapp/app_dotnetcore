@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
+import TemplateControlLayout, { parseCardsHtmlFromSpec } from '../TemplateControlLayout';
 import { adaptToCard, adaptToChart, adaptToGrid } from './adapters';
 import { DataRenderCardList } from './DataRenderCard';
 import { DataRenderChartRecharts } from './DataRenderChartRecharts';
@@ -159,6 +160,8 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
             );
         }
         if (ui === 'card') {
+            const cardsHtml = parseCardsHtmlFromSpec(event.SpecJson);
+            if (cardsHtml) return <TemplateControlLayout html={cardsHtml} />;
             const props = adaptToCard({
                 dataJson: event.DataJson,
                 metaJson: event.MetaJson,

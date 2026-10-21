@@ -214,20 +214,27 @@ DataJson / FormDocument / CardSheet  (server cache)
  SSE ui_render → React UiRenderFrame (iframe)
 ```
 
-Interactive `table` / `cards` / `page` Result host is **always** the TemplateContent iframe (`UiRenderFrame`). Code-default interactive `table` embeds **Wijmo FlexGrid** in the iframe (`InteractiveTabularHtml`); `page` stacks template sections with platform collapse chrome + LLM `specJson.sectionTitles`. React `DataRenderPanel` / `InteractivePagePanel` for those layouts are **disabled** (legacy). Only Interactive `kpi` / `dashboard` still use React + `DataJson` (HTML twin for export).
+**Interactive Result hosts (React page chrome + TemplateContent control LAYOUTs):**
+
+| Layout | React host | TemplateContent role (`render_interactive`) |
+|--------|------------|-----------------------------------------------|
+| `table` | `DataRenderPanel` (Wijmo grid) | Export twin; optional `#gridHost` shell |
+| `cards` | `TemplateControlLayout` (`cardsHtml`) | Control LAYOUT (Scriban HTML/CSS) |
+| `page` | `InteractivePagePanel` | Cards LAYOUT; table = React Wijmo; collapse in React |
+| `kpi` / `dashboard` | `InteractiveDashboardPanel` | Per-control LAYOUT: `kpi` → `kpiHtml`, `chart` → `chartHostHtml` (`#chartHost`), `table` → `gridHostHtml` (`#gridHost`). React stacks/filter/Wijmo only — not pure React KPI/card UI. |
+
+**None-interactive** (and Interactive **`chart`-only**) stay TemplateContent → `UiRenderFrame` iframe. Do **not** vendor Wijmo UMD under `public/agent-ui/wijmo`. Keep `public/agent-ui/agent-cards.css` / `agent-kpi.css` for control LAYOUTs.
 
 **Two tool rows = two separate TemplateContent stores:**
 
 | Tool | Result | Export |
 |------|--------|--------|
 | `render_none_interactive` | iframe ← that row’s TemplateContent | Same merge (none-interactive) |
-| `render_interactive` | iframe ← **that** row’s TemplateContent (`table`/`cards`/`page`/`form`/…) | Export still uses **none-interactive** templates for fidelity |
+| `render_interactive` | React hosts above; `cards` LAYOUT from this row’s TemplateContent → `cardsHtml` | Export twin uses **none-interactive** templates |
 
 Editing Interactive `cards` does **not** change None-Interactive `cards` (independent rows). Template Editor should expose both tools; optional “Copy to other mode” later.
 
-`layout=page`: TemplateContent key `page` on each tool; code default = compose table + cards (`ComposePageHtml` / `ComposeInteractivePageHtml`). Collapse section titles come from `specJson.sectionTitles` (LLM; not literal “Grid”/“Cards”).
-
-**Still React + DataJson (exception):** Interactive `kpi` / `dashboard` only. Interactive **`chart`** / **`table`** / **`cards`** / **`page`** use TemplateContent → iframe (Wijmo + `WrapInteractive` actions where applicable).
+`layout=page`: React stacks table + cards; LLM `specJson.sectionTitles` label collapse sections (not literal “Grid”/“Cards”).
 
 ### Scriban / safety
 
@@ -605,10 +612,10 @@ Scope is a **code-oriented Template Editor** (Monaco / structured JSON), not a d
 
 | Item | Status |
 |------|--------|
-| Interactive `table` / `cards` / `page` / `kpi` / `dashboard` Result | **React + DataJson + app Wijmo** (`license.js` / `@mescius`) — **no CDN + key** |
-| TemplateContent (none-interactive + export twin) | Scriban Views; `{{code_default}}` → `UiDefaultViewTemplates` (real HTML in C#) |
-| Interactive `chart` → TemplateContent iframe | **Coded** |
-| None-interactive → TemplateContent iframe | **Coded** |
+| Interactive `table` / `cards` / `page` / `chart` Result | **TemplateContent → iframe** (`UiRenderFrame`); LAYOUT in DB |
+| Wijmo license / filter in iframe | Inject SPA `license.js` key + mount **blob:** (SPA origin); **no** API token URL; **no** sandbox |
+| Interactive `kpi` / `dashboard` Result | React + DataJson (temporary) |
+| TemplateContent | Real LAYOUT HTML in DB (`UiTemplateContentMaterialize`) |
 | Seed keys | `form\|table\|cards\|kpi\|chart\|dashboard`; `{{code_default}}` = platform default View (like MVC default) |
 | Custom body data bind | **Scriban** (`title`, `columns`, `rows`, `cards`, …) via `UiTemplateScriban` |
 

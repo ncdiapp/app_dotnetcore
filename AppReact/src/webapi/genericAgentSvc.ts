@@ -142,10 +142,7 @@ export function uiRenderToDataRender(evt: UiRenderEvent): DataRenderEvent {
     };
 }
 
-/**
- * Interactive table/cards → React host using app Wijmo (@mescius + license.js).
- * HtmlPath is TemplateContent export twin only — DataJson wins for Result.
- */
+/** Interactive table/cards → React (app Wijmo grid / TemplateContent cards LAYOUT). HtmlPath = export twin. */
 export function isInteractiveTabular(event: DataRenderEvent | null | undefined): boolean {
     if (!event) return false;
     if (!/^interactive$/i.test(String(event.Mode || ''))) return false;
@@ -155,9 +152,7 @@ export function isInteractiveTabular(event: DataRenderEvent | null | undefined):
     return layout === 'table' || layout === 'cards' || ui === 'grid' || ui === 'card';
 }
 
-/**
- * Interactive page → React stack (app Wijmo grid + cards). HtmlPath = export twin.
- */
+/** Interactive page → React stack (Wijmo grid + TemplateContent cards). HtmlPath = export twin. */
 export function isInteractivePage(event: DataRenderEvent | null | undefined): boolean {
     if (!event) return false;
     if (!/^interactive$/i.test(String(event.Mode || ''))) return false;

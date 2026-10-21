@@ -883,10 +883,9 @@ Be concise and build the query directly without unnecessary back-and-forth.";
         }
 
         /// <summary>
-        /// Applies SELECT TOP {limit}. Default limit 100 for DbGenie chat.
-        /// Agent tools pass MaxRows from the user row-limit choice (or a safety cap).
-        /// Does not silently rewrite TOP 100/500/1000 — large fetches must go through ask_user(confirm_row_limit).
-        /// When <paramref name="forceRewriteExistingTop"/> is true (user already chose a limit), any existing TOP N is replaced.
+        /// Applies SELECT TOP {limit} to the <b>outermost</b> SELECT only (first match).
+        /// Must not rewrite SELECTs inside subqueries — that broke row-limit COUNT
+        /// (COUNT of TOP 1 inner → counted=1 → skipped ask_user).
         /// </summary>
         public static string ApplyQueryLimits(string sql, int limit = 100, bool forceRewriteExistingTop = false)
         {
@@ -900,11 +899,9 @@ Be concise and build the query directly without unnecessary back-and-forth.";
                     return anyTop.Replace(sql, $"SELECT TOP {limit} ", 1);
             }
 
-            var selectPattern = @"\bSELECT\s+(?!TOP\s)";
-            if (Regex.IsMatch(sql, selectPattern, RegexOptions.IgnoreCase))
-                sql = Regex.Replace(sql, @"\bSELECT\s+", $"SELECT TOP {limit} ", RegexOptions.IgnoreCase);
-
-            return sql;
+            // Only the first SELECT — never all nested SELECTs.
+            var firstSelect = new Regex(@"\bSELECT\s+(?!TOP\s)", RegexOptions.IgnoreCase);
+            return firstSelect.Replace(sql, $"SELECT TOP {limit} ", 1);
         }
 
         #endregion
@@ -1282,11 +1279,20 @@ ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION";
                 // Handle SELECT queries
                 if (isSelect)
                 {
-                    // DbGenie chat default TOP 100; agent tools pass MaxRows from user row-limit choice / safety cap.
-                    var rowCap = request.MaxRows.HasValue && request.MaxRows.Value > 0
-                        ? request.MaxRows.Value
-                        : 100;
-                    var limitedSql = ApplyQueryLimits(request.SQL, rowCap, request.ForceRewriteExistingTop);
+                    string limitedSql;
+                    if (request.SkipApplyQueryLimits)
+                    {
+                        // Platform COUNT / meta queries — never inject TOP into wrappers or subqueries.
+                        limitedSql = request.SQL;
+                    }
+                    else
+                    {
+                        // DbGenie chat default TOP 100; agent tools pass MaxRows from user row-limit choice / safety cap.
+                        var rowCap = request.MaxRows.HasValue && request.MaxRows.Value > 0
+                            ? request.MaxRows.Value
+                            : 100;
+                        limitedSql = ApplyQueryLimits(request.SQL, rowCap, request.ForceRewriteExistingTop);
+                    }
                     var dataTable = fixture.RetriveDataTable(limitedSql, new List<DbParameter>());
 
                     if (dataTable != null)

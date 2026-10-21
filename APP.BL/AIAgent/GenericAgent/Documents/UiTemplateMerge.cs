@@ -9,9 +9,10 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 {
     /// <summary>
     /// Loads TemplateContent from render_none_interactive / render_interactive and merges
-    /// data into HTML (MVC View pattern). {{code_default}} / empty → <see cref="UiDefaultViewTemplates"/>
-    /// via Scriban; custom DB HTML is Scriban-bound the same way.
-    /// Interactive Result grids use app Wijmo (React), not CDN — this merge feeds iframe / export.
+    /// data into HTML (MVC View pattern). Real HTML is materialized into DB on first use.
+    /// None-interactive / chart Result → iframe.
+    /// Interactive page/dashboard → React stacks controls; each control LAYOUT from TemplateContent
+    /// (cardsHtml / kpiHtml / chartHostHtml / gridHostHtml).
     /// </summary>
     public static class UiTemplateMerge
     {
@@ -119,7 +120,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             {
                 var body = ResolveLayoutBody(toolName, "page", allowTableFormFallback: false);
                 var pageTitle = formDoc?.Title ?? cardSheet?.Title ?? dashSpec?.Title;
-                if (IsCodeDefault(body))
+                // Empty page chrome (or code_default) → compose table+cards from TemplateContent keys.
+                if (IsCodeDefault(body) || IsEmptyPageShell(body))
                 {
                     if (interactive && !forExport)
                         html = ComposeInteractivePageHtml(
@@ -128,7 +130,11 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                         html = ComposePageHtml(formDoc, cardSheet, pageTitle, sectionTitles);
                 }
                 else
+                {
                     html = ApplyTitlePlaceholder(body, pageTitle);
+                    if (interactive && !forExport && dashRows != null && HasGridHost(html))
+                        html = InteractiveTabularHtml.InjectWijmoGridBoot(html, dashRows, renderId, actionsJson);
+                }
             }
             else if (layout == "cards" && cardSheet != null)
             {
@@ -139,12 +145,14 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             {
                 var key = layout == "form" ? "form" : "table";
                 var body = ResolveLayoutBody(toolName, key);
-                // Interactive Result grid uses app Wijmo (React + DataJson) — no CDN HTML here.
-                // TemplateContent merge builds none-interactive / export HTML only.
-                if (formDoc != null)
+                var tableTitle = formDoc?.Title ?? dashSpec?.Title ?? "Table";
+                // Interactive table: TemplateContent LAYOUT (+ code_default → Wijmo FlexGrid host).
+                if (interactive && !forExport && key == "table" && dashRows != null)
+                    html = RenderInteractiveTableView(body, tableTitle, dashRows, renderId, actionsJson);
+                else if (formDoc != null)
                     html = RenderTableOrFormView(key, body, formDoc, forExport);
                 else if (dashRows != null)
-                    html = RenderTableFromRows(body, formDoc?.Title ?? dashSpec?.Title ?? "Table", dashRows, forExport);
+                    html = RenderTableFromRows(body, tableTitle, dashRows, forExport);
                 else
                     html = "<!DOCTYPE html><html><body><p>No data</p></body></html>";
             }
@@ -189,6 +197,91 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             {
                 return HtmlForm.WriteCards(cardSheet, false);
             }
+        }
+
+        /// <summary>
+        /// Interactive cards control LAYOUT: TemplateContent Scriban HTML (+ head styles) for React host.
+        /// Uses render_interactive TemplateContent key <c>cards</c>.
+        /// </summary>
+        public static string RenderCardsLayoutFragment(CardSheet cardSheet)
+        {
+            if (cardSheet == null) return null;
+            var body = ResolveLayoutBody(InteractiveTool, "cards");
+            var html = RenderCardsView(body, cardSheet);
+            return ExtractBodyInnerWithStyles(html);
+        }
+
+        /// <summary>
+        /// Interactive KPI control LAYOUT from TemplateContent key <c>kpi</c> (Scriban items).
+        /// </summary>
+        public static string RenderKpiLayoutFragment(string title, JArray rows, IList<UiKpiSpec> kpis)
+        {
+            if (kpis == null || kpis.Count == 0) return null;
+            var body = ResolveLayoutBody(InteractiveTool, "kpi", allowTableFormFallback: false);
+            if (IsCodeDefault(body) || string.IsNullOrWhiteSpace(body)
+                || body.IndexOf("data-role=\"dashboard\"", StringComparison.OrdinalIgnoreCase) >= 0)
+                body = UiDefaultViewTemplates.KpiInteractive;
+            try
+            {
+                var html = UiTemplateScriban.Render(body, UiTemplateScriban.ModelFromKpis(title, rows, kpis));
+                return ExtractBodyInnerWithStyles(html);
+            }
+            catch
+            {
+                return ExtractBodyInnerWithStyles(
+                    UiTemplateScriban.Render(UiDefaultViewTemplates.KpiInteractive,
+                        UiTemplateScriban.ModelFromKpis(title, rows, kpis)));
+            }
+        }
+
+        /// <summary>
+        /// Interactive control host shell (chart #chartHost / table #gridHost) for React Wijmo mount.
+        /// </summary>
+        public static string RenderControlHostFragment(string layoutKey, string title = null)
+        {
+            var key = (layoutKey ?? "").Trim().ToLowerInvariant();
+            if (key != "chart" && key != "table") return null;
+            var body = ResolveLayoutBody(InteractiveTool, key, allowTableFormFallback: false);
+            if (IsCodeDefault(body) || string.IsNullOrWhiteSpace(body))
+                body = key == "chart" ? UiDefaultViewTemplates.ChartInteractive : UiDefaultViewTemplates.TableInteractive;
+            if (key == "chart"
+                && body.IndexOf("chartHost", StringComparison.OrdinalIgnoreCase) < 0)
+                body = UiDefaultViewTemplates.ChartInteractive;
+            if (key == "table"
+                && body.IndexOf("gridHost", StringComparison.OrdinalIgnoreCase) < 0)
+                body = UiDefaultViewTemplates.TableInteractive;
+            try
+            {
+                var html = UiTemplateScriban.Render(body, new { title = System.Net.WebUtility.HtmlEncode(title ?? "") });
+                return ExtractBodyInnerWithStyles(html);
+            }
+            catch
+            {
+                return ExtractBodyInnerWithStyles(body);
+            }
+        }
+
+        /// <summary>
+        /// Interactive table from TemplateContent: code_default → Wijmo host;
+        /// custom HTML with #gridHost → Scriban + Wijmo boot; else Scriban only.
+        /// </summary>
+        private static string RenderInteractiveTableView(
+            string body,
+            string title,
+            JArray dashRows,
+            string renderId,
+            string actionsJson)
+        {
+            if (IsCodeDefault(body))
+                return InteractiveTabularHtml.BuildTableDocument(title, dashRows, renderId, actionsJson);
+
+            string html;
+            try { html = UiTemplateScriban.Render(body, UiTemplateScriban.ModelFromRows(title, dashRows)); }
+            catch { return InteractiveTabularHtml.BuildTableDocument(title, dashRows, renderId, actionsJson); }
+
+            if (html != null && Regex.IsMatch(html, @"id\s*=\s*[""']gridHost[""']", RegexOptions.IgnoreCase))
+                return InteractiveTabularHtml.InjectWijmoGridBoot(html, dashRows, renderId, actionsJson);
+            return html;
         }
 
         private static string RenderTableOrFormView(string key, string body, FormDocument formDoc, bool forExport)
@@ -260,6 +353,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         public static string ResolveLayoutBody(string toolName, string layout, bool allowTableFormFallback)
         {
             layout = NormalizeLayout(layout);
+            UiTemplateContentMaterialize.EnsureOnce();
             try
             {
                 var tool = AppAgentLibraryToolBL.GetByLibraryAndToolName(LibraryKey, toolName);
@@ -294,14 +388,14 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             {
                 var saved = formDoc.Title;
                 formDoc.Title = null;
-                try { tableInner = ExtractBodyInner(HtmlForm.Write(formDoc)); }
+                try { tableInner = ExtractBodyInnerWithStyles(HtmlForm.Write(formDoc)); }
                 finally { formDoc.Title = saved; }
             }
             if (cardSheet != null)
             {
                 var saved = cardSheet.Title;
                 cardSheet.Title = null;
-                try { cardsInner = ExtractBodyInner(HtmlForm.WriteCards(cardSheet, false)); }
+                try { cardsInner = ExtractBodyInnerWithStyles(HtmlForm.WriteCards(cardSheet, false)); }
                 finally { cardSheet.Title = saved; }
             }
 
@@ -328,7 +422,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         }
 
         /// <summary>
-        /// Interactive page: TemplateContent layout (table=Wijmo host, cards=template cards) + platform collapse chrome.
+        /// Interactive page: TemplateContent layout (table=Wijmo host, cards=Scriban) + platform collapse chrome.
         /// </summary>
         public static string ComposeInteractivePageHtml(
             string title,
@@ -348,17 +442,48 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             {
                 var tableBody = ResolveLayoutBody(InteractiveTool, "table");
                 string gridInner;
-                if (IsCodeDefault(tableBody) && dashRows != null)
+                // code_default OR custom LAYOUT with #gridHost → Wijmo boot (not title-only placeholder).
+                if (dashRows != null && (IsCodeDefault(tableBody) || HasGridHost(tableBody)))
                 {
-                    gridInner = InteractiveTabularHtml.GridHostMarkup();
+                    if (IsCodeDefault(tableBody))
+                        gridInner = InteractiveTabularHtml.GridHostMarkup();
+                    else
+                    {
+                        try
+                        {
+                            var html = UiTemplateScriban.Render(
+                                tableBody, UiTemplateScriban.ModelFromRows(pageTitle, dashRows));
+                            gridInner = ExtractBodyInnerWithStyles(html);
+                        }
+                        catch
+                        {
+                            gridInner = InteractiveTabularHtml.GridHostMarkup();
+                        }
+                    }
                     injectWijmo = true;
                 }
-                else
+                else if (IsCodeDefault(tableBody))
                 {
                     var saved = formDoc.Title;
                     formDoc.Title = null;
-                    try { gridInner = ExtractBodyInner(IsCodeDefault(tableBody) ? HtmlForm.Write(formDoc) : ApplyTitlePlaceholder(tableBody, saved)); }
+                    try { gridInner = ExtractBodyInnerWithStyles(HtmlForm.Write(formDoc)); }
                     finally { formDoc.Title = saved; }
+                }
+                else
+                {
+                    try
+                    {
+                        var html = UiTemplateScriban.Render(
+                            tableBody, UiTemplateScriban.ModelFromForm(formDoc));
+                        gridInner = ExtractBodyInnerWithStyles(html);
+                    }
+                    catch
+                    {
+                        var saved = formDoc.Title;
+                        formDoc.Title = null;
+                        try { gridInner = ExtractBodyInnerWithStyles(HtmlForm.Write(formDoc)); }
+                        finally { formDoc.Title = saved; }
+                    }
                 }
 
                 sections.Add(new UiStackedSection
@@ -377,8 +502,19 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 string cardsInner;
                 try
                 {
-                    cardsInner = ExtractBodyInner(
-                        IsCodeDefault(cardsBody) ? HtmlForm.WriteCards(cardSheet, false) : ApplyTitlePlaceholder(cardsBody, saved));
+                    if (IsCodeDefault(cardsBody))
+                        cardsInner = ExtractBodyInnerWithStyles(HtmlForm.WriteCards(cardSheet, false));
+                    else
+                    {
+                        // Scriban + keep &lt;head&gt; CSS (ExtractBodyInner alone dropped card layout styles).
+                        var html = UiTemplateScriban.Render(
+                            cardsBody, UiTemplateScriban.ModelFromCards(cardSheet));
+                        cardsInner = ExtractBodyInnerWithStyles(html);
+                    }
+                }
+                catch
+                {
+                    cardsInner = ExtractBodyInnerWithStyles(HtmlForm.WriteCards(cardSheet, false));
                 }
                 finally { cardSheet.Title = saved; }
 
@@ -394,6 +530,23 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             if (injectWijmo && dashRows != null)
                 doc = InteractiveTabularHtml.InjectWijmoGridBoot(doc, dashRows, renderId, actionsJson);
             return doc;
+        }
+
+        private static bool HasGridHost(string html) =>
+            !string.IsNullOrEmpty(html)
+            && Regex.IsMatch(html, @"id\s*=\s*[""']gridHost[""']", RegexOptions.IgnoreCase);
+
+        /// <summary>Materialized empty page stub with no grid/cards content — must Compose*.</summary>
+        private static bool IsEmptyPageShell(string body)
+        {
+            if (string.IsNullOrWhiteSpace(body)) return true;
+            var hasContent = HasGridHost(body)
+                || Regex.IsMatch(body, @"data-role\s*=\s*[""']grid[""']", RegexOptions.IgnoreCase)
+                || Regex.IsMatch(body, @"data-role\s*=\s*[""']cards[""']", RegexOptions.IgnoreCase)
+                || Regex.IsMatch(body, @"\{\{\s*for\s+", RegexOptions.IgnoreCase);
+            if (hasContent) return false;
+            return Regex.IsMatch(body, @"data-role\s*=\s*[""']page[""']", RegexOptions.IgnoreCase)
+                   || body.IndexOf("platform stacks table + cards", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         public static string ResolveSectionTitle(
@@ -441,6 +594,39 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             if (string.IsNullOrEmpty(html)) return "";
             var m = Regex.Match(html, @"<body[^>]*>([\s\S]*?)</body>", RegexOptions.IgnoreCase);
             return m.Success ? m.Groups[1].Value : html;
+        }
+
+        /// <summary>
+        /// Body inner HTML plus &lt;style&gt; / agent-cards.css link from the document head.
+        /// Page Compose discards &lt;head&gt;; without this, TemplateContent card CSS is lost.
+        /// </summary>
+        private static string ExtractBodyInnerWithStyles(string html)
+        {
+            if (string.IsNullOrEmpty(html)) return "";
+            var body = ExtractBodyInner(html);
+            var prefix = new System.Text.StringBuilder();
+            if (Regex.IsMatch(html, @"agent-cards\.css", RegexOptions.IgnoreCase)
+                && body.IndexOf("agent-cards.css", StringComparison.OrdinalIgnoreCase) < 0)
+                prefix.Append("<link rel=\"stylesheet\" href=\"/agent-ui/agent-cards.css\"/>");
+            if (Regex.IsMatch(html, @"agent-kpi\.css", RegexOptions.IgnoreCase)
+                && body.IndexOf("agent-kpi.css", StringComparison.OrdinalIgnoreCase) < 0)
+                prefix.Append("<link rel=\"stylesheet\" href=\"/agent-ui/agent-kpi.css\"/>");
+            var styles = ExtractStyleBlocks(html);
+            if (!string.IsNullOrWhiteSpace(styles))
+                prefix.Append("<style>\n").Append(styles).Append("\n</style>\n");
+            return prefix.Length == 0 ? body : prefix + body;
+        }
+
+        private static string ExtractStyleBlocks(string html)
+        {
+            if (string.IsNullOrEmpty(html)) return "";
+            var sb = new System.Text.StringBuilder();
+            foreach (Match m in Regex.Matches(html, @"<style\b[^>]*>([\s\S]*?)</style>", RegexOptions.IgnoreCase))
+            {
+                if (m.Groups.Count > 1 && !string.IsNullOrWhiteSpace(m.Groups[1].Value))
+                    sb.Append(m.Groups[1].Value.Trim()).Append('\n');
+            }
+            return sb.ToString().Trim();
         }
 
         public static string GetPrintCss()

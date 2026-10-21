@@ -169,7 +169,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
                 else if (layout == "cards")
                 {
-                    // Interactive cards: TemplateContent iframe; ignore small limit= habits.
+                    // Interactive cards: React + TemplateContent LAYOUT (cardsHtml); ignore small limit=.
                     var effLimit = interactive ? null : limit;
                     if (interactive)
                     {
@@ -210,9 +210,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 string dataJson = null;
                 string emitSpecJson = null;
 
-                // Interactive kpi/dashboard/table/cards/page → React host (app Wijmo via license.js).
-                // TemplateContent HTML is the export / none-interactive twin (Scriban View) — not CDN Wijmo.
-                // Interactive chart (+ all none-interactive) → TemplateContent iframe.
+                // Interactive table/cards/page/kpi/dashboard → React hosts + TemplateContent control LAYOUTs.
+                // None-interactive + chart-only → TemplateContent iframe. Export twin = none-interactive merge.
                 var sectionTitles = ParseSectionTitles(specJson);
                 if (interactive
                     && dashRows != null
@@ -221,6 +220,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         || UiTemplateMerge.IsPageLayout(layout)))
                 {
                     dataJson = dashRows.ToString(Formatting.None);
+                    string cardsHtml = null;
+                    if (cardSheet != null && (layout == "cards" || UiTemplateMerge.IsPageLayout(layout)))
+                        cardsHtml = UiTemplateMerge.RenderCardsLayoutFragment(cardSheet);
+
                     if (layout == "kpi" || layout == "dashboard")
                     {
                         var resolvedCharts = UiDashboardHtml.ResolveCharts(dashSpec, dashRows, allowAuto: true);
@@ -230,6 +233,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                             if (dashSpec.Chart == null)
                                 dashSpec.Chart = resolvedCharts[0];
                         }
+                        var kpiHtml = dashSpec?.Kpis != null && dashSpec.Kpis.Count > 0
+                            ? UiTemplateMerge.RenderKpiLayoutFragment(pageTitle, dashRows, dashSpec.Kpis)
+                            : null;
+                        var chartHostHtml = UiTemplateMerge.RenderControlHostFragment("chart", pageTitle);
+                        var gridHostHtml = UiTemplateMerge.RenderControlHostFragment("table", pageTitle);
                         emitSpecJson = JsonConvert.SerializeObject(new
                         {
                             title = dashSpec?.Title ?? pageTitle,
@@ -237,7 +245,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                             chart = dashSpec?.Chart,
                             charts = dashSpec?.Charts,
                             blocks = dashSpec?.Blocks,
-                            availableChartTypes = UiRenderSpec.AvailableChartTypes
+                            availableChartTypes = UiRenderSpec.AvailableChartTypes,
+                            kpiHtml,
+                            chartHostHtml,
+                            gridHostHtml
                         }, Formatting.None);
                     }
                     else if (UiTemplateMerge.IsPageLayout(layout))
@@ -247,7 +258,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                             title = pageTitle,
                             views = ParsePageViews(specJson),
                             cardsPerRow = cardsPerRow ?? 3,
-                            sectionTitles
+                            sectionTitles,
+                            cardsHtml
                         }, Formatting.None);
                     }
                     else if (layout == "cards")
@@ -256,7 +268,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         {
                             title = pageTitle,
                             cardsPerRow = cardsPerRow ?? 1,
-                            sectionTitles
+                            sectionTitles,
+                            cardsHtml
                         }, Formatting.None);
                     }
                     else
@@ -264,12 +277,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         emitSpecJson = JsonConvert.SerializeObject(new { title = pageTitle, sectionTitles }, Formatting.None);
                     }
 
-                    // Export twin = none-interactive TemplateContent (Scriban / default View)
-                    var twinLayout = layout;
-                    if (twinLayout == "kpi" || twinLayout == "dashboard")
-                        twinLayout = "table";
+                    // Export / Files twin = none-interactive TemplateContent (real HTML), same layout.
                     var twinHtml = UiTemplateMerge.MergeForRender(
-                        twinLayout, formDoc, cardSheet, dashRows, dashSpec,
+                        layout, formDoc, cardSheet, dashRows, dashSpec,
                         interactive: false, forExport: false, renderId, actionsJson, sectionTitles);
                     htmlPath = "render/" + renderId + ".html";
                     GenericAgentFileBL.WriteText(context.ChatSessionKey, htmlPath, twinHtml, context.CompanyId);
@@ -357,10 +367,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
 
                 string note;
-                if (UiTemplateMerge.IsPageLayout(layout))
-                    note = "layout=page: Interactive Result uses Wijmo Grid + Cards stacked (collapse sections). No view toggle — do not claim one in FinalResponse.";
+                if (interactive && UiTemplateMerge.IsPageLayout(layout))
+                    note = "layout=page: Interactive Result is React (Wijmo grid + TemplateContent cards LAYOUT). No view toggle — do not claim one in FinalResponse. htmlPath is export twin only.";
+                else if (interactive && (layout == "kpi" || layout == "dashboard"))
+                    note = "layout=" + layout + ": Interactive Result is React stack + TemplateContent control LAYOUTs (kpi/chart/table keys). htmlPath is export twin only.";
                 else if (interactive && dataJson != null)
-                    note = "Interactive Result uses DataJson+SpecJson (React Wijmo / cards). htmlPath is an export twin only.";
+                    note = "Interactive Result uses DataJson+SpecJson (React Wijmo / TemplateContent control LAYOUTs). htmlPath is an export twin only.";
                 else
                     note = "Result HTML is on the SSE ui_render event (or session file when htmlPath is set).";
 

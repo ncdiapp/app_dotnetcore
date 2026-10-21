@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { parsePageViews, type DataRenderEvent } from '../../webapi/genericAgentSvc';
 import { DataRenderPanel } from './dataRender';
+import TemplateControlLayout, { parseCardsHtmlFromSpec } from './TemplateControlLayout';
 
 interface Props {
     event: DataRenderEvent;
@@ -19,7 +20,7 @@ function toChildEvent(
 }
 
 /**
- * Interactive Result page: Wijmo grid + React cards, stacked with collapse chrome.
+ * Interactive Result page: React owns stack/collapse; table = app Wijmo; cards = TemplateContent LAYOUT.
  * Grid pane: max-height min(80vh, 800px). Cards: no max-height (outer panel scrolls).
  */
 const InteractivePagePanel: React.FC<Props> = ({ event, disabled, onAction }) => {
@@ -28,6 +29,7 @@ const InteractivePagePanel: React.FC<Props> = ({ event, disabled, onAction }) =>
         () => parsePageViews(event.SpecJson),
         [event.SpecJson],
     );
+    const cardsHtml = useMemo(() => parseCardsHtmlFromSpec(event.SpecJson), [event.SpecJson]);
     const pageTitle = title || event.Title || 'Result';
     const sectionCount = (views.includes('table') ? 1 : 0) + (views.includes('cards') ? 1 : 0);
     const useCollapse = sectionCount >= 2;
@@ -62,16 +64,20 @@ const InteractivePagePanel: React.FC<Props> = ({ event, disabled, onAction }) =>
             {views.includes('cards') && (
                 <PageSection title={cardsSectionTitle} collapse={useCollapse}>
                     <div className="min-w-0 max-w-full overflow-x-auto">
-                        <DataRenderPanel
-                            event={toChildEvent(event, {
-                                Ui: 'card',
-                                Layout: 'cards',
-                                Title: cardsSectionTitle,
-                                MetaJson: JSON.stringify({ cardsPerRow }),
-                            })}
-                            disabled={disabled}
-                            onAction={onAction}
-                        />
+                        {cardsHtml ? (
+                            <TemplateControlLayout html={cardsHtml} />
+                        ) : (
+                            <DataRenderPanel
+                                event={toChildEvent(event, {
+                                    Ui: 'card',
+                                    Layout: 'cards',
+                                    Title: cardsSectionTitle,
+                                    MetaJson: JSON.stringify({ cardsPerRow }),
+                                })}
+                                disabled={disabled}
+                                onAction={onAction}
+                            />
+                        )}
                     </div>
                 </PageSection>
             )}

@@ -7,8 +7,8 @@ using Newtonsoft.Json.Linq;
 namespace App.BL.AIAgent.GenericAgent.Documents
 {
     /// <summary>
-    /// Interactive table Result via TemplateContent code_default: Wijmo FlexGrid in the Result iframe
-    /// (same license/CDN pattern as <see cref="InteractiveDashboardHtml"/>).
+    /// Legacy iframe Wijmo host helpers (export / none-interactive twins only).
+    /// Interactive Result grids use React + app @mescius — do not vendor UMD under public/agent-ui/wijmo.
     /// </summary>
     public static class InteractiveTabularHtml
     {
@@ -48,7 +48,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return sb.ToString();
         }
 
-        /// <summary>Inject Wijmo CDN + FlexGrid boot into an existing HTML document that contains #gridHost.</summary>
+        /// <summary>Inject Wijmo assets + FlexGrid boot into an existing HTML document that contains #gridHost.</summary>
         public static string InjectWijmoGridBoot(
             string htmlDocument,
             JArray rows,
@@ -82,6 +82,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             var license = string.IsNullOrWhiteSpace(wijmoLicenseKey)
                 ? InteractiveDashboardHtml.DefaultWijmoLicenseKey
                 : wijmoLicenseKey.Trim();
+            // Legacy HTML-only path (not Interactive Result). Prefer React @mescius for Result grids.
             var cdn = "https://cdn.mescius.com/wijmo/" + InteractiveDashboardHtml.WijmoCdnVersion;
             sb.Append("<link rel=\"stylesheet\" href=\"").Append(cdn).Append("/styles/wijmo.min.css\"/>");
             sb.Append("<script src=\"").Append(cdn).Append("/controls/wijmo.min.js\"></script>");
@@ -128,7 +129,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         private const string FilterPopupCss =
             "details.agent-ui-section,.agent-ui-section-body,.agent-wijmo-grid-wrap{overflow:visible!important;}" +
             ".wj-dropdown,.wj-popup,.wj-control.wj-content.wj-dropdown," +
-            ".wj-columnfiltereditor,.wj-listbox{z-index:10050!important;}" +
+            ".wj-columnfiltereditor,.wj-listbox{z-index:10050!important;position:fixed!important;}" +
             ".wj-flexgrid{max-width:100%;}";
 
         private const string GridBootJs = @"
@@ -150,6 +151,20 @@ namespace App.BL.AIAgent.GenericAgent.Documents
       else if (wijmo.Control && typeof wijmo.Control.setLicenseKey === 'function') wijmo.Control.setLicenseKey(key);
     }
   } catch (e) {}
+  // Keep filter popups on document.body so <details> does not clip them.
+  try {
+    if (!window.__agentWijmoPopupWatch) {
+      window.__agentWijmoPopupWatch = true;
+      var mo = new MutationObserver(function () {
+        var nodes = document.querySelectorAll('.wj-popup,.wj-dropdown,.wj-columnfiltereditor');
+        for (var i = 0; i < nodes.length; i++) {
+          var el = nodes[i];
+          if (el && el.parentElement !== document.body) document.body.appendChild(el);
+        }
+      });
+      mo.observe(document.documentElement, { childList: true, subtree: true });
+    }
+  } catch (e0) {}
   var host = document.getElementById(hostId);
   if (!host) return;
   var cv = new wijmo.collections.CollectionView(rows);
@@ -163,7 +178,6 @@ namespace App.BL.AIAgent.GenericAgent.Documents
     autoGenerateColumns: true
   });
   try { grid.autoSizeColumns(); } catch (e3) {}
-  // Attach filter after layout so Popup anchors correctly (not clipped / zero-size).
   setTimeout(function () {
     try {
       if (!wijmo.grid || !wijmo.grid.filter) return;
