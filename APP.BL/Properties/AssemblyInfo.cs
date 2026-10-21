@@ -38,3 +38,5 @@ using System.Runtime.InteropServices;
 // PLM Integration agent plugin hosts migrated PlmMigrationBL and needs APP.BL internals
 // (AppCacheManagerBL fixtures/cache refresh) without widening public surface.
 [assembly: InternalsVisibleTo("APP.AgentPlugins.PlmImport")]
+// Unit tests cover internal agent-memory helpers (ChatHistoryBuilder, AgentMemoryInjector).
+[assembly: InternalsVisibleTo("APP.BL.Tests")]

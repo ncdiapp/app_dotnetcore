@@ -12,6 +12,7 @@ import {
     saveAgentChatToTabCache,
 } from './agentChatTabCache';
 import GenericAgentFilesPanel from './GenericAgentFilesPanel';
+import AgentMemoryPanel from './AgentMemoryPanel';
 import { chatModulesFromEnabledTools, chatModulesFromLibraries, type AgentChatUiModule } from './agentUiModules';
 import { DataRenderPanel } from './dataRender';
 import { AgentMarkdown, FollowupChips, splitFollowups, type AgentFileLink } from './AgentMarkdown';
@@ -457,7 +458,7 @@ const GenericAgentChat: React.FC<Props> = ({
     const toolsDragRef = useRef(false);
     const chatRootRef = useRef<HTMLDivElement | null>(null);
     const [showEarlierTurns, setShowEarlierTurns] = useState(false);
-    const [rightTab, setRightTab] = useState<'tools' | 'files'>('tools');
+    const [rightTab, setRightTab] = useState<'tools' | 'files' | 'memory'>('tools');
     const [uiModules, setUiModules] = useState<Set<AgentChatUiModule>>(() => new Set());
     const [fileSessionKey, setFileSessionKey] = useState<string | null>(null);
     const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
@@ -535,6 +536,7 @@ const GenericAgentChat: React.FC<Props> = ({
 
     useEffect(() => {
         if (rightTab === 'files' && !uiModules.has('files')) setRightTab('tools');
+        if (rightTab === 'memory' && !uiModules.has('memory')) setRightTab('tools');
     }, [rightTab, uiModules]);
 
     const buildSnapshot = (): GenericAgentChatUiSnapshot => ({
@@ -1676,12 +1678,25 @@ const GenericAgentChat: React.FC<Props> = ({
                             Files
                         </button>
                         )}
+                        {uiModules.has('memory') && (
+                        <button
+                            type="button"
+                            className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'memory' ? ' font-semibold' : ' opacity-70'}`}
+                            onClick={() => setRightTab('memory')}
+                        >
+                            Memory
+                        </button>
+                        )}
                         <button className="text-xs opacity-50 hover:opacity-100 ml-auto" onClick={() => setSidebarOpen(false)}>
                             <i className="fa-solid fa-xmark" />
                         </button>
                     </div>
 
-                    {rightTab === 'files' && uiModules.has('files') ? (
+                    {rightTab === 'memory' && uiModules.has('memory') ? (
+                        <div className="w-full h-1 flex-auto overflow-hidden min-h-0">
+                            <AgentMemoryPanel skillKey={skillKey} sessionKey={fileSessionKey} />
+                        </div>
+                    ) : rightTab === 'files' && uiModules.has('files') ? (
                         <div className="w-full h-1 flex-auto overflow-hidden min-h-0">
                             <GenericAgentFilesPanel skillKey={skillKey} sessionKey={fileSessionKey} />
                         </div>
