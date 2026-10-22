@@ -625,6 +625,12 @@ class GenericAgentService {
         layout?: string;
         title?: string;
         datasetName?: string;
+        /** Columns per page (e.g. 2 for 2×2). */
+        cardsPerRow?: number;
+        /** Rows per page (e.g. 2 for 2×2). */
+        cardRows?: number;
+        /** Optional "2x2" / "4x4"; overrides when parseable. */
+        pageGrid?: string;
     }): Promise<{ path?: string; error?: string }> {
         const res = await fetch(`${BASE}/ExportResult`, {
             method: 'POST',
@@ -636,6 +642,9 @@ class GenericAgentService {
                 Layout: args.layout || 'cards',
                 Title: args.title || '',
                 DatasetName: args.datasetName || '',
+                CardsPerRow: args.cardsPerRow && args.cardsPerRow > 0 ? args.cardsPerRow : 0,
+                CardRows: args.cardRows && args.cardRows > 0 ? args.cardRows : 0,
+                PageGrid: args.pageGrid || '',
             }),
         });
         if (!res.ok) return { error: `Export failed (${res.status})` };

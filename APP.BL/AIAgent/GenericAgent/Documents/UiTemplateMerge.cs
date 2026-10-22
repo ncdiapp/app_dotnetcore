@@ -39,6 +39,13 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 
         public static string MergeCards(CardSheet sheet, bool forPrint = false, string templateBodyOverride = null)
         {
+            // Print/PDF/DOCX/PPT: fitted R×C pages (cardRows × cardsPerRow). Screen Result uses TemplateContent flow.
+            if (forPrint)
+            {
+                var fitted = HtmlForm.WriteCards(sheet, forPrint: true);
+                return AgentUiCssInline.PrepareExportHtml(fitted, addPrintExtras: true);
+            }
+
             var body = !string.IsNullOrWhiteSpace(templateBodyOverride)
                 ? templateBodyOverride
                 : ResolveLayoutBody(NoneInteractiveTool, "cards");
@@ -50,9 +57,6 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 try { html = RenderCardsView(body, sheet); }
                 catch { html = HtmlForm.WriteCards(sheet, forPrint: false); }
             }
-            // PDF/DOCX/PPTX: same TemplateContent HTML + inlined agent-ui CSS (Playwright cannot load /agent-ui/).
-            if (forPrint)
-                html = AgentUiCssInline.PrepareExportHtml(html, addPrintExtras: true);
             return html;
         }
 

@@ -190,7 +190,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
                 if (mode == "cards")
                 {
-                    var sheet = LoadCards(context, content, sourcePath, datasetName, records, cardsPerRow, paged ? cardRows : 0, rowLimit, paged ? pageGrid : null, paged ? cardsPerPage : 0);
+                    // Always honor cardsPerRow / cardRows / pageGrid for fitted Print/Export HTML
+                    // (not only PDF/DOCX/PPT). Screen Result uses TemplateContent; export uses WriteFittedCards.
+                    var sheet = LoadCards(context, content, sourcePath, datasetName, records, cardsPerRow, cardRows, rowLimit, pageGrid, cardsPerPage);
                     await CardImageLoader.AttachAsync(sheet, context.CompanyId, ct).ConfigureAwait(false);
                     var forPrint = preview || extension == ".pdf" || extension == ".docx" || extension == ".pptx" || extension == ".html";
                     string cardsTpl = null;

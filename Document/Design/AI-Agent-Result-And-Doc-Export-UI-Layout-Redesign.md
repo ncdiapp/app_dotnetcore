@@ -406,3 +406,51 @@ Apply DB migration `V064__AiRenderPolish_xhu.sql` so polish tools are registered
 | Export links primarily from chat tools | Result React chrome is the primary Print/Export surface |
 
 Merge/export **engines** and numeric **limits** in [`AI-Agent-Ui-Render-And-Document-Export.md`](AI-Agent-Ui-Render-And-Document-Export.md) remain in force unless a future change explicitly updates them.
+
+---
+
+## Revision: Result visual fidelity & print/export (2026-10-22b)
+
+Product decisions after live Result/Print/Export review vs MCP Client:
+
+| Decision | Choice |
+|----------|--------|
+| Interactive card host | **TemplateContent / `cardsHtml` GENERATE only** — do **not** use React `DataRenderCard` as the primary Result path (that path is deprecated for Agent Result) |
+| Image URL remap (PLM `srv-mite/.../requestsketchimage.aspx` → `/api/resources/...`) | **Deferred** — skip for this revision; track separately |
+| Follow-up chips | Only after an **analysis** path this turn |
+| Print UX | Hidden iframe → system print dialog; **no** visible blank tab |
+| Page grid (2×2 / 4×4) | Must apply to Print and Export PDF/DOCX/PPT (and print-oriented HTML) |
+
+### Findings (root causes)
+
+1. **Card look vs MCP** — Library TemplateContent may still be stub/`code_default`; role CSS exists in code defaults but Result twin often lacks MCP hierarchy. Fix by upgrading **both** interactive and none-interactive `cards` TemplateContent shells + `agent-cards.css`, still GENERATE via Scriban (not React cards).
+2. **Follow-ups on show/search** — `FollowupsPromptHint` injects whenever `data_analyze` is subscribed and explicitly allows followups after `render_*`. UI shows any ```followups``` fence. Fix prompt + UI gate (no chips unless this turn called `data_analyze` or confirmed KPI path).
+3. **Print temp tab** — `ResultChrome` used `window.open` + `document.write` + `print()`. Fix: off-screen iframe.
+4. **2×2 / 4×4 ignored** — (a) `ExportResult` passed `cardsPerRow=0, cardRows=0`; (b) heuristic polish defaulted LayoutHints to 4×4 and **overrode** tool args; (c) `MergeCards` did not use `WriteFittedCards` for print when TemplateContent present / code_default called `WriteCards(..., forPrint: false)`; (d) Print read screen twin `htmlPath`, not fitted paged HTML.
+5. **Images** — Raw `Image1Link` from PLM views is often legacy `http://srv-mite/ootb_blank_plms/requestsketchimage.aspx?SketchID=` (data from SQL, not invented by polish). Working App URLs are `/api/resources/Company_{id}/Image/regular/{guid}` from Search/AppFile mapping. **Out of scope this revision.**
+
+### Implementation checklist (this revision)
+
+1. Page grid: tool/user `cardsPerRow`/`cardRows`/`pageGrid` **win over** polish defaults; pass them through Result chrome → `ExportResult` → document plugin; Print regenerates fitted HTML (or export twin) with same grid.
+2. `MergeCards` / export: when `forPrint`, use fitted page breaks (R×C per page) even with TemplateContent (page-break wrapper or fitted path + role styles).
+3. Print: hidden iframe; HTML = fitted none-interactive merge (same as PDF source), not unfitted Result twin.
+4. Follow-ups: tighten engine hint; UI suppress unless analysis tools this turn.
+5. TemplateContent cards shell + CSS closer to MCP (hero/id/status/meta) via GENERATE — **no** React card list as Result body.
+6. Image remap: deferred.
+
+### Acceptance tests
+
+- [ ] User asks card view **2×2** (2 rows × 2 columns per page): Print preview and Export PDF/DOCX/PPT each page has **exactly 4** cards (2×2). **4×4** → 16 cards per page.
+- [ ] Print: no visible blank browser tab; system print dialog appears.
+- [ ] Show/search/card (no `data_analyze` this turn): **no** FollowupChips.
+- [ ] Analysis turn (`data_analyze` or KPI confirm): followups may appear.
+- [ ] Interactive Result cards still from **TemplateContent/`cardsHtml`**, not `DataRenderCard` list as primary host.
+- [ ] Image remap not required to pass this revision (may still break on legacy PLM URLs).
+
+### Implemented (2026-10-22b code)
+
+- `ExportResult` + Result chrome pass `cardsPerRow` / `cardRows` / `pageGrid`; document plugin always applies grid for cards (incl. HTML).
+- Print: `ExportResult` HTML → hidden iframe print (no `window.open` tab); screen twin `HtmlPath` not used for print paging.
+- Follow-ups: engine hint + UI gate on `data_analyze` / KPI confirm this turn.
+- Result cards host: TemplateContent/`cardsHtml` only (React `DataRenderCard` path removed for Agent Result).
+- Image remap: deferred.

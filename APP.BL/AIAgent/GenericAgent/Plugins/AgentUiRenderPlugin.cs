@@ -294,11 +294,15 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     }
                     else if (UiTemplateMerge.IsPageLayout(layout))
                     {
+                        var pageCpr = cardsPerRow ?? polish?.LayoutHints?.CardsPerRow ?? 3;
+                        var pageCr = cardRows ?? polish?.LayoutHints?.CardRows ?? CardSheet.DefaultCardRows;
                         emitSpecJson = JsonConvert.SerializeObject(new
                         {
                             title = pageTitle,
                             views = ParsePageViews(specJson),
-                            cardsPerRow = polish?.LayoutHints?.CardsPerRow ?? cardsPerRow ?? 3,
+                            cardsPerRow = pageCpr,
+                            cardRows = pageCr,
+                            pageGrid = pageCpr + "x" + pageCr,
                             sectionTitles,
                             cardsHtml,
                             polishedSpec = polishedClient,
@@ -307,10 +311,14 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     }
                     else if (layout == "cards")
                     {
+                        var cpr = cardsPerRow ?? polish?.LayoutHints?.CardsPerRow ?? 1;
+                        var cr = cardRows ?? polish?.LayoutHints?.CardRows ?? CardSheet.DefaultCardRows;
                         emitSpecJson = JsonConvert.SerializeObject(new
                         {
                             title = pageTitle,
-                            cardsPerRow = polish?.LayoutHints?.CardsPerRow ?? cardsPerRow ?? 1,
+                            cardsPerRow = cpr,
+                            cardRows = cr,
+                            pageGrid = cpr + "x" + cr,
                             sectionTitles,
                             cardsHtml,
                             polishedSpec = polishedClient,

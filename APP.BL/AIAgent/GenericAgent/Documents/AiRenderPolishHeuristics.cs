@@ -29,12 +29,16 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                          ?? new List<JObject>();
 
             var imageField = PickImageField(cols, sample);
-            var idField = PickByNames(cols, "product_code", "style_no", "styleno", "referenceid", "reference_id",
-                "article", "code", "id", "sku", "style");
+            // Prefer human style codes (Article / Product_Code) over raw ReferenceId for MCP blue id.
+            var idField = PickByNames(cols, "article", "product_code", "style_no", "styleno", "sku",
+                "referenceid", "reference_id", "code", "id", "style");
             var titleField = PickByNames(cols, "description", "name", "title", "style_name", "stylename", "product_name");
-            var statusField = PickByNames(cols, "stylestatus", "samplestatus", "status", "state", "approval");
+            var statusField = PickByNames(cols, "sample_status", "samplestatus", "style_status", "stylestatus",
+                "status", "state", "approval");
             var colorField = PickByNames(cols, "colorname", "color", "colour", "colorway");
-            var metaField = PickByNames(cols, "season", "classification", "category", "department", "projectofficer", "date");
+            var metaField = PickByNames(cols, "classification", "sub_classification", "season", "season_3",
+                "category", "department", "vendor", "projectofficer");
+            var metaField2 = PickByNames(cols, "sub_classification", "season_3", "season", "vendor", "mil_cid_number");
 
             var fields = new List<AiPolishFieldBinding>();
             void AddField(string name, string role, string typo)
@@ -50,19 +54,11 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             AddField(colorField, "colorSwatch", "meta");
             AddField(statusField, "statusPill", "status");
             AddField(metaField, "meta", "muted-small");
+            if (!string.IsNullOrWhiteSpace(metaField2)
+                && !string.Equals(metaField2, metaField, StringComparison.OrdinalIgnoreCase))
+                AddField(metaField2, "meta", "muted-small");
 
-            // Only fill extras when we have fewer than 3 role-picked fields (keep cards uncluttered).
-            const int minPrimary = 3;
-            if (fields.Count < minPrimary)
-            {
-                foreach (var c in cols)
-                {
-                    if (fields.Count >= minPrimary) break;
-                    if (string.Equals(c, imageField, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (LooksLikeUrlOnly(c)) continue;
-                    AddField(c, "body", "body");
-                }
-            }
+            // Do not pad with label:value body fields — MCP gallery is role-only.
 
             List<string> columns;
             if (selectAllColumns || layout == "form")
@@ -125,8 +121,9 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 },
                 LayoutHints = new AiPolishLayoutHints
                 {
-                    CardsPerRow = layout == "cards" ? 4 : null,
-                    CardRows = layout == "cards" ? 4 : null,
+                    // Leave null — page grid comes from render/export cardsPerRow + cardRows (user 2x2 / 4x4).
+                    CardsPerRow = null,
+                    CardRows = null,
                     StatusColorMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                     {
                         ["Approved"] = "success",

@@ -72,6 +72,12 @@ namespace APP.Components.EntityDto
         public string Layout { get; set; }
         public string Title { get; set; }
         public string DatasetName { get; set; }
+        /// <summary>Cards per row (columns). User 2x2 → 2.</summary>
+        public int CardsPerRow { get; set; }
+        /// <summary>Card rows per printed/exported page. User 2x2 → 2.</summary>
+        public int CardRows { get; set; }
+        /// <summary>Optional columns×rows e.g. 2x2 (overrides CardsPerRow/CardRows when parseable).</summary>
+        public string PageGrid { get; set; }
     }
 
     public class GenericAgentExportResultDto

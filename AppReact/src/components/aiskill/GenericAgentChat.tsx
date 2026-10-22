@@ -1670,7 +1670,18 @@ const GenericAgentChat: React.FC<Props> = ({
                             || (m.thinkingSteps?.length ?? 0) > 0
                             || (m.isStreaming && isRunning && !split.body)
                         );
-                        const hasFollowups = m.role === 'assistant' && !m.isStreaming && split.followups.length > 0;
+                        // Soft chips only after analysis this turn (data_analyze or KPI confirm).
+                        const turnHasAnalysis = (m.toolSteps ?? []).some(s => {
+                            const n = (s.toolName || '').toLowerCase();
+                            if (n === 'data_analyze') return true;
+                            if (n === 'ask_user') {
+                                const a = (s.args || '') + (s.result || '');
+                                return /kpi_dashboard/i.test(a);
+                            }
+                            return false;
+                        });
+                        const hasFollowups = m.role === 'assistant' && !m.isStreaming
+                            && turnHasAnalysis && split.followups.length > 0;
                         const largeOpen = hasRenders && m.dataRenders!.some(dr => placeRender(dr).panel);
                         if (!showBubble && !hasRenders && !hasFollowups && !showThinking) return null;
                         return (

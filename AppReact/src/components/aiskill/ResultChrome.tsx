@@ -22,20 +22,49 @@ export type PolishedSpecClient = {
         columns?: string[];
         filterFields?: PolishedFilterField[];
     };
-    layoutHints?: { cardsPerRow?: number; statusColorMap?: Record<string, string> };
+    layoutHints?: { cardsPerRow?: number; cardRows?: number; statusColorMap?: Record<string, string> };
 };
 
 function parseSpecBlob(event: DataRenderEvent | null | undefined): {
     polished: PolishedSpecClient | null;
     filterOptions: Record<string, string[]>;
     htmlPath: string | null;
+    cardsPerRow: number;
+    cardRows: number;
+    pageGrid: string | null;
 } {
     const raw = event?.SpecJson || event?.MetaJson || null;
     const obj = parseJsonSafe<Record<string, unknown>>(raw, {});
     const polished = (obj.polishedSpec || obj.PolishedSpec) as PolishedSpecClient | null;
     const filterOptions = (obj.filterOptions || obj.FilterOptions || {}) as Record<string, string[]>;
     const htmlPath = event?.HtmlPath || (obj.htmlPath as string) || null;
-    return { polished: polished || null, filterOptions: filterOptions || {}, htmlPath };
+    const hintCpr = polished?.layoutHints?.cardsPerRow;
+    const hintCr = polished?.layoutHints?.cardRows;
+    const rawCpr = typeof obj.cardsPerRow === 'number' ? obj.cardsPerRow
+        : typeof obj.CardsPerRow === 'number' ? obj.CardsPerRow : 0;
+    const rawCr = typeof obj.cardRows === 'number' ? obj.cardRows
+        : typeof obj.CardRows === 'number' ? obj.CardRows : 0;
+    const pageGridRaw = (obj.pageGrid || obj.PageGrid) as string | undefined;
+    let cardsPerRow = rawCpr > 0 ? rawCpr : (hintCpr && hintCpr > 0 ? hintCpr : 0);
+    let cardRows = rawCr > 0 ? rawCr : (hintCr && hintCr > 0 ? hintCr : 0);
+    let pageGrid = typeof pageGridRaw === 'string' && pageGridRaw.trim() ? pageGridRaw.trim() : null;
+    if (pageGrid) {
+        const m = pageGrid.match(/(\d+)\s*[xX×*]\s*(\d+)/);
+        if (m) {
+            if (cardsPerRow <= 0) cardsPerRow = Math.min(6, Math.max(1, parseInt(m[1], 10)));
+            if (cardRows <= 0) cardRows = Math.min(20, Math.max(1, parseInt(m[2], 10)));
+        }
+    }
+    // Prefer SpecJson / polish; otherwise omit forced grid (server uses tool/defaults).
+    if (!pageGrid && cardsPerRow > 0 && cardRows > 0) pageGrid = `${cardsPerRow}x${cardRows}`;
+    return {
+        polished: polished || null,
+        filterOptions: filterOptions || {},
+        htmlPath,
+        cardsPerRow,
+        cardRows,
+        pageGrid,
+    };
 }
 
 function applyFilters(
@@ -59,6 +88,34 @@ function applyFilters(
     return out;
 }
 
+function printHtmlInHiddenIframe(html: string): void {
+    const prev = document.getElementById('agent-result-print-frame');
+    if (prev) prev.remove();
+    const iframe = document.createElement('iframe');
+    iframe.id = 'agent-result-print-frame';
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) {
+        iframe.remove();
+        throw new Error('Print frame unavailable.');
+    }
+    doc.open();
+    doc.write(html);
+    doc.close();
+    const runPrint = () => {
+        try {
+            iframe.contentWindow?.focus();
+            iframe.contentWindow?.print();
+        } finally {
+            setTimeout(() => { try { iframe.remove(); } catch { /* ignore */ } }, 1000);
+        }
+    };
+    // Allow images/CSS to settle briefly before the system print dialog.
+    setTimeout(runPrint, 350);
+}
+
 interface Props {
     event: DataRenderEvent;
     skillKey: string;
@@ -69,7 +126,8 @@ interface Props {
 
 /**
  * React Result chrome: Filter / Print / Export (design redesign).
- * Filters client-side over DataJson; Print uses none-interactive twin HtmlPath or export_pdf.
+ * Cards Result host = TemplateContent/cardsHtml only (not React DataRenderCard).
+ * Print regenerates fitted R×C HTML via ExportResult (hidden iframe — no blank tab).
  */
 export const ResultChrome: React.FC<Props> = ({
     event,
@@ -79,7 +137,10 @@ export const ResultChrome: React.FC<Props> = ({
     children,
 }) => {
     const { theme } = useTheme();
-    const { polished, filterOptions, htmlPath } = useMemo(() => parseSpecBlob(event), [event]);
+    const { polished, filterOptions, cardsPerRow, cardRows, pageGrid } = useMemo(
+        () => parseSpecBlob(event),
+        [event]
+    );
     const allRows = useMemo(() => parseRows(event.DataJson), [event.DataJson]);
 
     const filterFields = polished?.bindings?.filterFields ?? [];
@@ -106,34 +167,31 @@ export const ResultChrome: React.FC<Props> = ({
         [allRows, search, searchFields, multi]
     );
 
+    const layout = (event.Layout || event.Ui || 'table').toLowerCase();
+    const layoutNorm = layout === 'card' ? 'cards' : layout;
+    const isCardsLayout = layoutNorm === 'cards' || layoutNorm === 'page';
+
     const filteredEvent = useMemo((): DataRenderEvent => {
-        if (!event.DataJson || filteredRows.length === allRows.length) return event;
-        // Drop pre-merged cardsHtml so React rebinds filtered rows with polish field selection.
-        let specJson = event.SpecJson;
-        try {
-            if (specJson) {
-                const o = JSON.parse(specJson) as Record<string, unknown>;
-                delete o.cardsHtml;
-                delete o.CardsHtml;
-                o.clientFiltered = true;
-                specJson = JSON.stringify(o);
-            }
-        } catch { /* keep */ }
+        // Cards/page: keep TemplateContent cardsHtml (never strip for React DataRenderCard fallback).
+        if (isCardsLayout || !event.DataJson || filteredRows.length === allRows.length) {
+            return event;
+        }
         return {
             ...event,
             DataJson: JSON.stringify(filteredRows),
             RowCount: filteredRows.length,
-            SpecJson: specJson,
-            MetaJson: specJson || event.MetaJson,
         };
-    }, [event, filteredRows, allRows.length]);
+    }, [event, filteredRows, allRows.length, isCardsLayout]);
 
     const title = polished?.title || event.Title || 'Result';
     const total = allRows.length > 0 ? allRows.length : (event.RowCount || 0);
     const shown = allRows.length > 0 ? filteredRows.length : total;
 
-    const btnPrimary = `px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`;
-    const btnSecondary = `px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default}`;
+    // Match FormMasterDetail / SkillSet header bar: solid colorful action buttons.
+    const btnPrimary =
+        'px-2 h-7 rounded-[4px] text-xs text-white bg-blue-400 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1';
+    const btnSecondary =
+        'px-2 h-7 rounded-[4px] text-xs text-white bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1';
     const inp = `flex-auto w-32 h-7 px-2 text-xs border ${theme.inputBox}`;
 
     const toggleMulti = (field: string, value: string) => {
@@ -144,8 +202,9 @@ export const ResultChrome: React.FC<Props> = ({
         });
     };
 
-    const layout = (event.Layout || event.Ui || 'table').toLowerCase();
-    const layoutNorm = layout === 'card' ? 'cards' : layout;
+    const exportLayout = layoutNorm === 'cards' || layoutNorm === 'table' || layoutNorm === 'page'
+        ? (layoutNorm === 'page' ? 'cards' : layoutNorm)
+        : layoutNorm;
 
     const runExport = async (format: string) => {
         if (!sessionKey || disabled) return;
@@ -157,11 +216,12 @@ export const ResultChrome: React.FC<Props> = ({
                 skillKey,
                 sessionKey,
                 format,
-                layout: layoutNorm === 'cards' || layoutNorm === 'table' || layoutNorm === 'page'
-                    ? (layoutNorm === 'page' ? 'cards' : layoutNorm)
-                    : layoutNorm,
+                layout: exportLayout,
                 title,
                 datasetName: undefined,
+                ...(cardsPerRow > 0 ? { cardsPerRow } : {}),
+                ...(cardRows > 0 ? { cardRows } : {}),
+                ...(pageGrid ? { pageGrid } : {}),
             });
             if (res?.path) {
                 setMsg(`Exported ${format.toUpperCase()}: ${res.path}`);
@@ -177,34 +237,39 @@ export const ResultChrome: React.FC<Props> = ({
     };
 
     const onPrint = async () => {
-        if (disabled) return;
+        if (disabled || !sessionKey) return;
         setBusy('print');
         setMsg(null);
         try {
-            if (htmlPath && sessionKey) {
-                const html = await genericAgentSvc.ReadAgentFileText(skillKey, sessionKey, htmlPath);
-                if (html) {
-                    const w = window.open('', '_blank');
-                    if (w) {
-                        w.document.open();
-                        w.document.write(html);
-                        w.document.close();
-                        w.focus();
-                        setTimeout(() => { try { w.print(); } catch { /* ignore */ } }, 300);
-                        setBusy(null);
-                        return;
-                    }
-                }
+            // Fitted R×C HTML (same source as PDF), not the screen twin under HtmlPath.
+            const res = await genericAgentSvc.ExportResult({
+                skillKey,
+                sessionKey,
+                format: 'html',
+                layout: exportLayout === 'table' ? 'table' : 'cards',
+                title,
+                ...(cardsPerRow > 0 ? { cardsPerRow } : {}),
+                ...(cardRows > 0 ? { cardRows } : {}),
+                ...(pageGrid ? { pageGrid } : {}),
+            });
+            if (!res?.path) {
+                setMsg(res?.error || 'Print failed.');
+                return;
             }
-            // Fallback: export PDF via server GENERATE
-            await runExport('pdf');
+            const html = await genericAgentSvc.ReadAgentFileText(skillKey, sessionKey, res.path);
+            if (!html?.trim()) {
+                setMsg('Print HTML empty.');
+                return;
+            }
+            printHtmlInHiddenIframe(html);
         } catch (e: unknown) {
             setMsg(e instanceof Error ? e.message : 'Print failed.');
+        } finally {
             setBusy(null);
         }
     };
 
-    const showChrome = !!(polished || allRows.length > 0 || htmlPath);
+    const showChrome = !!(polished || allRows.length > 0 || event.HtmlPath || event.SpecJson);
 
     if (!showChrome) {
         return <>{children(event, polished)}</>;
@@ -243,12 +308,12 @@ export const ResultChrome: React.FC<Props> = ({
                             Export
                         </button>
                         {exportOpen && (
-                            <div className={`absolute right-0 top-full mt-1 z-20 min-w-[140px] rounded-[4px] border shadow-md py-1 ${theme.mainContentSection}`}>
+                            <div className={`absolute right-0 top-full mt-1 z-20 min-w-[140px] rounded-[4px] border shadow-md py-1 bg-white ${theme.mainContentSection}`}>
                                 {(['pdf', 'docx', 'pptx', 'html', 'xlsx'] as const).map(fmt => (
                                     <button
                                         key={fmt}
                                         type="button"
-                                        className={`block w-full text-left px-3 py-1.5 text-xs ${theme.label} hover:opacity-80`}
+                                        className="block w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-blue-50"
                                         disabled={!!busy}
                                         onClick={() => void runExport(fmt)}
                                     >

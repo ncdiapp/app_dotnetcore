@@ -1215,15 +1215,21 @@ public class GenericAgentController : SecureBaseController
             var title = string.IsNullOrWhiteSpace(body.Title) ? "Result" : body.Title.Trim();
             var path = "output/result_export";
             var ct = HttpContext?.RequestAborted ?? CancellationToken.None;
+            var cpr = body.CardsPerRow > 0 ? body.CardsPerRow : 0;
+            var cr = body.CardRows > 0 ? body.CardRows : 0;
+            var pageGrid = string.IsNullOrWhiteSpace(body.PageGrid) ? null : body.PageGrid.Trim();
+            // Prefer pageGrid when set (e.g. "2x2"); else cardsPerRow/cardRows from Result chrome / render.
+            if (string.IsNullOrEmpty(pageGrid) && cpr > 0 && cr > 0)
+                pageGrid = cpr + "x" + cr;
             string json = ext switch
             {
-                ".pdf" => await plugin.ExportPdf(context, ct, path, null, null, dataset, layout, null, false, 0, 0, 0, null, 0, null).ConfigureAwait(false),
-                ".docx" => await plugin.ExportDocx(context, ct, path, null, null, dataset, layout, null, false, 0, 0, 0, null, 0, null).ConfigureAwait(false),
-                ".pptx" => await plugin.ExportPptx(context, ct, path, null, null, dataset, layout, null, false, 0, 0, 0, null, 0, null).ConfigureAwait(false),
-                ".html" => await plugin.ExportHtml(context, ct, path, null, null, dataset, layout, null, false, 0, 0, 0, null, 0, null).ConfigureAwait(false),
-                ".xlsx" => await plugin.ExportExcel(context, ct, path, null, null, dataset, layout, null, false, 0, 0, 0, null, 0, null).ConfigureAwait(false),
-                ".csv" => await plugin.ExportCsv(context, ct, path, null, null, dataset, layout, null, false, 0, 0, 0, null, 0, null).ConfigureAwait(false),
-                _ => await plugin.ExportPdf(context, ct, path, null, null, dataset, layout, null, false, 0, 0, 0, null, 0, null).ConfigureAwait(false)
+                ".pdf" => await plugin.ExportPdf(context, ct, path, null, null, dataset, layout, null, false, cpr, cr, 0, pageGrid, 0, null).ConfigureAwait(false),
+                ".docx" => await plugin.ExportDocx(context, ct, path, null, null, dataset, layout, null, false, cpr, cr, 0, pageGrid, 0, null).ConfigureAwait(false),
+                ".pptx" => await plugin.ExportPptx(context, ct, path, null, null, dataset, layout, null, false, cpr, cr, 0, pageGrid, 0, null).ConfigureAwait(false),
+                ".html" => await plugin.ExportHtml(context, ct, path, null, null, dataset, layout, null, false, cpr, cr, 0, pageGrid, 0, null).ConfigureAwait(false),
+                ".xlsx" => await plugin.ExportExcel(context, ct, path, null, null, dataset, layout, null, false, cpr, cr, 0, pageGrid, 0, null).ConfigureAwait(false),
+                ".csv" => await plugin.ExportCsv(context, ct, path, null, null, dataset, layout, null, false, cpr, cr, 0, pageGrid, 0, null).ConfigureAwait(false),
+                _ => await plugin.ExportPdf(context, ct, path, null, null, dataset, layout, null, false, cpr, cr, 0, pageGrid, 0, null).ConfigureAwait(false)
             };
 
             var obj = JObject.Parse(json);

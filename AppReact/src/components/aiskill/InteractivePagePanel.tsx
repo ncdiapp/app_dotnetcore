@@ -25,7 +25,7 @@ function toChildEvent(
  */
 const InteractivePagePanel: React.FC<Props> = ({ event, disabled, onAction }) => {
     const { theme } = useTheme();
-    const { views, cardsPerRow, title, sectionTitles } = useMemo(
+    const { views, title, sectionTitles } = useMemo(
         () => parsePageViews(event.SpecJson),
         [event.SpecJson],
     );
@@ -67,16 +67,9 @@ const InteractivePagePanel: React.FC<Props> = ({ event, disabled, onAction }) =>
                         {cardsHtml ? (
                             <TemplateControlLayout html={cardsHtml} />
                         ) : (
-                            <DataRenderPanel
-                                event={toChildEvent(event, {
-                                    Ui: 'card',
-                                    Layout: 'cards',
-                                    Title: cardsSectionTitle,
-                                    MetaJson: JSON.stringify({ cardsPerRow }),
-                                })}
-                                disabled={disabled}
-                                onAction={onAction}
-                            />
+                            <div className={`text-xs px-1 ${theme.label}`}>
+                                Card view requires TemplateContent (cardsHtml). Re-run render with polish.
+                            </div>
                         )}
                     </div>
                 </PageSection>

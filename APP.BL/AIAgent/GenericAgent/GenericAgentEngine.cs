@@ -106,8 +106,9 @@ If kpi_dashboard already confirmed this chat, do not re-ask.";
         private const string FollowupsPromptHint = @"
 
 ## Follow-up suggestions (soft chips)
-After a useful answer (including render_none_interactive), if there are natural next questions, end your FinalResponse with a fenced code block whose language tag is followups, containing a JSON array of 2–3 short, specific questions (under ~12 words each). Example: [""Break this down by region"",""Which styles have negative margin?""].
-Skip the block for yes/no or clearly finished answers. Chips are non-blocking suggestions for the *user* to click (not ask_user). Do not call data_analyze (or any tool) because of chips — only if the user later asks. Do NOT put chart/dashboard/visualize render requests in chips — use render_none_interactive when the user asks for visuals. Keep ask_user for required Gate/confirmations only.";
+Only after this turn used data_analyze (or a confirmed KPI/dashboard analysis path). Never after show/search/fetch_display/render-only answers.
+When allowed: if there are natural next questions, end your FinalResponse with a fenced code block whose language tag is followups, containing a JSON array of 2–3 short, specific questions (under ~12 words each). Example: [""Break this down by region"",""Which styles have negative margin?""].
+Skip the block for yes/no, finished answers, or any turn that did not call data_analyze. Chips are non-blocking suggestions for the *user* to click (not ask_user). Do not call data_analyze (or any tool) because of chips — only if the user later asks. Do NOT put chart/dashboard/visualize render requests in chips — use render_none_interactive when the user asks for visuals. Keep ask_user for required Gate/confirmations only.";
 
         public static async Task RunAsync(
             string                skillKey,

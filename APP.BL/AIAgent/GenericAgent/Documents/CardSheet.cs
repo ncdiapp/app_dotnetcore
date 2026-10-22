@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 
@@ -76,18 +77,19 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         /// </summary>
         public static CardSheet FromRows(string title, JArray rows, int cardsPerRow, int cardRows, AiPolishedRenderSpec polish)
         {
+            // Tool/user cardsPerRow + cardRows win. Polish LayoutHints must not override explicit page grid.
             var perRow = cardsPerRow;
             var pageRows = cardRows;
-            if (polish?.LayoutHints?.CardsPerRow is int cpr && cpr > 0)
+            if (perRow <= 0 && polish?.LayoutHints?.CardsPerRow is int cpr && cpr > 0)
                 perRow = cpr;
-            if (polish?.LayoutHints?.CardRows is int cr && cr > 0)
+            if (pageRows <= 0 && polish?.LayoutHints?.CardRows is int cr && cr > 0)
                 pageRows = cr;
 
             var sheet = new CardSheet
             {
                 Title = !string.IsNullOrWhiteSpace(polish?.Title) ? polish.Title : (title ?? ""),
-                CardsPerRow = ClampPerRow(perRow),
-                CardRows = ClampPageRows(pageRows)
+                CardsPerRow = ClampPerRow(perRow > 0 ? perRow : 1),
+                CardRows = ClampPageRows(pageRows > 0 ? pageRows : DefaultCardRows)
             };
             if (rows == null) return sheet;
             if (rows.Count > DocumentStyles.MaxDataRows)
@@ -189,18 +191,10 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 
             if (!hasSelection)
             {
-                foreach (var prop in obj.Properties())
-                {
-                    var value = ValueText(prop.Value, out var image);
-                    fields.Add(new CardField
-                    {
-                        Label = prop.Name,
-                        Value = value,
-                        IsImage = image || IsImageValue(value),
-                        Role = image || IsImageValue(value) ? "primaryImage" : "body"
-                    });
-                }
-                return fields;
+                // No polish bindings → still MCP-shaped (not a full label:value dump).
+                var heuristic = AiRenderPolishHeuristics.Build(
+                    "cards", "", obj.Properties().Select(p => p.Name).ToList(), new JArray(obj));
+                return FieldsOf(obj, heuristic);
             }
 
             // Primary image first

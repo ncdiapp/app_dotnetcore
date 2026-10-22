@@ -13,7 +13,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
     public static class UiTemplateContentMaterialize
     {
         /// <summary>Bump when platform default Views change and DB shells should refresh.</summary>
-        private const int RulesVersion = 5;
+        private const int RulesVersion = 7;
         private static int _appliedVersion;
 
         public static void EnsureOnce()
@@ -60,9 +60,10 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             Set("form", UiDefaultViewTemplates.FormDefault);
             Set("table", interactive ? UiDefaultViewTemplates.TableInteractive : UiDefaultViewTemplates.TableNoneInteractive);
             Set("cards", UiDefaultViewTemplates.CardsNoneInteractive);
-            // Refresh platform legacy cards shell → Tailwind agent-cards markup (+ image bind)
+            // Refresh platform cards → MCP gallery shell (hero / blue id / status / meta)
             if (IsLegacyCardsShell(map["cards"]?.ToString())
-                || IsLegacyCardsWithoutImageBind(map["cards"]?.ToString()))
+                || IsLegacyCardsWithoutImageBind(map["cards"]?.ToString())
+                || IsPreMcpCardsShell(map["cards"]?.ToString()))
             {
                 map["cards"] = UiDefaultViewTemplates.CardsNoneInteractive;
                 changed = true;
@@ -122,6 +123,16 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 return false;
             return cur.IndexOf("field.value", StringComparison.OrdinalIgnoreCase) >= 0
                    && cur.IndexOf("data-role=\"image\"", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
+        /// <summary>Platform cards before MCP v2 gallery shell (role hierarchy, no label dump).</summary>
+        private static bool IsPreMcpCardsShell(string cur)
+        {
+            if (string.IsNullOrWhiteSpace(cur) || NeedsMaterialize(cur)) return false;
+            if (cur.IndexOf("agent-cards-mcp-v2", StringComparison.OrdinalIgnoreCase) >= 0)
+                return false;
+            return cur.IndexOf("agent-cards-grid", StringComparison.OrdinalIgnoreCase) >= 0
+                   || cur.IndexOf("agent-card", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         /// <summary>Empty dashboard stub used as kpi control before KpiInteractive existed.</summary>

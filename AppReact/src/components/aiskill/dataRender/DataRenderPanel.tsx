@@ -1,8 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import TemplateControlLayout, { parseCardsHtmlFromSpec } from '../TemplateControlLayout';
-import { adaptToCard, adaptToChart, adaptToGrid } from './adapters';
-import { DataRenderCardList } from './DataRenderCard';
+import { adaptToChart, adaptToGrid } from './adapters';
 import { DataRenderChartRecharts } from './DataRenderChartRecharts';
 import { DataRenderChartWijmo } from './DataRenderChartWijmo';
 import { DataRenderGridAg } from './DataRenderGridAg';
@@ -98,18 +97,11 @@ function DashboardBlockView(props: {
             />
         );
     } else if (block.type === 'card') {
-        const cardProps = adaptToCard({
-            dataJson: JSON.stringify(block.data ?? {}),
-            metaJson: JSON.stringify(block.meta ?? {}),
-            title: block.title,
-        });
+        // Agent Result cards are TemplateContent/cardsHtml only — block cards unused here.
         body = (
-            <DataRenderCardList
-                title={cardProps.title}
-                status={cardProps.status}
-                cards={cardProps.cards}
-                cardsPerRow={cardProps.cardsPerRow}
-            />
+            <div className={`text-xs ${theme.label}`}>
+                Card block requires TemplateContent layout (cardsHtml).
+            </div>
         );
     }
 
@@ -164,28 +156,13 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
             );
         }
         if (ui === 'card') {
-            const specObj = parseJsonSafe<Record<string, unknown>>(event.SpecJson, {});
-            const polished = (specObj.polishedSpec || specObj.PolishedSpec) as {
-                bindings?: { primaryImageField?: string; fields?: Array<{ name?: string; role?: string }> };
-                layoutHints?: { cardsPerRow?: number };
-            } | null;
+            // Primary host: TemplateContent GENERATE (cardsHtml). Do not use React DataRenderCard.
             const cardsHtml = parseCardsHtmlFromSpec(event.SpecJson);
-            const clientFiltered = !!(specObj.clientFiltered || specObj.ClientFiltered);
-            if (cardsHtml && !clientFiltered) return <TemplateControlLayout html={cardsHtml} />;
-            const props = adaptToCard({
-                dataJson: event.DataJson,
-                metaJson: event.MetaJson || event.SpecJson,
-                title: event.Title,
-                polishedBindings: polished?.bindings ?? null,
-            });
-            const perRow = polished?.layoutHints?.cardsPerRow ?? props.cardsPerRow;
+            if (cardsHtml) return <TemplateControlLayout html={cardsHtml} />;
             return (
-                <DataRenderCardList
-                    title={props.title}
-                    status={props.status}
-                    cards={props.cards}
-                    cardsPerRow={perRow}
-                />
+                <div className={`text-xs ${theme.label}`}>
+                    Card Result requires TemplateContent (cardsHtml). Re-run render_interactive with polish.
+                </div>
             );
         }
         if (ui === 'chart') {
