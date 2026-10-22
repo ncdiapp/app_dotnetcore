@@ -303,11 +303,27 @@ const InteractiveDashboardPanel: React.FC<Props> = ({ event, disabled, onAction 
         return Array.from(s).sort();
     }, [rows, filterField]);
 
+    const polishedColumns = useMemo(() => {
+        const root = parseJson<Record<string, unknown>>(event.SpecJson, {});
+        const polished = (root.polishedSpec || root.PolishedSpec) as {
+            bindings?: { columns?: string[]; selectAllColumns?: boolean };
+            selectAllColumns?: boolean;
+        } | null;
+        const cols = polished?.bindings?.columns;
+        if (!Array.isArray(cols) || cols.length === 0) return null;
+        if (polished?.selectAllColumns || polished?.bindings?.selectAllColumns) return null;
+        return cols.map(String);
+    }, [event.SpecJson]);
+
     const colDefs = useMemo(() => {
         const first = filteredRows[0];
         if (!first) return [];
-        return Object.keys(first).map(field => ({ field, headerName: field }));
-    }, [filteredRows]);
+        const keys = polishedColumns?.length
+            ? polishedColumns.filter(k => k in first)
+            : Object.keys(first);
+        const useKeys = keys.length > 0 ? keys : Object.keys(first);
+        return useKeys.map(field => ({ field, headerName: field }));
+    }, [filteredRows, polishedColumns]);
 
     const btn = `px-2 py-0.5 text-xs rounded-[4px] border ${theme.button_default}`;
     const title = event.Title || spec.title || 'Dashboard';

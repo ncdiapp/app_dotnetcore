@@ -14,6 +14,7 @@ import {
 import GenericAgentFilesPanel from './GenericAgentFilesPanel';
 import { chatModulesFromEnabledTools, chatModulesFromLibraries, type AgentChatUiModule } from './agentUiModules';
 import { DataRenderPanel } from './dataRender';
+import { ResultChrome } from './ResultChrome';
 import InteractiveDashboardPanel, { isInteractiveDashboard } from './InteractiveDashboardPanel';
 import InteractivePagePanel from './InteractivePagePanel';
 import UiRenderFrame, { hasUiHtml } from './UiRenderFrame';
@@ -218,7 +219,7 @@ interface ToolStep {
     durationMs?: number;
 }
 
-/** File names this turn actually wrote, so the reply can link them to download. */
+/** File names this turn wrote. Cap list — prefer Result chrome Export for galleries. */
 const exportFileLinks = (steps?: ToolStep[]): AgentFileLink[] => {
     const byName = new Map<string, string>();
     for (const s of steps ?? []) {
@@ -227,11 +228,15 @@ const exportFileLinks = (steps?: ToolStep[]): AgentFileLink[] => {
         let m: RegExpExecArray | null;
         while ((m = re.exec(raw)) !== null) {
             const path = m[1].replace(/\\/g, '/');
+            // Skip render twin HTML under render/ — Print/Export lives in Result chrome.
+            if (path.startsWith('render/')) continue;
             const name = path.split('/').filter(Boolean).pop();
             if (name) byName.set(name, path);
         }
     }
-    return Array.from(byName.entries()).map(([name, path]) => ({ name, path }));
+    const all = Array.from(byName.entries()).map(([name, path]) => ({ name, path }));
+    // Keep chat tidy: at most 2 file links in-thread.
+    return all.slice(0, 2);
 };
 
 interface TurnActivity {
@@ -1958,7 +1963,7 @@ const GenericAgentChat: React.FC<Props> = ({
                         className={`w-full px-0 py-1 text-sm leading-6 bg-transparent border-0 focus:outline-none resize-none ${isRunning || pendingAskUser ? 'pr-20' : 'pr-12'}`}
                         rows={2}
                         value={input}
-                        placeholder={`Message ${skillLabel}…`}
+                        placeholder={`Ask ${skillLabel}…`}
                         onChange={e => setInput(e.target.value)}
                         onFocus={() => setComposerFocus(true)}
                         onBlur={() => setComposerFocus(false)}
@@ -2043,49 +2048,58 @@ const GenericAgentChat: React.FC<Props> = ({
 
                     {rightTab === 'result' && openRender ? (
                         <div className="w-full h-1 flex-auto overflow-hidden min-w-0 min-h-0 max-w-full p-2 box-border">
-                            {isInteractiveDashboard(openRender) ? (
-                                <div className="w-full h-full min-w-0 max-w-full overflow-hidden">
-                                    <InteractiveDashboardPanel
-                                        event={openRender}
-                                        disabled={blocked}
-                                        onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
-                                    />
-                                </div>
-                            ) : isInteractivePage(openRender) ? (
-                                <div className="w-full h-full min-w-0 max-w-full overflow-hidden">
-                                    <InteractivePagePanel
-                                        event={openRender}
-                                        disabled={blocked}
-                                        onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
-                                    />
-                                </div>
-                            ) : isInteractiveTabular(openRender) ? (
-                                <div className="w-full h-full min-w-0 max-w-full overflow-auto">
-                                    <DataRenderPanel
-                                        event={openRender}
-                                        disabled={blocked}
-                                        onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
-                                    />
-                                </div>
-                            ) : hasUiHtml(openRender) ? (
-                                <div className="w-full h-full min-w-0 max-w-full overflow-hidden">
-                                    <UiRenderFrame
-                                        event={openRender}
-                                        skillKey={skillKey}
-                                        sessionKey={fileSessionKey}
-                                        disabled={blocked}
-                                        onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
-                                    />
-                                </div>
-                            ) : (
-                                <div className="w-full h-full min-w-0 max-w-full overflow-auto">
-                                    <DataRenderPanel
-                                        event={openRender}
-                                        disabled={blocked}
-                                        onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
-                                    />
-                                </div>
-                            )}
+                            <ResultChrome
+                                event={openRender}
+                                skillKey={skillKey}
+                                sessionKey={fileSessionKey}
+                                disabled={blocked}
+                            >
+                                {(filteredEvent) => (
+                                    isInteractiveDashboard(filteredEvent) ? (
+                                        <div className="w-full h-full min-w-0 max-w-full overflow-hidden">
+                                            <InteractiveDashboardPanel
+                                                event={filteredEvent}
+                                                disabled={blocked}
+                                                onAction={(actionId, selectionJson) => handleDataRenderAction(filteredEvent, actionId, selectionJson)}
+                                            />
+                                        </div>
+                                    ) : isInteractivePage(filteredEvent) ? (
+                                        <div className="w-full h-full min-w-0 max-w-full overflow-hidden">
+                                            <InteractivePagePanel
+                                                event={filteredEvent}
+                                                disabled={blocked}
+                                                onAction={(actionId, selectionJson) => handleDataRenderAction(filteredEvent, actionId, selectionJson)}
+                                            />
+                                        </div>
+                                    ) : isInteractiveTabular(filteredEvent) ? (
+                                        <div className="w-full h-full min-w-0 max-w-full overflow-auto">
+                                            <DataRenderPanel
+                                                event={filteredEvent}
+                                                disabled={blocked}
+                                                onAction={(actionId, selectionJson) => handleDataRenderAction(filteredEvent, actionId, selectionJson)}
+                                            />
+                                        </div>
+                                    ) : hasUiHtml(filteredEvent) ? (
+                                        <div className="w-full h-full min-w-0 max-w-full overflow-hidden">
+                                            <UiRenderFrame
+                                                event={filteredEvent}
+                                                skillKey={skillKey}
+                                                sessionKey={fileSessionKey}
+                                                disabled={blocked}
+                                                onAction={(actionId, selectionJson) => handleDataRenderAction(filteredEvent, actionId, selectionJson)}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="w-full h-full min-w-0 max-w-full overflow-auto">
+                                            <DataRenderPanel
+                                                event={filteredEvent}
+                                                disabled={blocked}
+                                                onAction={(actionId, selectionJson) => handleDataRenderAction(filteredEvent, actionId, selectionJson)}
+                                            />
+                                        </div>
+                                    )
+                                )}
+                            </ResultChrome>
                         </div>
                     ) : rightTab === 'files' && uiModules.has('files') ? (
                         <div className="w-full h-1 flex-auto overflow-hidden min-h-0">

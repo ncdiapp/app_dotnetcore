@@ -1,10 +1,12 @@
 # Agent Chat UI
 
-Date: 2026-10-19. Replaces `AI-Agent-Chat-Render-Panel.md`. Updated 2026-10-20 for Result iframe (see UI render and document export design).
+Date: 2026-10-19. Replaces `AI-Agent-Chat-Render-Panel.md`. Updated 2026-10-20 for Result iframe (see UI render and document export design). Updated 2026-10-22 for Result/Doc Export UI layout redesign cross-link.
 
-Export engines, UI templates, `render_none_interactive` / `render_interactive`, and Result **iframe** hosting are specified in [`AI-Agent-Ui-Render-And-Document-Export.md`](AI-Agent-Ui-Render-And-Document-Export.md). This file keeps chat chrome (header, transcript, composer, chips, motion).
+Export engines, UI templates, `render_none_interactive` / `render_interactive`, and Result **iframe** / merge hosting are specified in [`AI-Agent-Ui-Render-And-Document-Export.md`](AI-Agent-Ui-Render-And-Document-Export.md). This file keeps chat chrome (header, transcript, composer, chips, motion).
 
-The reference is `C:\Dev\MCP\CGS.BlueCherry.MCP.Client`, mainly `ChatWindow.tsx`, `ChatInput.tsx`, `MessageItem.tsx`, `ToolCallBlock.tsx`, `ArtifactCard.tsx`, and `ArtifactPanel.tsx`. Copy the layout and the motion. Colors, type, and borders come from `useTheme()`. Do not copy that project's hardcoded hex values, Inter-only rules, or Tailwind CDN. **Do** host Result HTML in an iframe per [`AI-Agent-Ui-Render-And-Document-Export.md`](AI-Agent-Ui-Render-And-Document-Export.md) (MCP stores rendering instructions in skill `content` and lets the model write artifacts; we merge templates in C# instead).
+> **Visual target and Result chrome (2026-10-22):** MCP-aligned left-chat spacing/typography/chip standards, right Result Filter / Print / Export React chrome, AI polish of TemplateContent + field selection, and the rule that the LLM never binds Result data into pages are specified in [`AI-Agent-Result-And-Doc-Export-UI-Layout-Redesign.md`](AI-Agent-Result-And-Doc-Export-UI-Layout-Redesign.md). Prefer that document when Chat visual standards or Result toolbar behavior conflict with older notes below.
+
+The reference is `C:\Dev\MCP\CGS.BlueCherry.MCP.Client`, mainly `ChatWindow.tsx`, `ChatInput.tsx`, `MessageItem.tsx`, `ToolCallBlock.tsx`, `ArtifactCard.tsx`, and `ArtifactPanel.tsx`. Copy the layout and the motion. Colors, type, and borders come from `useTheme()`. Do not copy that project's hardcoded hex values, Inter-only rules, or Tailwind CDN. **Do** host Result HTML in an iframe / React hosts per [`AI-Agent-Ui-Render-And-Document-Export.md`](AI-Agent-Ui-Render-And-Document-Export.md) and the redesign doc (MCP stores rendering instructions in skill `content` and lets the model write artifacts; we polish templates then merge in C# instead of LLM-built pages).
 
 ## Page
 
@@ -70,7 +72,7 @@ On a narrow viewport the panel is a layer over the chat, with the same close con
 
 ## Left out
 
-Microphone, file attach, edit, retry, token counts, a CDN stylesheet, and a speech bubble on the avatar. Document export and the chat cache follow [`AI-Agent-Ui-Render-And-Document-Export.md`](AI-Agent-Ui-Render-And-Document-Export.md). A chip is not an export. AI-authored artifact HTML (MCP style) is out; only C#-merged template HTML enters the Result iframe.
+Microphone, file attach, edit, retry, token counts, a CDN stylesheet, and a speech bubble on the avatar. Document export and the chat cache follow [`AI-Agent-Ui-Render-And-Document-Export.md`](AI-Agent-Ui-Render-And-Document-Export.md). A chip is not an export. LLM-built full Result pages (MCP style: template + all rows → HTML) are out; C# GENERATE merges rows. Session AI polish of TemplateContent + field structure is in scope per [`AI-Agent-Result-And-Doc-Export-UI-Layout-Redesign.md`](AI-Agent-Result-And-Doc-Export-UI-Layout-Redesign.md).
 
 ## Code
 

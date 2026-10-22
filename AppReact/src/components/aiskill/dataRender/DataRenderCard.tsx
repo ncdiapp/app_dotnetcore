@@ -3,29 +3,89 @@ import { useTheme } from '../../../redux/hooks/useTheme';
 import { DataRenderImage } from './DataRenderImage';
 import { imageUrlKind } from './imageValue';
 
-interface CardProps {
-    fields: Array<{ label: string; value: string }>;
+interface CardField {
+    label: string;
+    value: string;
+    role?: string;
 }
 
-/** Label left, value right — always. Outer card chrome only; no per-field padding bloat. */
+interface CardProps {
+    fields: CardField[];
+}
+
+function statusClass(value: string, themeOk: string): string {
+    const v = (value || '').toLowerCase();
+    if (v.includes('drop') || v.includes('reject')) return 'bg-red-100 text-red-800';
+    if (v === 'hold') return 'bg-gray-100 text-gray-600';
+    if (v.includes('develop')) return 'bg-blue-100 text-blue-800';
+    if (v.includes('approv')) return 'bg-green-100 text-green-800';
+    return themeOk;
+}
+
+/** MCP-like card: hero image + role-typed fields (idLink, title, statusPill, meta). */
 export const DataRenderCard: React.FC<CardProps> = ({ fields }) => {
     const { theme, t } = useTheme();
+    const hero = fields.find(f =>
+        (f.role || '').toLowerCase() === 'primaryimage' || imageUrlKind(f.value) != null
+    );
+    const rest = fields.filter(f => f !== hero);
 
     return (
-        <div className={`min-w-0 overflow-hidden border rounded-[8px] px-3.5 py-3 ${theme.mainContentSection}`}>
-            {fields.length === 0 ? (
-                <div className={`text-xs ${t('text_label')}`}>No fields.</div>
-            ) : (
-                <dl className="flex flex-col gap-1 min-w-0">
-                    {fields.map((f, i) => {
-                        const isImage = imageUrlKind(f.value) != null;
-                        if (isImage) {
+        <div className={`min-w-0 overflow-hidden border rounded-[8px] ${theme.mainContentSection} flex flex-col`}>
+            {hero && imageUrlKind(hero.value) != null && (
+                <div className="bg-gray-100 min-h-[120px] max-h-[160px] flex items-center justify-center overflow-hidden">
+                    <DataRenderImage url={hero.value} alt={hero.label} size="compact" />
+                </div>
+            )}
+            <div className="px-3.5 py-3 flex flex-col gap-1.5 min-w-0">
+                {rest.length === 0 && !hero ? (
+                    <div className={`text-xs ${t('text_label')}`}>No fields.</div>
+                ) : (
+                    rest.map((f, i) => {
+                        const role = (f.role || 'body').toLowerCase();
+                        if (imageUrlKind(f.value) != null) {
                             return (
-                                <div key={`${f.label}-${i}`} className="min-w-0 overflow-hidden flex flex-col gap-1">
-                                    <dt className={`text-[11px] leading-4 font-normal break-words ${t('text_label')}`}>{f.label}</dt>
-                                    <dd className="min-w-0">
-                                        <DataRenderImage url={f.value} alt={f.label} size="compact" />
-                                    </dd>
+                                <div key={`${f.label}-${i}`} className="min-w-0">
+                                    <DataRenderImage url={f.value} alt={f.label} size="compact" />
+                                </div>
+                            );
+                        }
+                        if (role === 'idlink') {
+                            return (
+                                <div key={`${f.label}-${i}`} className="text-[13px] font-bold text-blue-600 break-words">
+                                    {f.value || '—'}
+                                </div>
+                            );
+                        }
+                        if (role === 'title') {
+                            return (
+                                <div key={`${f.label}-${i}`} className={`text-xs font-medium break-words ${t('text_default')}`}>
+                                    {f.value || '—'}
+                                </div>
+                            );
+                        }
+                        if (role === 'statuspill') {
+                            return (
+                                <span
+                                    key={`${f.label}-${i}`}
+                                    className={`self-start text-[11px] font-semibold px-2 py-0.5 rounded-full ${statusClass(f.value, theme.button_default)}`}
+                                >
+                                    {f.value || '—'}
+                                </span>
+                            );
+                        }
+                        if (role === 'colorswatch') {
+                            return (
+                                <div key={`${f.label}-${i}`} className={`flex items-center gap-1.5 text-xs ${t('text_default')}`}>
+                                    <span className="w-2.5 h-2.5 rounded-full bg-blue-400 border border-gray-300 shrink-0" />
+                                    {f.value || '—'}
+                                </div>
+                            );
+                        }
+                        if (role === 'meta') {
+                            return (
+                                <div key={`${f.label}-${i}`} className={`text-[11px] break-words ${t('text_label')}`}>
+                                    {f.value || '—'}
                                 </div>
                             );
                         }
@@ -35,9 +95,9 @@ export const DataRenderCard: React.FC<CardProps> = ({ fields }) => {
                                 <dd className={`min-w-0 w-1 flex-auto text-xs leading-4 font-normal break-words ${t('text_default')}`}>{f.value || '—'}</dd>
                             </div>
                         );
-                    })}
-                </dl>
-            )}
+                    })
+                )}
+            </div>
         </div>
     );
 };
@@ -45,7 +105,7 @@ export const DataRenderCard: React.FC<CardProps> = ({ fields }) => {
 interface ListProps {
     title?: string;
     status?: string;
-    cards: Array<Array<{ label: string; value: string }>>;
+    cards: Array<Array<{ label: string; value: string; role?: string }>>;
     cardsPerRow?: number;
 }
 

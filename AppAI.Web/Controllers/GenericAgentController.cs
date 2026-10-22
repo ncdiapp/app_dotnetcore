@@ -1157,6 +1157,98 @@ public class GenericAgentController : SecureBaseController
         return result;
     }
 
+    /// <summary>
+    /// Result panel Export / Print-as-PDF. Uses session AI polish + AgentDocumentPlugin GENERATE.
+    /// </summary>
+    [HttpPost]
+    public async Task<OperationCallResult<GenericAgentExportResultDto>> ExportResult(
+        [FromBody] GenericAgentExportResultRequestDto body)
+    {
+        var result = new OperationCallResult<GenericAgentExportResultDto>();
+        if (!TryFilesIdentity(out var ai, out var companyId, out var err))
+        {
+            result.ValidationResult = err.ValidationResult;
+            return result;
+        }
+        var boxed = new OperationCallResult<object>();
+        if (!AssertChatOwned(body?.SkillKey, body?.SessionKey, Convert.ToInt32(ai.UserId), boxed))
+        {
+            result.ValidationResult = boxed.ValidationResult;
+            return result;
+        }
+
+        var format = (body.Format ?? "pdf").Trim().ToLowerInvariant().TrimStart('.');
+        var ext = format switch
+        {
+            "pdf" => ".pdf",
+            "docx" or "word" => ".docx",
+            "pptx" or "ppt" => ".pptx",
+            "html" or "htm" => ".html",
+            "xlsx" or "excel" => ".xlsx",
+            "csv" => ".csv",
+            _ => ".pdf"
+        };
+        var layout = string.IsNullOrWhiteSpace(body.Layout) ? "cards" : body.Layout.Trim().ToLowerInvariant();
+        if (layout == "card") layout = "cards";
+
+        var dataset = body.DatasetName?.Trim();
+        if (string.IsNullOrWhiteSpace(dataset))
+            dataset = App.BL.AIAgent.GenericAgent.DataAnalyze.AgentDataAnalyzeCacheBL
+                .Latest(body.SessionKey.Trim())?.Name;
+
+        var context = new APP.Framework.Plugin.AgentToolContext
+        {
+            ConnectionString = ai.CurrentUserDbConnectionString ?? "",
+            DatabaseName = ai.CurrentUserDataBaseName ?? "",
+            SessionId = Guid.NewGuid().ToString("N"),
+            UserSessionId = ai.SessionId?.ToString() ?? "",
+            SkillKey = body.SkillKey?.Trim() ?? "",
+            UserId = Convert.ToInt32(ai.UserId),
+            CompanyId = companyId,
+            ChatSessionKey = body.SessionKey.Trim(),
+            LoginUserType = ai.CurrentLoginUserType
+        };
+
+        try
+        {
+            var plugin = new App.BL.AIAgent.GenericAgent.Plugins.AgentDocumentPlugin();
+            var title = string.IsNullOrWhiteSpace(body.Title) ? "Result" : body.Title.Trim();
+            var path = "output/result_export";
+            var ct = HttpContext?.RequestAborted ?? CancellationToken.None;
+            string json = ext switch
+            {
+                ".pdf" => await plugin.ExportPdf(context, ct, path, null, null, dataset, layout, null, false, 0, 0, 0, null, 0, null).ConfigureAwait(false),
+                ".docx" => await plugin.ExportDocx(context, ct, path, null, null, dataset, layout, null, false, 0, 0, 0, null, 0, null).ConfigureAwait(false),
+                ".pptx" => await plugin.ExportPptx(context, ct, path, null, null, dataset, layout, null, false, 0, 0, 0, null, 0, null).ConfigureAwait(false),
+                ".html" => await plugin.ExportHtml(context, ct, path, null, null, dataset, layout, null, false, 0, 0, 0, null, 0, null).ConfigureAwait(false),
+                ".xlsx" => await plugin.ExportExcel(context, ct, path, null, null, dataset, layout, null, false, 0, 0, 0, null, 0, null).ConfigureAwait(false),
+                ".csv" => await plugin.ExportCsv(context, ct, path, null, null, dataset, layout, null, false, 0, 0, 0, null, 0, null).ConfigureAwait(false),
+                _ => await plugin.ExportPdf(context, ct, path, null, null, dataset, layout, null, false, 0, 0, 0, null, 0, null).ConfigureAwait(false)
+            };
+
+            var obj = JObject.Parse(json);
+            if (obj["ok"]?.Value<bool>() == true && obj["relativePath"] != null)
+            {
+                result.Object = new GenericAgentExportResultDto { Path = obj["relativePath"].ToString() };
+            }
+            else
+            {
+                result.Object = new GenericAgentExportResultDto
+                {
+                    Error = obj["error"]?.ToString() ?? obj["message"]?.ToString() ?? "Export failed."
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "ExportResult",
+                ValidationItemType.Error, ex.Message));
+            result.Object = new GenericAgentExportResultDto { Error = ex.Message };
+        }
+        return result;
+    }
+
     [HttpGet]
     public IActionResult DownloadAgentFile(
         [FromQuery] string skillKey, [FromQuery] string sessionKey, [FromQuery] string path,

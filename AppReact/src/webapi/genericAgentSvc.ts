@@ -606,6 +606,46 @@ class GenericAgentService {
         setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     }
 
+    /** Read AgentOutput text (e.g. none-interactive render twin HTML for Print). */
+    async ReadAgentFileText(skillKey: string, sessionKey: string | null | undefined, relativePath: string): Promise<string> {
+        const res = await fetch(this.downloadAgentFileUrl(skillKey, sessionKey, relativePath), {
+            headers: getHeaders(),
+        });
+        if (!res.ok) throw new Error(`Read failed (${res.status})`);
+        return await res.text();
+    }
+
+    /**
+     * Result chrome Export / Print-as-PDF — server GENERATE via AgentDocumentPlugin (session polish when present).
+     */
+    async ExportResult(args: {
+        skillKey: string;
+        sessionKey: string;
+        format: string;
+        layout?: string;
+        title?: string;
+        datasetName?: string;
+    }): Promise<{ path?: string; error?: string }> {
+        const res = await fetch(`${BASE}/ExportResult`, {
+            method: 'POST',
+            headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                SkillKey: args.skillKey,
+                SessionKey: args.sessionKey,
+                Format: args.format,
+                Layout: args.layout || 'cards',
+                Title: args.title || '',
+                DatasetName: args.datasetName || '',
+            }),
+        });
+        if (!res.ok) return { error: `Export failed (${res.status})` };
+        const data = await res.json();
+        const obj = data?.Object;
+        if (obj?.Path) return { path: String(obj.Path) };
+        const err = data?.ValidationResult?.Items?.[0]?.Message || obj?.Error || 'Export failed.';
+        return { error: String(err) };
+    }
+
     async GetActiveAgents(): Promise<Array<{ SkillKey: string; AgentName: string }>> {
         try {
             const res = await fetch(`${BASE}/GetActiveAgents`, { headers: getHeaders() });

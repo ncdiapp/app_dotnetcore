@@ -64,20 +64,23 @@ export function adaptToGrid(args: {
     };
 }
 
-export type DataRenderCardFields = Array<{ label: string; value: string }>;
+export type DataRenderCardField = { label: string; value: string; role?: string };
+export type DataRenderCardFields = DataRenderCardField[];
 
 function fieldsFromObject(obj: Record<string, unknown>): DataRenderCardFields {
     return Object.entries(obj).map(([key, value]) => ({
         label: toHeader(key),
         value: value != null ? String(value) : '',
+        role: 'body',
     }));
 }
 
 function fieldsFromLabeled(raw: unknown): DataRenderCardFields | null {
     if (!Array.isArray(raw)) return null;
-    return raw.map((f: { label?: string; value?: unknown }) => ({
+    return raw.map((f: { label?: string; value?: unknown; role?: string }) => ({
         label: String(f?.label ?? ''),
         value: f?.value != null ? String(f.value) : '',
+        role: f?.role || 'body',
     }));
 }
 
@@ -89,10 +92,35 @@ export function cardsPerRowFromMeta(meta?: DataRenderMeta | null): number {
     return Math.min(6, Math.floor(n));
 }
 
+export type PolishedCardBindings = {
+    primaryImageField?: string;
+    fields?: Array<{ name?: string; role?: string }>;
+};
+
+function fieldsFromPolish(obj: Record<string, unknown>, bindings: PolishedCardBindings): DataRenderCardFields {
+    const out: DataRenderCardFields = [];
+    const img = bindings.primaryImageField;
+    if (img && obj[img] != null && String(obj[img]).length > 0) {
+        out.push({ label: img, value: String(obj[img]), role: 'primaryImage' });
+    }
+    for (const f of bindings.fields || []) {
+        const name = f?.name;
+        if (!name || (img && name.toLowerCase() === img.toLowerCase())) continue;
+        if (!(name in obj)) continue;
+        out.push({
+            label: name,
+            value: obj[name] != null ? String(obj[name]) : '',
+            role: f.role || 'body',
+        });
+    }
+    return out.length > 0 ? out : fieldsFromObject(obj);
+}
+
 export function adaptToCard(args: {
     dataJson?: string | null;
     metaJson?: string | null;
     title?: string | null;
+    polishedBindings?: PolishedCardBindings | null;
 }) {
     const meta = parseJsonSafe<DataRenderMeta>(args.metaJson, {});
     const data = parseJsonSafe<unknown>(args.dataJson, null);
@@ -100,18 +128,23 @@ export function adaptToCard(args: {
     const status = typeof meta.subtitle === 'string' ? meta.subtitle : undefined;
     const cardsPerRow = cardsPerRowFromMeta(meta);
     const cards: DataRenderCardFields[] = [];
+    const polish = args.polishedBindings;
 
     if (Array.isArray(data)) {
         for (const item of data) {
             if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
             const obj = item as Record<string, unknown>;
             const labeled = fieldsFromLabeled(obj.fields);
-            cards.push(labeled ?? fieldsFromObject(obj));
+            if (labeled) cards.push(labeled);
+            else if (polish) cards.push(fieldsFromPolish(obj, polish));
+            else cards.push(fieldsFromObject(obj));
         }
     } else if (data && typeof data === 'object') {
         const obj = data as Record<string, unknown>;
         const labeled = fieldsFromLabeled(obj.fields);
-        cards.push(labeled ?? fieldsFromObject(obj));
+        if (labeled) cards.push(labeled);
+        else if (polish) cards.push(fieldsFromPolish(obj, polish));
+        else cards.push(fieldsFromObject(obj));
     }
 
     return { title, status, cardsPerRow, cards, meta };

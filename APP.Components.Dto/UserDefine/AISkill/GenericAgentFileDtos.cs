@@ -62,4 +62,21 @@ namespace APP.Components.EntityDto
         public string Content      { get; set; }
         public string NewPath      { get; set; }
     }
+
+    /// <summary>Result chrome Print/Export — server GENERATE via document plugin.</summary>
+    public class GenericAgentExportResultRequestDto
+    {
+        public string SkillKey { get; set; }
+        public string SessionKey { get; set; }
+        public string Format { get; set; }
+        public string Layout { get; set; }
+        public string Title { get; set; }
+        public string DatasetName { get; set; }
+    }
+
+    public class GenericAgentExportResultDto
+    {
+        public string Path { get; set; }
+        public string Error { get; set; }
+    }
 }

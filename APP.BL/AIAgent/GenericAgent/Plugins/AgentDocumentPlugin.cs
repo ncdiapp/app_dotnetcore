@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using APP.Framework.Plugin;
@@ -192,7 +193,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     var sheet = LoadCards(context, content, sourcePath, datasetName, records, cardsPerRow, paged ? cardRows : 0, rowLimit, paged ? pageGrid : null, paged ? cardsPerPage : 0);
                     await CardImageLoader.AttachAsync(sheet, context.CompanyId, ct).ConfigureAwait(false);
                     var forPrint = preview || extension == ".pdf" || extension == ".docx" || extension == ".pptx" || extension == ".html";
-                    var cardHtml = UiTemplateMerge.MergeCards(sheet, forPrint);
+                    string cardsTpl = null;
+                    if (context != null && !string.IsNullOrWhiteSpace(context.ChatSessionKey)
+                        && AgentAiPolishCacheBL.TryGet(context.ChatSessionKey, datasetName?.Trim() ?? "_", "cards", out var polishTpl))
+                        cardsTpl = polishTpl.TemplateBody(interactive: false, "cards");
+                    var cardHtml = UiTemplateMerge.MergeCards(sheet, forPrint, cardsTpl);
                     if (preview)
                         return PreviewHtml(context, path, cardHtml, sheet.CardCount, sheet.CacheLimitReached, sheet.MissingImages, "playwright");
                     path = WithExtension(path, extension);
@@ -484,7 +489,23 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (rowLimit > 0)
                 rows = AgentDataAnalyzeCacheBL.TakeFirst(rows, rowLimit);
 
-            var sheet = CardSheet.FromRows(title, rows, cardsPerRow, cardRows);
+            AiPolishedRenderSpec polish = null;
+            if (context != null && !string.IsNullOrWhiteSpace(context.ChatSessionKey))
+            {
+                var dsName = !string.IsNullOrWhiteSpace(datasetName) ? datasetName.Trim() : null;
+                AgentAiPolishCacheBL.TryGet(context.ChatSessionKey, dsName ?? "_", "cards", out polish);
+                if (polish == null && rows != null)
+                {
+                    var cols = new List<string>();
+                    if (rows.Count > 0 && rows[0] is JObject o0)
+                        cols.AddRange(o0.Properties().Select(p => p.Name));
+                    polish = AiRenderPolishHeuristics.Build("cards", title, cols,
+                        AgentDataAnalyzeCacheBL.TakeFirst(rows, AgentAiPolishCacheBL.SampleMaxRows));
+                    if (!string.IsNullOrWhiteSpace(dsName))
+                        AgentAiPolishCacheBL.Put(context.ChatSessionKey, dsName, "cards", polish);
+                }
+            }
+            var sheet = CardSheet.FromRows(title, rows, cardsPerRow, cardRows, polish);
             sheet.ApplyPageGrid(pageGrid, cardsPerPage);
             sheet.CacheLimitReached = limit;
             return sheet;

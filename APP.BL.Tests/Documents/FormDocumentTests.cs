@@ -155,10 +155,10 @@ public class FormDocumentTests
         var html = HtmlForm.WriteCards(sheet);
         Assert.Contains("data-doc=\"cards\"", html);
         Assert.Contains("<img ", html);
-        Assert.Contains("height:180px", html);
+        Assert.Contains("min-height:120px", html);
         Assert.Contains("Division 186", html);
-        Assert.Contains(">Widget</td>", html);
-        Assert.DoesNotContain("display:", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Widget", html);
+        Assert.DoesNotContain("display:none", html, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

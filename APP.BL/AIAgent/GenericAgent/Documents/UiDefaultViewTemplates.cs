@@ -164,6 +164,10 @@ th{background:#3d4f5f;color:#ffffff;font-weight:700;text-align:left}
         /// <summary>
         /// Cards LAYOUT — uses public/agent-ui/agent-cards.css (Tailwind-equivalent utilities).
         /// </summary>
+        /// <summary>
+        /// Cards LAYOUT — hero image + role-styled fields (idLink / title / statusPill / meta).
+        /// Uses public/agent-ui/agent-cards.css. Roles come from AI polish CardField.Role.
+        /// </summary>
         public const string CardsNoneInteractive = @"<!DOCTYPE html>
 <html>
 <head>
@@ -177,21 +181,38 @@ th{background:#3d4f5f;color:#ffffff;font-weight:700;text-align:left}
 <div class=""agent-cards-grid"" data-role=""cards"" style=""--cards-per-row:{{ cards_per_row }}"">
 {{ for card in cards }}
 <article class=""agent-card"" data-role=""card"">
-<div class=""agent-card-title"" data-role=""title"">{{ card.title }}</div>
-<dl class=""agent-card-fields"">
 {{ for field in card.fields }}
-<div class=""agent-card-row"">
-<dt class=""agent-card-label"" data-role=""label"">{{ field.label }}</dt>
-{{ if field.is_image && field.image_src }}
-<dd class=""agent-card-value"" data-role=""value"">
-<img class=""agent-card-image"" data-role=""image"" src=""{{ field.image_src }}"" alt=""{{ field.label }}""/>
-</dd>
-{{ else }}
-<dd class=""agent-card-value"" data-role=""value"">{{ field.value }}</dd>
-{{ end }}
+{{ if field.is_image && field.image_src && (field.role == ""primaryImage"" || field.role == ""primaryimage"") }}
+<div class=""agent-card-hero"" data-role=""image"">
+<img class=""agent-card-hero-img"" src=""{{ field.image_src }}"" alt=""{{ field.label }}""/>
 </div>
 {{ end }}
-</dl>
+{{ end }}
+<div class=""agent-card-body"">
+{{ for field in card.fields }}
+{{ if field.is_image && field.image_src && (field.role == ""primaryImage"" || field.role == ""primaryimage"") }}
+{{ else if field.is_image && field.image_src }}
+<div class=""agent-card-row agent-card-role-image"" data-role=""{{ field.role }}"">
+<img class=""agent-card-image"" data-role=""image"" src=""{{ field.image_src }}"" alt=""{{ field.label }}""/>
+</div>
+{{ else if field.role == ""idLink"" || field.role == ""idlink"" }}
+<div class=""agent-card-id"" data-role=""idLink"">{{ field.value }}</div>
+{{ else if field.role == ""title"" }}
+<div class=""agent-card-name"" data-role=""title"">{{ field.value }}</div>
+{{ else if field.role == ""statusPill"" || field.role == ""statuspill"" }}
+<span class=""agent-card-status"" data-role=""statusPill"" data-status=""{{ field.value }}"">{{ field.value }}</span>
+{{ else if field.role == ""colorSwatch"" || field.role == ""colorswatch"" }}
+<div class=""agent-card-color"" data-role=""colorSwatch""><span class=""agent-card-swatch"" aria-hidden=""true""></span>{{ field.value }}</div>
+{{ else if field.role == ""meta"" }}
+<div class=""agent-card-meta"" data-role=""meta"">{{ field.value }}</div>
+{{ else }}
+<div class=""agent-card-row agent-card-role-body"" data-role=""{{ field.role }}"">
+<span class=""agent-card-label"" data-role=""label"">{{ field.label }}</span>
+<span class=""agent-card-value"" data-role=""value"">{{ field.value }}</span>
+</div>
+{{ end }}
+{{ end }}
+</div>
 </article>
 {{ end }}
 </div>

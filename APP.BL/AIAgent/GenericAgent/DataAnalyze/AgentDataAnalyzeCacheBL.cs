@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
+using App.BL.AIAgent.GenericAgent.Documents;
 using Newtonsoft.Json.Linq;
 
 namespace App.BL.AIAgent.GenericAgent.DataAnalyze
@@ -44,6 +45,7 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
             var ds = BuildDataset(name, rows, sourceTool ?? "");
             var bag = Sessions.GetOrAdd(chatSessionKey.Trim(), _ => new ConcurrentDictionary<string, AgentCachedDataset>(StringComparer.OrdinalIgnoreCase));
             bag[name] = ds;
+            AgentAiPolishCacheBL.InvalidateDataset(chatSessionKey, name);
             return ds;
         }
 
@@ -58,6 +60,7 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
             var ds = BuildDataset(name, rows, sourceTool ?? "");
             var bag = Sessions.GetOrAdd(chatSessionKey.Trim(), _ => new ConcurrentDictionary<string, AgentCachedDataset>(StringComparer.OrdinalIgnoreCase));
             bag[name] = ds;
+            AgentAiPolishCacheBL.InvalidateDataset(chatSessionKey, name);
             return ds;
         }
 
@@ -160,7 +163,8 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
             return true;
         }
 
-        private static AgentCachedDataset Latest(string chatSessionKey)
+        /// <summary>Most recently cached non-empty dataset for this chat session.</summary>
+        public static AgentCachedDataset Latest(string chatSessionKey)
         {
             if (string.IsNullOrWhiteSpace(chatSessionKey))
                 return null;
@@ -273,6 +277,7 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
             Sessions.TryRemove(key, out _);
             NameCounters.TryRemove(key, out _);
             CardRenders.TryRemove(key, out _);
+            AgentAiPolishCacheBL.ClearSession(key);
         }
 
         /// <summary>The card panel last shown in this chat. Export uses it instead of a rewritten summary.</summary>

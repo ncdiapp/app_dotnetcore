@@ -68,12 +68,26 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         public int PageSize => Math.Max(1, CardRows) * Math.Max(1, CardsPerRow);
 
         public static CardSheet FromRows(string title, JArray rows, int cardsPerRow, int cardRows)
+            => FromRows(title, rows, cardsPerRow, cardRows, polish: null);
+
+        /// <summary>
+        /// When <paramref name="polish"/> has bindings, only primary image + selected fields are included
+        /// (structure-driven; GENERATE still loops all rows).
+        /// </summary>
+        public static CardSheet FromRows(string title, JArray rows, int cardsPerRow, int cardRows, AiPolishedRenderSpec polish)
         {
+            var perRow = cardsPerRow;
+            var pageRows = cardRows;
+            if (polish?.LayoutHints?.CardsPerRow is int cpr && cpr > 0)
+                perRow = cpr;
+            if (polish?.LayoutHints?.CardRows is int cr && cr > 0)
+                pageRows = cr;
+
             var sheet = new CardSheet
             {
-                Title = title ?? "",
-                CardsPerRow = ClampPerRow(cardsPerRow),
-                CardRows = ClampPageRows(cardRows)
+                Title = !string.IsNullOrWhiteSpace(polish?.Title) ? polish.Title : (title ?? ""),
+                CardsPerRow = ClampPerRow(perRow),
+                CardRows = ClampPageRows(pageRows)
             };
             if (rows == null) return sheet;
             if (rows.Count > DocumentStyles.MaxDataRows)
@@ -81,7 +95,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             foreach (var token in rows)
             {
                 if (token is JObject obj)
-                    sheet.Cards.Add(FieldsOf(obj));
+                    sheet.Cards.Add(FieldsOf(obj, polish));
             }
             return sheet;
         }
@@ -163,18 +177,65 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return arr;
         }
 
-        private static List<CardField> FieldsOf(JObject obj)
+        private static List<CardField> FieldsOf(JObject obj, AiPolishedRenderSpec polish = null)
         {
             var fields = new List<CardField>();
-            foreach (var prop in obj.Properties())
+            if (obj == null) return fields;
+
+            var bindings = polish?.Bindings;
+            var hasSelection = bindings != null
+                && ((!string.IsNullOrWhiteSpace(bindings.PrimaryImageField))
+                    || (bindings.Fields != null && bindings.Fields.Count > 0));
+
+            if (!hasSelection)
             {
-                var value = ValueText(prop.Value, out var image);
+                foreach (var prop in obj.Properties())
+                {
+                    var value = ValueText(prop.Value, out var image);
+                    fields.Add(new CardField
+                    {
+                        Label = prop.Name,
+                        Value = value,
+                        IsImage = image || IsImageValue(value),
+                        Role = image || IsImageValue(value) ? "primaryImage" : "body"
+                    });
+                }
+                return fields;
+            }
+
+            // Primary image first
+            if (!string.IsNullOrWhiteSpace(bindings.PrimaryImageField)
+                && obj.Property(bindings.PrimaryImageField) != null)
+            {
+                var value = ValueText(obj[bindings.PrimaryImageField], out var image);
                 fields.Add(new CardField
                 {
-                    Label = prop.Name,
+                    Label = bindings.PrimaryImageField,
                     Value = value,
-                    IsImage = image || IsImageValue(value)
+                    IsImage = true,
+                    Role = "primaryImage",
+                    TypographyHint = ""
                 });
+            }
+
+            if (bindings.Fields != null)
+            {
+                foreach (var b in bindings.Fields)
+                {
+                    if (b == null || string.IsNullOrWhiteSpace(b.Name)) continue;
+                    if (string.Equals(b.Name, bindings.PrimaryImageField, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (obj.Property(b.Name) == null) continue;
+                    var value = ValueText(obj[b.Name], out var image);
+                    fields.Add(new CardField
+                    {
+                        Label = b.Name,
+                        Value = value,
+                        IsImage = image || IsImageValue(value),
+                        Role = string.IsNullOrWhiteSpace(b.Role) ? "body" : b.Role,
+                        TypographyHint = b.TypographyHint ?? ""
+                    });
+                }
             }
             return fields;
         }
@@ -223,5 +284,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         public string Value { get; set; } = "";
         public bool IsImage { get; set; }
         public byte[] ImageBytes { get; set; }
+        /// <summary>AI polish role: idLink, title, statusPill, meta, colorSwatch, body, primaryImage.</summary>
+        public string Role { get; set; } = "body";
+        public string TypographyHint { get; set; } = "";
     }
 }

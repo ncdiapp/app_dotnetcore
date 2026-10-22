@@ -70,6 +70,8 @@ namespace App.BL.AIAgent.GenericAgent
                     : "Analyzing dataset \"" + Clip(ds, 40) + "\" for the requested breakdowns.";
             }
 
+            if (Is(name, "prepare_ui_render_polish", "cache_ui_render_polish"))
+                return "Polishing Result template…";
             if (Is(name, "render_interactive", "render_none_interactive", "data_render"))
             {
                 var layout = First(keyArgs, "layout", "ui", "mode");
@@ -146,6 +148,10 @@ namespace App.BL.AIAgent.GenericAgent
             if (Is(name, "data_analyze"))
                 return "Analysis ready — can render KPIs / charts or ask the user how to present it.";
 
+            if (Is(name, "prepare_ui_render_polish"))
+                return "Polish inputs ready (templates + sample) — next: cache structure, then render.";
+            if (Is(name, "cache_ui_render_polish"))
+                return "Session polish cached — next: render_* to GENERATE full Result.";
             if (Is(name, "render_interactive", "render_none_interactive", "data_render"))
                 return "Visualization posted to Result.";
 

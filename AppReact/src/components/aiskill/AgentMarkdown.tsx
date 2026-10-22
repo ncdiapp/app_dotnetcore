@@ -176,13 +176,13 @@ export const FollowupChips: React.FC<{
     if (!items.length) return null;
     const borderCls = t('border_mainContentSection');
     return (
-        <div className="mt-2 flex flex-wrap gap-2">
-            {items.map((q, i) => (
+        <div className="mt-1.5 flex flex-wrap gap-1.5 opacity-80">
+            {items.slice(0, 3).map((q, i) => (
                 <button
                     key={`${i}-${q.slice(0, 24)}`}
                     type="button"
                     disabled={disabled}
-                    className={`text-left text-xs px-3 py-2 rounded-xl border transition-opacity ${borderCls} ${theme.button_default} ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'}`}
+                    className={`text-left text-[11px] px-2.5 py-1 rounded-[4px] border transition-opacity ${borderCls} ${theme.label} bg-transparent ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-100'}`}
                     onClick={() => onSelect(q)}
                     title={q}
                 >

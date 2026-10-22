@@ -21,19 +21,24 @@ export const RenderChip: React.FC<ChipProps> = ({ event, open, onOpen }) => {
     const uiRaw = (event.Ui || event.Layout || 'grid').toLowerCase();
     const ui = uiRaw === 'cards' ? 'card' : uiRaw;
     const title = event.Title || (ui === 'chart' ? 'Chart' : ui === 'card' ? 'Cards' : ui === 'page' ? 'Page' : 'Table');
-    const fact = event.RowCount && event.RowCount > 0 ? `${event.RowCount} records` : 'Open the full view';
+    const caption = open
+        ? 'Showing in panel'
+        : (event.RowCount && event.RowCount > 0
+            ? `${event.RowCount} records · Open in panel`
+            : 'Open in panel');
     return (
         <button
             type="button"
             onClick={onOpen}
-            className={`my-1 w-full max-w-sm flex items-center gap-3 px-3 py-2.5 rounded-[8px] border text-left ${theme.mainContentSection} ${open ? 'ring-2 ring-offset-1' : ''}`}
+            className={`my-1 w-full max-w-sm flex items-center gap-3 px-3 py-2.5 rounded-[8px] border text-left ${theme.mainContentSection} ${open ? 'border-l-4 ring-1' : ''}`}
+            style={open ? { borderLeftColor: 'var(--color-accent, #2563eb)' } : undefined}
         >
-            <i className={`${iconFor(ui)} text-sm`} aria-hidden />
+            <i className={`${iconFor(ui)} text-sm opacity-80`} aria-hidden />
             <span className="min-w-0 w-1 flex-auto">
                 <span className={`block text-sm font-medium truncate ${theme.title}`}>{title}</span>
-                <span className={`block text-xs ${theme.label}`}>{open ? 'Showing in panel' : fact}</span>
+                <span className={`block text-xs ${theme.label}`}>{caption}</span>
             </span>
-            <i className="fa-solid fa-chevron-right text-xs" aria-hidden />
+            <i className="fa-solid fa-chevron-right text-xs opacity-50" aria-hidden />
         </button>
     );
 };

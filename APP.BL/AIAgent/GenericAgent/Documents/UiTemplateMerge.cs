@@ -37,9 +37,11 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return forPrint ? HtmlForm.ForPrint(html) : html;
         }
 
-        public static string MergeCards(CardSheet sheet, bool forPrint = false)
+        public static string MergeCards(CardSheet sheet, bool forPrint = false, string templateBodyOverride = null)
         {
-            var body = ResolveLayoutBody(NoneInteractiveTool, "cards");
+            var body = !string.IsNullOrWhiteSpace(templateBodyOverride)
+                ? templateBodyOverride
+                : ResolveLayoutBody(NoneInteractiveTool, "cards");
             string html;
             if (IsCodeDefault(body))
                 html = HtmlForm.WriteCards(sheet, forPrint: false);
@@ -84,6 +86,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             => MergeForRender(layout, formDoc, cardSheet, dashRows, dashSpec, interactive, forExport, renderId, actionsJson, null);
 
         /// <param name="sectionTitles">LLM titles for stacked controls (keys: table/grid, cards/card). Platform chrome only.</param>
+        /// <param name="cardsTemplateOverride">Session AI-polished cards TemplateContent body (not library write-back).</param>
         public static string MergeForRender(
             string layout,
             FormDocument formDoc,
@@ -94,7 +97,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             bool forExport,
             string renderId,
             string actionsJson,
-            IDictionary<string, string> sectionTitles)
+            IDictionary<string, string> sectionTitles,
+            string cardsTemplateOverride = null)
         {
             layout = NormalizeLayout(layout);
             var toolName = interactive ? InteractiveTool : NoneInteractiveTool;
@@ -145,7 +149,9 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             }
             else if (layout == "cards" && cardSheet != null)
             {
-                var body = ResolveLayoutBody(toolName, "cards");
+                var body = !string.IsNullOrWhiteSpace(cardsTemplateOverride)
+                    ? cardsTemplateOverride
+                    : ResolveLayoutBody(toolName, "cards");
                 html = RenderCardsView(body, cardSheet);
             }
             else if (formDoc != null || (layout == "table" && dashRows != null))
@@ -210,10 +216,12 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         /// Interactive cards control LAYOUT: TemplateContent Scriban HTML (+ head styles) for React host.
         /// Uses render_interactive TemplateContent key <c>cards</c>.
         /// </summary>
-        public static string RenderCardsLayoutFragment(CardSheet cardSheet)
+        public static string RenderCardsLayoutFragment(CardSheet cardSheet, string templateBodyOverride = null)
         {
             if (cardSheet == null) return null;
-            var body = ResolveLayoutBody(InteractiveTool, "cards");
+            var body = !string.IsNullOrWhiteSpace(templateBodyOverride)
+                ? templateBodyOverride
+                : ResolveLayoutBody(InteractiveTool, "cards");
             var html = RenderCardsView(body, cardSheet);
             return ExtractBodyInnerWithStyles(html);
         }

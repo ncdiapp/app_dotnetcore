@@ -30,8 +30,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             int? limit = null,
             int? cardsPerRow = null,
             int? cardRows = null,
-            string actionsJson = null)
-            => RenderCore(context, layout, dataset_name, title, content, specJson, limit, cardsPerRow, cardRows, interactive: false, actionsJson: null, mappedFrom: null);
+            string actionsJson = null,
+            string aiPolishedRenderSpec = null,
+            bool selectAllColumns = false,
+            string promptHash = null)
+            => RenderCore(context, layout, dataset_name, title, content, specJson, limit, cardsPerRow, cardRows,
+                interactive: false, actionsJson: null, mappedFrom: null, aiPolishedRenderSpec, selectAllColumns, promptHash);
 
         public Task<string> RenderInteractive(
             AgentToolContext context,
@@ -43,8 +47,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             int? limit = null,
             int? cardsPerRow = null,
             int? cardRows = null,
-            string actionsJson = null)
-            => RenderCore(context, layout, dataset_name, title, content, specJson, limit, cardsPerRow, cardRows, interactive: true, actionsJson, mappedFrom: null);
+            string actionsJson = null,
+            string aiPolishedRenderSpec = null,
+            bool selectAllColumns = false,
+            string promptHash = null)
+            => RenderCore(context, layout, dataset_name, title, content, specJson, limit, cardsPerRow, cardRows,
+                interactive: true, actionsJson, mappedFrom: null, aiPolishedRenderSpec, selectAllColumns, promptHash);
 
         /// <summary>Deprecated data_render alias.</summary>
         public Task<string> RenderAlias(
@@ -76,7 +84,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (string.IsNullOrWhiteSpace(specJson) && !string.IsNullOrWhiteSpace(blocksJson))
                 specJson = WrapLegacyBlocks(blocksJson);
 
-            return RenderCore(context, layoutNorm, dataset_name, title, body, specJson, limit, cardsPerRow, cardRows, interactive, actionsJson, mappedFrom);
+            return RenderCore(context, layoutNorm, dataset_name, title, body, specJson, limit, cardsPerRow, cardRows,
+                interactive, actionsJson, mappedFrom, aiPolishedRenderSpec: null, selectAllColumns: false, promptHash: null);
         }
 
         private static string WrapLegacyBlocks(string blocksJson)
@@ -108,7 +117,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             int? cardRows,
             bool interactive,
             string actionsJson,
-            string mappedFrom)
+            string mappedFrom,
+            string aiPolishedRenderSpec,
+            bool selectAllColumns,
+            string promptHash)
         {
             try
             {
@@ -121,6 +133,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 CardSheet cardSheet = null;
                 JArray dashRows = null;
                 UiRenderSpec dashSpec = null;
+                AiPolishedRenderSpec polish = null;
                 int rowCount = 0;
                 bool truncated = false;
                 string resolvedDataset = null;
@@ -157,9 +170,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     dashRows = LoadRows(context, datasetName, content, limit: null, out resolvedDataset, out truncated, out rowCount);
                     if (views.Contains("cards"))
                     {
+                        polish = ResolvePolish(context, resolvedDataset, "cards", title, dashRows, aiPolishedRenderSpec, selectAllColumns, promptHash);
                         cardSheet = CardSheet.FromRows(
-                            title ?? resolvedDataset ?? "Cards", dashRows, cardsPerRow ?? 3, cardRows ?? CardSheet.DefaultCardRows);
-                        if (!string.IsNullOrWhiteSpace(title)) cardSheet.Title = title.Trim();
+                            title ?? resolvedDataset ?? "Cards", dashRows, cardsPerRow ?? 3, cardRows ?? CardSheet.DefaultCardRows, polish);
+                        if (!string.IsNullOrWhiteSpace(polish?.Title)) cardSheet.Title = polish.Title;
+                        else if (!string.IsNullOrWhiteSpace(title)) cardSheet.Title = title.Trim();
                     }
                     if (views.Contains("table"))
                     {
@@ -174,15 +189,18 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     if (interactive)
                     {
                         dashRows = LoadRows(context, datasetName, content, null, out resolvedDataset, out truncated, out rowCount);
+                        polish = ResolvePolish(context, resolvedDataset, layout, title, dashRows, aiPolishedRenderSpec, selectAllColumns, promptHash);
                         cardSheet = CardSheet.FromRows(
-                            title ?? resolvedDataset ?? "Cards", dashRows, cardsPerRow ?? 1, cardRows ?? CardSheet.DefaultCardRows);
+                            title ?? resolvedDataset ?? "Cards", dashRows, cardsPerRow ?? 1, cardRows ?? CardSheet.DefaultCardRows, polish);
                     }
                     else
                     {
-                        cardSheet = LoadCards(context, datasetName, content, title, cardsPerRow ?? 1, cardRows ?? CardSheet.DefaultCardRows, effLimit, out resolvedDataset, out truncated);
+                        cardSheet = LoadCards(context, datasetName, content, title, cardsPerRow ?? 1, cardRows ?? CardSheet.DefaultCardRows, effLimit,
+                            out resolvedDataset, out truncated, out dashRows, aiPolishedRenderSpec, selectAllColumns, promptHash, out polish);
                         rowCount = cardSheet.CardCount;
                     }
-                    if (!string.IsNullOrWhiteSpace(title)) cardSheet.Title = title.Trim();
+                    if (!string.IsNullOrWhiteSpace(polish?.Title)) cardSheet.Title = polish.Title;
+                    else if (!string.IsNullOrWhiteSpace(title)) cardSheet.Title = title.Trim();
                 }
                 else
                 {
@@ -213,6 +231,27 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 // Interactive table/cards/page/kpi/dashboard → React hosts + TemplateContent control LAYOUTs.
                 // None-interactive + chart-only → TemplateContent iframe. Export twin = none-interactive merge.
                 var sectionTitles = ParseSectionTitles(specJson);
+                if (polish == null && (layout == "table" || layout == "cards" || layout == "kpi"
+                    || layout == "dashboard" || layout == "chart" || UiTemplateMerge.IsPageLayout(layout)))
+                {
+                    var polishLayout = layout == "page" ? "table" : layout;
+                    polish = ResolvePolish(context, resolvedDataset, polishLayout, title,
+                        dashRows, aiPolishedRenderSpec, selectAllColumns, promptHash);
+                }
+                if (polish != null && formDoc != null && layout == "table"
+                    && polish.Bindings?.Columns != null && polish.Bindings.Columns.Count > 0
+                    && !polish.SelectAllColumns)
+                {
+                    formDoc = ProjectTableColumns(formDoc, polish.Bindings.Columns);
+                }
+
+                var cardsTplInteractive = polish?.TemplateBody(interactive: true, "cards");
+                var cardsTplNone = polish?.TemplateBody(interactive: false, "cards");
+                var filterOptions = dashRows != null && polish != null
+                    ? AgentAiPolishCacheBL.BuildFilterOptions(dashRows, polish)
+                    : new JObject();
+                var polishedClient = polish?.ToClientJson();
+
                 if (interactive
                     && dashRows != null
                     && (layout == "kpi" || layout == "dashboard"
@@ -222,7 +261,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     dataJson = dashRows.ToString(Formatting.None);
                     string cardsHtml = null;
                     if (cardSheet != null && (layout == "cards" || UiTemplateMerge.IsPageLayout(layout)))
-                        cardsHtml = UiTemplateMerge.RenderCardsLayoutFragment(cardSheet);
+                        cardsHtml = UiTemplateMerge.RenderCardsLayoutFragment(cardSheet, cardsTplInteractive);
 
                     if (layout == "kpi" || layout == "dashboard")
                     {
@@ -248,7 +287,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                             availableChartTypes = UiRenderSpec.AvailableChartTypes,
                             kpiHtml,
                             chartHostHtml,
-                            gridHostHtml
+                            gridHostHtml,
+                            polishedSpec = polishedClient,
+                            filterOptions
                         }, Formatting.None);
                     }
                     else if (UiTemplateMerge.IsPageLayout(layout))
@@ -257,9 +298,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         {
                             title = pageTitle,
                             views = ParsePageViews(specJson),
-                            cardsPerRow = cardsPerRow ?? 3,
+                            cardsPerRow = polish?.LayoutHints?.CardsPerRow ?? cardsPerRow ?? 3,
                             sectionTitles,
-                            cardsHtml
+                            cardsHtml,
+                            polishedSpec = polishedClient,
+                            filterOptions
                         }, Formatting.None);
                     }
                     else if (layout == "cards")
@@ -267,14 +310,23 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         emitSpecJson = JsonConvert.SerializeObject(new
                         {
                             title = pageTitle,
-                            cardsPerRow = cardsPerRow ?? 1,
+                            cardsPerRow = polish?.LayoutHints?.CardsPerRow ?? cardsPerRow ?? 1,
                             sectionTitles,
-                            cardsHtml
+                            cardsHtml,
+                            polishedSpec = polishedClient,
+                            filterOptions
                         }, Formatting.None);
                     }
                     else
                     {
-                        emitSpecJson = JsonConvert.SerializeObject(new { title = pageTitle, sectionTitles }, Formatting.None);
+                        emitSpecJson = JsonConvert.SerializeObject(new
+                        {
+                            title = pageTitle,
+                            sectionTitles,
+                            columns = polish?.Bindings?.Columns,
+                            polishedSpec = polishedClient,
+                            filterOptions
+                        }, Formatting.None);
                     }
 
                     // Export / Files twin = none-interactive merge. Dashboard twin marks charts with
@@ -282,7 +334,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     var twinForExport = layout == "kpi" || layout == "dashboard" || layout == "chart";
                     var twinHtml = UiTemplateMerge.MergeForRender(
                         layout, formDoc, cardSheet, dashRows, dashSpec,
-                        interactive: false, forExport: twinForExport, renderId, actionsJson, sectionTitles);
+                        interactive: false, forExport: twinForExport, renderId, actionsJson, sectionTitles, cardsTplNone);
                     htmlPath = "render/" + renderId + ".html";
                     GenericAgentFileBL.WriteText(context.ChatSessionKey, htmlPath, twinHtml, context.CompanyId);
                     html = null;
@@ -302,7 +354,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     }
 
                     html = UiTemplateMerge.MergeForRender(
-                        layout, formDoc, cardSheet, dashRows, dashSpec, interactive, forExport: false, renderId, actionsJson, sectionTitles);
+                        layout, formDoc, cardSheet, dashRows, dashSpec, interactive, forExport: false, renderId, actionsJson, sectionTitles, cardsTplNone);
                     var bytes = Encoding.UTF8.GetByteCount(html ?? "");
                     if (bytes > UiTemplateMerge.InlineHtmlMaxBytes)
                     {
@@ -554,10 +606,16 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             int cardRows,
             int? limit,
             out string resolvedDataset,
-            out bool truncated)
+            out bool truncated,
+            out JArray rowsOut,
+            string aiPolishedRenderSpec,
+            bool selectAllColumns,
+            string promptHash,
+            out AiPolishedRenderSpec polish)
         {
             resolvedDataset = null;
             truncated = false;
+            polish = null;
             JArray rows = null;
 
             if (!string.IsNullOrWhiteSpace(datasetName)
@@ -585,7 +643,103 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 rows = AgentDataAnalyzeCacheBL.TakeFirst(rows, MaxRows);
             }
 
-            return CardSheet.FromRows(title ?? resolvedDataset ?? "Cards", rows, cardsPerRow, cardRows);
+            rowsOut = rows;
+            polish = ResolvePolish(context, resolvedDataset, "cards", title, rows, aiPolishedRenderSpec, selectAllColumns, promptHash);
+            return CardSheet.FromRows(title ?? resolvedDataset ?? "Cards", rows, cardsPerRow, cardRows, polish);
+        }
+
+        private static AiPolishedRenderSpec ResolvePolish(
+            AgentToolContext context,
+            string datasetName,
+            string layout,
+            string title,
+            JArray rows,
+            string aiPolishedRenderSpec,
+            bool selectAllColumns,
+            string promptHash)
+        {
+            if (!string.IsNullOrWhiteSpace(aiPolishedRenderSpec)
+                && AiPolishedRenderSpec.TryParse(aiPolishedRenderSpec, out var fromArg, out _))
+            {
+                if (selectAllColumns) fromArg.SelectAllColumns = true;
+                AgentAiPolishCacheBL.Put(context.ChatSessionKey, datasetName ?? "_", layout, fromArg, promptHash);
+                return fromArg;
+            }
+
+            if (AgentAiPolishCacheBL.TryGet(context.ChatSessionKey, datasetName ?? "_", layout, out var cached, promptHash))
+            {
+                if (selectAllColumns && !cached.SelectAllColumns)
+                {
+                    cached.SelectAllColumns = true;
+                    if (rows != null && rows.Count > 0 && rows[0] is JObject o0)
+                        cached.Bindings.Columns = o0.Properties().Select(p => p.Name).ToList();
+                }
+                return cached;
+            }
+
+            // Heuristic polish (structure only) so GENERATE does not dump all fields by default.
+            var cols = new List<string>();
+            if (rows != null)
+            {
+                foreach (var token in rows.OfType<JObject>())
+                {
+                    foreach (var p in token.Properties())
+                    {
+                        if (!cols.Any(c => string.Equals(c, p.Name, StringComparison.OrdinalIgnoreCase)))
+                            cols.Add(p.Name);
+                    }
+                    if (cols.Count > 0) break;
+                }
+            }
+            var sample = AgentDataAnalyzeCacheBL.TakeFirst(rows, AgentAiPolishCacheBL.SampleMaxRows);
+            var built = AiRenderPolishHeuristics.Build(layout, title, cols, sample, selectAllColumns);
+            AgentAiPolishCacheBL.Put(context.ChatSessionKey, datasetName ?? "_", layout, built, promptHash);
+            return built;
+        }
+
+        private static FormDocument ProjectTableColumns(FormDocument doc, List<string> keepColumns)
+        {
+            if (doc?.Sections == null || keepColumns == null || keepColumns.Count == 0) return doc;
+            FormTable table = null;
+            foreach (var sec in doc.Sections)
+            {
+                if (sec?.Tables == null) continue;
+                foreach (var t in sec.Tables)
+                {
+                    if (t != null) { table = t; break; }
+                }
+                if (table != null) break;
+            }
+            if (table?.Columns == null || table.Columns.Count == 0) return doc;
+
+            var indexes = new List<int>();
+            foreach (var name in keepColumns)
+            {
+                for (var i = 0; i < table.Columns.Count; i++)
+                {
+                    if (string.Equals(table.Columns[i], name, StringComparison.OrdinalIgnoreCase)
+                        && !indexes.Contains(i))
+                    {
+                        indexes.Add(i);
+                        break;
+                    }
+                }
+            }
+            if (indexes.Count == 0 || indexes.Count == table.Columns.Count) return doc;
+
+            var newCols = indexes.Select(i => table.Columns[i]).ToList();
+            var newRows = new List<List<FormCell>>();
+            if (table.Rows != null)
+            {
+                foreach (var row in table.Rows)
+                {
+                    var cells = new List<FormCell>();
+                    foreach (var i in indexes)
+                        cells.Add(i < (row?.Count ?? 0) ? row[i] : new FormCell());
+                    newRows.Add(cells);
+                }
+            }
+            return FormDocument.FromTable(doc.Title, newCols, newRows);
         }
 
         /// <summary>specJson.views for layout=page; default table + cards on one Result.</summary>

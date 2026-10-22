@@ -164,19 +164,27 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
             );
         }
         if (ui === 'card') {
+            const specObj = parseJsonSafe<Record<string, unknown>>(event.SpecJson, {});
+            const polished = (specObj.polishedSpec || specObj.PolishedSpec) as {
+                bindings?: { primaryImageField?: string; fields?: Array<{ name?: string; role?: string }> };
+                layoutHints?: { cardsPerRow?: number };
+            } | null;
             const cardsHtml = parseCardsHtmlFromSpec(event.SpecJson);
-            if (cardsHtml) return <TemplateControlLayout html={cardsHtml} />;
+            const clientFiltered = !!(specObj.clientFiltered || specObj.ClientFiltered);
+            if (cardsHtml && !clientFiltered) return <TemplateControlLayout html={cardsHtml} />;
             const props = adaptToCard({
                 dataJson: event.DataJson,
-                metaJson: event.MetaJson,
+                metaJson: event.MetaJson || event.SpecJson,
                 title: event.Title,
+                polishedBindings: polished?.bindings ?? null,
             });
+            const perRow = polished?.layoutHints?.cardsPerRow ?? props.cardsPerRow;
             return (
                 <DataRenderCardList
                     title={props.title}
                     status={props.status}
                     cards={props.cards}
-                    cardsPerRow={props.cardsPerRow}
+                    cardsPerRow={perRow}
                 />
             );
         }

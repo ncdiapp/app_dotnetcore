@@ -119,12 +119,24 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                                 label = Enc(f?.Label),
                                 value = Enc(f?.Value),
                                 is_image = isImage,
-                                image_src = EncAttr(imageSrc)
+                                image_src = EncAttr(imageSrc),
+                                role = Enc(string.IsNullOrWhiteSpace(f?.Role) ? "body" : f.Role),
+                                typography_hint = Enc(f?.TypographyHint ?? "")
                             });
+                            if (string.Equals(f?.Role, "title", StringComparison.OrdinalIgnoreCase)
+                                && !string.IsNullOrWhiteSpace(f?.Value))
+                                cardTitle = f.Value;
+                            else if (string.Equals(f?.Role, "idLink", StringComparison.OrdinalIgnoreCase)
+                                     && string.IsNullOrEmpty(cardTitle)
+                                     && !string.IsNullOrWhiteSpace(f?.Value))
+                                cardTitle = f.Value;
                         }
-                        // Prefer first field value as title when label looks like a name/code column
-                        if (cardFields.Count > 0 && !string.IsNullOrWhiteSpace(cardFields[0]?.Value))
-                            cardTitle = cardFields[0].Value;
+                        // Prefer first non-image field value as title when roles did not set one
+                        if (string.IsNullOrEmpty(cardTitle) && cardFields.Count > 0)
+                        {
+                            var firstText = cardFields.FirstOrDefault(x => x != null && !x.IsImage && !string.IsNullOrWhiteSpace(x.Value));
+                            if (firstText != null) cardTitle = firstText.Value;
+                        }
                     }
                     cards.Add(new
                     {

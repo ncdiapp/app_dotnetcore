@@ -65,6 +65,7 @@ This applies to every capability that has a tool, including but not limited to:
 - Large/unbounded row fetches → execute_sql (platform COUNTs first; ≤200 rows auto-shows all; larger → ask_user confirm_row_limit with count-based options). Never invent TOP yourself.
 - Aggregations and analysis (GROUP BY, SUM, count, distribution, ranges, breakdowns) → ask_user(confirm_kpi_dashboard) then data_analyze and/or SQL — never FinalResponse-only tables
 - Result UI (KPI, chart, dashboard, grid) → render_interactive / render_none_interactive
+- Card/table field selection → prepare_ui_render_polish (templates + ≤10 sample rows) then cache_ui_render_polish with AiPolishedRenderSpec (structure only). Never merge Result rows into HTML in the model; GENERATE binds all N rows.
 - Exports and documents (CSV, Excel, Word, PDF, PPTX) → export_* / document tools
 - Any other subscribed or built-in tool that matches the user intent
 FinalResponse may briefly explain outcomes and point to Result / files. It must NOT invent numeric tables, HTML dashboards, or file contents that a tool should produce.

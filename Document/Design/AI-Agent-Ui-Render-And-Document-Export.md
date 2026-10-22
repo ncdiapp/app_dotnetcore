@@ -3,6 +3,8 @@
 **Canonical design, test standard, and implementation summary.**  
 Date: 2026-10-22 (Tailwind + export fidelity clarified). Supersedes the former drafts `AI-Agent-Document-Export-Tools-V1.md`, `…-V2.md`, and `…-V3.md` (those files are removed). Chat chrome (header, composer, chips, motion) stays in [`AI-Agent-Chat-UI.md`](AI-Agent-Chat-UI.md); that file defers Result hosting to this document.
 
+> **Partial supersession (2026-10-22):** AI polish of TemplateContent, field/column/filter selection, Result React chrome (Filter / Print / Export), Chat visual targets vs MCP Client, and the rule that the LLM must never bind Result data into pages are specified in [`AI-Agent-Result-And-Doc-Export-UI-Layout-Redesign.md`](AI-Agent-Result-And-Doc-Export-UI-Layout-Redesign.md). That doc **partially supersedes** Goal #3 and the “Model must not paste template bodies” row below: TemplateContent **may** enter a dedicated polish step (≤10 sample rows); the LLM still must **not** combine templates with Result rows to build pages. **This file remains canonical** for Scriban merge, Playwright PDF, OpenXML Word, PPT shots, cache/row limits, and `export_*` engines.
+
 This document covers both:
 
 1. **UI render** — Agent Chat Result panel shows C#-merged HTML in an **iframe** (`render_none_interactive`) or React hosts + TemplateContent control LAYOUTs (`render_interactive`).
@@ -58,16 +60,16 @@ dataset_name / form tree
 
 1. Analysis view → render tool (`dataset_name`, `layout`, …) → C# merge → Result iframe.
 2. Export → `export_*` with same cache + `layout` → **same none-interactive merge** → file matches Result as far as each engine allows.
-3. Model never receives or emits large HTML/CSS/JS as tool args; `TemplateContent` never enters the LLM context.
+3. Model never receives or emits large HTML/CSS/JS as **render/export tool args** for painting pages. **Exception (redesign):** a dedicated AI polish step may read library TemplateContent plus ≤10 sample rows and return polished TemplateContent + field structure for GENERATE tools — see [`AI-Agent-Result-And-Doc-Export-UI-Layout-Redesign.md`](AI-Agent-Result-And-Doc-Export-UI-Layout-Redesign.md). The model must still never bind full Result data into HTML.
 4. Merged HTML can stand alone later (download / open outside the app).
 
 ### AI vs program
 
 | Actor | May do | Must not do |
 |-------|--------|-------------|
-| Model | `dataset_name`, `layout`, `title`, `limit`, `cardsPerRow`, `cardRows`, `actionsJson`, export paths | Paste HTML, fonts, colors, template bodies |
-| C# | Load template, bind cache, encode, sanitize, emit HTML / files | Ask the model to fill the template |
-| React host | iframe, sandbox, postMessage, chips | Wijmo/AG Grid/Recharts inside Result |
+| Model | `dataset_name`, `layout`, `title`, `limit`, `cardsPerRow`, `cardRows`, `actionsJson`, export paths; **polish step:** edit TemplateContent + emit field/column structure (session cache only) | Paste ad-hoc page HTML as tool args; combine TemplateContent with Result rows to build pages; write polished templates to the library (v1) |
+| C# | Load template (session polish or library), bind cache, encode, sanitize, emit HTML / files | Ask the model to fill row cells into the page |
+| React host | iframe, sandbox, postMessage, chips; **Result chrome:** Filter / Print / Export per redesign doc | Wijmo/AG Grid/Recharts inside none-interactive iframe body as the primary card path |
 
 ### Naming rule (mandatory)
 
