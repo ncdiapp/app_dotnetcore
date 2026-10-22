@@ -125,14 +125,16 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                    && cur.IndexOf("data-role=\"image\"", StringComparison.OrdinalIgnoreCase) < 0;
         }
 
-        /// <summary>Platform cards before MCP v2 gallery shell (role hierarchy, no label dump).</summary>
+        /// <summary>Platform cards before MCP v5 gallery shell (cover crop hero).</summary>
         private static bool IsPreMcpCardsShell(string cur)
         {
             if (string.IsNullOrWhiteSpace(cur) || NeedsMaterialize(cur)) return false;
-            if (cur.IndexOf("agent-cards-mcp-v3", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (cur.IndexOf("agent-cards-mcp-v5", StringComparison.OrdinalIgnoreCase) >= 0)
                 return false;
             return cur.IndexOf("agent-cards-grid", StringComparison.OrdinalIgnoreCase) >= 0
                    || cur.IndexOf("agent-card", StringComparison.OrdinalIgnoreCase) >= 0
+                   || cur.IndexOf("agent-cards-mcp-v4", StringComparison.OrdinalIgnoreCase) >= 0
+                   || cur.IndexOf("agent-cards-mcp-v3", StringComparison.OrdinalIgnoreCase) >= 0
                    || cur.IndexOf("agent-cards-mcp-v2", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 

@@ -91,11 +91,20 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             await page.SetViewportSizeAsync(1100, 1400).ConfigureAwait(false);
             await page.SetContentAsync(html, new PageSetContentOptions { WaitUntil = WaitUntilState.DOMContentLoaded }).ConfigureAwait(false);
 
-            // Fitted Print/Export HTML: one .card-page per R×C page (prefer over whole-body shot).
+            // layout=page export: optional Grid section first, then fitted card pages.
+            var gridLoc = page.Locator("#export-grid");
+            if (await gridLoc.CountAsync().ConfigureAwait(false) > 0)
+            {
+                ct.ThrowIfCancellationRequested();
+                var gridPng = await gridLoc.First.ScreenshotAsync(new LocatorScreenshotOptions { Type = ScreenshotType.Png }).ConfigureAwait(false);
+                list.Add(("Grid view", gridPng));
+            }
+
+            // Fitted Print/Export HTML: one .card-page per R×C page.
             var pageCount = await page.Locator(".card-page").CountAsync().ConfigureAwait(false);
             if (pageCount > 0)
             {
-                var n = Math.Min(pageCount, MaxSlides);
+                var n = Math.Min(pageCount, MaxSlides - list.Count);
                 for (var i = 0; i < n; i++)
                 {
                     ct.ThrowIfCancellationRequested();
@@ -104,9 +113,9 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     try { label = await loc.Locator("[data-role='title']").First.InnerTextAsync().ConfigureAwait(false); }
                     catch { /* ignore */ }
                     var bytes = await loc.ScreenshotAsync(new LocatorScreenshotOptions { Type = ScreenshotType.Png }).ConfigureAwait(false);
-                    list.Add((string.IsNullOrWhiteSpace(label) ? "Page " + (i + 1) : label.Trim(), bytes));
+                    list.Add((string.IsNullOrWhiteSpace(label) ? "Cards " + (i + 1) : label.Trim(), bytes));
                 }
-                return list;
+                if (list.Count > 0) return list;
             }
 
             // Never one-slide-per-card (ignores 2x2/3x4). Prefer board root if present.

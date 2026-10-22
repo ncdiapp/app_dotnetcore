@@ -163,14 +163,14 @@ th{background:#3d4f5f;color:#ffffff;font-weight:700;text-align:left}
 
         /// <summary>
         /// Cards LAYOUT — MCP Client gallery shell (hero + blue id + name + status + meta).
-        /// Marker agent-cards-mcp-v3: board background + blank hero (no broken img).
+        /// Marker agent-cards-mcp-v5: square hero, object-fit cover center crop (catalog style).
         /// </summary>
         public const string CardsNoneInteractive = @"<!DOCTYPE html>
 <html>
 <head>
 <meta charset=""utf-8""/>
 <title>{{ title }}</title>
-<!-- agent-cards-mcp-v3 -->
+<!-- agent-cards-mcp-v5 -->
 <link rel=""stylesheet"" href=""/agent-ui/agent-cards.css""/>
 </head>
 <body>

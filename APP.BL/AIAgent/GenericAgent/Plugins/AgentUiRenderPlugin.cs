@@ -238,11 +238,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     polish = ResolvePolish(context, resolvedDataset, polishLayout, title,
                         dashRows, aiPolishedRenderSpec, selectAllColumns, promptHash);
                 }
-                if (polish != null && formDoc != null && layout == "table"
+                if (polish != null && formDoc != null
+                    && (layout == "table" || UiTemplateMerge.IsPageLayout(layout))
                     && polish.Bindings?.Columns != null && polish.Bindings.Columns.Count > 0
                     && !polish.SelectAllColumns)
                 {
-                    formDoc = ProjectTableColumns(formDoc, polish.Bindings.Columns);
+                    formDoc = formDoc.ProjectColumns(polish.Bindings.Columns);
                 }
 
                 var cardsTplInteractive = polish?.TemplateBody(interactive: true, "cards");
@@ -710,51 +711,6 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             var built = AiRenderPolishHeuristics.Build(layout, title, cols, sample, selectAllColumns);
             AgentAiPolishCacheBL.Put(context.ChatSessionKey, datasetName ?? "_", layout, built, promptHash);
             return built;
-        }
-
-        private static FormDocument ProjectTableColumns(FormDocument doc, List<string> keepColumns)
-        {
-            if (doc?.Sections == null || keepColumns == null || keepColumns.Count == 0) return doc;
-            FormTable table = null;
-            foreach (var sec in doc.Sections)
-            {
-                if (sec?.Tables == null) continue;
-                foreach (var t in sec.Tables)
-                {
-                    if (t != null) { table = t; break; }
-                }
-                if (table != null) break;
-            }
-            if (table?.Columns == null || table.Columns.Count == 0) return doc;
-
-            var indexes = new List<int>();
-            foreach (var name in keepColumns)
-            {
-                for (var i = 0; i < table.Columns.Count; i++)
-                {
-                    if (string.Equals(table.Columns[i], name, StringComparison.OrdinalIgnoreCase)
-                        && !indexes.Contains(i))
-                    {
-                        indexes.Add(i);
-                        break;
-                    }
-                }
-            }
-            if (indexes.Count == 0 || indexes.Count == table.Columns.Count) return doc;
-
-            var newCols = indexes.Select(i => table.Columns[i]).ToList();
-            var newRows = new List<List<FormCell>>();
-            if (table.Rows != null)
-            {
-                foreach (var row in table.Rows)
-                {
-                    var cells = new List<FormCell>();
-                    foreach (var i in indexes)
-                        cells.Add(i < (row?.Count ?? 0) ? row[i] : new FormCell());
-                    newRows.Add(cells);
-                }
-            }
-            return FormDocument.FromTable(doc.Title, newCols, newRows);
         }
 
         /// <summary>specJson.views for layout=page; default table + cards on one Result.</summary>

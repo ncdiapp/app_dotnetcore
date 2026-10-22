@@ -78,6 +78,13 @@ namespace APP.Components.EntityDto
         public int CardRows { get; set; }
         /// <summary>Optional columns×rows e.g. 2x2 (overrides CardsPerRow/CardRows when parseable).</summary>
         public string PageGrid { get; set; }
+        /// <summary>Required for layout kpi/chart/dashboard (kpis/charts from Result SpecJson).</summary>
+        public string SpecJson { get; set; }
+        /// <summary>
+        /// Result rows JSON array (from restored DataJson). Used when session analyze cache
+        /// is gone after reopen — Print/Export must not require a live dataset cache.
+        /// </summary>
+        public string RecordsJson { get; set; }
     }
 
     public class GenericAgentExportResultDto

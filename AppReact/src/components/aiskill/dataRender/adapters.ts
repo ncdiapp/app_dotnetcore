@@ -1,11 +1,33 @@
 import type { DataRenderChartConfig, DataRenderColumn, DataRenderMeta } from './types';
 import { parseJsonSafe } from './types';
+import { isDateColumnName, parseDateValue } from './dateValue';
+import { cellImageKind, isImageColumnName } from './imageValue';
 
 function toHeader(field: string): string {
     return field
         .split('_')
         .map(w => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
         .join(' ');
+}
+
+/** Infer image / date when ColumnsJson omitted (common for interactive Result). */
+function inferColumnDataType(field: string, rows: Record<string, unknown>[]): string | undefined {
+    const samples = rows
+        .slice(0, 30)
+        .map(r => r?.[field])
+        .filter(v => v != null && String(v).trim() !== '');
+    // Image field = name means image AND (empty or) value is URL.
+    if (isImageColumnName(field)
+        && (samples.length === 0 || samples.some(v => cellImageKind(v, field) != null)))
+        return 'image';
+    if (samples.length === 0) {
+        if (isDateColumnName(field)) return 'date';
+        return undefined;
+    }
+    const dateHits = samples.filter(v => parseDateValue(v) != null).length;
+    if (dateHits >= Math.max(1, Math.ceil(samples.length * 0.4))) return 'date';
+    if (isDateColumnName(field) && dateHits > 0) return 'date';
+    return undefined;
 }
 
 export function parseRows(dataJson: string | null | undefined): Record<string, unknown>[] {
@@ -43,7 +65,7 @@ export function adaptToGrid(args: {
             field: col.field,
             headerName: col.header ?? col.headerName ?? toHeader(col.field),
             width: col.width ?? 150,
-            dataType: col.dataType,
+            dataType: col.dataType || inferColumnDataType(col.field, rows),
             hide: col.hide ?? false,
         }));
     } else if (rows.length > 0) {
@@ -51,6 +73,7 @@ export function adaptToGrid(args: {
             field,
             headerName: toHeader(field),
             width: 150,
+            dataType: inferColumnDataType(field, rows),
         }));
     } else {
         colDefs = [];

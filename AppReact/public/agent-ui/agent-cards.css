@@ -38,16 +38,14 @@
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 2px 8px rgba(15, 23, 42, 0.04);
 }
 
-/* B7: hero always reserves a square — with or without image */
+/* Fixed square hero: object-fit cover + center crop (Amazon / Shopify catalog style). */
 .agent-card-hero {
   background: #f3f4f6;
   aspect-ratio: 1 / 1;
   width: 100%;
   flex: 0 0 auto;
   min-height: 8rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   overflow: hidden;
   position: relative;
 }
@@ -57,15 +55,23 @@
   background: #f3f4f6;
 }
 
-.agent-card-hero-img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-  background: #f9fafb;
+/* Legacy blur layer from v4 — hide if still present in cached HTML. */
+.agent-card-hero-blur {
+  display: none !important;
 }
 
-.agent-card-hero-img[data-broken="1"] {
+.agent-card-hero-img,
+.agent-card-hero-fg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+  display: block;
+  background: #f3f4f6;
+}
+
+.agent-card-hero-img[data-broken="1"],
+.agent-card-hero-fg[data-broken="1"] {
   display: none !important;
 }
 

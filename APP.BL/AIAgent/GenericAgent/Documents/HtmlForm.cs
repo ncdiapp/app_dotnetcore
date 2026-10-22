@@ -167,30 +167,45 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 for (var i = 0; i < table.Columns.Count; i++)
                 {
                     var cell = i < row.Count ? row[i] : new FormCell();
-                    AppendGridCell(sb, cell);
+                    var colName = i < table.Columns.Count ? table.Columns[i] : null;
+                    AppendGridCell(sb, cell, colName);
                 }
                 sb.Append("</tr>");
             }
             sb.Append("</table></td></tr>");
         }
 
-        private static void AppendGridCell(StringBuilder sb, FormCell cell)
+        private static void AppendGridCell(StringBuilder sb, FormCell cell, string columnName = null)
         {
             cell ??= new FormCell();
             var text = cell.Text ?? "";
             var isImage = cell.IsImage
                           || (cell.ImageBytes != null && cell.ImageBytes.Length > 0)
-                          || CardSheet.IsImageValue(text);
+                          || CardSheet.IsImageValue(text, columnName);
             var css = cell.IsNumber && !isImage ? DocumentStyles.NumberCss : DocumentStyles.CellCss;
             sb.Append("<td");
             if (cell.IsNumber && !isImage) sb.Append(" data-num=\"1\"");
             if (isImage) sb.Append(" data-role=\"image\"");
             sb.Append(" style=\"").Append(css).Append("\">");
             if (isImage)
-                AppendGridImage(sb, cell, text);
+                AppendGridImage(sb, cell, text.Trim().Trim('"', '\''));
             else
-                sb.Append(WebUtility.HtmlEncode(text));
+                sb.Append(WebUtility.HtmlEncode(FormatGridCellText(text)));
             sb.Append("</td>");
+        }
+
+        /// <summary>ISO date/datetime strings → short date for print/export grids.</summary>
+        private static string FormatGridCellText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return "";
+            var t = text.Trim().Trim('"', '\'');
+            if (!System.Text.RegularExpressions.Regex.IsMatch(t,
+                    @"^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$"))
+                return text.Trim();
+            if (DateTime.TryParse(t, CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+                return dt.ToString("MMM d, yyyy", CultureInfo.InvariantCulture);
+            return t;
         }
 
         private static void AppendGridImage(StringBuilder sb, FormCell cell, string text)
@@ -402,40 +417,54 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             if (sheet.Cards.Count == 0) pages = 1;
             var pageW = CardPageFit.PageWidthMm;
             var pageH = CardPageFit.PageHeightMm;
-            var titleH = CardPageFit.TitleMm;
-            var gutter = 2.5; // mm — white cards sit on board with spacing
+            // Empty title (e.g. layout=page Card section) → no title band; more room for cards.
+            var titleH = string.IsNullOrEmpty(sheet.Title) ? 0 : CardPageFit.TitleMm;
+            // Print/PDF: catalog on white paper (screen Result keeps grey board via CSS).
+            var gutter = 1.8;
             var rowH = (pageH - titleH) / pageRows;
             var sb = new StringBuilder();
             sb.Append("<!DOCTYPE html><html><head><meta charset=\"utf-8\">");
             sb.Append("<style>.card-page{width:").Append(Mm(pageW)).Append(";height:").Append(Mm(pageH));
-            sb.Append(";overflow:hidden;page-break-after:always;break-after:page;background:#e8ecf1;}");
+            sb.Append(";overflow:hidden;page-break-after:always;break-after:page;background:#ffffff;}");
             sb.Append(".card-page table,.card-page tr,.card-page td{page-break-inside:auto;break-inside:auto;}");
-            // Radius on inner shell (td border-radius is unreliable in print engines).
             sb.Append(".mcp-card-shell{background:#fff;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;");
             sb.Append("height:100%;box-sizing:border-box;}");
-            sb.Append(".mcp-card-hero{background:#f3f4f6;overflow:hidden;text-align:center;vertical-align:middle;}");
-            sb.Append(".mcp-card-hero img{width:100%;height:100%;object-fit:contain;border:0;display:block;}");
+            sb.Append(".mcp-card-hero{background:#f3f4f6;overflow:hidden;text-align:center;vertical-align:middle;position:relative;}");
+            sb.Append(".mcp-card-hero-blur{display:none!important;}");
+            sb.Append(".mcp-card-hero-fg,.mcp-card-hero img{width:100%;height:100%;object-fit:cover;object-position:center center;");
+            sb.Append("border:0;display:block;background:#f3f4f6;}");
             sb.Append(".mcp-card-body{overflow:hidden;background:#fff;box-sizing:border-box;}");
+            sb.Append(".card-page-num{position:absolute;top:2mm;right:3mm;font-size:8px;line-height:10px;color:#9ca3af;font-weight:normal;}");
             sb.Append("</style></head>");
-            sb.Append("<body style=\"margin:0;padding:0;background-color:#e8ecf1;\">");
+            sb.Append("<body style=\"margin:0;padding:0;background-color:#ffffff;\">");
+            var pageTitle = sheet.Title ?? "";
             for (var p = 0; p < pages; p++)
             {
                 if (p > 0)
                     sb.Append("<div style=\"page-break-before:always\"></div>");
-                sb.Append("<div class=\"card-page\">");
+                sb.Append("<div class=\"card-page\" style=\"position:relative;\">");
+                if (pages > 1)
+                {
+                    sb.Append("<div class=\"card-page-num\">");
+                    sb.Append((p + 1).ToString(CultureInfo.InvariantCulture));
+                    sb.Append("/");
+                    sb.Append(pages.ToString(CultureInfo.InvariantCulture));
+                    sb.Append("</div>");
+                }
                 sb.Append("<table data-doc=\"cards\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"width:");
                 sb.Append(Mm(pageW));
                 sb.Append(";height:");
                 sb.Append(Mm(pageH));
                 sb.Append(";border-collapse:separate;border-spacing:").Append(Mm(gutter)).Append(" ").Append(Mm(gutter));
-                sb.Append(";table-layout:fixed;background-color:#e8ecf1;font-family:Arial,Helvetica,sans-serif;\">");
-                var title = string.IsNullOrEmpty(sheet.Title) ? "Cards" : sheet.Title;
-                if (pages > 1) title = title + " (" + (p + 1).ToString(CultureInfo.InvariantCulture) + "/" + pages.ToString(CultureInfo.InvariantCulture) + ")";
-                sb.Append("<tr style=\"height:").Append(Mm(titleH)).Append("\"><td colspan=\"").Append(perRow.ToString(CultureInfo.InvariantCulture));
-                sb.Append("\" data-role=\"title\" align=\"center\" height=\"").Append(Mm(titleH));
-                sb.Append("\" style=\"height:").Append(Mm(titleH)).Append(";padding:0 4px;font-size:14px;line-height:16px;font-weight:bold;color:#111827;vertical-align:middle;background:#e8ecf1;\">");
-                sb.Append(WebUtility.HtmlEncode(title));
-                sb.Append("</td></tr>");
+                sb.Append(";table-layout:fixed;background-color:#ffffff;font-family:Arial,Helvetica,sans-serif;\">");
+                if (titleH > 0)
+                {
+                    sb.Append("<tr style=\"height:").Append(Mm(titleH)).Append("\"><td colspan=\"").Append(perRow.ToString(CultureInfo.InvariantCulture));
+                    sb.Append("\" data-role=\"title\" align=\"center\" height=\"").Append(Mm(titleH));
+                    sb.Append("\" style=\"height:").Append(Mm(titleH)).Append(";padding:0 4px;font-size:14px;line-height:16px;font-weight:bold;color:#111827;vertical-align:middle;background:#ffffff;\">");
+                    sb.Append(WebUtility.HtmlEncode(pageTitle));
+                    sb.Append("</td></tr>");
+                }
                 var cellH = Math.Max(10, rowH - gutter);
                 for (var r = 0; r < pageRows; r++)
                 {
@@ -503,8 +532,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     metas.Add(field);
             }
 
-            // A1: same hero ratio with or without image (blank grey when missing).
-            const double heroRatio = 0.55;
+            // Slightly smaller hero → more room for catalog text (MCP-like).
+            const double heroRatio = 0.50;
             var imageBand = Math.Max(14, rowMm * heroRatio);
             var textBand = Math.Max(8, rowMm - imageBand);
             sb.Append("<table width=\"100%\" height=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"width:100%;height:100%;border-collapse:collapse;table-layout:fixed;\">");
@@ -512,41 +541,49 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             sb.Append(Mm(imageBand)).Append("\" style=\"height:").Append(Mm(imageBand));
             sb.Append(";max-height:").Append(Mm(imageBand));
             sb.Append(";background-color:#f3f4f6;text-align:center;vertical-align:middle;padding:0;overflow:hidden;\">");
-            // A2: fixed box; img object-fit contain (never stretch the cell).
             if (image != null)
                 AppendCardImageFixedBox(sb, image, imageBand);
             sb.Append("</td></tr>");
-            // A4: fixed text band + overflow clip so row bottoms align.
             sb.Append("<tr style=\"height:").Append(Mm(textBand)).Append("\"><td class=\"mcp-card-body\" valign=\"top\" style=\"height:");
             sb.Append(Mm(textBand)).Append(";max-height:").Append(Mm(textBand));
-            sb.Append(";padding:4px 7px 5px 7px;vertical-align:top;background:#ffffff;overflow:hidden;\">");
+            // Gap between hero image and text (MCP catalog breathing room).
+            sb.Append(";padding:10px 7px 5px 7px;vertical-align:top;background:#ffffff;overflow:hidden;\">");
             if (id != null)
             {
-                sb.Append("<div data-role=\"idLink\" style=\"font-size:11px;line-height:13px;font-weight:700;color:#2563eb;margin:0 0 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;\">");
+                sb.Append("<div data-role=\"idLink\" style=\"font-size:12px;line-height:14px;font-weight:700;color:#2563eb;margin:0 0 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;\">");
                 sb.Append(WebUtility.HtmlEncode(id.Value));
                 sb.Append("</div>");
             }
             if (title != null)
             {
-                sb.Append("<div data-role=\"title\" style=\"font-size:10px;line-height:12px;font-weight:500;color:#111827;margin:0 0 2px 0;max-height:24px;overflow:hidden;\">");
+                sb.Append("<div data-role=\"title\" style=\"font-size:11px;line-height:13px;font-weight:500;color:#111827;margin:0 0 2px 0;max-height:26px;overflow:hidden;\">");
                 sb.Append(WebUtility.HtmlEncode(title.Value));
                 sb.Append("</div>");
             }
             if (color != null)
             {
-                sb.Append("<div data-role=\"colorSwatch\" style=\"font-size:9px;line-height:11px;color:#374151;margin:0 0 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;\">");
+                var swatch = ResolveColorSwatchHex(color.Value);
+                sb.Append("<div data-role=\"colorSwatch\" style=\"font-size:9px;line-height:12px;color:#374151;margin:0 0 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;\">");
+                sb.Append("<span style=\"display:inline-block;width:8px;height:8px;border-radius:999px;background:");
+                sb.Append(swatch);
+                sb.Append(";border:1px solid #d1d5db;margin-right:4px;vertical-align:middle;\"></span>");
                 sb.Append(WebUtility.HtmlEncode(color.Value));
                 sb.Append("</div>");
             }
             if (status != null)
             {
-                sb.Append("<div data-role=\"statusPill\" style=\"display:inline-block;font-size:9px;line-height:11px;font-weight:600;padding:1px 6px;border-radius:999px;background:#dcfce7;color:#166534;margin:1px 0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">");
+                var (bg, fg) = StatusPillColors(status.Value);
+                sb.Append("<div data-role=\"statusPill\" style=\"display:inline-block;font-size:9px;line-height:11px;font-weight:600;padding:1px 6px;border-radius:999px;background:");
+                sb.Append(bg);
+                sb.Append(";color:");
+                sb.Append(fg);
+                sb.Append(";margin:1px 0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">");
                 sb.Append(WebUtility.HtmlEncode(status.Value));
                 sb.Append("</div>");
             }
             foreach (var m in metas)
             {
-                sb.Append("<div data-role=\"meta\" style=\"font-size:8px;line-height:10px;color:#6b7280;margin:1px 0 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;\">");
+                sb.Append("<div data-role=\"meta\" style=\"font-size:9px;line-height:11px;color:#6b7280;margin:1px 0 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;\">");
                 sb.Append(WebUtility.HtmlEncode(m.Value));
                 sb.Append("</div>");
             }
@@ -554,7 +591,59 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             _ = perRow;
         }
 
-        /// <summary>Image fills a fixed hero box; aspect preserved via object-fit.</summary>
+        private static (string Bg, string Fg) StatusPillColors(string status)
+        {
+            var s = (status ?? "").Trim().ToLowerInvariant();
+            if (s.IndexOf("drop", StringComparison.Ordinal) >= 0
+                || s.IndexOf("reject", StringComparison.Ordinal) >= 0)
+                return ("#fee2e2", "#991b1b");
+            if (s.IndexOf("hold", StringComparison.Ordinal) >= 0)
+                return ("#f3f4f6", "#4b5563");
+            if (s.IndexOf("sampling", StringComparison.Ordinal) >= 0
+                || s.IndexOf("in development", StringComparison.Ordinal) >= 0
+                || s.IndexOf("indevelopment", StringComparison.Ordinal) >= 0)
+                return ("#dbeafe", "#1e40af");
+            if (s.IndexOf("approv", StringComparison.Ordinal) >= 0)
+                return ("#dcfce7", "#166534");
+            return ("#dcfce7", "#166534");
+        }
+
+        /// <summary>Hex for print color dot: #rrggbb, common name, else soft blue.</summary>
+        private static string ResolveColorSwatchHex(string value)
+        {
+            var t = (value ?? "").Trim();
+            if (t.Length >= 4 && t[0] == '#')
+            {
+                var hex = t.Length >= 7 ? t.Substring(0, 7) : t;
+                if (System.Text.RegularExpressions.Regex.IsMatch(hex, @"^#[0-9A-Fa-f]{3,8}$"))
+                    return hex.Length == 4
+                        ? "#" + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3]
+                        : hex.Substring(0, Math.Min(7, hex.Length));
+            }
+            switch (t.ToLowerInvariant())
+            {
+                case "black": return "#111827";
+                case "white": return "#f9fafb";
+                case "red": return "#ef4444";
+                case "blue": return "#3b82f6";
+                case "green": return "#22c55e";
+                case "yellow": return "#eab308";
+                case "orange": return "#f97316";
+                case "purple": return "#a855f7";
+                case "pink": return "#ec4899";
+                case "brown": return "#92400e";
+                case "grey":
+                case "gray": return "#9ca3af";
+                case "navy": return "#1e3a8a";
+                case "beige": return "#d6c6a8";
+                case "tan": return "#d2b48c";
+                case "olive": return "#6b8e23";
+                case "khaki": return "#c3b091";
+                default: return "#60a5fa";
+            }
+        }
+
+        /// <summary>Fixed hero: object-fit cover center crop (matches screen agent-cards.css).</summary>
         private static void AppendCardImageFixedBox(StringBuilder sb, CardField field, double boxHeightMm)
         {
             string src = null;
@@ -563,13 +652,12 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             else if (CardSheet.IsImageValue(field?.Value))
                 src = field.Value.Trim();
             if (string.IsNullOrEmpty(src)) return;
-            sb.Append("<img src=\"");
+            var h = Mm(boxHeightMm);
+            sb.Append("<img class=\"mcp-card-hero-fg\" src=\"");
             sb.Append(WebUtility.HtmlEncode(src));
-            sb.Append("\" alt=\"\" style=\"border:0;width:100%;height:");
-            sb.Append(Mm(boxHeightMm));
-            sb.Append(";max-height:");
-            sb.Append(Mm(boxHeightMm));
-            sb.Append(";object-fit:contain;display:block;margin:0 auto;\" />");
+            sb.Append("\" alt=\"\" style=\"border:0;width:100%;height:").Append(h);
+            sb.Append(";max-height:").Append(h);
+            sb.Append(";object-fit:cover;object-position:center center;display:block;\" />");
         }
 
         private static string Mm(double value)

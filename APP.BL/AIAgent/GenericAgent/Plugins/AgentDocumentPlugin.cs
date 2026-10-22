@@ -157,9 +157,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             {
                 RequireSession(context);
                 var mode = string.IsNullOrWhiteSpace(layout) ? "form" : UiTemplateMerge.NormalizeLayout(layout);
-                if (mode != "form" && mode != "table" && mode != "cards"
+                if (mode != "form" && mode != "table" && mode != "cards" && mode != "page"
                     && mode != "kpi" && mode != "chart" && mode != "dashboard")
-                    throw new InvalidOperationException("layout must be form, table, cards, kpi, chart, or dashboard.");
+                    throw new InvalidOperationException("layout must be form, table, cards, page, kpi, chart, or dashboard.");
 
                 if (UiTemplateMerge.IsDashboardLayout(mode))
                 {
@@ -176,7 +176,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     if (!string.IsNullOrEmpty(valErr))
                         throw new InvalidOperationException(valErr);
 
-                    var rows = LoadDashboardRows(context, content, sourcePath, datasetName, rowLimit);
+                    var rows = LoadDashboardRows(context, content, sourcePath, datasetName, records, rowLimit);
                     var dashHtml = UiTemplateMerge.MergeDashboard(mode, rows, spec, spec.Title, forExport: true);
                     var raster = await ChartRasterize.EmbedChartPngsAsync(dashHtml, ct).ConfigureAwait(false);
                     dashHtml = raster.Html;
@@ -186,6 +186,32 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     path = WithExtension(path, extension);
                     var dashWritten = await WriteDashboardBytes(extension, dashHtml, rows, spec.Title, ct).ConfigureAwait(false);
                     return Saved(context, path, dashWritten.Bytes, rows.Count, false, missing, dashWritten.Engine);
+                }
+
+                // layout=page: Grid (full data table) + Cards in one export (matches Result stack).
+                if (mode == "page")
+                {
+                    var flat = LoadCardsAsDataTable(context, content, sourcePath, datasetName, records, rowLimit);
+                    if (!preview && (extension == ".xlsx" || extension == ".csv"))
+                    {
+                        path = WithExtension(path, extension);
+                        var flatBytes = extension == ".csv"
+                            ? CsvForm.Write(flat.Doc)
+                            : ExcelForm.Write(flat.Doc);
+                        return Saved(context, path, flatBytes, flat.RowCount, flat.CacheLimitReached, null,
+                            extension == ".csv" ? "csv" : "openxml");
+                    }
+
+                    var pageSheet = LoadCards(context, content, sourcePath, datasetName, records, cardsPerRow, cardRows, rowLimit, pageGrid, cardsPerPage);
+                    await CardImageLoader.AttachAsync(pageSheet, context.CompanyId, ct).ConfigureAwait(false);
+                    var gridDoc = ApplyPolishColumns(context, datasetName, flat.Doc, specJson);
+                    var pageTitle = string.IsNullOrWhiteSpace(gridDoc.Title) ? (pageSheet.Title ?? "Result") : gridDoc.Title;
+                    var pageHtml = UiTemplateMerge.ComposePageExportHtml(gridDoc, pageSheet, pageTitle);
+                    if (preview)
+                        return PreviewHtml(context, path, pageHtml, pageSheet.CardCount, pageSheet.CacheLimitReached, pageSheet.MissingImages, "playwright");
+                    path = WithExtension(path, extension);
+                    var pageWritten = await WritePageBytes(extension, gridDoc, pageSheet, pageHtml, ct).ConfigureAwait(false);
+                    return Saved(context, path, pageWritten.Bytes, pageSheet.CardCount, pageSheet.CacheLimitReached, pageSheet.MissingImages, pageWritten.Engine);
                 }
 
                 if (mode == "cards")
@@ -240,6 +266,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             string content,
             string sourcePath,
             string datasetName,
+            string records,
             int rowLimit)
         {
             if (!string.IsNullOrWhiteSpace(datasetName)
@@ -249,6 +276,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 if (rowLimit > 0 && arr.Count > rowLimit)
                     return AgentDataAnalyzeCacheBL.TakeFirst(arr, rowLimit);
                 return arr;
+            }
+            if (!string.IsNullOrWhiteSpace(records))
+            {
+                var fromRecords = CardSheet.ReadRecords(records);
+                if (fromRecords != null)
+                    return rowLimit > 0 ? AgentDataAnalyzeCacheBL.TakeFirst(fromRecords, rowLimit) : fromRecords;
             }
             if (!string.IsNullOrWhiteSpace(content))
             {
@@ -263,7 +296,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 var token = JToken.Parse(System.Text.Encoding.UTF8.GetString(bytes));
                 if (token is JArray arr) return rowLimit > 0 ? AgentDataAnalyzeCacheBL.TakeFirst(arr, rowLimit) : arr;
             }
-            throw new InvalidOperationException("Pass dataset_name or content JSON array for layout kpi/chart/dashboard.");
+            throw new InvalidOperationException("Pass dataset_name, records, or content JSON array for layout kpi/chart/dashboard.");
         }
 
         private static async Task<(byte[] Bytes, string Engine)> WriteDashboardBytes(
@@ -334,6 +367,71 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             throw new InvalidOperationException("Unsupported export.");
         }
 
+        /// <summary>layout=page export: Grid HTML + fitted cards (pdf/html/docx/pptx).</summary>
+        private static async Task<(byte[] Bytes, string Engine)> WritePageBytes(
+            string extension, FormDocument gridDoc, CardSheet sheet, string html, CancellationToken ct)
+        {
+            if (extension == ".html")
+                return (System.Text.Encoding.UTF8.GetBytes(html ?? ""), "html");
+            if (extension == ".pdf")
+                return (await AppReportPdfService.RenderHtmlToPdfAsync(html).ConfigureAwait(false), "playwright");
+            if (extension == ".docx")
+            {
+                var printHtml = System.Text.Encoding.UTF8.GetBytes(html ?? "");
+                if (LibreOfficeConvert.IsInstalled())
+                    return (LibreOfficeConvert.Convert(printHtml, ".html", "docx"), "libreoffice");
+                // Fallback: Word table for grid + OpenXML cards when LO missing.
+                if (sheet != null)
+                    return (HtmlToOpenXmlWord.WriteCardsHtml(HtmlForm.WriteCards(sheet, true), sheet), "openxml");
+                return (OpenXmlWordForm.Write(gridDoc), "openxml");
+            }
+            if (extension == ".pptx")
+            {
+                // Screenshot grid section + each fitted .card-page (HtmlOfficeExport).
+                _ = ct;
+                return (await HtmlOfficeExport.WritePptxFromHtmlAsync(html, gridDoc?.Title ?? sheet?.Title, ct).ConfigureAwait(false),
+                    "playwright+shapecrawler");
+            }
+            throw new InvalidOperationException("Unsupported export for layout=page.");
+        }
+
+        /// <summary>
+        /// Honor AI polish bindings.columns for Print/Export grid (same as interactive Result).
+        /// Cache first; after reopen, columns come from Result SpecJson.polishedSpec.
+        /// </summary>
+        private static FormDocument ApplyPolishColumns(
+            AgentToolContext context, string datasetName, FormDocument doc, string specJson = null)
+        {
+            if (doc == null) return doc;
+            var ds = string.IsNullOrWhiteSpace(datasetName) ? "_" : datasetName.Trim();
+            AiPolishedRenderSpec polish = null;
+            if (context != null && !string.IsNullOrWhiteSpace(context.ChatSessionKey))
+            {
+                if (!AgentAiPolishCacheBL.TryGet(context.ChatSessionKey, ds, "page", out polish))
+                    AgentAiPolishCacheBL.TryGet(context.ChatSessionKey, ds, "table", out polish);
+            }
+            if (polish == null && !string.IsNullOrWhiteSpace(specJson))
+                polish = TryParsePolishedFromSpecJson(specJson);
+            if (polish == null || polish.SelectAllColumns
+                || polish.Bindings?.Columns == null || polish.Bindings.Columns.Count == 0)
+                return doc;
+            return doc.ProjectColumns(polish.Bindings.Columns);
+        }
+
+        private static AiPolishedRenderSpec TryParsePolishedFromSpecJson(string specJson)
+        {
+            try
+            {
+                var root = JObject.Parse(specJson);
+                var nested = root["polishedSpec"] ?? root["PolishedSpec"];
+                var json = nested != null ? nested.ToString(Formatting.None) : specJson;
+                if (AiPolishedRenderSpec.TryParse(json, out var spec, out _))
+                    return spec;
+            }
+            catch { /* ignore */ }
+            return null;
+        }
+
         /// <summary>Full dataset as a normal table (one row per record). Ignores card polish / gallery layout.</summary>
         private static (FormDocument Doc, int RowCount, bool CacheLimitReached) LoadCardsAsDataTable(
             AgentToolContext context, string content, string sourcePath, string datasetName, string records, int rowLimit)
@@ -341,10 +439,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             JArray rows = null;
             var title = "Data";
             var limit = false;
-            if (!string.IsNullOrWhiteSpace(datasetName))
+            var fromDataset = false;
+            if (!string.IsNullOrWhiteSpace(datasetName)
+                && AgentDataAnalyzeCacheBL.TryExportDataJson(context.ChatSessionKey, datasetName.Trim(), out var dataJson, out _, out _))
             {
-                rows = CacheRows(context, datasetName, out limit);
+                rows = JArray.Parse(dataJson);
                 title = datasetName.Trim();
+                fromDataset = true;
             }
             else if (!string.IsNullOrWhiteSpace(records))
                 rows = CardSheet.ReadRecords(records);
@@ -366,7 +467,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             else
                 throw new InvalidOperationException("Pass dataset_name, records, content, or sourcePath.");
 
-            if (string.IsNullOrWhiteSpace(datasetName))
+            if (!fromDataset)
                 rows = CacheRowExpand.Expand(context.ChatSessionKey, rows);
             if (rowLimit > 0)
                 rows = AgentDataAnalyzeCacheBL.TakeFirst(rows, rowLimit);
@@ -514,9 +615,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             var title = "Cards";
             var limit = false;
             var fromDataset = false;
-            if (!string.IsNullOrWhiteSpace(datasetName))
+            if (!string.IsNullOrWhiteSpace(datasetName)
+                && AgentDataAnalyzeCacheBL.TryExportDataJson(context.ChatSessionKey, datasetName.Trim(), out var dataJson, out _, out _))
             {
-                rows = CacheRows(context, datasetName, out limit);
+                rows = JArray.Parse(dataJson);
                 title = datasetName.Trim();
                 fromDataset = true;
             }
@@ -608,7 +710,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 {
                     var cell = obj?[name];
                     var text = cell == null || cell.Type == JTokenType.Null ? "" : cell.ToString();
-                    line.Add(new FormCell { Text = text, IsNumber = cell != null && (cell.Type == JTokenType.Integer || cell.Type == JTokenType.Float) });
+                    line.Add(new FormCell
+                    {
+                        Text = text,
+                        IsNumber = cell != null && (cell.Type == JTokenType.Integer || cell.Type == JTokenType.Float),
+                        // Image field = column name means image AND value is URL.
+                        IsImage = CardSheet.IsImageValue(text, name)
+                    });
                 }
                 data.Add(line);
             }

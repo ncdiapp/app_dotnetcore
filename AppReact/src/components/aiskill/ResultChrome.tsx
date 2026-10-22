@@ -25,6 +25,49 @@ export type PolishedSpecClient = {
     layoutHints?: { cardsPerRow?: number; cardRows?: number; statusColorMap?: Record<string, string> };
 };
 
+/** Normalize polish bindings so PascalCase (server JObject.FromObject) still drives Filter UI. */
+function normalizePolished(raw: Record<string, unknown> | null | undefined): PolishedSpecClient | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const bindingsRaw = (raw.bindings || raw.Bindings) as Record<string, unknown> | undefined;
+    const hintsRaw = (raw.layoutHints || raw.LayoutHints) as Record<string, unknown> | undefined;
+    const fieldsArr = (bindingsRaw?.fields || bindingsRaw?.Fields) as Array<Record<string, unknown>> | undefined;
+    const filterArr = (bindingsRaw?.filterFields || bindingsRaw?.FilterFields) as Array<Record<string, unknown>> | undefined;
+    const columnsArr = (bindingsRaw?.columns || bindingsRaw?.Columns) as unknown;
+    return {
+        layout: String(raw.layout ?? raw.Layout ?? '') || undefined,
+        title: String(raw.title ?? raw.Title ?? '') || undefined,
+        bindings: bindingsRaw
+            ? {
+                primaryImageField: String(bindingsRaw.primaryImageField ?? bindingsRaw.PrimaryImageField ?? '') || undefined,
+                fields: Array.isArray(fieldsArr)
+                    ? fieldsArr.map(f => ({
+                        name: String(f?.name ?? f?.Name ?? '') || undefined,
+                        role: String(f?.role ?? f?.Role ?? '') || undefined,
+                    }))
+                    : undefined,
+                columns: Array.isArray(columnsArr) ? columnsArr.map(String) : undefined,
+                filterFields: Array.isArray(filterArr)
+                    ? filterArr.map(f => ({
+                        name: String(f?.name ?? f?.Name ?? '') || undefined,
+                        Name: String(f?.Name ?? f?.name ?? '') || undefined,
+                        control: String(f?.control ?? f?.Control ?? '') || undefined,
+                        Control: String(f?.Control ?? f?.control ?? '') || undefined,
+                        searchFields: (f?.searchFields || f?.SearchFields) as string[] | undefined,
+                        SearchFields: (f?.SearchFields || f?.searchFields) as string[] | undefined,
+                    }))
+                    : undefined,
+            }
+            : undefined,
+        layoutHints: hintsRaw
+            ? {
+                cardsPerRow: Number(hintsRaw.cardsPerRow ?? hintsRaw.CardsPerRow) || undefined,
+                cardRows: Number(hintsRaw.cardRows ?? hintsRaw.CardRows) || undefined,
+                statusColorMap: (hintsRaw.statusColorMap || hintsRaw.StatusColorMap) as Record<string, string> | undefined,
+            }
+            : undefined,
+    };
+}
+
 function parseSpecBlob(event: DataRenderEvent | null | undefined): {
     polished: PolishedSpecClient | null;
     filterOptions: Record<string, string[]>;
@@ -35,8 +78,11 @@ function parseSpecBlob(event: DataRenderEvent | null | undefined): {
 } {
     const raw = event?.SpecJson || event?.MetaJson || null;
     const obj = parseJsonSafe<Record<string, unknown>>(raw, {});
-    const polished = (obj.polishedSpec || obj.PolishedSpec) as PolishedSpecClient | null;
-    const filterOptions = (obj.filterOptions || obj.FilterOptions || {}) as Record<string, string[]>;
+    const polished = normalizePolished(
+        (obj.polishedSpec || obj.PolishedSpec) as Record<string, unknown> | undefined,
+    );
+    const filterOptionsRaw = (obj.filterOptions || obj.FilterOptions || {}) as Record<string, string[]>;
+    const filterOptions = filterOptionsRaw && typeof filterOptionsRaw === 'object' ? filterOptionsRaw : {};
     const htmlPath = event?.HtmlPath || (obj.htmlPath as string) || null;
     const hintCpr = polished?.layoutHints?.cardsPerRow;
     const hintCr = polished?.layoutHints?.cardRows;
@@ -58,8 +104,8 @@ function parseSpecBlob(event: DataRenderEvent | null | undefined): {
     // Prefer SpecJson / polish; otherwise omit forced grid (server uses tool/defaults).
     if (!pageGrid && cardsPerRow > 0 && cardRows > 0) pageGrid = `${cardsPerRow}x${cardRows}`;
     return {
-        polished: polished || null,
-        filterOptions: filterOptions || {},
+        polished,
+        filterOptions,
         htmlPath,
         cardsPerRow,
         cardRows,
@@ -143,7 +189,15 @@ export const ResultChrome: React.FC<Props> = ({
     );
     const allRows = useMemo(() => parseRows(event.DataJson), [event.DataJson]);
 
-    const filterFields = polished?.bindings?.filterFields ?? [];
+    const polishFilterFields = polished?.bindings?.filterFields ?? [];
+    // Fallback: always offer Search when rows exist but polish omitted filterFields.
+    const filterFields = useMemo((): PolishedFilterField[] => {
+        if (polishFilterFields.length > 0) return polishFilterFields;
+        if (allRows.length === 0) return [];
+        const keys = Object.keys(allRows[0] || {}).filter(k => k && !/^image|sketch|photo|thumb/i.test(k)).slice(0, 8);
+        if (keys.length === 0) return [];
+        return [{ name: '_search', control: 'search', searchFields: keys }];
+    }, [polishFilterFields, allRows]);
     const searchField = filterFields.find(
         f => (f.control || f.Control || '').toLowerCase() === 'search'
             || (f.name || f.Name) === '_search'
@@ -152,8 +206,11 @@ export const ResultChrome: React.FC<Props> = ({
         || polished?.bindings?.fields?.map(f => f.name).filter(Boolean) as string[]
         || [];
     const multiFields = filterFields.filter(
-        f => (f.control || f.Control || '').toLowerCase() === 'multiselect'
-            && (f.name || f.Name) && (f.name || f.Name) !== '_search'
+        f => {
+            const c = (f.control || f.Control || '').toLowerCase();
+            const n = (f.name || f.Name || '').trim();
+            return (c === 'multiselect' || c === 'multi-select') && !!n && n !== '_search';
+        }
     );
 
     const [search, setSearch] = useState('');
@@ -168,12 +225,13 @@ export const ResultChrome: React.FC<Props> = ({
     );
 
     const layout = (event.Layout || event.Ui || 'table').toLowerCase();
-    const layoutNorm = layout === 'card' ? 'cards' : layout;
-    const isCardsLayout = layoutNorm === 'cards' || layoutNorm === 'page';
+    const layoutNorm = layout === 'card' ? 'cards'
+        : layout === 'kpi_dashboard' ? 'kpi'
+        : layout;
 
     const filteredEvent = useMemo((): DataRenderEvent => {
-        // Cards/page: keep TemplateContent cardsHtml (never strip for React DataRenderCard fallback).
-        if (isCardsLayout || !event.DataJson || filteredRows.length === allRows.length) {
+        // Apply filter to DataJson (grid / page table / kpi). cardsHtml is static TemplateContent.
+        if (!event.DataJson || filteredRows.length === allRows.length) {
             return event;
         }
         return {
@@ -181,7 +239,7 @@ export const ResultChrome: React.FC<Props> = ({
             DataJson: JSON.stringify(filteredRows),
             RowCount: filteredRows.length,
         };
-    }, [event, filteredRows, allRows.length, isCardsLayout]);
+    }, [event, filteredRows, allRows.length]);
 
     const title = polished?.title || event.Title || 'Result';
     const total = allRows.length > 0 ? allRows.length : (event.RowCount || 0);
@@ -202,12 +260,25 @@ export const ResultChrome: React.FC<Props> = ({
         });
     };
 
-    const exportLayout = layoutNorm === 'cards' || layoutNorm === 'table' || layoutNorm === 'page'
-        ? (layoutNorm === 'page' ? 'cards' : layoutNorm)
+    // Preserve page / kpi / dashboard / table / cards for ExportResult (never coerce kpi→cards).
+    const exportLayout = layoutNorm === 'card' ? 'cards'
+        : layoutNorm === 'kpi_dashboard' ? 'kpi'
         : layoutNorm;
 
+    // Always send SpecJson (kpi charts + polished columns after reopen).
+    const exportSpecJson = event.SpecJson || undefined;
+    // Prefer chrome-filtered rows; fall back to full Result DataJson for reopen/export.
+    const exportRecordsJson = useMemo(() => {
+        if (filteredRows.length > 0) return JSON.stringify(filteredRows);
+        if (event.DataJson?.trim()) return event.DataJson.trim();
+        return undefined;
+    }, [filteredRows, event.DataJson]);
+
     const runExport = async (format: string) => {
-        if (!sessionKey || disabled) return;
+        if (!sessionKey) {
+            setMsg('Session not ready — reopen this chat or run the search again.');
+            return;
+        }
         setBusy(format);
         setMsg(null);
         setExportOpen(false);
@@ -222,6 +293,8 @@ export const ResultChrome: React.FC<Props> = ({
                 ...(cardsPerRow > 0 ? { cardsPerRow } : {}),
                 ...(cardRows > 0 ? { cardRows } : {}),
                 ...(pageGrid ? { pageGrid } : {}),
+                ...(exportSpecJson ? { specJson: exportSpecJson } : {}),
+                ...(exportRecordsJson ? { recordsJson: exportRecordsJson } : {}),
             });
             if (res?.path) {
                 setMsg(`Exported ${format.toUpperCase()}: ${res.path}`);
@@ -237,20 +310,25 @@ export const ResultChrome: React.FC<Props> = ({
     };
 
     const onPrint = async () => {
-        if (disabled || !sessionKey) return;
+        if (!sessionKey) {
+            setMsg('Session not ready — reopen this chat or run the search again.');
+            return;
+        }
         setBusy('print');
         setMsg(null);
         try {
-            // Fitted R×C HTML (same source as PDF), not the screen twin under HtmlPath.
+            // Same layout as Export (page → grid+cards; kpi/dashboard → dashboard HTML; not cards).
             const res = await genericAgentSvc.ExportResult({
                 skillKey,
                 sessionKey,
                 format: 'html',
-                layout: exportLayout === 'table' ? 'table' : 'cards',
+                layout: exportLayout,
                 title,
                 ...(cardsPerRow > 0 ? { cardsPerRow } : {}),
                 ...(cardRows > 0 ? { cardRows } : {}),
                 ...(pageGrid ? { pageGrid } : {}),
+                ...(exportSpecJson ? { specJson: exportSpecJson } : {}),
+                ...(exportRecordsJson ? { recordsJson: exportRecordsJson } : {}),
             });
             if (!res?.path) {
                 setMsg(res?.error || 'Print failed.');
@@ -292,7 +370,7 @@ export const ResultChrome: React.FC<Props> = ({
                         <button
                             type="button"
                             className={btnPrimary}
-                            disabled={!!disabled || !!busy}
+                            disabled={!!busy}
                             onClick={() => void onPrint()}
                         >
                             <i className="fa-solid fa-print mr-1" />
@@ -301,7 +379,7 @@ export const ResultChrome: React.FC<Props> = ({
                         <button
                             type="button"
                             className={btnSecondary}
-                            disabled={!!disabled || !!busy}
+                            disabled={!!busy}
                             onClick={() => setExportOpen(v => !v)}
                         >
                             <i className="fa-solid fa-file-export mr-1" />
@@ -325,7 +403,8 @@ export const ResultChrome: React.FC<Props> = ({
                     </div>
                 </div>
 
-                {(searchField || multiFields.length > 0) && (
+                {/* layout=page: each Grid/Card section has its own filter in InteractivePagePanel. */}
+                {layoutNorm !== 'page' && (searchField || multiFields.length > 0) && (
                     <div className="flex flex-wrap items-center gap-2">
                         {searchField && (
                             <div className="flex items-center gap-1 min-w-[180px] w-1 flex-auto">
@@ -372,7 +451,11 @@ export const ResultChrome: React.FC<Props> = ({
                         })}
                     </div>
                 )}
-                {msg && <div className={`text-xs ${theme.label}`}>{msg}</div>}
+                {msg && (
+                    <div className={`text-xs px-1 py-0.5 rounded-[4px] ${theme.label} bg-amber-50 border border-amber-200`}>
+                        {msg}
+                    </div>
+                )}
             </div>
             <div className="w-full h-1 flex-auto min-h-0 min-w-0 overflow-auto">
                 {children(filteredEvent, polished)}

@@ -631,6 +631,10 @@ class GenericAgentService {
         cardRows?: number;
         /** Optional "2x2" / "4x4"; overrides when parseable. */
         pageGrid?: string;
+        /** Required for kpi/chart/dashboard export (from Result SpecJson). */
+        specJson?: string;
+        /** Result rows JSON — required after chat reopen when server dataset cache is empty. */
+        recordsJson?: string;
     }): Promise<{ path?: string; error?: string }> {
         const res = await fetch(`${BASE}/ExportResult`, {
             method: 'POST',
@@ -645,6 +649,8 @@ class GenericAgentService {
                 CardsPerRow: args.cardsPerRow && args.cardsPerRow > 0 ? args.cardsPerRow : 0,
                 CardRows: args.cardRows && args.cardRows > 0 ? args.cardRows : 0,
                 PageGrid: args.pageGrid || '',
+                SpecJson: args.specJson || '',
+                RecordsJson: args.recordsJson || '',
             }),
         });
         if (!res.ok) return { error: `Export failed (${res.status})` };

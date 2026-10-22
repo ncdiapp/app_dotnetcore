@@ -6,7 +6,8 @@ import '@mescius/wijmo.styles/wijmo.css';
 import FlexGridAddOn from '../../common/FlexGridAddOn';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { DataRenderImage } from './DataRenderImage';
-import { imageUrlKind } from './imageValue';
+import { formatDateValue } from './dateValue';
+import { cellImageKind, unwrapQuoted } from './imageValue';
 
 const MIN_COL_WIDTH = 150;
 
@@ -29,7 +30,7 @@ interface Props {
 function wijmoFormat(dataType?: string): string | undefined {
     if (dataType === 'currency') return 'c2';
     if (dataType === 'number') return 'n0';
-    if (dataType === 'date') return 'd';
+    // Dates use a cell template (ISO strings → locale date); Wijmo 'd' needs Date objects.
     return undefined;
 }
 
@@ -55,11 +56,30 @@ export const DataRenderGridWijmo: React.FC<Props> = ({ colDefs, rowData, title, 
     const imageFields = useMemo(() => {
         const fields = new Set<string>();
         for (const col of visibleCols) {
-            if ((rowData ?? []).some(row => imageUrlKind(row?.[col.field]) != null))
+            if (col.dataType === 'image'
+                || (rowData ?? []).some(row => cellImageKind(row?.[col.field], col.field) != null))
                 fields.add(col.field);
         }
         return fields;
     }, [visibleCols, rowData]);
+    const dateFields = useMemo(() => {
+        const fields = new Set<string>();
+        for (const col of visibleCols) {
+            if (imageFields.has(col.field)) continue;
+            if (col.dataType === 'date') {
+                fields.add(col.field);
+                continue;
+            }
+            const samples = (rowData ?? [])
+                .map(row => row?.[col.field])
+                .filter(v => v != null && String(v).trim() !== '');
+            if (samples.length === 0) continue;
+            const hits = samples.filter(v => formatDateValue(v) != null).length;
+            if (hits >= Math.max(1, Math.ceil(samples.length * 0.4)))
+                fields.add(col.field);
+        }
+        return fields;
+    }, [visibleCols, rowData, imageFields]);
 
     const total = meta?.total ?? rowData.length;
     const rowHeight = imageFields.size > 0 ? 64 : 28;
@@ -115,9 +135,27 @@ export const DataRenderGridWijmo: React.FC<Props> = ({ colDefs, rowData, title, 
                                     cellType="Cell"
                                     template={(cell: any) => {
                                         const value = cell.item?.[col.field];
-                                        if (imageUrlKind(value) == null)
+                                        const kind = cellImageKind(value, col.field);
+                                        if (kind == null)
                                             return <span>{value == null ? '' : String(value)}</span>;
-                                        return <DataRenderImage url={String(value)} alt={col.headerName || col.field} />;
+                                        return (
+                                            <DataRenderImage
+                                                url={unwrapQuoted(value)}
+                                                alt={col.headerName || col.field}
+                                                kind={kind}
+                                            />
+                                        );
+                                    }}
+                                />
+                            )}
+                            {!imageFields.has(col.field) && dateFields.has(col.field) && (
+                                <FlexGridCellTemplate
+                                    cellType="Cell"
+                                    template={(cell: any) => {
+                                        const value = cell.item?.[col.field];
+                                        if (value == null || String(value).trim() === '') return <span />;
+                                        const formatted = formatDateValue(value);
+                                        return <span>{formatted ?? unwrapQuoted(value)}</span>;
                                     }}
                                 />
                             )}

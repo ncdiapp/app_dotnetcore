@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { DataRenderImage } from './DataRenderImage';
-import { imageUrlKind } from './imageValue';
+import { cellImageKind } from './imageValue';
 
 interface CardField {
     label: string;
@@ -26,15 +26,24 @@ function statusClass(value: string, themeOk: string): string {
 export const DataRenderCard: React.FC<CardProps> = ({ fields }) => {
     const { theme, t } = useTheme();
     const hero = fields.find(f =>
-        (f.role || '').toLowerCase() === 'primaryimage' || imageUrlKind(f.value) != null
+        (f.role || '').toLowerCase() === 'primaryimage'
+        || cellImageKind(f.value, f.label) != null
+        || cellImageKind(f.value, f.role) != null
     );
     const rest = fields.filter(f => f !== hero);
 
     return (
         <div className={`min-w-0 overflow-hidden border rounded-[8px] ${theme.mainContentSection} flex flex-col`}>
-            {hero && imageUrlKind(hero.value) != null && (
+            {hero && (cellImageKind(hero.value, hero.label) != null
+                || cellImageKind(hero.value, hero.role) != null
+                || (hero.role || '').toLowerCase() === 'primaryimage') && (
                 <div className="bg-gray-100 min-h-[120px] max-h-[160px] flex items-center justify-center overflow-hidden">
-                    <DataRenderImage url={hero.value} alt={hero.label} size="compact" />
+                    <DataRenderImage
+                        url={hero.value}
+                        alt={hero.label}
+                        size="compact"
+                        kind={cellImageKind(hero.value, hero.label) || cellImageKind(hero.value, hero.role) || 'external'}
+                    />
                 </div>
             )}
             <div className="px-3.5 py-3 flex flex-col gap-1.5 min-w-0">
@@ -43,10 +52,11 @@ export const DataRenderCard: React.FC<CardProps> = ({ fields }) => {
                 ) : (
                     rest.map((f, i) => {
                         const role = (f.role || 'body').toLowerCase();
-                        if (imageUrlKind(f.value) != null) {
+                        const imgKind = cellImageKind(f.value, f.label) || cellImageKind(f.value, f.role);
+                        if (imgKind != null) {
                             return (
                                 <div key={`${f.label}-${i}`} className="min-w-0">
-                                    <DataRenderImage url={f.value} alt={f.label} size="compact" />
+                                    <DataRenderImage url={f.value} alt={f.label} size="compact" kind={imgKind} />
                                 </div>
                             );
                         }

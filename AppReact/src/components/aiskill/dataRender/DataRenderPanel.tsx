@@ -1,7 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
-import TemplateControlLayout, { parseCardsHtmlFromSpec } from '../TemplateControlLayout';
-import { adaptToChart, adaptToGrid } from './adapters';
+import TemplateControlLayout, {
+    filterCardsHtmlByRows,
+    parseCardsHtmlFromSpec,
+} from '../TemplateControlLayout';
+import { adaptToChart, adaptToGrid, parseRows } from './adapters';
 import { DataRenderChartRecharts } from './DataRenderChartRecharts';
 import { DataRenderChartWijmo } from './DataRenderChartWijmo';
 import { DataRenderGridAg } from './DataRenderGridAg';
@@ -156,8 +159,12 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
             );
         }
         if (ui === 'card') {
-            // Primary host: TemplateContent GENERATE (cardsHtml). Do not use React DataRenderCard.
-            const cardsHtml = parseCardsHtmlFromSpec(event.SpecJson);
+            // cards-only: sync TemplateContent to ResultChrome-filtered DataJson.
+            // layout=page filters inside InteractivePagePanel (own Search per section).
+            const full = parseCardsHtmlFromSpec(event.SpecJson);
+            const cardsHtml = full
+                ? filterCardsHtmlByRows(full, parseRows(event.DataJson))
+                : null;
             if (cardsHtml) return <TemplateControlLayout html={cardsHtml} />;
             return (
                 <div className={`text-xs ${theme.label}`}>
@@ -198,12 +205,14 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
     };
 
     const cardOnly = ui === 'card';
+    const panelTitle = (event.Title || '').trim();
+    const showPanelHeader = !cardOnly && (!!panelTitle || actions.length > 0 || !!event.Truncated);
     return (
         <div className={cardOnly ? '' : `rounded-[4px] p-4 border ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
-            {!cardOnly && (
+            {showPanelHeader && (
             <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                 <div className={`text-sm font-semibold ${theme.title}`}>
-                    {event.Title || 'Result'}
+                    {panelTitle}
                     {event.Truncated && (
                         <span className={`ml-2 text-xs font-normal ${theme.label}`}>(truncated)</span>
                     )}

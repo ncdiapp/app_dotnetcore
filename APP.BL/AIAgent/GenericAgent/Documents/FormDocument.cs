@@ -83,6 +83,69 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         }
 
         /// <summary>
+        /// Keep only named grid columns (AI polish bindings.columns). Order follows <paramref name="keepColumns"/>.
+        /// </summary>
+        public FormDocument ProjectColumns(IList<string> keepColumns)
+        {
+            if (keepColumns == null || keepColumns.Count == 0) return this;
+            FormTable table = null;
+            foreach (var sec in Sections)
+            {
+                if (sec?.Tables == null) continue;
+                foreach (var t in sec.Tables)
+                {
+                    if (t != null) { table = t; break; }
+                }
+                if (table != null) break;
+            }
+            if (table?.Columns == null || table.Columns.Count == 0) return this;
+
+            var indexes = new List<int>();
+            foreach (var name in keepColumns)
+            {
+                for (var i = 0; i < table.Columns.Count; i++)
+                {
+                    if (string.Equals(table.Columns[i], name, StringComparison.OrdinalIgnoreCase)
+                        && !indexes.Contains(i))
+                    {
+                        indexes.Add(i);
+                        break;
+                    }
+                }
+            }
+            if (indexes.Count == 0 || indexes.Count == table.Columns.Count) return this;
+
+            var newCols = indexes.Select(i => table.Columns[i]).ToList();
+            var newRows = new List<List<FormCell>>();
+            if (table.Rows != null)
+            {
+                foreach (var row in table.Rows)
+                {
+                    var cells = new List<FormCell>();
+                    foreach (var i in indexes)
+                        cells.Add(i < (row?.Count ?? 0) ? row[i] : new FormCell());
+                    newRows.Add(cells);
+                }
+            }
+            return FromTable(Title, newCols, newRows);
+        }
+
+        /// <summary>Column count of the first grid table, or 0.</summary>
+        public int FirstGridColumnCount()
+        {
+            foreach (var sec in Sections)
+            {
+                if (sec?.Tables == null) continue;
+                foreach (var t in sec.Tables)
+                {
+                    if (t?.Columns != null && t.Columns.Count > 0)
+                        return t.Columns.Count;
+                }
+            }
+            return 0;
+        }
+
+        /// <summary>
         /// Copy with each grid limited to <paramref name="maxRows"/> data rows.
         /// </summary>
         public FormDocument Preview(int maxRows, out int previewRowCount, out bool truncated)

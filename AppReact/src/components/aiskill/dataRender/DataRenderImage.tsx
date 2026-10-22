@@ -1,30 +1,33 @@
 import React, { useEffect, useState } from 'react';
 import { fetchAuthenticatedImageBlobUrl } from '../../../webapi/fileEndpoints';
-import { imageUrlKind, toAppResourcePath } from './imageValue';
+import { toAppResourcePath, unwrapQuoted } from './imageValue';
 
 interface Props {
     url: string;
     alt?: string;
     size?: 'cell' | 'compact' | 'card';
+    /** When set from grid: 'resource' uses session fetch; 'external' uses URL as-is. */
+    kind?: 'resource' | 'external' | null;
 }
 
 /** Renders an image URL. App resource URLs are loaded with the session header. */
-export const DataRenderImage: React.FC<Props> = ({ url, alt, size = 'cell' }) => {
-    const kind = imageUrlKind(url);
-    const [src, setSrc] = useState<string | null>(kind === 'external' ? url : null);
+export const DataRenderImage: React.FC<Props> = ({ url, alt, size = 'cell', kind: kindProp }) => {
+    const clean = unwrapQuoted(url);
+    const kind = kindProp ?? (/^https?:\/\//i.test(clean) ? 'external' : 'resource');
+    const [src, setSrc] = useState<string | null>(kind === 'external' ? clean : null);
 
     useEffect(() => {
         if (kind !== 'resource') {
-            setSrc(kind === 'external' ? url : null);
+            setSrc(kind === 'external' ? clean : null);
             return;
         }
         let cancelled = false;
         setSrc(null);
-        fetchAuthenticatedImageBlobUrl(toAppResourcePath(url)).then(blobUrl => {
+        fetchAuthenticatedImageBlobUrl(toAppResourcePath(clean)).then(blobUrl => {
             if (!cancelled) setSrc(blobUrl);
         });
         return () => { cancelled = true; };
-    }, [url, kind]);
+    }, [clean, kind]);
 
     const box = size === 'card'
         ? 'relative h-44 w-full'

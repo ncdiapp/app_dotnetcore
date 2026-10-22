@@ -447,6 +447,98 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         }
 
         /// <summary>
+        /// Print/Export for layout=page: Grid (data table) then fitted Card pages.
+        /// One page title; section labels only — no repeated headings inside each block.
+        /// Grid uses <see cref="UiDashboardHtml.BuildGridPageFitCss"/> (same font scale as dashboard export).
+        /// Do not inject <see cref="HtmlForm.ForPrint"/> here: its global tr{page-break-inside:avoid}
+        /// wraps the entire nested grid in one unbreakable row and leaves a blank first page.
+        /// </summary>
+        public static string ComposePageExportHtml(
+            FormDocument formDoc,
+            CardSheet cardSheet,
+            string title)
+        {
+            var pageTitle = string.IsNullOrWhiteSpace(title)
+                ? (formDoc?.Title ?? cardSheet?.Title ?? "Result")
+                : title.Trim();
+            var colCount = formDoc?.FirstGridColumnCount() ?? 0;
+            var fitStub = colCount > 0
+                ? "<section class=\"data-table\" data-cols=\""
+                    + colCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + "\"></section>"
+                : "";
+            var sb = new System.Text.StringBuilder();
+            sb.Append("<!DOCTYPE html><html><head><meta charset=\"utf-8\"/>");
+            sb.Append("<style>");
+            sb.Append("@page{size:A4 portrait;margin:12mm}");
+            // Contain wide grids so they don't inflate body width; cards then fill the same content box.
+            sb.Append("html,body{margin:0;padding:0;width:100%;max-width:100%;overflow-x:hidden;");
+            sb.Append("font-family:Arial,Helvetica,sans-serif;color:#111827;background:#ffffff;box-sizing:border-box}");
+            sb.Append("*,*:before,*:after{box-sizing:border-box}");
+            sb.Append("h1.page-export-title{font-size:16px;line-height:20px;font-weight:700;text-align:center;");
+            sb.Append("margin:0 0 10px 0;page-break-after:avoid}");
+            sb.Append("h2.page-export-section{font-size:13px;line-height:16px;font-weight:600;margin:0 0 8px 0;");
+            sb.Append("page-break-after:avoid}");
+            sb.Append(".page-export-break{page-break-before:always}");
+            sb.Append("#export-grid{margin:0 0 8px 0;width:100%;max-width:100%}");
+            // Outer form wrapper must break across pages (one tr holds the whole grid).
+            sb.Append("#export-grid table[data-doc=\"form\"]>tr{page-break-inside:auto!important;break-inside:auto!important}");
+            sb.Append("#export-grid table[data-role=\"grid\"]>tr{page-break-inside:avoid;break-inside:avoid}");
+            sb.Append("#export-grid img{max-width:100%;max-height:48px;width:auto;height:auto;object-fit:contain}");
+            if (!string.IsNullOrEmpty(fitStub))
+                sb.Append(UiDashboardHtml.BuildGridPageFitCss(fitStub));
+            // Fitted cards use fixed 180mm; inside page export that leaves a right gutter — stretch to 100%.
+            sb.Append("#export-cards{width:100%;max-width:100%}");
+            sb.Append("#export-cards .card-page{width:100%!important;max-width:100%;height:auto!important;");
+            sb.Append("min-height:240mm;margin:0 auto}");
+            sb.Append("#export-cards .card-page>table{width:100%!important;max-width:100%;height:auto!important}");
+            // Last fitted page must not force a trailing blank sheet.
+            sb.Append("#export-cards .card-page:last-child{page-break-after:auto!important;break-after:auto!important}");
+            sb.Append("</style></head><body>");
+            sb.Append("<h1 class=\"page-export-title\">");
+            sb.Append(System.Net.WebUtility.HtmlEncode(pageTitle));
+            sb.Append("</h1>");
+
+            if (formDoc != null)
+            {
+                sb.Append("<h2 class=\"page-export-section\">Grid view</h2>");
+                sb.Append("<div id=\"export-grid\">");
+                sb.Append("<section class=\"data-table\" data-role=\"grid\" data-cols=\"");
+                sb.Append(colCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                sb.Append("\">");
+                var savedTitle = formDoc.Title;
+                formDoc.Title = null;
+                try
+                {
+                    sb.Append(ExtractBodyInnerWithStyles(HtmlForm.Write(formDoc)));
+                }
+                finally { formDoc.Title = savedTitle; }
+                sb.Append("</section></div>");
+            }
+
+            if (cardSheet != null && cardSheet.Cards != null && cardSheet.Cards.Count > 0)
+            {
+                if (formDoc != null)
+                    sb.Append("<div class=\"page-export-break\"></div>");
+                sb.Append("<h2 class=\"page-export-section\">Card view</h2>");
+                sb.Append("<div id=\"export-cards\">");
+                var savedCardTitle = cardSheet.Title;
+                // Fitted pages already show a title bar; keep empty to avoid triple titles.
+                cardSheet.Title = "";
+                try
+                {
+                    var fitted = HtmlForm.WriteCards(cardSheet, forPrint: true);
+                    sb.Append(ExtractBodyInnerWithStyles(fitted));
+                }
+                finally { cardSheet.Title = savedCardTitle; }
+                sb.Append("</div>");
+            }
+
+            sb.Append("</body></html>");
+            return PrepareExportHtml(sb.ToString());
+        }
+
+        /// <summary>
         /// Interactive page: TemplateContent layout (table=Wijmo host, cards=Scriban) + platform collapse chrome.
         /// </summary>
         public static string ComposeInteractivePageHtml(

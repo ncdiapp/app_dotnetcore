@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using App.BL.AIAgent.GenericAgent.DataAnalyze;
 using App.BL.AIAgent.GenericAgent.Documents;
@@ -34,7 +35,11 @@ public class ExportPathTests
         Assert.Contains("height:121mm", html);
         Assert.Contains("mcp-card-shell", html);
         Assert.Contains("mcp-card-hero", html);
+        Assert.Contains("object-fit:cover", html);
         Assert.Contains("border-radius:6px", html);
+        Assert.Contains("background:#ffffff", html);
+        Assert.Contains("card-page-num", html);
+        Assert.DoesNotContain("(1/2)", html); // page fraction not in title
         Assert.DoesNotContain("page-break-before:always", HtmlForm.WriteCards(sheet));
     }
 
@@ -123,6 +128,41 @@ public class ExportPathTests
         var html = HtmlForm.WriteCards(grid, true);
         Assert.DoesNotContain("page-break-before:always", html);
         Assert.Contains("class=\"card-page\"", html);
+    }
+
+    [Fact]
+    public void Page_export_html_stretches_cards_to_full_width()
+    {
+        var rows = new JArray();
+        for (var i = 0; i < 3; i++)
+            rows.Add(new JObject { ["Name"] = "Item " + i, ["WideCol"] = new string('x', 80) });
+        var sheet = CardSheet.FromRows("Styles", rows, 2, 2);
+        sheet.ApplyPageGrid("2x2", 0);
+        var doc = sheet.AsFlatTable();
+        var html = UiTemplateMerge.ComposePageExportHtml(doc, sheet, "Styles");
+        Assert.Contains("id=\"export-grid\"", html);
+        Assert.Contains("id=\"export-cards\"", html);
+        Assert.Contains("#export-cards .card-page{width:100%!important", html);
+        Assert.Contains("Grid view", html);
+        Assert.Contains("Card view", html);
+        Assert.Contains("data-cols=\"2\"", html);
+        Assert.Contains(".data-table[data-cols=\"2\"]", html);
+        Assert.Contains("table-layout:fixed!important", html);
+        // Must not inject global tr{page-break-inside:avoid} (blank first page).
+        Assert.DoesNotContain("thead{display:table-header-group}tr{page-break-inside:avoid}", html);
+    }
+
+    [Fact]
+    public void FormDocument_ProjectColumns_keeps_order()
+    {
+        var doc = FormDocument.FromTable("T", new[] { "A", "B", "C", "D" }, new List<List<FormCell>>
+        {
+            new() { new FormCell { Text = "1" }, new FormCell { Text = "2" }, new FormCell { Text = "3" }, new FormCell { Text = "4" } }
+        });
+        var projected = doc.ProjectColumns(new[] { "C", "A" });
+        Assert.Equal(2, projected.FirstGridColumnCount());
+        var cols = projected.Sections[0].Tables[0].Columns;
+        Assert.Equal(new[] { "C", "A" }, cols);
     }
 
     [Fact]

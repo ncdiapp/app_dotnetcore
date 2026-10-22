@@ -73,6 +73,10 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 if (hintsTok is JObject h)
                     spec.LayoutHints = ParseHints(h);
 
+                // Soft-trim oversized AI lists so cache_ui_render_polish does not fail entirely
+                // (was: "bindings.fields allows at most 8" → empty polish → cards show 1 field / no image).
+                TrimBindingsToLimits(spec);
+
                 error = spec.ValidateStructure();
                 if (!string.IsNullOrEmpty(error))
                 {
@@ -109,6 +113,19 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return null;
         }
 
+        /// <summary>Keep first N fields/columns/filters so oversized AI polish still caches.</summary>
+        private static void TrimBindingsToLimits(AiPolishedRenderSpec spec)
+        {
+            if (spec?.Bindings == null) return;
+            if (spec.Bindings.Fields != null && spec.Bindings.Fields.Count > MaxDisplayFields)
+                spec.Bindings.Fields = spec.Bindings.Fields.Take(MaxDisplayFields).ToList();
+            if (spec.Bindings.FilterFields != null && spec.Bindings.FilterFields.Count > MaxFilterFields)
+                spec.Bindings.FilterFields = spec.Bindings.FilterFields.Take(MaxFilterFields).ToList();
+            if (!spec.SelectAllColumns && spec.Bindings.Columns != null
+                && spec.Bindings.Columns.Count > MaxColumnsDefault)
+                spec.Bindings.Columns = spec.Bindings.Columns.Take(MaxColumnsDefault).ToList();
+        }
+
         public string TemplateBody(bool interactive, string layoutKey)
         {
             var map = interactive ? TemplateContentInteractive : TemplateContentNoneInteractive;
@@ -118,17 +135,21 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return string.IsNullOrWhiteSpace(text) ? null : text;
         }
 
-        /// <summary>Slim JSON for SSE / React chrome (no large template bodies).</summary>
+        /// <summary>Slim JSON for SSE / React chrome (no large template bodies). CamelCase for Result Filter UI.</summary>
         public JObject ToClientJson()
         {
+            var ser = new JsonSerializer
+            {
+                ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver()
+            };
             return new JObject
             {
                 ["version"] = Version,
                 ["layout"] = Layout,
                 ["title"] = Title,
                 ["selectAllColumns"] = SelectAllColumns,
-                ["bindings"] = JObject.FromObject(Bindings ?? new AiPolishBindings()),
-                ["layoutHints"] = JObject.FromObject(LayoutHints ?? new AiPolishLayoutHints())
+                ["bindings"] = JObject.FromObject(Bindings ?? new AiPolishBindings(), ser),
+                ["layoutHints"] = JObject.FromObject(LayoutHints ?? new AiPolishLayoutHints(), ser)
             };
         }
 

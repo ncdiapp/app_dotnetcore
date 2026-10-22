@@ -179,7 +179,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return arr;
         }
 
-        private static List<CardField> FieldsOf(JObject obj, AiPolishedRenderSpec polish = null)
+        private static List<CardField> FieldsOf(JObject obj, AiPolishedRenderSpec polish = null, bool allowHeuristicFallback = true)
         {
             var fields = new List<CardField>();
             if (obj == null) return fields;
@@ -199,12 +199,12 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     && ((!string.IsNullOrWhiteSpace(hb.PrimaryImageField))
                         || (hb.Fields != null && hb.Fields.Count > 0));
                 if (canApply)
-                    return FieldsOf(obj, heuristic);
-                // Last resort: image-like columns only (avoid StackOverflow / field wall).
+                    return FieldsOf(obj, heuristic, allowHeuristicFallback: false);
+                // Last resort: image columns only (field name means Image + URL).
                 foreach (var prop in obj.Properties())
                 {
                     var value = ValueText(prop.Value, out var image);
-                    if (!(image || IsImageValue(value))) continue;
+                    if (!(image || IsImageValue(value, prop.Name))) continue;
                     fields.Add(new CardField
                     {
                         Label = prop.Name,
@@ -216,16 +216,16 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 return fields;
             }
 
-            // Primary image first — IsImage only when URL/bytes are displayable (blank hero otherwise).
-            if (!string.IsNullOrWhiteSpace(bindings.PrimaryImageField)
-                && obj.Property(bindings.PrimaryImageField) != null)
+            // Primary image first — field name means Image + value is URL.
+            var imageProp = FindProperty(obj, bindings.PrimaryImageField);
+            if (imageProp != null)
             {
-                var value = ValueText(obj[bindings.PrimaryImageField], out var image);
-                var showImage = image || IsImageValue(value);
+                var value = ValueText(imageProp.Value, out var image);
+                var showImage = image || IsImageValue(value, imageProp.Name);
                 fields.Add(new CardField
                 {
-                    Label = bindings.PrimaryImageField,
-                    Value = showImage ? value : "",
+                    Label = imageProp.Name,
+                    Value = value ?? "",
                     IsImage = showImage,
                     Role = "primaryImage",
                     TypographyHint = ""
@@ -239,19 +239,65 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     if (b == null || string.IsNullOrWhiteSpace(b.Name)) continue;
                     if (string.Equals(b.Name, bindings.PrimaryImageField, StringComparison.OrdinalIgnoreCase))
                         continue;
-                    if (obj.Property(b.Name) == null) continue;
-                    var value = ValueText(obj[b.Name], out var image);
+                    var prop = FindProperty(obj, b.Name);
+                    if (prop == null) continue;
+                    var value = ValueText(prop.Value, out var image);
                     fields.Add(new CardField
                     {
-                        Label = b.Name,
+                        Label = prop.Name,
                         Value = value,
-                        IsImage = image || IsImageValue(value),
+                        IsImage = image || IsImageValue(value, prop.Name),
                         Role = string.IsNullOrWhiteSpace(b.Role) ? "body" : b.Role,
                         TypographyHint = b.TypographyHint ?? ""
                     });
                 }
             }
+
+            // Polish names often miss data columns (Product Code vs Product) → only 1 field binds.
+            var textFields = fields.Count(f => f != null && !f.IsImage
+                && !string.Equals(f.Role, "primaryImage", StringComparison.OrdinalIgnoreCase));
+            if (allowHeuristicFallback && textFields <= 1)
+            {
+                var heuristic = AiRenderPolishHeuristics.Build(
+                    "cards", "", obj.Properties().Select(p => p.Name).ToList(), new JArray(obj));
+                if (heuristic?.Bindings?.Fields != null && heuristic.Bindings.Fields.Count > 0)
+                    return FieldsOf(obj, heuristic, allowHeuristicFallback: false);
+            }
             return fields;
+        }
+
+        /// <summary>Resolve polish field name to a row property (case / space / underscore insensitive).</summary>
+        private static JProperty FindProperty(JObject obj, string name)
+        {
+            if (obj == null || string.IsNullOrWhiteSpace(name)) return null;
+            var exact = obj.Property(name);
+            if (exact != null) return exact;
+            var target = NormalizeFieldKey(name);
+            foreach (var p in obj.Properties())
+            {
+                if (NormalizeFieldKey(p.Name) == target)
+                    return p;
+            }
+            // Soft contains (min length 4): "Product Code" ↔ "Product", "1 Adoption Date" ↔ "Adoption Date"
+            if (target.Length >= 4)
+            {
+                foreach (var p in obj.Properties())
+                {
+                    var pn = NormalizeFieldKey(p.Name);
+                    if (pn.Length >= 4 && (pn.Contains(target) || target.Contains(pn)))
+                        return p;
+                }
+            }
+            return null;
+        }
+
+        private static string NormalizeFieldKey(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return "";
+            var chars = name.Trim().ToLowerInvariant()
+                .Where(ch => ch != ' ' && ch != '_' && ch != '-' && ch != '.')
+                .ToArray();
+            return new string(chars);
         }
 
         private static string ValueText(JToken token, out bool image)
@@ -283,11 +329,37 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         private static readonly Regex ExtImage = new Regex(
             @"^https?://\S+\.(?:png|jpe?g|gif|webp|svg|bmp)(?:\?\S*)?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex HttpOrPathUrl = new Regex(
+            @"^(https?://\S+|/\S+)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex ImageFieldName = new Regex(
+            @"^(image|img|sketch|photo|thumbnail|thumb|picture|pic|artwork|displayimage|display_image)$|(^|[^a-z])(image|sketch|photo|thumb|picture)([^a-z]|$)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        public static bool IsImageValue(string value)
+        public static bool IsImageFieldName(string name)
+            => !string.IsNullOrWhiteSpace(name) && ImageFieldName.IsMatch(name.Trim());
+
+        public static bool IsUrlValue(string value)
         {
             if (string.IsNullOrWhiteSpace(value)) return false;
-            var text = value.Trim();
+            var text = value.Trim().Trim('"', '\'');
+            if (text.Length == 0 || text.Length > 2048 || text.IndexOf(' ') >= 0) return false;
+            return HttpOrPathUrl.IsMatch(text);
+        }
+
+        /// <summary>
+        /// Image cell when value is a known app/file/extension image URL,
+        /// or (preferred) field name means image AND value is any URL.
+        /// </summary>
+        public static bool IsImageValue(string value)
+            => IsImageValue(value, fieldName: null);
+
+        public static bool IsImageValue(string value, string fieldName)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return false;
+            var text = value.Trim().Trim('"', '\'');
+            if (IsImageFieldName(fieldName) && IsUrlValue(text))
+                return true;
             return ResourceImage.IsMatch(text) || FileImage.IsMatch(text) || ExtImage.IsMatch(text);
         }
     }

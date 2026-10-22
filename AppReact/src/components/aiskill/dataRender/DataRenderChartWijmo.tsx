@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FlexChart, FlexChartSeries, FlexPie } from '@mescius/wijmo.react.chart';
-import { ChartElement, ChartType } from '@mescius/wijmo.chart';
+import { ChartElement, ChartType, Position } from '@mescius/wijmo.chart';
 import '@mescius/wijmo.styles/wijmo.css';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import type { DataRenderChartConfig, DataRenderMeta } from './types';
@@ -29,6 +29,8 @@ function mapTypeToWijmo(type: string): ChartType {
 const AXIS_LABEL_SIZE = '9px';
 const AXIS_LABEL_COLOR = '#6b7280';
 const AXIS_LABEL_MAX = 22;
+/** Pie/donut legend — ~2 sizes below default (~12–13px). */
+const PIE_LEGEND_FONT_SIZE = '9px';
 
 function shortLabel(text: unknown, max = AXIS_LABEL_MAX): string {
     const s = text == null ? '' : String(text);
@@ -118,27 +120,47 @@ export const DataRenderChartWijmo: React.FC<Props> = ({ meta, chartConfig, data 
     const onPieInitialized = (s: any) => {
         try {
             const pie = s?.hostElement ? s : s;
-            if (pie) {
-                pie.palette = PALETTE;
-                if (tLower === 'donut') pie.innerRadius = 0.5;
-                // Smaller slice labels via dataLabel itemFormatter
-                if (pie.dataLabel) {
-                    pie.dataLabel.connectingLine = true;
-                    pie.dataLabel.content = (ht: any) => shortLabel(ht?.name ?? ht?.item?.[xField] ?? '', 16);
-                }
-                pie.itemFormatter = (engine: any, ht: any, defaultRender: () => void) => {
-                    if (engine && ht?.chartElement === ChartElement.DataLabel) {
-                        engine.fontSize = AXIS_LABEL_SIZE;
-                        engine.textFill = AXIS_LABEL_COLOR;
-                    }
-                    defaultRender();
-                };
+            if (!pie) return;
+            pie.palette = PALETTE;
+            if (tLower === 'donut') pie.innerRadius = 0.5;
+            // Pie/donut: no slice labels — legend only (color + name).
+            if (pie.dataLabel) {
+                try { pie.dataLabel.position = Position.None; } catch { /* ignore */ }
+                pie.dataLabel.connectingLine = false;
+                pie.dataLabel.content = '';
             }
+            if (pie.legend) {
+                try { pie.legend.position = Position.Right; } catch { /* ignore */ }
+            }
+            const shrinkLegend = () => {
+                const host = pie.hostElement as HTMLElement | undefined;
+                if (!host) return;
+                // No slice labels → remaining SVG text is the side legend.
+                host.querySelectorAll('text').forEach(node => {
+                    const el = node as SVGTextElement;
+                    el.setAttribute('font-size', '9');
+                    el.style.fontSize = PIE_LEGEND_FONT_SIZE;
+                });
+            };
+            try {
+                if (pie.rendered && typeof pie.rendered.addHandler === 'function')
+                    pie.rendered.addHandler(shrinkLegend);
+            } catch { /* ignore */ }
+            pie.invalidate?.();
+            setTimeout(shrinkLegend, 0);
         } catch { /* ignore */ }
     };
 
     return (
         <div className={`rounded-[4px] p-3 border ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
+            {/* Pie/donut legend labels ~2 sizes smaller than Wijmo default */}
+            <style>{`
+                .agent-flexpie-legend .wj-flexchart .wj-legend text,
+                .agent-flexpie-legend .wj-legend text,
+                .agent-flexpie-legend svg .wj-legend text {
+                    font-size: ${PIE_LEGEND_FONT_SIZE} !important;
+                }
+            `}</style>
             <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
                 <div>
                     {meta?.title && <div className={`text-sm font-medium ${theme.label}`}>{String(meta.title)}</div>}
@@ -165,7 +187,10 @@ export const DataRenderChartWijmo: React.FC<Props> = ({ meta, chartConfig, data 
             {data.length === 0 ? (
                 <div className={`text-xs text-center py-8 ${theme.label}`}>No data available.</div>
             ) : (
-                <div className="w-full" style={{ height: 280 }}>
+                <div
+                    className={`w-full${isPie ? ' agent-flexpie-legend' : ''}`}
+                    style={{ height: 280 }}
+                >
                     {isPie ? (
                         <FlexPie
                             className="w-full h-full"
@@ -174,6 +199,7 @@ export const DataRenderChartWijmo: React.FC<Props> = ({ meta, chartConfig, data 
                             binding={yField}
                             bindingName={xField}
                             palette={PALETTE as any}
+                            legend={{ position: 'Right' } as any}
                             initialized={onPieInitialized as any}
                         />
                     ) : (

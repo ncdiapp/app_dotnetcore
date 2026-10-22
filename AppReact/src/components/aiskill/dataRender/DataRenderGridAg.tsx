@@ -5,7 +5,8 @@ import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { DataRenderImage } from './DataRenderImage';
-import { imageUrlKind } from './imageValue';
+import { formatDateValue } from './dateValue';
+import { cellImageKind, unwrapQuoted } from './imageValue';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -39,10 +40,10 @@ const currencyFormatter = (p: { value?: unknown }) =>
         : '';
 const numberFormatter = (p: { value?: unknown }) =>
     p.value != null ? Number(p.value).toLocaleString() : '';
-const dateFormatter = (p: { value?: unknown }) =>
-    p.value
-        ? new Date(String(p.value)).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-        : '';
+const dateFormatter = (p: { value?: unknown }) => {
+    if (p.value == null || String(p.value).trim() === '') return '';
+    return formatDateValue(p.value) ?? unwrapQuoted(p.value);
+};
 
 /** AG Grid implementation — kept for future use; selected when DATA_RENDER_ENGINE === 'aggrid'. */
 export const DataRenderGridAg: React.FC<Props> = ({ colDefs, rowData, title, meta, onRowSelected }) => {
@@ -52,7 +53,8 @@ export const DataRenderGridAg: React.FC<Props> = ({ colDefs, rowData, title, met
     const imageFields = useMemo(() => {
         const fields = new Set<string>();
         for (const col of colDefs) {
-            if ((rowData ?? []).some(row => imageUrlKind(row?.[col.field]) != null))
+            if (col.dataType === 'image'
+                || (rowData ?? []).some(row => cellImageKind(row?.[col.field], col.field) != null))
                 fields.add(col.field);
         }
         return fields;
@@ -67,17 +69,20 @@ export const DataRenderGridAg: React.FC<Props> = ({ colDefs, rowData, title, met
         };
         if (imageFields.has(col.field)) {
             enriched.cellRenderer = (p: { value?: unknown }) => {
-                if (imageUrlKind(p.value) == null)
+                const kind = cellImageKind(p.value, col.field);
+                if (kind == null)
                     return p.value == null ? '' : String(p.value);
-                return <DataRenderImage url={String(p.value)} alt={col.headerName} />;
+                return <DataRenderImage url={unwrapQuoted(p.value)} alt={col.headerName} kind={kind} />;
             };
             return enriched;
         }
         if (col.dataType === 'currency') enriched.valueFormatter = currencyFormatter;
         else if (col.dataType === 'number') enriched.valueFormatter = numberFormatter;
-        else if (col.dataType === 'date') enriched.valueFormatter = dateFormatter;
+        else if (col.dataType === 'date'
+            || (rowData ?? []).some(row => formatDateValue(row?.[col.field]) != null))
+            enriched.valueFormatter = dateFormatter;
         return enriched;
-    }), [colDefs, imageFields]);
+    }), [colDefs, imageFields, rowData]);
 
     const onRowClicked = useCallback((event: RowClickedEvent) => {
         if (event.data) onRowSelected?.(event.data as Record<string, unknown>);

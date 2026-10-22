@@ -83,6 +83,17 @@ function normalizeType(t: string | undefined | null): string {
     return CHART_TYPES.indexOf(x as typeof CHART_TYPES[number]) >= 0 ? x : '';
 }
 
+/** StyleCount → Style Count; empty label specs fall back to this. */
+function humanizeKpiField(field: string): string {
+    const s = (field || '').trim();
+    if (!s) return '';
+    return s
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 function kpiValue(rows: Record<string, unknown>[], k: KpiSpec): string {
     const op = String(k.op ?? k.Op ?? 'sum').toLowerCase();
     const field = String(k.field ?? k.Field ?? '').trim();
@@ -283,11 +294,17 @@ const InteractiveDashboardPanel: React.FC<Props> = ({ event, disabled, onAction 
 
     const kpiItems = useMemo(
         () =>
-            (spec.kpis ?? []).slice(0, 12).map(k => ({
-                label: String(k.label ?? k.Label ?? k.field ?? k.Field ?? ''),
-                value: kpiValue(filteredRows, k),
-                field: String(k.field ?? k.Field ?? ''),
-            })),
+            (spec.kpis ?? []).slice(0, 12).map(k => {
+                const field = String(k.field ?? k.Field ?? '').trim();
+                // Empty string label must not block field fallback (?? only skips null/undefined).
+                const rawLabel = String(k.label || k.Label || '').trim();
+                const label = rawLabel || humanizeKpiField(field) || field || 'KPI';
+                return {
+                    label,
+                    value: kpiValue(filteredRows, k),
+                    field,
+                };
+            }),
         [spec.kpis, filteredRows],
     );
 

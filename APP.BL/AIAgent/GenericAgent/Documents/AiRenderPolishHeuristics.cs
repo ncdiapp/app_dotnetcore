@@ -29,10 +29,11 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                          ?? new List<JObject>();
 
             var imageField = PickImageField(cols, sample);
-            // Prefer non-empty sample values: Article over empty Article→ReferenceId for MCP blue id.
-            var idField = PickByNamesPreferValue(cols, sample, "article", "product_code", "style_no", "styleno", "sku",
-                "referenceid", "reference_id", "code", "id", "style");
-            var titleField = PickByNamesPreferValue(cols, sample, "description", "name", "title", "style_name", "stylename", "product_name");
+            // Prefer non-empty sample values: Article / Product over empty → ReferenceId for MCP blue id.
+            var idField = PickByNamesPreferValue(cols, sample, "article", "product_code", "productcode", "product",
+                "style_no", "styleno", "sku", "referenceid", "reference_id", "code", "id", "style");
+            var titleField = PickByNamesPreferValue(cols, sample, "product_name", "productname", "description",
+                "name", "title", "style_name", "stylename");
             var statusField = PickByNamesPreferValue(cols, sample, "sample_status", "samplestatus", "style_status", "stylestatus",
                 "status", "state", "approval");
             var colorField = PickByNamesPreferValue(cols, sample, "colorname", "color", "colour", "colorway");
@@ -150,7 +151,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 foreach (var row in sample)
                 {
                     var v = row[c]?.ToString();
-                    if (CardSheet.IsImageValue(v)) return c;
+                    // Field name means Image + URL value (PLM /image/{id} without extension).
+                    if (CardSheet.IsImageValue(v, c)) return c;
                 }
             }
             return null;
