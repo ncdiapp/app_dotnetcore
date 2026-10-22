@@ -258,11 +258,21 @@ public class GenericAgentController : SecureBaseController
                 {
                     try
                     {
-                        // Persist a compact chip + html/htmlPath for reload (avoid huge MessagesJson when possible).
+                        // Persist chip + reload fields. Ui must match DataRenderPanel keys (card not cards).
+                        var layout = (uiRenderEvent.Layout ?? "").Trim().ToLowerInvariant();
+                        var ui = layout switch
+                        {
+                            "cards" => "card",
+                            "form" => "form",
+                            "page" => "page",
+                            "kpi" or "dashboard" => "kpi_dashboard",
+                            "chart" => "chart",
+                            _ => string.IsNullOrEmpty(layout) ? "grid" : layout
+                        };
                         persistedDataRenders.Add(JObject.FromObject(new
                         {
                             uiRenderEvent.RenderId,
-                            Ui = uiRenderEvent.Layout,
+                            Ui = ui,
                             uiRenderEvent.Title,
                             uiRenderEvent.RowCount,
                             uiRenderEvent.Truncated,
@@ -273,6 +283,7 @@ public class GenericAgentController : SecureBaseController
                             HtmlUrl = uiRenderEvent.HtmlUrl,
                             DataJson = uiRenderEvent.DataJson,
                             SpecJson = uiRenderEvent.SpecJson,
+                            MetaJson = (layout == "cards" || layout == "page") ? uiRenderEvent.SpecJson : null,
                             uiRenderEvent.ActionsJson,
                             uiRenderEvent.Timestamp
                         }));

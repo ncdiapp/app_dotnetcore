@@ -10,15 +10,17 @@ interface ChipProps {
 
 const iconFor = (ui: string): string => {
     if (ui === 'chart') return 'fa-solid fa-chart-column';
-    if (ui === 'card') return 'fa-solid fa-table-cells-large';
-    if (ui === 'kpi_dashboard') return 'fa-solid fa-gauge';
+    if (ui === 'card' || ui === 'cards') return 'fa-solid fa-table-cells-large';
+    if (ui === 'kpi_dashboard' || ui === 'kpi' || ui === 'dashboard') return 'fa-solid fa-gauge';
+    if (ui === 'page') return 'fa-solid fa-table-columns';
     return 'fa-solid fa-table';
 };
 
 export const RenderChip: React.FC<ChipProps> = ({ event, open, onOpen }) => {
     const { theme } = useTheme();
-    const ui = (event.Ui || 'grid').toLowerCase();
-    const title = event.Title || (ui === 'chart' ? 'Chart' : ui === 'card' ? 'Cards' : 'Table');
+    const uiRaw = (event.Ui || event.Layout || 'grid').toLowerCase();
+    const ui = uiRaw === 'cards' ? 'card' : uiRaw;
+    const title = event.Title || (ui === 'chart' ? 'Chart' : ui === 'card' ? 'Cards' : ui === 'page' ? 'Page' : 'Table');
     const fact = event.RowCount && event.RowCount > 0 ? `${event.RowCount} records` : 'Open the full view';
     return (
         <button

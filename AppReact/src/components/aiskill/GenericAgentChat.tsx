@@ -45,27 +45,51 @@ type StoredChatMessage = {
     AskUserAnswer?: boolean;
 }; 
 
+/** Normalize persisted Ui/Layout to DataRenderPanel keys (server often stores Layout in Ui, e.g. "cards"). */
+const normalizeStoredRenderUi = (uiRaw: string, layoutRaw: string): string => {
+    const layout = (layoutRaw || '').toLowerCase();
+    let ui = (uiRaw || '').toLowerCase();
+    if (!ui) ui = layout;
+    if (ui === 'cards' || layout === 'cards') return 'card';
+    if (ui === 'page' || layout === 'page') return 'page';
+    if (ui === 'kpi' || ui === 'dashboard' || ui === 'kpi_dashboard'
+        || layout === 'kpi' || layout === 'dashboard') return 'kpi_dashboard';
+    if (ui === 'form' || layout === 'form') return 'form';
+    if (ui === 'chart' || layout === 'chart') return 'chart';
+    if (ui === 'card' || ui === 'grid') return ui;
+    return ui || 'grid';
+};
+
 const parseStoredDataRenders = (m: StoredChatMessage): DataRenderEvent[] | undefined => {
     const raw = m.dataRenders ?? m.DataRenders;
     if (!Array.isArray(raw) || raw.length === 0) return undefined;
-    return raw.map((dr: any) => ({
-        RenderId: String(dr?.RenderId ?? dr?.renderId ?? ''),
-        Ui: String(dr?.Ui ?? dr?.ui ?? dr?.Layout ?? dr?.layout ?? 'grid'),
-        Title: dr?.Title ?? dr?.title ?? null,
-        DataJson: dr?.DataJson ?? dr?.dataJson ?? null,
-        ColumnsJson: dr?.ColumnsJson ?? dr?.columnsJson ?? null,
-        ChartConfigJson: dr?.ChartConfigJson ?? dr?.chartConfigJson ?? null,
-        ActionsJson: dr?.ActionsJson ?? dr?.actionsJson ?? null,
-        MetaJson: dr?.MetaJson ?? dr?.metaJson ?? null,
-        BlocksJson: dr?.BlocksJson ?? dr?.blocksJson ?? null,
-        RowCount: dr?.RowCount ?? dr?.rowCount,
-        Truncated: !!(dr?.Truncated ?? dr?.truncated),
-        Timestamp: dr?.Timestamp ?? dr?.timestamp,
-        Mode: dr?.Mode ?? dr?.mode ?? null,
-        Layout: dr?.Layout ?? dr?.layout ?? null,
-        Html: dr?.Html ?? dr?.html ?? null,
-        HtmlPath: dr?.HtmlPath ?? dr?.htmlPath ?? null,
-    })).filter(dr => dr.Ui || dr.Html || dr.HtmlPath);
+    return raw.map((dr: any) => {
+        const layout = String(dr?.Layout ?? dr?.layout ?? '');
+        const ui = normalizeStoredRenderUi(String(dr?.Ui ?? dr?.ui ?? ''), layout);
+        const specJson = dr?.SpecJson ?? dr?.specJson ?? null;
+        const metaJson = dr?.MetaJson ?? dr?.metaJson
+            ?? ((ui === 'card' || ui === 'page') && specJson ? specJson : null);
+        return {
+            RenderId: String(dr?.RenderId ?? dr?.renderId ?? ''),
+            Ui: ui,
+            Title: dr?.Title ?? dr?.title ?? null,
+            DataJson: dr?.DataJson ?? dr?.dataJson ?? null,
+            ColumnsJson: dr?.ColumnsJson ?? dr?.columnsJson ?? null,
+            ChartConfigJson: dr?.ChartConfigJson ?? dr?.chartConfigJson ?? null,
+            ActionsJson: dr?.ActionsJson ?? dr?.actionsJson ?? null,
+            MetaJson: metaJson,
+            BlocksJson: dr?.BlocksJson ?? dr?.blocksJson ?? null,
+            RowCount: dr?.RowCount ?? dr?.rowCount,
+            Truncated: !!(dr?.Truncated ?? dr?.truncated),
+            Timestamp: dr?.Timestamp ?? dr?.timestamp,
+            Mode: dr?.Mode ?? dr?.mode ?? null,
+            Layout: layout || null,
+            Html: dr?.Html ?? dr?.html ?? null,
+            HtmlPath: dr?.HtmlPath ?? dr?.htmlPath ?? null,
+            HtmlUrl: dr?.HtmlUrl ?? dr?.htmlUrl ?? null,
+            SpecJson: specJson,
+        };
+    }).filter(dr => dr.Ui || dr.Html || dr.HtmlPath || dr.DataJson);
 };
 
 const asLookupItems = (raw: unknown): LookupItemDto[] => {

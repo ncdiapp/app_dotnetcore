@@ -133,7 +133,11 @@ function DashboardBlockView(props: {
 export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) => {
     const { theme, t } = useTheme();
     const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
-    const ui = (event.Ui || 'grid').toLowerCase();
+    // Persisted ui_render often stores Layout in Ui ("cards"); accept both.
+    const uiRaw = (event.Ui || event.Layout || 'grid').toLowerCase();
+    const ui = uiRaw === 'cards' ? 'card'
+        : uiRaw === 'kpi' || uiRaw === 'dashboard' ? 'kpi_dashboard'
+        : uiRaw;
     const actions = useMemo(() => parseActions(event.ActionsJson), [event.ActionsJson]);
     const blocks = useMemo(() => parseBlocks(event.BlocksJson), [event.BlocksJson]);
     const btn = `px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default}`;
