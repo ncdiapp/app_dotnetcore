@@ -163,14 +163,14 @@ th{background:#3d4f5f;color:#ffffff;font-weight:700;text-align:left}
 
         /// <summary>
         /// Cards LAYOUT — MCP Client gallery shell (hero + blue id + name + status + meta).
-        /// Marker agent-cards-mcp-v2 forces library TemplateContent refresh on materialize.
+        /// Marker agent-cards-mcp-v3: board background + blank hero (no broken img).
         /// </summary>
         public const string CardsNoneInteractive = @"<!DOCTYPE html>
 <html>
 <head>
 <meta charset=""utf-8""/>
 <title>{{ title }}</title>
-<!-- agent-cards-mcp-v2 -->
+<!-- agent-cards-mcp-v3 -->
 <link rel=""stylesheet"" href=""/agent-ui/agent-cards.css""/>
 </head>
 <body>
@@ -182,7 +182,7 @@ th{background:#3d4f5f;color:#ffffff;font-weight:700;text-align:left}
 <div class=""agent-card-hero"" data-role=""image"">
 {{ for field in card.fields }}
 {{ if field.is_image && field.image_src && (field.role == ""primaryImage"" || field.role == ""primaryimage"") }}
-<img class=""agent-card-hero-img"" src=""{{ field.image_src }}"" alt=""""/>
+<img class=""agent-card-hero-img"" src=""{{ field.image_src }}"" alt="""" onerror=""this.setAttribute('data-broken','1');this.removeAttribute('src');""/>
 {{ end }}
 {{ end }}
 </div>

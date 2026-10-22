@@ -29,16 +29,16 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                          ?? new List<JObject>();
 
             var imageField = PickImageField(cols, sample);
-            // Prefer human style codes (Article / Product_Code) over raw ReferenceId for MCP blue id.
-            var idField = PickByNames(cols, "article", "product_code", "style_no", "styleno", "sku",
+            // Prefer non-empty sample values: Article over empty Article→ReferenceId for MCP blue id.
+            var idField = PickByNamesPreferValue(cols, sample, "article", "product_code", "style_no", "styleno", "sku",
                 "referenceid", "reference_id", "code", "id", "style");
-            var titleField = PickByNames(cols, "description", "name", "title", "style_name", "stylename", "product_name");
-            var statusField = PickByNames(cols, "sample_status", "samplestatus", "style_status", "stylestatus",
+            var titleField = PickByNamesPreferValue(cols, sample, "description", "name", "title", "style_name", "stylename", "product_name");
+            var statusField = PickByNamesPreferValue(cols, sample, "sample_status", "samplestatus", "style_status", "stylestatus",
                 "status", "state", "approval");
-            var colorField = PickByNames(cols, "colorname", "color", "colour", "colorway");
-            var metaField = PickByNames(cols, "classification", "sub_classification", "season", "season_3",
+            var colorField = PickByNamesPreferValue(cols, sample, "colorname", "color", "colour", "colorway");
+            var metaField = PickByNamesPreferValue(cols, sample, "classification", "sub_classification", "season", "season_3",
                 "category", "department", "vendor", "projectofficer");
-            var metaField2 = PickByNames(cols, "sub_classification", "season_3", "season", "vendor", "mil_cid_number");
+            var metaField2 = PickByNamesPreferValue(cols, sample, "sub_classification", "season_3", "season", "vendor", "mil_cid_number");
 
             var fields = new List<AiPolishFieldBinding>();
             void AddField(string name, string role, string typo)
@@ -157,22 +157,44 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         }
 
         private static string PickByNames(List<string> cols, params string[] needles)
+            => PickByNamesPreferValue(cols, null, needles);
+
+        /// <summary>Prefer a matching column that has at least one non-empty sample value.</summary>
+        private static string PickByNamesPreferValue(List<string> cols, List<JObject> sample, params string[] needles)
         {
+            string Fallback(string[] ns)
+            {
+                foreach (var needle in ns)
+                {
+                    var hit = cols.FirstOrDefault(c =>
+                        string.Equals(c, needle, StringComparison.OrdinalIgnoreCase)
+                        || c.Replace("_", "", StringComparison.OrdinalIgnoreCase)
+                            .Equals(needle.Replace("_", "", StringComparison.OrdinalIgnoreCase), StringComparison.OrdinalIgnoreCase));
+                    if (hit != null) return hit;
+                }
+                foreach (var needle in ns)
+                {
+                    var hit = cols.FirstOrDefault(c =>
+                        c.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0);
+                    if (hit != null) return hit;
+                }
+                return null;
+            }
+
+            if (sample == null || sample.Count == 0)
+                return Fallback(needles);
+
             foreach (var needle in needles)
             {
                 var hit = cols.FirstOrDefault(c =>
                     string.Equals(c, needle, StringComparison.OrdinalIgnoreCase)
                     || c.Replace("_", "", StringComparison.OrdinalIgnoreCase)
                         .Equals(needle.Replace("_", "", StringComparison.OrdinalIgnoreCase), StringComparison.OrdinalIgnoreCase));
-                if (hit != null) return hit;
+                if (hit == null) continue;
+                if (sample.Any(r => !string.IsNullOrWhiteSpace(r[hit]?.ToString())))
+                    return hit;
             }
-            foreach (var needle in needles)
-            {
-                var hit = cols.FirstOrDefault(c =>
-                    c.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0);
-                if (hit != null) return hit;
-            }
-            return null;
+            return Fallback(needles);
         }
 
         private static bool LooksLikeUrlOnly(string name)

@@ -187,11 +187,11 @@ export const ResultChrome: React.FC<Props> = ({
     const total = allRows.length > 0 ? allRows.length : (event.RowCount || 0);
     const shown = allRows.length > 0 ? filteredRows.length : total;
 
-    // Match FormMasterDetail / SkillSet header bar: solid colorful action buttons.
+    // Match FormMasterDetail / SkillSet header bar: solid colorful action buttons (equal ~100px width).
     const btnPrimary =
-        'px-2 h-7 rounded-[4px] text-xs text-white bg-blue-400 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1';
+        'w-[100px] justify-center px-2 h-7 rounded-[4px] text-xs text-white bg-blue-400 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1';
     const btnSecondary =
-        'px-2 h-7 rounded-[4px] text-xs text-white bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1';
+        'w-[100px] justify-center px-2 h-7 rounded-[4px] text-xs text-white bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1';
     const inp = `flex-auto w-32 h-7 px-2 text-xs border ${theme.inputBox}`;
 
     const toggleMulti = (field: string, value: string) => {
@@ -296,7 +296,7 @@ export const ResultChrome: React.FC<Props> = ({
                             onClick={() => void onPrint()}
                         >
                             <i className="fa-solid fa-print mr-1" />
-                            {busy === 'print' || busy === 'pdf' ? 'Working…' : 'Print / Save as PDF'}
+                            {busy === 'print' || busy === 'pdf' ? 'Working…' : 'Print'}
                         </button>
                         <button
                             type="button"

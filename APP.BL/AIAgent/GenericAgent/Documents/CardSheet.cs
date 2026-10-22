@@ -194,19 +194,39 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 // No polish bindings → still MCP-shaped (not a full label:value dump).
                 var heuristic = AiRenderPolishHeuristics.Build(
                     "cards", "", obj.Properties().Select(p => p.Name).ToList(), new JArray(obj));
-                return FieldsOf(obj, heuristic);
+                var hb = heuristic?.Bindings;
+                var canApply = hb != null
+                    && ((!string.IsNullOrWhiteSpace(hb.PrimaryImageField))
+                        || (hb.Fields != null && hb.Fields.Count > 0));
+                if (canApply)
+                    return FieldsOf(obj, heuristic);
+                // Last resort: image-like columns only (avoid StackOverflow / field wall).
+                foreach (var prop in obj.Properties())
+                {
+                    var value = ValueText(prop.Value, out var image);
+                    if (!(image || IsImageValue(value))) continue;
+                    fields.Add(new CardField
+                    {
+                        Label = prop.Name,
+                        Value = value,
+                        IsImage = true,
+                        Role = "primaryImage"
+                    });
+                }
+                return fields;
             }
 
-            // Primary image first
+            // Primary image first — IsImage only when URL/bytes are displayable (blank hero otherwise).
             if (!string.IsNullOrWhiteSpace(bindings.PrimaryImageField)
                 && obj.Property(bindings.PrimaryImageField) != null)
             {
                 var value = ValueText(obj[bindings.PrimaryImageField], out var image);
+                var showImage = image || IsImageValue(value);
                 fields.Add(new CardField
                 {
                     Label = bindings.PrimaryImageField,
-                    Value = value,
-                    IsImage = true,
+                    Value = showImage ? value : "",
+                    IsImage = showImage,
                     Role = "primaryImage",
                     TypographyHint = ""
                 });

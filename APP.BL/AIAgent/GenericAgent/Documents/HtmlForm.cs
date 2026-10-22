@@ -403,14 +403,21 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             var pageW = CardPageFit.PageWidthMm;
             var pageH = CardPageFit.PageHeightMm;
             var titleH = CardPageFit.TitleMm;
+            var gutter = 2.5; // mm — white cards sit on board with spacing
             var rowH = (pageH - titleH) / pageRows;
             var sb = new StringBuilder();
             sb.Append("<!DOCTYPE html><html><head><meta charset=\"utf-8\">");
             sb.Append("<style>.card-page{width:").Append(Mm(pageW)).Append(";height:").Append(Mm(pageH));
-            sb.Append(";overflow:hidden;page-break-after:always;break-after:page;}");
+            sb.Append(";overflow:hidden;page-break-after:always;break-after:page;background:#e8ecf1;}");
             sb.Append(".card-page table,.card-page tr,.card-page td{page-break-inside:auto;break-inside:auto;}");
+            // Radius on inner shell (td border-radius is unreliable in print engines).
+            sb.Append(".mcp-card-shell{background:#fff;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;");
+            sb.Append("height:100%;box-sizing:border-box;}");
+            sb.Append(".mcp-card-hero{background:#f3f4f6;overflow:hidden;text-align:center;vertical-align:middle;}");
+            sb.Append(".mcp-card-hero img{width:100%;height:100%;object-fit:contain;border:0;display:block;}");
+            sb.Append(".mcp-card-body{overflow:hidden;background:#fff;box-sizing:border-box;}");
             sb.Append("</style></head>");
-            sb.Append("<body style=\"margin:0;padding:0;background-color:#ffffff;\">");
+            sb.Append("<body style=\"margin:0;padding:0;background-color:#e8ecf1;\">");
             for (var p = 0; p < pages; p++)
             {
                 if (p > 0)
@@ -420,14 +427,16 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 sb.Append(Mm(pageW));
                 sb.Append(";height:");
                 sb.Append(Mm(pageH));
-                sb.Append(";border-collapse:collapse;table-layout:fixed;background-color:#ffffff;font-family:Arial,Helvetica,sans-serif;\">");
+                sb.Append(";border-collapse:separate;border-spacing:").Append(Mm(gutter)).Append(" ").Append(Mm(gutter));
+                sb.Append(";table-layout:fixed;background-color:#e8ecf1;font-family:Arial,Helvetica,sans-serif;\">");
                 var title = string.IsNullOrEmpty(sheet.Title) ? "Cards" : sheet.Title;
                 if (pages > 1) title = title + " (" + (p + 1).ToString(CultureInfo.InvariantCulture) + "/" + pages.ToString(CultureInfo.InvariantCulture) + ")";
                 sb.Append("<tr style=\"height:").Append(Mm(titleH)).Append("\"><td colspan=\"").Append(perRow.ToString(CultureInfo.InvariantCulture));
                 sb.Append("\" data-role=\"title\" align=\"center\" height=\"").Append(Mm(titleH));
-                sb.Append("\" style=\"height:").Append(Mm(titleH)).Append(";padding:0 4px;font-size:14px;line-height:16px;font-weight:bold;color:#111827;vertical-align:middle;\">");
+                sb.Append("\" style=\"height:").Append(Mm(titleH)).Append(";padding:0 4px;font-size:14px;line-height:16px;font-weight:bold;color:#111827;vertical-align:middle;background:#e8ecf1;\">");
                 sb.Append(WebUtility.HtmlEncode(title));
                 sb.Append("</td></tr>");
+                var cellH = Math.Max(10, rowH - gutter);
                 for (var r = 0; r < pageRows; r++)
                 {
                     sb.Append("<tr style=\"height:").Append(Mm(rowH)).Append("\">");
@@ -435,13 +444,15 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     {
                         var index = p * pageSize + r * perRow + c;
                         var card = index < sheet.Cards.Count ? sheet.Cards[index] : null;
+                        // Outer td = transparent board cell; radius lives on inner .mcp-card-shell.
                         sb.Append("<td valign=\"top\" width=\"").Append((100 / perRow).ToString(CultureInfo.InvariantCulture));
-                        sb.Append("%\" height=\"").Append(Mm(rowH));
-                        sb.Append("\" bgcolor=\"#ffffff\" style=\"width:").Append((100 / perRow).ToString(CultureInfo.InvariantCulture));
-                        sb.Append("%;height:").Append(Mm(rowH)).Append(";background-color:#ffffff;border:1px solid #e6e8eb;vertical-align:top;padding:0;\">");
-                        sb.Append("<div style=\"height:").Append(Mm(rowH)).Append(";overflow:hidden;\">");
+                        sb.Append("%\" height=\"").Append(Mm(cellH));
+                        sb.Append("\" style=\"width:").Append((100 / perRow).ToString(CultureInfo.InvariantCulture));
+                        sb.Append("%;height:").Append(Mm(cellH));
+                        sb.Append(";background:transparent;border:0;vertical-align:top;padding:0;\">");
+                        sb.Append("<div class=\"mcp-card-shell\" style=\"height:").Append(Mm(cellH)).Append(";\">");
                         if (card != null)
-                            AppendFittedCard(sb, card, rowH, perRow);
+                            AppendFittedMcpCard(sb, card, cellH, perRow);
                         sb.Append("</div></td>");
                     }
                     sb.Append("</tr>");
@@ -452,55 +463,113 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return sb.ToString();
         }
 
-        private static void AppendFittedCard(StringBuilder sb, List<CardField> card, double rowMm, int perRow)
+        /// <summary>Print/Export card: fixed hero+body bands (A1–A4), MCP roles, rounded inner shell.</summary>
+        private static void AppendFittedMcpCard(StringBuilder sb, List<CardField> card, double rowMm, int perRow)
         {
-            var images = new List<CardField>();
-            var texts = new List<CardField>();
-            foreach (var field in card)
+            CardField image = null;
+            CardField id = null;
+            CardField title = null;
+            CardField status = null;
+            CardField color = null;
+            var metas = new List<CardField>();
+            foreach (var field in card ?? new List<CardField>())
             {
-                if (field.IsImage || (field.ImageBytes != null && field.ImageBytes.Length > 0))
-                    images.Add(field);
-                else
-                    texts.Add(field);
+                if (field == null) continue;
+                var role = (field.Role ?? "").Trim().ToLowerInvariant();
+                if (field.IsImage || (field.ImageBytes != null && field.ImageBytes.Length > 0)
+                    || role == "primaryimage")
+                {
+                    if (image == null && ((field.ImageBytes != null && field.ImageBytes.Length > 0) || CardSheet.IsImageValue(field.Value)))
+                        image = field;
+                    continue;
+                }
+                if (role is "idlink" or "id")
+                {
+                    if (id == null && !string.IsNullOrWhiteSpace(field.Value)) id = field;
+                }
+                else if (role == "title")
+                {
+                    if (title == null && !string.IsNullOrWhiteSpace(field.Value)) title = field;
+                }
+                else if (role is "statuspill" or "status")
+                {
+                    if (status == null && !string.IsNullOrWhiteSpace(field.Value)) status = field;
+                }
+                else if (role is "colorswatch" or "color")
+                {
+                    if (color == null && !string.IsNullOrWhiteSpace(field.Value)) color = field;
+                }
+                else if (role == "meta" && !string.IsNullOrWhiteSpace(field.Value))
+                    metas.Add(field);
             }
-            var textCount = Math.Max(1, texts.Count);
-            var slot = CardPageFit.Measure(rowMm, CardPageFit.CardMm(perRow), textCount, images.Count > 0);
-            var imageBand = images.Count > 0 ? slot.ImageMm : 0;
-            var labelH = images.Count > 0 ? slot.LabelMm : 0;
-            var each = slot.FieldMm;
-            var font = slot.FontPx;
-            var line = font + 2;
-            sb.Append("<table width=\"100%\" height=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"width:100%;height:100%;border-collapse:collapse;\">");
-            if (images.Count > 0 && imageBand > 0)
+
+            // A1: same hero ratio with or without image (blank grey when missing).
+            const double heroRatio = 0.55;
+            var imageBand = Math.Max(14, rowMm * heroRatio);
+            var textBand = Math.Max(8, rowMm - imageBand);
+            sb.Append("<table width=\"100%\" height=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"width:100%;height:100%;border-collapse:collapse;table-layout:fixed;\">");
+            sb.Append("<tr style=\"height:").Append(Mm(imageBand)).Append("\"><td class=\"mcp-card-hero\" align=\"center\" valign=\"middle\" height=\"");
+            sb.Append(Mm(imageBand)).Append("\" style=\"height:").Append(Mm(imageBand));
+            sb.Append(";max-height:").Append(Mm(imageBand));
+            sb.Append(";background-color:#f3f4f6;text-align:center;vertical-align:middle;padding:0;overflow:hidden;\">");
+            // A2: fixed box; img object-fit contain (never stretch the cell).
+            if (image != null)
+                AppendCardImageFixedBox(sb, image, imageBand);
+            sb.Append("</td></tr>");
+            // A4: fixed text band + overflow clip so row bottoms align.
+            sb.Append("<tr style=\"height:").Append(Mm(textBand)).Append("\"><td class=\"mcp-card-body\" valign=\"top\" style=\"height:");
+            sb.Append(Mm(textBand)).Append(";max-height:").Append(Mm(textBand));
+            sb.Append(";padding:4px 7px 5px 7px;vertical-align:top;background:#ffffff;overflow:hidden;\">");
+            if (id != null)
             {
-                var field = images[0];
-                sb.Append("<tr style=\"height:").Append(Mm(labelH)).Append("\"><td style=\"height:").Append(Mm(labelH));
-                sb.Append(";padding:1px 8px;font-size:9px;line-height:11px;color:#6b7280;\">");
-                sb.Append(WebUtility.HtmlEncode(PrettyLabel(field.Label)));
-                sb.Append("</td></tr><tr style=\"height:").Append(Mm(imageBand)).Append("\"><td align=\"center\" valign=\"middle\" height=\"");
-                sb.Append(Mm(imageBand)).Append("\" bgcolor=\"#f3f4f6\" style=\"height:").Append(Mm(imageBand));
-                sb.Append(";background-color:#f3f4f6;text-align:center;vertical-align:middle;\">");
-                AppendCardImage(sb, field, 0, imageBand);
-                sb.Append("</td></tr>");
+                sb.Append("<div data-role=\"idLink\" style=\"font-size:11px;line-height:13px;font-weight:700;color:#2563eb;margin:0 0 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;\">");
+                sb.Append(WebUtility.HtmlEncode(id.Value));
+                sb.Append("</div>");
             }
-            var used = texts.Count == 0 ? 1 : texts.Count;
-            for (var t = 0; t < used; t++)
+            if (title != null)
             {
-                var field = t < texts.Count ? texts[t] : null;
-                var value = field == null || string.IsNullOrWhiteSpace(field.Value) ? "\u2014" : field.Value;
-                sb.Append("<tr style=\"height:").Append(Mm(each)).Append("\"><td style=\"height:").Append(Mm(each)).Append(";padding:0 6px;vertical-align:middle;overflow:hidden;\">");
-                sb.Append("<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"width:100%;border-collapse:collapse;\"><tr>");
-                sb.Append("<td width=\"42%\" style=\"width:42%;font-size:").Append(font.ToString(CultureInfo.InvariantCulture));
-                sb.Append("px;line-height:").Append(line.ToString(CultureInfo.InvariantCulture));
-                sb.Append("px;color:#6b7280;vertical-align:middle;\">");
-                sb.Append(WebUtility.HtmlEncode(field == null ? "" : PrettyLabel(field.Label)));
-                sb.Append("</td><td style=\"font-size:").Append(font.ToString(CultureInfo.InvariantCulture));
-                sb.Append("px;line-height:").Append(line.ToString(CultureInfo.InvariantCulture));
-                sb.Append("px;color:#111827;vertical-align:middle;\">");
-                sb.Append(WebUtility.HtmlEncode(value));
-                sb.Append("</td></tr></table></td></tr>");
+                sb.Append("<div data-role=\"title\" style=\"font-size:10px;line-height:12px;font-weight:500;color:#111827;margin:0 0 2px 0;max-height:24px;overflow:hidden;\">");
+                sb.Append(WebUtility.HtmlEncode(title.Value));
+                sb.Append("</div>");
             }
-            sb.Append("</table>");
+            if (color != null)
+            {
+                sb.Append("<div data-role=\"colorSwatch\" style=\"font-size:9px;line-height:11px;color:#374151;margin:0 0 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;\">");
+                sb.Append(WebUtility.HtmlEncode(color.Value));
+                sb.Append("</div>");
+            }
+            if (status != null)
+            {
+                sb.Append("<div data-role=\"statusPill\" style=\"display:inline-block;font-size:9px;line-height:11px;font-weight:600;padding:1px 6px;border-radius:999px;background:#dcfce7;color:#166534;margin:1px 0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">");
+                sb.Append(WebUtility.HtmlEncode(status.Value));
+                sb.Append("</div>");
+            }
+            foreach (var m in metas)
+            {
+                sb.Append("<div data-role=\"meta\" style=\"font-size:8px;line-height:10px;color:#6b7280;margin:1px 0 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;\">");
+                sb.Append(WebUtility.HtmlEncode(m.Value));
+                sb.Append("</div>");
+            }
+            sb.Append("</td></tr></table>");
+            _ = perRow;
+        }
+
+        /// <summary>Image fills a fixed hero box; aspect preserved via object-fit.</summary>
+        private static void AppendCardImageFixedBox(StringBuilder sb, CardField field, double boxHeightMm)
+        {
+            string src = null;
+            if (field?.ImageBytes != null && field.ImageBytes.Length > 0)
+                src = "data:" + CardImageMime(field.ImageBytes) + ";base64," + Convert.ToBase64String(field.ImageBytes);
+            else if (CardSheet.IsImageValue(field?.Value))
+                src = field.Value.Trim();
+            if (string.IsNullOrEmpty(src)) return;
+            sb.Append("<img src=\"");
+            sb.Append(WebUtility.HtmlEncode(src));
+            sb.Append("\" alt=\"\" style=\"border:0;width:100%;height:");
+            sb.Append(Mm(boxHeightMm));
+            sb.Append(";max-height:");
+            sb.Append(Mm(boxHeightMm));
+            sb.Append(";object-fit:contain;display:block;margin:0 auto;\" />");
         }
 
         private static string Mm(double value)
@@ -517,10 +586,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             else if (CardSheet.IsImageValue(field.Value))
                 src = field.Value;
             if (string.IsNullOrEmpty(src))
-            {
-                sb.Append("<span style=\"font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#9ca3af;\">\u2014</span>");
-                return;
-            }
+                return; // blank hero — never broken-image chrome or em dash
             sb.Append("<img src=\"");
             sb.Append(WebUtility.HtmlEncode(src));
             sb.Append("\" alt=\"");

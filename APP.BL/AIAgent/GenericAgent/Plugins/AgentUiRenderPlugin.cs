@@ -343,6 +343,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     var twinHtml = UiTemplateMerge.MergeForRender(
                         layout, formDoc, cardSheet, dashRows, dashSpec,
                         interactive: false, forExport: twinForExport, renderId, actionsJson, sectionTitles, cardsTplNone);
+                    if (!string.IsNullOrWhiteSpace(twinHtml)
+                        && (layout == "cards" || UiTemplateMerge.IsPageLayout(layout)))
+                        twinHtml = AgentUiCssInline.InlineAgentUiLinks(twinHtml);
                     htmlPath = "render/" + renderId + ".html";
                     GenericAgentFileBL.WriteText(context.ChatSessionKey, htmlPath, twinHtml, context.CompanyId);
                     html = null;
@@ -363,6 +366,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
                     html = UiTemplateMerge.MergeForRender(
                         layout, formDoc, cardSheet, dashRows, dashSpec, interactive, forExport: false, renderId, actionsJson, sectionTitles, cardsTplNone);
+                    // B5: none-interactive iframe — inline agent-ui CSS so /agent-ui/*.css always applies (PathBase/offline).
+                    if (!interactive && !string.IsNullOrWhiteSpace(html)
+                        && (layout == "cards" || UiTemplateMerge.IsPageLayout(layout)))
+                        html = AgentUiCssInline.InlineAgentUiLinks(html);
                     var bytes = Encoding.UTF8.GetByteCount(html ?? "");
                     if (bytes > UiTemplateMerge.InlineHtmlMaxBytes)
                     {

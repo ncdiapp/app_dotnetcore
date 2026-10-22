@@ -91,24 +91,34 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             await page.SetViewportSizeAsync(1100, 1400).ConfigureAwait(false);
             await page.SetContentAsync(html, new PageSetContentOptions { WaitUntil = WaitUntilState.DOMContentLoaded }).ConfigureAwait(false);
 
-            var cardCount = await page.Locator("[data-role='card'], article.agent-card").CountAsync().ConfigureAwait(false);
-            if (cardCount > 0)
+            // Fitted Print/Export HTML: one .card-page per R×C page (prefer over whole-body shot).
+            var pageCount = await page.Locator(".card-page").CountAsync().ConfigureAwait(false);
+            if (pageCount > 0)
             {
-                var n = Math.Min(cardCount, MaxSlides);
+                var n = Math.Min(pageCount, MaxSlides);
                 for (var i = 0; i < n; i++)
                 {
                     ct.ThrowIfCancellationRequested();
-                    var loc = page.Locator("[data-role='card'], article.agent-card").Nth(i);
+                    var loc = page.Locator(".card-page").Nth(i);
                     var label = "";
-                    try { label = await loc.Locator("[data-role='title'], .agent-card-title").First.InnerTextAsync().ConfigureAwait(false); }
+                    try { label = await loc.Locator("[data-role='title']").First.InnerTextAsync().ConfigureAwait(false); }
                     catch { /* ignore */ }
                     var bytes = await loc.ScreenshotAsync(new LocatorScreenshotOptions { Type = ScreenshotType.Png }).ConfigureAwait(false);
-                    list.Add((string.IsNullOrWhiteSpace(label) ? "Card " + (i + 1) : label.Trim(), bytes));
+                    list.Add((string.IsNullOrWhiteSpace(label) ? "Page " + (i + 1) : label.Trim(), bytes));
                 }
                 return list;
             }
 
-            var root = page.Locator(".agent-cards-root, body").First;
+            // Never one-slide-per-card (ignores 2x2/3x4). Prefer board root if present.
+            var boardLoc = page.Locator(".agent-cards-root");
+            if (await boardLoc.CountAsync().ConfigureAwait(false) > 0)
+            {
+                var pngBoard = await boardLoc.First.ScreenshotAsync(new LocatorScreenshotOptions { Type = ScreenshotType.Png }).ConfigureAwait(false);
+                list.Add(("Page", pngBoard));
+                return list;
+            }
+
+            var root = page.Locator("body").First;
             var png = await root.ScreenshotAsync(new LocatorScreenshotOptions { Type = ScreenshotType.Png }).ConfigureAwait(false);
             list.Add(("Page", png));
             return list;

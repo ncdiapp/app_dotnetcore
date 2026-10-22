@@ -149,14 +149,14 @@ public class FormDocumentTests
         var sheet = CardSheet.FromRows("Items", rows, 9, 0);
         Assert.Equal(6, sheet.CardsPerRow);
         Assert.Equal(3, sheet.CardRows);
-        Assert.True(sheet.Cards[0][1].IsImage);
-        Assert.False(sheet.Cards[1][1].IsImage);
+        // Heuristic polish: Photo is primaryImage when URL is displayable; "n/a" stays blank (no broken img).
+        Assert.Contains(sheet.Cards[0], f => f.IsImage && f.Label == "Photo");
+        Assert.DoesNotContain(sheet.Cards[1], f => f.IsImage);
         sheet.CardsPerRow = 2;
         var html = HtmlForm.WriteCards(sheet);
         Assert.Contains("data-doc=\"cards\"", html);
         Assert.Contains("<img ", html);
         Assert.Contains("min-height:120px", html);
-        Assert.Contains("Division 186", html);
         Assert.Contains("Widget", html);
         Assert.DoesNotContain("display:none", html, StringComparison.OrdinalIgnoreCase);
     }

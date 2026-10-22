@@ -13,7 +13,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
     public static class UiTemplateContentMaterialize
     {
         /// <summary>Bump when platform default Views change and DB shells should refresh.</summary>
-        private const int RulesVersion = 7;
+        private const int RulesVersion = 8;
         private static int _appliedVersion;
 
         public static void EnsureOnce()
@@ -129,10 +129,11 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         private static bool IsPreMcpCardsShell(string cur)
         {
             if (string.IsNullOrWhiteSpace(cur) || NeedsMaterialize(cur)) return false;
-            if (cur.IndexOf("agent-cards-mcp-v2", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (cur.IndexOf("agent-cards-mcp-v3", StringComparison.OrdinalIgnoreCase) >= 0)
                 return false;
             return cur.IndexOf("agent-cards-grid", StringComparison.OrdinalIgnoreCase) >= 0
-                   || cur.IndexOf("agent-card", StringComparison.OrdinalIgnoreCase) >= 0;
+                   || cur.IndexOf("agent-card", StringComparison.OrdinalIgnoreCase) >= 0
+                   || cur.IndexOf("agent-cards-mcp-v2", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         /// <summary>Empty dashboard stub used as kpi control before KpiInteractive existed.</summary>

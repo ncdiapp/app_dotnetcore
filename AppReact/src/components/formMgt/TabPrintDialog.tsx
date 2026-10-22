@@ -90,7 +90,7 @@ const TabPrintDialog: React.FC<Props> = ({ transactionId, mainReferenceId, maste
 
         {/* Header */}
         <div className={`flex items-center justify-between px-4 py-3 border-b ${t('border_mainContentSection')}`}>
-          <span className={`font-medium text-sm ${theme.label}`}>Print / Save as PDF</span>
+          <span className={`font-medium text-sm ${theme.label}`}>Print</span>
           <button onClick={onClose} className={`text-xs px-2 py-1 rounded ${theme.button_default}`}>
             <i className="fa-solid fa-xmark" />
           </button>

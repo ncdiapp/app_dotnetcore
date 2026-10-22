@@ -75,4 +75,29 @@ public class AiPolishedRenderSpecTests
             """{"layout":"cards","data":[{"x":1}]}""", out _, out var err));
         Assert.Contains("must not include result", err);
     }
+
+    [Fact]
+    public void TryParse_accepts_float_version_and_layout_hints()
+    {
+        // Models often emit version: 1.0 / cardsPerRow: 3.0 — must not fail Value<int?>.
+        var json = """
+            {
+              "version": 1.0,
+              "layout": "cards",
+              "title": "Styles",
+              "selectAllColumns": false,
+              "bindings": {
+                "fields": [
+                  {"name": "Product_Code", "role": "idLink"},
+                  {"name": "Description", "role": "title"}
+                ]
+              },
+              "layoutHints": { "cardsPerRow": 3.0, "cardRows": "4" }
+            }
+            """;
+        Assert.True(AiPolishedRenderSpec.TryParse(json, out var spec, out var err), err);
+        Assert.Equal(1, spec.Version);
+        Assert.Equal(3, spec.LayoutHints.CardsPerRow);
+        Assert.Equal(4, spec.LayoutHints.CardRows);
+    }
 }

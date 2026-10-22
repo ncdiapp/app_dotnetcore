@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -53,12 +54,11 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 
                 spec = new AiPolishedRenderSpec
                 {
-                    Version = obj["version"]?.Value<int?>() ?? obj["Version"]?.Value<int?>() ?? CurrentVersion,
+                    // LLMs often emit version/cardsPerRow as 1.0 — Value<int?> throws on float.
+                    Version = ReadInt(obj["version"] ?? obj["Version"]) ?? CurrentVersion,
                     Layout = (obj["layout"] ?? obj["Layout"])?.ToString(),
                     Title = (obj["title"] ?? obj["Title"])?.ToString(),
-                    SelectAllColumns = obj["selectAllColumns"]?.Value<bool?>()
-                        ?? obj["SelectAllColumns"]?.Value<bool?>()
-                        ?? false,
+                    SelectAllColumns = ReadBool(obj["selectAllColumns"] ?? obj["SelectAllColumns"]) ?? false,
                     TemplateContentInteractive = obj["templateContentInteractive"] as JObject
                         ?? obj["TemplateContentInteractive"] as JObject,
                     TemplateContentNoneInteractive = obj["templateContentNoneInteractive"] as JObject
@@ -205,8 +205,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         {
             var hints = new AiPolishLayoutHints
             {
-                CardsPerRow = h["cardsPerRow"]?.Value<int?>() ?? h["CardsPerRow"]?.Value<int?>(),
-                CardRows = h["cardRows"]?.Value<int?>() ?? h["CardRows"]?.Value<int?>()
+                CardsPerRow = ReadInt(h["cardsPerRow"] ?? h["CardsPerRow"]),
+                CardRows = ReadInt(h["cardRows"] ?? h["CardRows"])
             };
             if (h["statusColorMap"] is JObject map || h["StatusColorMap"] is JObject)
             {
@@ -215,6 +215,65 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     hints.StatusColorMap[p.Name] = p.Value?.ToString();
             }
             return hints;
+        }
+
+        /// <summary>Accepts 3, 3.0, "3", "3.0" (models often emit floats for ints).</summary>
+        private static int? ReadInt(JToken token)
+        {
+            if (token == null || token.Type == JTokenType.Null || token.Type == JTokenType.Undefined)
+                return null;
+            try
+            {
+                switch (token.Type)
+                {
+                    case JTokenType.Integer:
+                        return token.Value<int>();
+                    case JTokenType.Float:
+                        return (int)Math.Round(token.Value<double>(), MidpointRounding.AwayFromZero);
+                    case JTokenType.String:
+                        var s = token.Value<string>()?.Trim();
+                        if (string.IsNullOrEmpty(s)) return null;
+                        if (int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i))
+                            return i;
+                        if (double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var d))
+                            return (int)Math.Round(d, MidpointRounding.AwayFromZero);
+                        return null;
+                    default:
+                        if (token.Type == JTokenType.Boolean)
+                            return token.Value<bool>() ? 1 : 0;
+                        return null;
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool? ReadBool(JToken token)
+        {
+            if (token == null || token.Type == JTokenType.Null || token.Type == JTokenType.Undefined)
+                return null;
+            try
+            {
+                if (token.Type == JTokenType.Boolean)
+                    return token.Value<bool>();
+                if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
+                    return Math.Abs(token.Value<double>()) > 0.0000001;
+                if (token.Type == JTokenType.String)
+                {
+                    var s = token.Value<string>()?.Trim();
+                    if (bool.TryParse(s, out var b)) return b;
+                    if (string.Equals(s, "1", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(s, "yes", StringComparison.OrdinalIgnoreCase))
+                        return true;
+                    if (string.Equals(s, "0", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(s, "no", StringComparison.OrdinalIgnoreCase))
+                        return false;
+                }
+            }
+            catch { /* ignore */ }
+            return null;
         }
     }
 

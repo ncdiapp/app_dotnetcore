@@ -102,18 +102,14 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                         {
                             if (string.IsNullOrEmpty(cardTitle) && !string.IsNullOrWhiteSpace(f?.Label))
                                 cardTitle = f.Label;
-                            var isImage = f?.IsImage == true
-                                          || (f?.ImageBytes != null && f.ImageBytes.Length > 0)
-                                          || CardSheet.IsImageValue(f?.Value);
+                            // Only real image URLs / embedded bytes — never raw Sketch IDs (broken <img>).
                             string imageSrc = null;
-                            if (isImage)
-                            {
-                                if (f.ImageBytes != null && f.ImageBytes.Length > 0)
-                                    imageSrc = "data:" + ImageMime(f.ImageBytes) + ";base64,"
-                                               + Convert.ToBase64String(f.ImageBytes);
-                                else if (!string.IsNullOrWhiteSpace(f?.Value))
-                                    imageSrc = f.Value.Trim();
-                            }
+                            if (f?.ImageBytes != null && f.ImageBytes.Length > 0)
+                                imageSrc = "data:" + ImageMime(f.ImageBytes) + ";base64,"
+                                           + Convert.ToBase64String(f.ImageBytes);
+                            else if (CardSheet.IsImageValue(f?.Value))
+                                imageSrc = f.Value.Trim();
+                            var isImage = !string.IsNullOrEmpty(imageSrc);
                             fields.Add(new
                             {
                                 label = Enc(f?.Label),

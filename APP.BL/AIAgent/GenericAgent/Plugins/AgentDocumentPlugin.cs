@@ -190,6 +190,18 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
                 if (mode == "cards")
                 {
+                    // Excel/CSV: flat data table from the dataset (all columns) — never card-gallery layout.
+                    if (!preview && (extension == ".xlsx" || extension == ".csv"))
+                    {
+                        var flat = LoadCardsAsDataTable(context, content, sourcePath, datasetName, records, rowLimit);
+                        path = WithExtension(path, extension);
+                        var flatBytes = extension == ".csv"
+                            ? CsvForm.Write(flat.Doc)
+                            : ExcelForm.Write(flat.Doc);
+                        return Saved(context, path, flatBytes, flat.RowCount, flat.CacheLimitReached, null,
+                            extension == ".csv" ? "csv" : "openxml");
+                    }
+
                     // Always honor cardsPerRow / cardRows / pageGrid for fitted Print/Export HTML
                     // (not only PDF/DOCX/PPT). Screen Result uses TemplateContent; export uses WriteFittedCards.
                     var sheet = LoadCards(context, content, sourcePath, datasetName, records, cardsPerRow, cardRows, rowLimit, pageGrid, cardsPerPage);
@@ -305,19 +317,62 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
         private static async Task<(byte[] Bytes, string Engine)> WriteCardBytes(string extension, CardSheet sheet, string html, CancellationToken ct)
         {
-            if (extension == ".csv")
-                return (CsvForm.Write(sheet.AsFlatTable()), "csv");
             if (extension == ".html")
                 return (System.Text.Encoding.UTF8.GetBytes(html ?? ""), "html");
-            if (extension == ".xlsx")
-                return (ExcelForm.WriteCards(sheet), "openxml");
             if (extension == ".pdf")
                 return (await AppReportPdfService.RenderHtmlToPdfAsync(html).ConfigureAwait(false), "playwright");
             if (extension == ".docx")
                 return (HtmlToOpenXmlWord.WriteCardsHtml(html, sheet), "openxml");
             if (extension == ".pptx")
-                return (await HtmlOfficeExport.WritePptxFromHtmlAsync(html, sheet?.Title, ct).ConfigureAwait(false), "playwright+shapecrawler");
+            {
+                // Native grid slides (CardsPerRow × CardRows / pageGrid). Do not screenshot HTML —
+                // fitted WriteFittedCards has no article.agent-card, so HtmlOfficeExport crushed all pages into one slide.
+                _ = ct;
+                return (PptxForm.WriteCards(sheet, TemplatePaint.FromHtml(html)), "shapecrawler");
+            }
+            // .xlsx / .csv for cards are handled before WriteCardBytes (flat dataset table).
             throw new InvalidOperationException("Unsupported export.");
+        }
+
+        /// <summary>Full dataset as a normal table (one row per record). Ignores card polish / gallery layout.</summary>
+        private static (FormDocument Doc, int RowCount, bool CacheLimitReached) LoadCardsAsDataTable(
+            AgentToolContext context, string content, string sourcePath, string datasetName, string records, int rowLimit)
+        {
+            JArray rows = null;
+            var title = "Data";
+            var limit = false;
+            if (!string.IsNullOrWhiteSpace(datasetName))
+            {
+                rows = CacheRows(context, datasetName, out limit);
+                title = datasetName.Trim();
+            }
+            else if (!string.IsNullOrWhiteSpace(records))
+                rows = CardSheet.ReadRecords(records);
+            else if (!string.IsNullOrWhiteSpace(content))
+                rows = CardSheet.ReadRecords(content);
+            else if (AgentDataAnalyzeCacheBL.TryGetCardRender(context.ChatSessionKey, out var panel, out var panelTitle)
+                && panel != null && panel.Count > 0)
+            {
+                rows = panel;
+                if (!string.IsNullOrWhiteSpace(panelTitle))
+                    title = panelTitle;
+            }
+            else if (!string.IsNullOrWhiteSpace(sourcePath))
+            {
+                var bytes = GenericAgentFileBL.ReadBytes(context.ChatSessionKey, Normalize(sourcePath), context.CompanyId, context.SkillKey);
+                rows = CardSheet.ReadRecords(System.Text.Encoding.UTF8.GetString(bytes));
+                title = Path.GetFileNameWithoutExtension(sourcePath);
+            }
+            else
+                throw new InvalidOperationException("Pass dataset_name, records, content, or sourcePath.");
+
+            if (string.IsNullOrWhiteSpace(datasetName))
+                rows = CacheRowExpand.Expand(context.ChatSessionKey, rows);
+            if (rowLimit > 0)
+                rows = AgentDataAnalyzeCacheBL.TakeFirst(rows, rowLimit);
+
+            var doc = TableFromRows(title, rows);
+            return (doc, doc.DataRowCount(), limit);
         }
 
         /// <summary>

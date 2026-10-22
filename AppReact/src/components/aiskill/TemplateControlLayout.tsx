@@ -25,9 +25,10 @@ const TemplateControlLayout: React.FC<{ html: string; className?: string }> = ({
 
     if (!html?.trim()) return null;
 
+    const board = /agent-cards-root/i.test(html || '') ? 'agent-cards-board' : '';
     return (
         <div
-            className={`agent-template-host min-w-0 max-w-full ${className || ''}`}
+            className={`agent-template-host min-w-0 max-w-full ${board} ${className || ''}`}
             dangerouslySetInnerHTML={{ __html: html }}
         />
     );

@@ -26,7 +26,7 @@ Merge engines, file formats, limits, and `data-role` Word rules remain in [`AI-A
 Make App Agent Chat **look and behave** close to the MCP Client reference:
 
 1. Cleaner left chat (spacing, type, chips, fewer in-thread export dumps).
-2. Right Result as an **Interactive** gallery/grid with React toolbar: filters, Print / Save as PDF, Export.
+2. Right Result as an **Interactive** gallery/grid with React toolbar: filters, Print, Export.
 3. Cards show a **primary image** and a **small set of primary fields** with role-based typography — not every column as plain text.
 4. Print / PDF uses a polished **none-interactive** template + GENERATE over the full dataset.
 5. Keep our advantage: tools loop N rows in C#; the LLM does **not** paint 1000×500 HTML.
@@ -278,7 +278,7 @@ Hosted beside chat (Result / Files / Tool Activity tabs as today). Chrome is **R
 
 | Control | Behavior |
 |---------|----------|
-| **Print / Save as PDF** (primary) | Uses session **polished none-interactive** TemplateContent + GENERATE / `export_pdf` over full (or currently intended export) cache. Does **not** screenshot Interactive chrome or filter UI |
+| **Print** (primary) | Uses session **polished none-interactive** TemplateContent + GENERATE / `export_pdf` over full (or currently intended export) cache. Does **not** screenshot Interactive chrome or filter UI |
 | **Export** (secondary menu) | PDF, Word, PowerPoint, HTML, Excel — same engines as [`AgentDocumentPlugin`](../../APP.BL/AIAgent/GenericAgent/Plugins/AgentDocumentPlugin.cs) |
 | Optional Copy HTML / Download gallery | Same merge source as HTML export when product wants MCP parity |
 

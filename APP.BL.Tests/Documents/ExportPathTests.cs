@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using App.BL.AIAgent.GenericAgent.DataAnalyze;
 using App.BL.AIAgent.GenericAgent.Documents;
@@ -31,6 +32,9 @@ public class ExportPathTests
         var html = HtmlForm.WriteCards(sheet, true);
         Assert.Contains("page-break-before:always", html);
         Assert.Contains("height:121mm", html);
+        Assert.Contains("mcp-card-shell", html);
+        Assert.Contains("mcp-card-hero", html);
+        Assert.Contains("border-radius:6px", html);
         Assert.DoesNotContain("page-break-before:always", HtmlForm.WriteCards(sheet));
     }
 
@@ -119,5 +123,27 @@ public class ExportPathTests
         var html = HtmlForm.WriteCards(grid, true);
         Assert.DoesNotContain("page-break-before:always", html);
         Assert.Contains("class=\"card-page\"", html);
+    }
+
+    [Fact]
+    public void Pptx_cards_honor_page_grid_slides()
+    {
+        var rows = new JArray();
+        for (var i = 0; i < 5; i++)
+            rows.Add(new JObject { ["Name"] = "Item " + i, ["Status"] = "Ok" });
+        var sheet = CardSheet.FromRows("Styles", rows, 0, 0);
+        sheet.ApplyPageGrid("2x2", 0);
+        Assert.Equal(2, sheet.CardsPerRow);
+        Assert.Equal(2, sheet.CardRows);
+        Assert.Equal(4, sheet.PageSize);
+
+        var bytes = PptxForm.WriteCards(sheet);
+        using var ms = new System.IO.MemoryStream(bytes);
+        using var zip = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Read);
+        var slideCount = zip.Entries.Count(e =>
+            e.FullName.StartsWith("ppt/slides/slide", StringComparison.OrdinalIgnoreCase)
+            && e.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase));
+        // 5 cards @ 2×2 → 2 slides (4 + 1)
+        Assert.Equal(2, slideCount);
     }
 }
