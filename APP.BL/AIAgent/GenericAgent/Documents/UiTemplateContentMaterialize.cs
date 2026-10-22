@@ -13,7 +13,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
     public static class UiTemplateContentMaterialize
     {
         /// <summary>Bump when platform default Views change and DB shells should refresh.</summary>
-        private const int RulesVersion = 4;
+        private const int RulesVersion = 5;
         private static int _appliedVersion;
 
         public static void EnsureOnce()
@@ -60,8 +60,9 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             Set("form", UiDefaultViewTemplates.FormDefault);
             Set("table", interactive ? UiDefaultViewTemplates.TableInteractive : UiDefaultViewTemplates.TableNoneInteractive);
             Set("cards", UiDefaultViewTemplates.CardsNoneInteractive);
-            // Refresh platform legacy cards shell → Tailwind agent-cards markup
-            if (IsLegacyCardsShell(map["cards"]?.ToString()))
+            // Refresh platform legacy cards shell → Tailwind agent-cards markup (+ image bind)
+            if (IsLegacyCardsShell(map["cards"]?.ToString())
+                || IsLegacyCardsWithoutImageBind(map["cards"]?.ToString()))
             {
                 map["cards"] = UiDefaultViewTemplates.CardsNoneInteractive;
                 changed = true;
@@ -107,9 +108,20 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             if (string.IsNullOrWhiteSpace(cur) || NeedsMaterialize(cur)) return false;
             if (cur.IndexOf("agent-cards-grid", StringComparison.OrdinalIgnoreCase) >= 0)
                 return false;
-            // Prior materialize / default shells
             return cur.IndexOf("data-role=\"cards\"", StringComparison.OrdinalIgnoreCase) >= 0
                    || cur.IndexOf("class=\"cards\"", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        /// <summary>Platform agent-cards template before image_src / is_image bind.</summary>
+        private static bool IsLegacyCardsWithoutImageBind(string cur)
+        {
+            if (string.IsNullOrWhiteSpace(cur) || NeedsMaterialize(cur)) return false;
+            if (cur.IndexOf("agent-cards-grid", StringComparison.OrdinalIgnoreCase) < 0)
+                return false;
+            if (cur.IndexOf("is_image", StringComparison.OrdinalIgnoreCase) >= 0)
+                return false;
+            return cur.IndexOf("field.value", StringComparison.OrdinalIgnoreCase) >= 0
+                   && cur.IndexOf("data-role=\"image\"", StringComparison.OrdinalIgnoreCase) < 0;
         }
 
         /// <summary>Empty dashboard stub used as kpi control before KpiInteractive existed.</summary>

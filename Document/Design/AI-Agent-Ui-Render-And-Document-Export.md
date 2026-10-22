@@ -1,12 +1,12 @@
 # Agent UI render and document export
 
 **Canonical design, test standard, and implementation summary.**  
-Date: 2026-10-20. Supersedes the former drafts `AI-Agent-Document-Export-Tools-V1.md`, `…-V2.md`, and `…-V3.md` (those files are removed). Chat chrome (header, composer, chips, motion) stays in [`AI-Agent-Chat-UI.md`](AI-Agent-Chat-UI.md); that file defers Result hosting to this document.
+Date: 2026-10-22 (Tailwind + export fidelity clarified). Supersedes the former drafts `AI-Agent-Document-Export-Tools-V1.md`, `…-V2.md`, and `…-V3.md` (those files are removed). Chat chrome (header, composer, chips, motion) stays in [`AI-Agent-Chat-UI.md`](AI-Agent-Chat-UI.md); that file defers Result hosting to this document.
 
 This document covers both:
 
-1. **UI render** — Agent Chat Result panel shows C#-merged HTML in an **iframe** (`render_none_interactive` / `render_interactive`).
-2. **Document export / read** — Same none-interactive templates drive HTML / PDF / Word / PowerPoint; Excel and CSV use a fixed style table.
+1. **UI render** — Agent Chat Result panel shows C#-merged HTML in an **iframe** (`render_none_interactive`) or React hosts + TemplateContent control LAYOUTs (`render_interactive`).
+2. **Document export / read** — **Same** `render_none_interactive` TemplateContent merge drives HTML / PDF / Word / PowerPoint; Excel and CSV use a fixed style table.
 
 The model does **not** send HTML, fonts, or colors, and does **not** write the Result page. C# fills templates from the session cache.
 
@@ -24,13 +24,13 @@ The model does **not** send HTML, fonts, or colors, and does **not** write the R
 | Modes | `NoneInteractive` \| `Interactive` |
 | Layouts (shipped) | `form`, `table`, `cards` |
 | Layouts (next) | `kpi`, `chart`, `dashboard` — MCP-like look in Result |
-| Result CSS/JS | **Allowed inside the iframe** (Tailwind / Chart.js / other). Isolated from the host app. Prefer **vendored / prebuilt** assets, not runtime CDN. |
+| Result CSS/JS | **Allowed inside the iframe** (Tailwind utilities via **vendored / prebuilt** `agent-ui` CSS). Isolated from the host app. **No** runtime CDN (`cdn.tailwindcss.com`). |
 | Export charts | When needed, **rasterize chart(s) to PNG** and embed in DOC/PDF/PPT (and HTML export as `<img>`). Not required for Excel/CSV. |
-| PDF | Playwright on merged HTML |
-| Word | LibreOffice HTML → docx (chart images embedded) |
-| PowerPoint | ShapeCrawler; styles from `data-role`; chart images as pictures |
+| PDF | Playwright on **same merged HTML**; `/agent-ui/*.css` **inlined** before print (must not depend on SPA origin at export time) |
+| Word | **Editable** body: consume **same merged HTML** as DOM/`data-role` → native Open XML (text, tables, real inline images). **Not** full-page screenshots. Layout **approximate** vs Tailwind Result/PDF — not pixel-identical |
+| PowerPoint | Same merged HTML → Playwright panel/page capture → slides (visual deck). Chart images as pictures where applicable |
 | Excel / CSV | Fixed style table; ignore HTML templates; charts become numbers/tables only |
-| Legacy | `data_render` alias one release, then delete; React `DataRenderPanel` removed after cutover |
+| Legacy | `data_render` alias one release, then delete |
 
 ```
 dataset_name / form tree
@@ -45,9 +45,11 @@ dataset_name / form tree
         ▼
  C# merge (Scriban + encode + safety)
         │
-        ├──► SSE ui_render → Result iframe
-        └──► export_html / export_pdf / export_docx / export_pptx
-              (always none-interactive template for that layout)
+        ├──► SSE ui_render → Result iframe (CSS via /agent-ui or inline)
+        ├──► export_pdf  → inline agent-ui CSS → Playwright
+        ├──► export_docx → same HTML structure → editable OpenXML (data-role)
+        └──► export_pptx → same HTML → Playwright shots → slides
+              (always none-interactive TemplateContent for that layout)
 ```
 
 ---
@@ -151,7 +153,7 @@ Export may pass `path` plus exactly one of `content` or `sourcePath` (`.json`, `
 
 ### Preview
 
-`preview` true on export: return merged HTML, do not write the office file. That HTML is what `export_pdf` prints (with `PrintCss`). It does not match LibreOffice Word, docx-to-pdf, or PowerPoint beyond template/`data-role` subset.
+`preview` true on export: return merged HTML (ideally with agent-ui CSS inlined like PDF), do not write the office file. That HTML is what `export_pdf` prints. Word uses the same HTML as editable OpenXML structure (not preview pixels); PPT uses captures of that HTML.
 
 `export_html` / email body: tables and inline styles only — no `<style>` block, no flex/grid/float. Preview and Playwright PDF may add `PrintCss` on the same body; `PrintCss` is not part of the email body.
 
@@ -223,27 +225,51 @@ DataJson / FormDocument / CardSheet  (server cache)
 | `page` | `InteractivePagePanel` | Cards LAYOUT; table = React Wijmo; collapse in React |
 | `kpi` / `dashboard` | `InteractiveDashboardPanel` | Per-control LAYOUT: `kpi` → `kpiHtml`, `chart` → `chartHostHtml` (`#chartHost`), `table` → `gridHostHtml` (`#gridHost`). React stacks/filter/Wijmo only — not pure React KPI/card UI. |
 
-**None-interactive** (and Interactive **`chart`-only**) stay TemplateContent → `UiRenderFrame` iframe. Do **not** vendor Wijmo UMD under `public/agent-ui/wijmo`. Keep `public/agent-ui/agent-cards.css` / `agent-kpi.css` for control LAYOUTs.
+**None-interactive** (and Interactive **`chart`-only**) stay TemplateContent → `UiRenderFrame` iframe. Do **not** vendor Wijmo UMD under `public/agent-ui/wijmo`. Keep `public/agent-ui/agent-cards.css` / `agent-kpi.css` (evolve toward `agent-ui.css`) for control LAYOUTs.
 
 **Two tool rows = two separate TemplateContent stores:**
 
 | Tool | Result | Export |
 |------|--------|--------|
-| `render_none_interactive` | iframe ← that row’s TemplateContent | Same merge (none-interactive) |
-| `render_interactive` | React hosts above; `cards` LAYOUT from this row’s TemplateContent → `cardsHtml` | Export twin uses **none-interactive** templates |
+| `render_none_interactive` | iframe ← that row’s TemplateContent | **Same merge** — PDF/Word/PPT all start from this HTML |
+| `render_interactive` | React hosts above; control LAYOUTs from this row | Export twin uses **none-interactive** templates |
 
 Editing Interactive `cards` does **not** change None-Interactive `cards` (independent rows). Template Editor should expose both tools; optional “Copy to other mode” later.
 
 `layout=page`: React stacks table + cards; LLM `specJson.sectionTitles` label collapse sections (not literal “Grid”/“Cards”).
 
+### None-interactive TemplateContent ↔ export fidelity (adopted 2026-10-22)
+
+**Rule:** Changing `render_none_interactive.TemplateContent[layout]` changes none-interactive **Result** and **export** together. There is one Scriban merge; targets differ only in how they consume the HTML.
+
+| Target | Consumes | Promise |
+|--------|----------|---------|
+| Result | Merged HTML + `/agent-ui` CSS (or inline) | Full Tailwind look (classes from vendored pack) |
+| PDF | **Same HTML** + **inlined** agent-ui CSS → Playwright | Visual match to Result (browser paint) |
+| Word | **Same HTML** parsed by `data-role` / structure → **editable** Open XML | Same text, cards, tables, real `<img>` parts; layout **approximate** — **not** pixel-identical to Tailwind |
+| PPT | Same HTML → Playwright captures → slides | Visual deck (screenshot OK) |
+| Excel / CSV | Data only | Ignore TemplateContent visuals |
+
+**Rejected:** Word body as full-page PNG/screenshots (not an editable document).
+
+**Authoring contract**
+
+- **`data-role`** (`title`, `label`, `value`, `card`, `grid`, `image`, …) = contract for Word (and read_html / round-trip). Required on meaningful nodes.
+- **Tailwind utility classes** (from vendored `agent-ui` / `agent-cards.css` pack only) = contract for Result + PDF.
+- Exotic utilities that Word mapper does not whitelist affect Result/PDF only; document the whitelist as it grows.
+- Prefer card/table chrome that stays expressible as simple blocks/tables so Word mapping stays predictable.
+- Images: Scriban model exposes `is_image` / `image_src` (data-URI after `CardImageLoader`); templates render `<img>`, not raw URL text only.
+
+**Do not** primary-path bypass TemplateContent for cards PDF/Word (e.g. `WriteFittedCards` / `OpenXmlWordForm.WriteCards(sheet)` ignoring merge) except hard fallback when Scriban/parse fails.
+
 ### Scriban / safety
 
-- Data only: title, fields, sections, columns, rows, cards, meta.
+- Data only: title, fields, sections, columns, rows, cards, meta, image flags/srcs.
 - No `include`, no arbitrary method calls. Values HTML-encoded.
-- Keep `data-role` markers: `title`, `label`, `value`, `grid`, section roles (read_html, PPT style copy, LibreOffice round-trip).
+- Keep `data-role` markers: `title`, `label`, `value`, `grid`, `card`, `image`, section roles (read_html, Word OpenXML map, PPT).
 - **NoneInteractive:** no interactive handlers from **data**; chart scripts may run only if the layout is chart/dashboard and the template ships them (or use server-rendered SVG/PNG for none-interactive). Prefer static SVG/PNG for print fidelity.
 - **Interactive:** scripts from **shipped template / vendored bundles** only; still reject `javascript:` in data-bound attrs.
-- **CSS in iframe (adopted):** Result HTML **may** include Tailwind utility CSS and other stylesheets **scoped to the iframe**. Host app CSS/JS must not leak in. Do **not** rely on `cdn.tailwindcss.com` or jsDelivr at runtime — vendor files under e.g. `wwwroot/agent-ui/` or compile used classes into `PrintCss` / `agent-ui.css` at build/seed time.
+- **CSS (adopted):** Result **may** use Tailwind utilities via **prebuilt** `AppReact/public/agent-ui/*.css` (and/or `wwwroot/agent-ui/`). Host app CSS/JS must not leak in. **No** `cdn.tailwindcss.com` / jsDelivr at runtime. **Export PDF:** inline those stylesheets into the HTML before Playwright (Playwright must not rely on `localhost:3000/agent-ui/...`).
 
 ### Style table (built-in default)
 
@@ -381,37 +407,38 @@ Ack to model: `{ ok, mode, layout, title, rowCount, truncated }`. Full HTML on S
 | `export_html` / `read_html` | Merged none-interactive HTML. Email: no `<style>`. Read via `data-role`. |
 | `export_csv` / `read_csv` | UTF-8 BOM, RFC 4180. No template. |
 | `export_excel` / `read_excel` | Fixed style table. `.xls` read via GemBox. No template. |
-| `export_docx` / `read_docx` | LibreOffice HTML→docx; read docx→HTML→`data-role`. |
-| `export_pdf` | Playwright on merged HTML (+ PrintCss). |
+| `export_docx` / `read_docx` | Write: merged HTML → **editable OpenXML** via `data-role` map (primary). LibreOffice HTML→docx only as fallback / legacy table paths. Read: LibreOffice→HTML→`data-role`. |
+| `export_pdf` | Inline agent-ui CSS on merged HTML → Playwright. |
 | `convert_docx_to_pdf` | LibreOffice on existing session `.docx` only (no re-merge). |
 | `read_pdf` | PdfPig plain text. |
-| `export_pptx` / `read_pptx` | ShapeCrawler; styles from `data-role`. |
+| `export_pptx` / `read_pptx` | Write: merged HTML → Playwright captures → ShapeCrawler slides (primary for TemplateContent layouts). Read: ShapeCrawler. |
 
-HTML/PDF/DOCX/PPTX merge loads **`render_none_interactive.TemplateContent[layout]`** (+ that row’s `printCss` when needed). Export tool rows keep template columns NULL.
+HTML/PDF/DOCX/PPTX merge loads **`render_none_interactive.TemplateContent[layout]`**. Export tool rows keep template columns NULL.
 
-Export returns `{ ok, relativePath, rowCount, bytes, engine, template }`. `engine`: `playwright` \| `libreoffice` \| `shapecrawler`. Read returns tree, data rows previewed to 500. Failures: `{ ok: false, error }`. Tool result never includes file body.
+Export returns `{ ok, relativePath, rowCount, bytes, engine, template }`. `engine`: `playwright` \| `openxml` \| `libreoffice` \| `shapecrawler`. Read returns tree, data rows previewed to 500. Failures: `{ ok: false, error }`. Tool result never includes file body.
 
 ### PDF and Word
 
-- `export_pdf` → `AppReportPdfService.RenderHtmlToPdfAsync`. A4, portrait, 15mm, backgrounds on.
-- `export_docx` → same merged HTML via LibreOffice. `page-break-after` from `cardRows` where LibreOffice understands it.
+- `export_pdf` → prepare export HTML (inline `/agent-ui` CSS, card images as data-URI) → `AppReportPdfService.RenderHtmlToPdfAsync`. A4, portrait, 15mm, backgrounds on.
+- `export_docx` → **same merged HTML**, walk `data-role` / structure → native Word (editable runs, tables, DrawingML images). **Do not** embed full-page screenshots as the document body. Optional style whitelist maps a subset of Tailwind classes; unmapped utilities affect Result/PDF only.
+- LibreOffice HTML→docx: fallback when OpenXML map fails, or for simple table HTML that already converts well — **not** the strategy for Tailwind card grids.
 - `convert_docx_to_pdf` → existing `.docx` only; not a data export path.
 - `read_docx` → LibreOffice to HTML → `HtmlForm.Read` / `data-role`.
 - `read_pdf` → PdfPig, capped at `DocumentStyles.PdfTextCap`.
 
-GemBox is **not** an export write engine (package may remain for `.xls` read and other features).
+GemBox is **not** an export write engine (package may remain for `.xls` read and other features). Do not add Aspose as the default path unless a later product decision funds commercial HTML→DOCX for closer CSS in editable Word.
 
 ### PowerPoint
 
-`PptxForm` + ShapeCrawler. Title slide, then section slides. Grids split after `DocumentStyles.PptRowsPerSlide`. Cards use `cardsPerRow` / `cardRows`. Copy inline styles from merged template `data-role` nodes. Do not add Aspose.Slides / Syncfusion / Spire.
+Primary for TemplateContent layouts: Playwright on inlined merged HTML → one slide per panel/page capture (same idea as dashboard chart/grid shots). ShapeCrawler assembles the deck. Legacy `PptxForm.WriteCards(sheet)` (rebuild from data, ignore HTML) is fallback only. Do not add Aspose.Slides / Syncfusion / Spire.
 
 ### Print vs Result
 
 | Scenario | Behavior |
 |----------|----------|
-| Result = `render_none_interactive` | Export same `layout` → identical merge body (PDF adds PrintCss) |
+| Result = `render_none_interactive` | Export same `layout` → **identical merge body**; PDF inlines CSS; Word maps structure; PPT screenshots |
 | Result = `render_interactive` | Export still uses **none-interactive** template for that `layout` |
-| Do not | Store print templates on `export_html` or other export tools |
+| Do not | Store separate print-only templates on `export_*` tools; do not use Word screenshot bodies |
 
 ---
 
@@ -521,31 +548,31 @@ Host validates source → user turn with prefix **`[ui_render_action]`** (legacy
 | Migrations | `AppAI.Web/Migrations/V0xx__…_xhu.sql` |
 
 ```
-JSON or dataset_name → cache row rules → FormDocument
+JSON or dataset_name → cache row rules → FormDocument / CardSheet
   ├─ render_none_interactive.TemplateContent[layout] → merged HTML
-  │    ├─ SSE ui_render → iframe
-  │    ├─ export_html     inline styles only
-  │    ├─ preview / pdf   + PrintCss → RenderHtmlToPdfAsync
-  │    ├─ export_docx     soffice HTML → docx
-  │    └─ export_pptx     data-role → PptxForm
+  │    ├─ SSE ui_render → iframe (+ /agent-ui CSS)
+  │    ├─ export_html     merged HTML (email: constrained styles)
+  │    ├─ export_pdf      inline agent-ui CSS → Playwright
+  │    ├─ export_docx     HTML data-role → editable OpenXML (primary)
+  │    └─ export_pptx     HTML → Playwright shots → ShapeCrawler
   ├─ convert_docx_to_pdf  soffice docx → pdf
   ├─ read_docx / read_pdf / read_html
   ├─ ExcelForm / CsvForm  (fixed style; no HTML template)
-  └─ render_interactive   same engine + Interactive template → iframe + postMessage
+  └─ render_interactive   React hosts + Interactive TemplateContent LAYOUTs
 ```
 
-Do not add ClosedXML, EPPlus, NPOI, QuestPDF, iText, Aspose, Pico.css. Do not rewrite the report engine. Do not remove GemBox packages used elsewhere.
+Do not add ClosedXML, EPPlus, NPOI, QuestPDF, iText, Aspose, Pico.css as the default stack. Do not rewrite the report engine. Do not remove GemBox packages used elsewhere. Do not ship Word-as-screenshots as the primary cards/table export.
 
 | Format | Write | Read |
 |--------|-------|------|
-| HTML | Merged template; email no `<style>` | AngleSharp `data-role` |
+| HTML | Merged template; email constrained | AngleSharp `data-role` |
 | CSV | Our code | Our code |
 | Excel `.xlsx` | Open XML fixed style | Open XML |
 | Excel `.xls` | — | GemBox.Spreadsheet |
-| Word | LibreOffice HTML→docx | LibreOffice→HTML→`data-role` |
-| PDF from data | Playwright | PdfPig |
+| Word | OpenXML from merged HTML `data-role` (editable); LibreOffice fallback | LibreOffice→HTML→`data-role` |
+| PDF from data | Playwright (inlined CSS) | PdfPig |
 | PDF from Word | LibreOffice convert | PdfPig |
-| PowerPoint | ShapeCrawler | ShapeCrawler |
+| PowerPoint | Playwright HTML capture + ShapeCrawler | ShapeCrawler |
 
 ---
 
@@ -556,7 +583,9 @@ Use these as acceptance criteria for the build and regressions.
 ### Templates and merge
 
 - [ ] Seeded `form` / `table` / `cards` on `render_none_interactive` produce `data-role` markers and V1 style table look (18pt centered title, two fields per row, section above grid).
-- [ ] Same fixture + `layout=table`: `render_none_interactive` HTML body **equals** `export_html` body (before PrintCss).
+- [ ] Same fixture + `layout=table`: `render_none_interactive` HTML body **equals** `export_html` body (before export CSS inline / PrintCss).
+- [ ] Same fixture + `layout=cards`: TemplateContent edit (e.g. title class / card border) changes Result and PDF together; Word shows same text/cards editable (layout may differ).
+- [ ] Cards export PDF does not show raw `{{ for … }}`; Word is not a single full-page image.
 - [ ] Missing layout key → error, no side effects.
 - [ ] `TemplateContent` never appears in tool definitions sent to the model.
 - [ ] Export tool rows have NULL template columns.
@@ -703,15 +732,16 @@ Drag-and-drop, revision history table, multi-file includes, editing `export_*` r
 
 | # | Decision |
 |---|----------|
-| 1 | Interactive `table`/`cards`/`page`/`chart` → TemplateContent iframe (Wijmo in code_default table/page). None-interactive → TemplateContent. |
+| 1 | None-interactive Result + export share one TemplateContent merge. Interactive uses React hosts + per-control LAYOUTs (not iframe Wijmo UMD under `agent-ui/wijmo`). |
 | 2 | Edit scope = company library tool rows; upgrades do not clobber custom TemplateContent. |
 | 3 | none ↔ interactive **independent**; Copy button optional. |
 | 4 | Permission = Agent Library admin. |
 | 5 | `sampleJson` on TemplateMetaJson per tool (v1). |
 | 6 | No revision history in v1 (Reset + Diff only). |
 | 7 | `page` key supported; code default = compose table+cards. |
-| 8 | Interactive `kpi`/`dashboard` stay React+DataJson until a later epic; **`chart` is TemplateContent**. |
+| 8 | Interactive `kpi`/`dashboard` = React stack + TemplateContent control LAYOUTs (`kpi`/`chart`/`table` keys). Interactive **`chart`-only** may stay iframe. |
 | 9 | **P0 custom merge** required before Editor ships. |
+| 10 | **Tailwind:** vendored `agent-ui` pack only. Result≡PDF (CSS inlined for Playwright). **Word = editable** from same HTML structure (`data-role`); not screenshots; not pixel-identical to Tailwind. **PPT = visual** from same HTML. |
 
 **No blocking open product questions** for Editor v1 beyond implementing P0 + checklist. Optional later: per-layout sampleJson, revision table, dashboard-on-template.
 
@@ -721,4 +751,4 @@ Drag-and-drop, revision history table, multi-file includes, editing `export_*` r
 
 ## Out of scope
 
-SQL inside render/export tools. Pivot, merged input cells, logos, per-call colors. Replacing the report engine. Changing `file_write`. Pixel-identical interactive Result vs Word. LibreOffice reproducing all Tailwind flex/grid. Dedicated template **table** (templates stay on tool columns; Editor writes those columns). GemBox as HTML/PDF/DOCX write engine. Embedding Wijmo in the iframe. Runtime CDN stylesheets/scripts. Excel native chart objects.
+SQL inside render/export tools. Pivot, merged input cells, logos, per-call colors. Replacing the report engine. Changing `file_write`. Pixel-identical Word vs Tailwind Result/PDF. Word body as full-page screenshots. LibreOffice reproducing all Tailwind flex/grid as the primary cards path. Dedicated template **table** (templates stay on tool columns; Editor writes those columns). GemBox/Aspose as default HTML/PDF/DOCX write engine. Embedding Wijmo UMD under `public/agent-ui/wijmo`. Runtime CDN stylesheets/scripts. Excel native chart objects.

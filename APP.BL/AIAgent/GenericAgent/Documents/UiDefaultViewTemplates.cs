@@ -182,7 +182,13 @@ th{background:#3d4f5f;color:#ffffff;font-weight:700;text-align:left}
 {{ for field in card.fields }}
 <div class=""agent-card-row"">
 <dt class=""agent-card-label"" data-role=""label"">{{ field.label }}</dt>
+{{ if field.is_image && field.image_src }}
+<dd class=""agent-card-value"" data-role=""value"">
+<img class=""agent-card-image"" data-role=""image"" src=""{{ field.image_src }}"" alt=""{{ field.label }}""/>
+</dd>
+{{ else }}
 <dd class=""agent-card-value"" data-role=""value"">{{ field.value }}</dd>
+{{ end }}
 </div>
 {{ end }}
 </dl>

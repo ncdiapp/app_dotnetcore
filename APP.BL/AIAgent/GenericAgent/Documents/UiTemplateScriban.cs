@@ -102,11 +102,24 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                         {
                             if (string.IsNullOrEmpty(cardTitle) && !string.IsNullOrWhiteSpace(f?.Label))
                                 cardTitle = f.Label;
+                            var isImage = f?.IsImage == true
+                                          || (f?.ImageBytes != null && f.ImageBytes.Length > 0)
+                                          || CardSheet.IsImageValue(f?.Value);
+                            string imageSrc = null;
+                            if (isImage)
+                            {
+                                if (f.ImageBytes != null && f.ImageBytes.Length > 0)
+                                    imageSrc = "data:" + ImageMime(f.ImageBytes) + ";base64,"
+                                               + Convert.ToBase64String(f.ImageBytes);
+                                else if (!string.IsNullOrWhiteSpace(f?.Value))
+                                    imageSrc = f.Value.Trim();
+                            }
                             fields.Add(new
                             {
                                 label = Enc(f?.Label),
                                 value = Enc(f?.Value),
-                                is_image = f?.IsImage == true
+                                is_image = isImage,
+                                image_src = EncAttr(imageSrc)
                             });
                         }
                         // Prefer first field value as title when label looks like a name/code column
@@ -188,5 +201,19 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         }
 
         private static string Enc(string s) => WebUtility.HtmlEncode(s ?? "");
+
+        private static string EncAttr(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            return WebUtility.HtmlEncode(s);
+        }
+
+        private static string ImageMime(byte[] bytes)
+        {
+            if (bytes != null && bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xD8) return "image/jpeg";
+            if (bytes != null && bytes.Length >= 4 && bytes[0] == 0x89 && bytes[1] == 0x50) return "image/png";
+            if (bytes != null && bytes.Length >= 3 && bytes[0] == (byte)'G' && bytes[1] == (byte)'I') return "image/gif";
+            return "application/octet-stream";
+        }
     }
 }

@@ -191,10 +191,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 {
                     var sheet = LoadCards(context, content, sourcePath, datasetName, records, cardsPerRow, paged ? cardRows : 0, rowLimit, paged ? pageGrid : null, paged ? cardsPerPage : 0);
                     await CardImageLoader.AttachAsync(sheet, context.CompanyId, ct).ConfigureAwait(false);
-                    var forPrint = preview || extension == ".pdf" || extension == ".docx" || extension == ".pptx";
+                    var forPrint = preview || extension == ".pdf" || extension == ".docx" || extension == ".pptx" || extension == ".html";
                     var cardHtml = UiTemplateMerge.MergeCards(sheet, forPrint);
                     if (preview)
-                        return PreviewHtml(context, path, HtmlForm.ForPrint(cardHtml), sheet.CardCount, sheet.CacheLimitReached, sheet.MissingImages, "playwright");
+                        return PreviewHtml(context, path, cardHtml, sheet.CardCount, sheet.CacheLimitReached, sheet.MissingImages, "playwright");
                     path = WithExtension(path, extension);
                     var cardWritten = await WriteCardBytes(extension, sheet, cardHtml, ct).ConfigureAwait(false);
                     return Saved(context, path, cardWritten.Bytes, sheet.CardCount, sheet.CacheLimitReached, sheet.MissingImages, cardWritten.Engine);
@@ -301,27 +301,31 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (extension == ".csv")
                 return (CsvForm.Write(sheet.AsFlatTable()), "csv");
             if (extension == ".html")
-                return (System.Text.Encoding.UTF8.GetBytes(HtmlForm.WriteCards(sheet)), "html");
+                return (System.Text.Encoding.UTF8.GetBytes(html ?? ""), "html");
             if (extension == ".xlsx")
                 return (ExcelForm.WriteCards(sheet), "openxml");
             if (extension == ".pdf")
-                return (await AppReportPdfService.RenderHtmlToPdfAsync(HtmlForm.ForPrint(html)).ConfigureAwait(false), "playwright");
+                return (await AppReportPdfService.RenderHtmlToPdfAsync(html).ConfigureAwait(false), "playwright");
             if (extension == ".docx")
-                return WriteDocx(System.Text.Encoding.UTF8.GetBytes(HtmlForm.ForPrint(html)), null, sheet);
+                return (HtmlToOpenXmlWord.WriteCardsHtml(html, sheet), "openxml");
             if (extension == ".pptx")
-                return (PptxForm.WriteCards(sheet, TemplatePaint.FromHtml(html)), "shapecrawler");
+                return (await HtmlOfficeExport.WritePptxFromHtmlAsync(html, sheet?.Title, ct).ConfigureAwait(false), "playwright+shapecrawler");
             throw new InvalidOperationException("Unsupported export.");
         }
 
         /// <summary>
-        /// Card pages are Open XML so the requested rows stay on one page.
-        /// LibreOffice imports the HTML but drops the second card row onto the next page.
-        /// Forms still use LibreOffice when it is installed.
+        /// Forms/tables: LibreOffice HTML→docx when installed; else OpenXML.
+        /// Cards use <see cref="HtmlToOpenXmlWord"/> (editable structure from TemplateContent HTML).
         /// </summary>
         private static (byte[] Bytes, string Engine) WriteDocx(byte[] printHtml, FormDocument doc, CardSheet sheet)
         {
             if (sheet != null)
-                return (OpenXmlWordForm.WriteCards(sheet), "openxml");
+            {
+                var html = printHtml != null && printHtml.Length > 0
+                    ? System.Text.Encoding.UTF8.GetString(printHtml)
+                    : null;
+                return (HtmlToOpenXmlWord.WriteCardsHtml(html, sheet), "openxml");
+            }
             if (LibreOfficeConvert.IsInstalled())
                 return (LibreOfficeConvert.Convert(printHtml, ".html", "docx"), "libreoffice");
             return (OpenXmlWordForm.Write(doc), "openxml");

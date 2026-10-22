@@ -25,22 +25,15 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         public static string MergeForm(FormDocument doc, bool forPrint = false)
         {
             var body = ResolveLayoutBody(NoneInteractiveTool, InferFormLayout(doc));
-            string html;
-            if (IsCodeDefault(body))
-                html = HtmlForm.Write(doc);
-            else
-                html = ApplyTitlePlaceholder(body, doc?.Title);
+            // Same Scriban path as Result (MergeForRender) — never title-only replace on TemplateContent.
+            var html = RenderTableOrFormView("form", body, doc, forExport: true);
             return forPrint ? HtmlForm.ForPrint(html) : html;
         }
 
         public static string MergeTable(FormDocument doc, bool forPrint = false)
         {
             var body = ResolveLayoutBody(NoneInteractiveTool, "table");
-            string html;
-            if (IsCodeDefault(body))
-                html = HtmlForm.Write(doc);
-            else
-                html = ApplyTitlePlaceholder(body, doc?.Title);
+            var html = RenderTableOrFormView("table", body, doc, forExport: true);
             return forPrint ? HtmlForm.ForPrint(html) : html;
         }
 
@@ -49,11 +42,21 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             var body = ResolveLayoutBody(NoneInteractiveTool, "cards");
             string html;
             if (IsCodeDefault(body))
-                html = HtmlForm.WriteCards(sheet, forPrint);
+                html = HtmlForm.WriteCards(sheet, forPrint: false);
             else
-                html = ApplyTitlePlaceholder(body, sheet?.Title);
-            return forPrint && !IsCodeDefault(body) ? HtmlForm.ForPrint(html) : html;
+            {
+                try { html = RenderCardsView(body, sheet); }
+                catch { html = HtmlForm.WriteCards(sheet, forPrint: false); }
+            }
+            // PDF/DOCX/PPTX: same TemplateContent HTML + inlined agent-ui CSS (Playwright cannot load /agent-ui/).
+            if (forPrint)
+                html = AgentUiCssInline.PrepareExportHtml(html, addPrintExtras: true);
+            return html;
         }
+
+        /// <summary>Inline vendored agent-ui CSS for Playwright / offline export of any merged HTML.</summary>
+        public static string PrepareExportHtml(string html)
+            => AgentUiCssInline.PrepareExportHtml(html, addPrintExtras: true);
 
         /// <summary>None-interactive or interactive page for Result iframe.</summary>
         public static string MergeForRender(
@@ -99,7 +102,11 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             if (IsDashboardLayout(layout))
             {
                 var body = ResolveLayoutBody(toolName, layout);
-                if (IsCodeDefault(body))
+                // Interactive kpi/dashboard Result uses React; none-interactive + export twin use UiDashboardHtml.
+                // Stubs / title-only TemplateContent must not skip Build (breaks charts + data-rasterize).
+                if (IsCodeDefault(body) || IsEmptyDashboardShell(body)
+                    || (forExport && body.IndexOf("chart-surface", StringComparison.OrdinalIgnoreCase) < 0
+                        && body.IndexOf("data-rasterize", StringComparison.OrdinalIgnoreCase) < 0))
                 {
                     html = UiDashboardHtml.Build(
                         layout,
@@ -339,7 +346,13 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             if (!string.IsNullOrWhiteSpace(title) && spec != null && string.IsNullOrWhiteSpace(spec.Title))
                 spec.Title = title;
             var body = ResolveLayoutBody(NoneInteractiveTool, layout);
-            if (IsCodeDefault(body))
+            // Materialized kpi/chart/dashboard stubs are empty shells (title only). Always Build so
+            // forExport marks .chart-surface[data-rasterize] for ChartRasterize → PNG in PDF/DOCX/PPTX.
+            if (IsCodeDefault(body) || IsEmptyDashboardShell(body))
+                return UiDashboardHtml.Build(layout, rows, spec, title, interactive: false, forExport, renderId, actionsJson: null);
+            // Custom TemplateContent without chart markup still needs UiDashboardHtml for export charts.
+            if (forExport && body.IndexOf("data-rasterize", StringComparison.OrdinalIgnoreCase) < 0
+                && body.IndexOf("chart-surface", StringComparison.OrdinalIgnoreCase) < 0)
                 return UiDashboardHtml.Build(layout, rows, spec, title, interactive: false, forExport, renderId, actionsJson: null);
             return ApplyTitlePlaceholder(body, title ?? spec?.Title);
         }
@@ -547,6 +560,22 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             if (hasContent) return false;
             return Regex.IsMatch(body, @"data-role\s*=\s*[""']page[""']", RegexOptions.IgnoreCase)
                    || body.IndexOf("platform stacks table + cards", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        /// <summary>Materialized kpi/chart/dashboard stub — no KPI/chart data binds; use UiDashboardHtml.</summary>
+        private static bool IsEmptyDashboardShell(string body)
+        {
+            if (string.IsNullOrWhiteSpace(body)) return true;
+            if (body.IndexOf("chart-surface", StringComparison.OrdinalIgnoreCase) >= 0
+                || body.IndexOf("data-rasterize", StringComparison.OrdinalIgnoreCase) >= 0
+                || body.IndexOf("kpi-card", StringComparison.OrdinalIgnoreCase) >= 0
+                || body.IndexOf("agent-kpi-", StringComparison.OrdinalIgnoreCase) >= 0
+                || Regex.IsMatch(body, @"\{\{\s*for\s+", RegexOptions.IgnoreCase))
+                return false;
+            return Regex.IsMatch(body, @"data-role\s*=\s*[""']dashboard[""']", RegexOptions.IgnoreCase)
+                   || Regex.IsMatch(body, @"data-role\s*=\s*[""']chart[""']", RegexOptions.IgnoreCase)
+                   || body.IndexOf("export uses UiDashboardHtml", StringComparison.OrdinalIgnoreCase) >= 0
+                   || body.IndexOf("none-interactive / export bind", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         public static string ResolveSectionTitle(

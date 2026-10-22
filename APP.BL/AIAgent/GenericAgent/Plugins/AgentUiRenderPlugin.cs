@@ -277,10 +277,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         emitSpecJson = JsonConvert.SerializeObject(new { title = pageTitle, sectionTitles }, Formatting.None);
                     }
 
-                    // Export / Files twin = none-interactive TemplateContent (real HTML), same layout.
+                    // Export / Files twin = none-interactive merge. Dashboard twin marks charts with
+                    // data-rasterize; ExportPdf/Docx/Pptx runs ChartRasterize.EmbedChartPngsAsync.
+                    var twinForExport = layout == "kpi" || layout == "dashboard" || layout == "chart";
                     var twinHtml = UiTemplateMerge.MergeForRender(
                         layout, formDoc, cardSheet, dashRows, dashSpec,
-                        interactive: false, forExport: false, renderId, actionsJson, sectionTitles);
+                        interactive: false, forExport: twinForExport, renderId, actionsJson, sectionTitles);
                     htmlPath = "render/" + renderId + ".html";
                     GenericAgentFileBL.WriteText(context.ChatSessionKey, htmlPath, twinHtml, context.CompanyId);
                     html = null;
