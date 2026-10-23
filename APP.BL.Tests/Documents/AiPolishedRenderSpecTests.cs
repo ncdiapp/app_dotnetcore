@@ -141,6 +141,35 @@ public class AiPolishedRenderSpecTests
     }
 
     [Fact]
+    public void ShortenFieldLabel_drops_redundant_date_suffix()
+    {
+        Assert.Equal("Created", CardSheet.ShortenFieldLabel("Created Date"));
+        Assert.Equal("Revised", CardSheet.ShortenFieldLabel("Revised_Date"));
+        Assert.Equal("Adopted", CardSheet.ShortenFieldLabel("Adopted On"));
+    }
+
+    [Fact]
+    public void Heuristics_short_labels_and_compact_for_sibling_dates()
+    {
+        var rows = JArray.Parse("""
+            [
+              {"Code":"A1","Name":"Item","Created_Date":"2025-01-15","Revised_Date":"2026-10-16","Season":"S/S 2025"},
+              {"Code":"A2","Name":"Item2","Created_Date":"2025-01-16","Revised_Date":"2026-10-17","Season":"F/W 2025"}
+            ]
+            """);
+        var cols = ((JObject)rows[0]).Properties().Select(p => p.Name).ToList();
+        var spec = AiRenderPolishHeuristics.Build("cards", "T", cols, rows);
+        var created = Assert.Single(spec.Bindings.Fields, f =>
+            f.Name.Contains("Created", StringComparison.OrdinalIgnoreCase));
+        Assert.True(created.ShowLabel);
+        Assert.Equal("Created", created.Label);
+        Assert.True(created.Compact);
+        var season = Assert.Single(spec.Bindings.Fields, f =>
+            f.Name.Equals("Season", StringComparison.OrdinalIgnoreCase));
+        Assert.True(season.Compact);
+    }
+
+    [Fact]
     public void Heuristics_reject_low_fill_rate_despite_theme_name()
     {
         var rows = JArray.Parse("""

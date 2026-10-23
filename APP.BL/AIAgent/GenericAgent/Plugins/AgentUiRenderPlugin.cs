@@ -264,12 +264,15 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     formDoc = formDoc.ProjectColumns(cols);
                 }
 
-                // Embed Image URLs for TemplateContent HTML (none-interactive Result + export twin).
-                // Interactive React grids load via session fetch; Print regenerates via ExportResult + AttachAsync.
-                if (cardSheet != null)
-                    await CardImageLoader.AttachAsync(cardSheet, context.CompanyId, default).ConfigureAwait(false);
-                if (formDoc != null)
-                    await CardImageLoader.AttachAsync(formDoc, context.CompanyId, default).ConfigureAwait(false);
+                // Interactive Result: keep <img src="url"> — browser lazy-loads (no serial download → data-URI).
+                // None-interactive iframe / twin: embed when needed. Print/Export regenerate via ExportResult.
+                if (!interactive)
+                {
+                    if (cardSheet != null)
+                        await CardImageLoader.AttachAsync(cardSheet, context.CompanyId, default).ConfigureAwait(false);
+                    if (formDoc != null)
+                        await CardImageLoader.AttachAsync(formDoc, context.CompanyId, default).ConfigureAwait(false);
+                }
 
                 var cardsTplInteractive = polish?.TemplateBody(interactive: true, "cards");
                 var cardsTplNone = polish?.TemplateBody(interactive: false, "cards");

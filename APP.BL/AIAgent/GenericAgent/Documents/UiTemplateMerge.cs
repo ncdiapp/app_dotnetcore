@@ -233,10 +233,13 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 || body.IndexOf("agent-card-status", StringComparison.OrdinalIgnoreCase) >= 0
                 || body.IndexOf("agent-card-meta", StringComparison.OrdinalIgnoreCase) >= 0
                 || body.IndexOf("role == \"meta\"", StringComparison.OrdinalIgnoreCase) >= 0;
-            // Prefer platform template when AI shell cannot honor show_label (ambiguous meta).
+            // Prefer platform template when AI shell lacks show_label / compact meta packing.
             var hasShowLabel = body.IndexOf("show_label", StringComparison.OrdinalIgnoreCase) >= 0
                 || body.IndexOf("agent-card-field-label", StringComparison.OrdinalIgnoreCase) >= 0;
-            if (hasId && hasTitle && hasMetaOrStatus && hasShowLabel)
+            var hasCompactMeta = body.IndexOf("agent-card-meta-wrap", StringComparison.OrdinalIgnoreCase) >= 0
+                || body.IndexOf("agent-card-meta-compact", StringComparison.OrdinalIgnoreCase) >= 0
+                || body.IndexOf("field.compact", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (hasId && hasTitle && hasMetaOrStatus && hasShowLabel && hasCompactMeta)
                 return body;
             return UiDefaultViewTemplates.CardsNoneInteractive;
         }
@@ -338,20 +341,26 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 catch { return HtmlForm.Write(formDoc); }
             }
 
-            if (IsCodeDefault(body))
+            if (IsCodeDefault(body) || (forExport && !TableTemplateSupportsImages(body)))
                 body = UiDefaultViewTemplates.TableNoneInteractive;
+            if (forExport)
+                body = StripTableScrollShell(body);
             string html;
             try { html = UiTemplateScriban.Render(body, UiTemplateScriban.ModelFromForm(formDoc)); }
             catch { html = HtmlForm.Write(formDoc); }
             if (!forExport)
                 html = WrapDocumentBody(html, inner => UiSectionChrome.WrapGridScroll(inner));
+            else
+                html = StripTableScrollShell(html);
             return html;
         }
 
         private static string RenderTableFromRows(string body, string title, JArray dashRows, bool forExport)
         {
-            if (IsCodeDefault(body))
+            if (IsCodeDefault(body) || (forExport && !TableTemplateSupportsImages(body)))
                 body = UiDefaultViewTemplates.TableNoneInteractive;
+            if (forExport)
+                body = StripTableScrollShell(body);
             string html;
             try { html = UiTemplateScriban.Render(body, UiTemplateScriban.ModelFromRows(title, dashRows)); }
             catch
@@ -360,6 +369,30 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             }
             if (!forExport)
                 html = WrapDocumentBody(html, inner => UiSectionChrome.WrapGridScroll(inner));
+            else
+                html = StripTableScrollShell(html);
+            return html;
+        }
+
+        private static bool TableTemplateSupportsImages(string body)
+            => !string.IsNullOrWhiteSpace(body)
+               && body.IndexOf("image_src", StringComparison.OrdinalIgnoreCase) >= 0;
+
+        /// <summary>Remove Result scroll shells so Print shows every row (do not touch img max-height).</summary>
+        private static string StripTableScrollShell(string html)
+        {
+            if (string.IsNullOrEmpty(html)) return html;
+            // Common Result wrapper: max-height:min(80vh,800px);overflow:auto
+            html = System.Text.RegularExpressions.Regex.Replace(
+                html,
+                @"max-height\s*:\s*min\s*\(\s*80vh\s*,\s*800px\s*\)\s*;?",
+                "",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            html = System.Text.RegularExpressions.Regex.Replace(
+                html,
+                @"(data-role\s*=\s*[""']grid-scroll[""'][^>]*style\s*=\s*[""'][^""']*)overflow\s*:\s*auto",
+                "$1overflow:visible",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             return html;
         }
 

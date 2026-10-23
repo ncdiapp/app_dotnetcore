@@ -183,7 +183,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                         Role = (f["role"] ?? f["Role"])?.ToString() ?? "body",
                         TypographyHint = (f["typographyHint"] ?? f["TypographyHint"])?.ToString(),
                         ShowLabel = ReadBool(f["showLabel"] ?? f["ShowLabel"]) ?? false,
-                        Label = (f["label"] ?? f["Label"])?.ToString()
+                        Label = (f["label"] ?? f["Label"])?.ToString(),
+                        Compact = ReadBool(f["compact"] ?? f["Compact"]) ?? false
                     });
                 }
             }
@@ -319,6 +320,10 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         public bool ShowLabel { get; set; }
         /// <summary>Optional short display label when ShowLabel is true; else PrettyLabel(Name).</summary>
         public string Label { get; set; }
+        /// <summary>
+        /// When true, short value may share a meta row with siblings (do not force a full line).
+        /// </summary>
+        public bool Compact { get; set; }
     }
 
     public sealed class AiPolishFilterField

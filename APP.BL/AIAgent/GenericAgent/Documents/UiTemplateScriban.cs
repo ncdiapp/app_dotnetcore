@@ -65,13 +65,25 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     var cells = new List<object>();
                     if (row != null)
                     {
-                        foreach (var c in row)
+                        for (var i = 0; i < row.Count; i++)
                         {
+                            var c = row[i];
+                            var colName = i < columns.Count ? columns[i] : null;
+                            var raw = c?.Text ?? "";
+                            string imageSrc = null;
+                            if (c?.ImageBytes != null && c.ImageBytes.Length > 0)
+                                imageSrc = "data:" + ImageMime(c.ImageBytes) + ";base64,"
+                                           + Convert.ToBase64String(c.ImageBytes);
+                            else if (CardSheet.IsRenderableImage(raw, colName, c?.IsImage == true)
+                                     || (c?.IsImage == true && CardSheet.IsUrlValue(raw)))
+                                imageSrc = raw.Trim().Trim('"', '\'');
+                            var isImage = !string.IsNullOrEmpty(imageSrc);
                             cells.Add(new
                             {
-                                text = Enc(c?.Text),
-                                is_image = c?.IsImage == true,
-                                is_number = c?.IsNumber == true
+                                text = Enc(isImage ? "" : CardSheet.FormatDisplayValue(raw)),
+                                is_image = isImage,
+                                image_src = EncAttr(imageSrc),
+                                is_number = c?.IsNumber == true && !isImage
                             });
                         }
                     }
@@ -113,6 +125,9 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                                 imageSrc = (f.Value ?? "").Trim().Trim('"', '\'');
                             var isImage = !string.IsNullOrEmpty(imageSrc);
                             var display = isImage ? (f?.Value ?? "") : CardSheet.FormatDisplayValue(f?.Value);
+                            // Skip empty text fields — status/color would paint a lone colored dot.
+                            if (!isImage && !CardSheet.HasMeaningfulDisplayValue(display))
+                                continue;
                             var displayRole = f?.Role;
                             if (!isImage && CardSheet.LooksLikeDateValue(f?.Value)
                                 && (string.Equals(displayRole, "statusPill", StringComparison.OrdinalIgnoreCase)
@@ -120,10 +135,11 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                                 displayRole = "meta";
                             var showLabel = f?.ShowLabel == true && !isImage;
                             var displayLabel = showLabel
-                                ? (!string.IsNullOrWhiteSpace(f.DisplayLabel)
-                                    ? f.DisplayLabel
-                                    : CardSheet.PrettyFieldLabel(f.Label))
+                                ? CardSheet.ShortenFieldLabel(
+                                    !string.IsNullOrWhiteSpace(f.DisplayLabel) ? f.DisplayLabel : f.Label)
                                 : "";
+                            var compact = !isImage && (f?.Compact == true
+                                || CardSheet.LooksCompactDisplay(displayLabel, display, showLabel));
                             fields.Add(new
                             {
                                 label = Enc(f?.Label),
@@ -133,7 +149,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                                 role = Enc(string.IsNullOrWhiteSpace(displayRole) ? "body" : displayRole),
                                 typography_hint = Enc(f?.TypographyHint ?? ""),
                                 show_label = showLabel,
-                                display_label = Enc(displayLabel)
+                                display_label = Enc(displayLabel),
+                                compact = compact
                             });
                             if (string.Equals(f?.Role, "title", StringComparison.OrdinalIgnoreCase)
                                 && !string.IsNullOrWhiteSpace(f?.Value))
@@ -179,11 +196,18 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 var cells = columns.Select(col =>
                 {
                     var v = obj[col];
+                    var raw = v == null || v.Type == JTokenType.Null ? "" : v.ToString();
+                    string imageSrc = null;
+                    if (CardSheet.IsRenderableImage(raw, col, false))
+                        imageSrc = raw.Trim().Trim('"', '\'');
+                    var isImage = !string.IsNullOrEmpty(imageSrc);
                     return new
                     {
-                        text = Enc(v == null || v.Type == JTokenType.Null ? "" : v.ToString()),
-                        is_image = false,
-                        is_number = v != null && (v.Type == JTokenType.Integer || v.Type == JTokenType.Float)
+                        text = Enc(isImage ? "" : CardSheet.FormatDisplayValue(raw)),
+                        is_image = isImage,
+                        image_src = EncAttr(imageSrc),
+                        is_number = !isImage && v != null
+                                    && (v.Type == JTokenType.Integer || v.Type == JTokenType.Float)
                     };
                 }).Cast<object>().ToList();
                 rowModels.Add(cells);

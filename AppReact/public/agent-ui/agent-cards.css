@@ -1,26 +1,43 @@
-/* Agent Result cards — MCP Client: white cards on tinted board (interactive + none-interactive). */
+/* Agent Result cards — screen Theme via data-agent-theme; Print/Export stay light (inline/export CSS). */
 
 .agent-cards-root {
+  --agent-card-board: #f4f5f7;
+  --agent-card-surface: #ffffff;
+  --agent-card-text: #111827;
+  --agent-card-muted: #6b7280;
+  --agent-card-id: #2563eb;
+  --agent-card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   margin: 0;
   padding: 0.75rem;
   min-width: 0;
   min-height: 100%;
   box-sizing: border-box;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  color: #111827;
-  /* Light board (MCP-clean) — avoid heavy grey-blue. */
-  background: #f4f5f7;
+  color: var(--agent-card-text);
+  background: var(--agent-card-board);
   contain: layout style;
+}
+
+/* Result View only — dark app theme (Print/Export HTML does not set data-agent-theme=dark). */
+[data-agent-theme="dark"] .agent-cards-root,
+.agent-template-host[data-agent-theme="dark"] .agent-cards-root,
+.agent-template-host[data-agent-theme="dark"].agent-cards-board {
+  --agent-card-board: #141a26;
+  --agent-card-surface: #19202f;
+  --agent-card-text: #e5e7eb;
+  --agent-card-muted: #9ca3af;
+  --agent-card-id: #60a5fa;
+  --agent-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
 .agent-cards-title {
   display: none;
 }
 
-/* Result Card view: responsive columns (min 250px). */
+/* Result Card view: responsive columns (min 220px). */
 .agent-cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 0.875rem;
   min-width: 0;
   width: 100%;
@@ -28,7 +45,7 @@
 }
 
 .agent-card {
-  min-width: 250px;
+  min-width: 220px;
   max-width: 100%;
   height: auto;
   min-height: 0;
@@ -36,18 +53,18 @@
   border: none;
   border-radius: 0.5rem;
   padding: 0;
-  background: #ffffff;
+  background: var(--agent-card-surface);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  box-shadow: var(--agent-card-shadow);
   content-visibility: auto;
-  contain-intrinsic-size: 250px 360px;
+  contain-intrinsic-size: 220px 360px;
 }
 
-/* Hero: square crop but capped so body fields stay visible (was 1:1 of full width → crushed text). */
+/* Hero shares card surface — no separate grey empty block. */
 .agent-card-hero {
-  background: #f3f4f6;
+  background: var(--agent-card-surface);
   aspect-ratio: 1 / 1;
   width: 100%;
   max-height: 200px;
@@ -60,10 +77,9 @@
 
 .agent-card-hero:empty,
 .agent-card-hero-empty {
-  background: #f3f4f6;
+  background: var(--agent-card-surface);
 }
 
-/* Legacy blur layer from v4 — hide if still present in cached HTML. */
 .agent-card-hero-blur {
   display: none !important;
 }
@@ -75,7 +91,7 @@
   object-fit: cover;
   object-position: center center;
   display: block;
-  background: #f3f4f6;
+  background: var(--agent-card-surface);
 }
 
 .agent-card-hero-img[data-broken="1"],
@@ -91,7 +107,7 @@
   min-width: 0;
   flex: 1 1 auto;
   min-height: 5.5rem;
-  background: #ffffff;
+  background: var(--agent-card-surface);
   overflow: visible;
 }
 
@@ -99,19 +115,15 @@
   font-size: 0.8125rem;
   line-height: 1.15rem;
   font-weight: 700;
-  color: #2563eb;
+  color: var(--agent-card-id);
   word-break: break-word;
-  letter-spacing: 0.01em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .agent-card-name {
-  font-size: 0.75rem;
-  line-height: 1.15rem;
+  font-size: 0.8125rem;
+  line-height: 1.2rem;
   font-weight: 500;
-  color: #111827;
+  color: var(--agent-card-text);
   word-break: break-word;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -148,6 +160,10 @@
   flex-shrink: 0;
 }
 
+.agent-card-status:empty {
+  display: none;
+}
+
 .agent-card-status[data-status="Dropped"],
 .agent-card-status[data-status="dropped"],
 .agent-card-status[data-status="Rejected"],
@@ -160,6 +176,12 @@
 .agent-card-status[data-status="hold"] {
   background: #f3f4f6;
   color: #4b5563;
+}
+
+[data-agent-theme="dark"] .agent-card-status[data-status="Hold"],
+[data-agent-theme="dark"] .agent-card-status[data-status="hold"] {
+  background: #374151;
+  color: #e5e7eb;
 }
 
 .agent-card-status[data-status="In Development"],
@@ -181,7 +203,11 @@
   align-items: center;
   gap: 0.35rem;
   font-size: 0.75rem;
-  color: #374151;
+  color: var(--agent-card-text);
+}
+
+.agent-card-color:has(> .agent-card-swatch:only-child) {
+  display: none;
 }
 
 .agent-card-swatch {
@@ -193,21 +219,43 @@
   border: 1px solid #d1d5db;
 }
 
+.agent-card-meta-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 0;
+  margin-top: 0.15rem;
+  min-width: 0;
+}
+
 .agent-card-meta {
   font-size: 0.6875rem;
   line-height: 1rem;
-  color: #6b7280;
+  color: var(--agent-card-muted);
   word-break: break-word;
-  margin-top: 0.1rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1 1 100%;
+  max-width: 100%;
+}
+
+.agent-card-meta.agent-card-meta-compact {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+.agent-card-meta.agent-card-meta-compact:not(:last-child)::after {
+  content: " · ";
+  color: var(--agent-card-muted);
+  font-weight: 400;
 }
 
 .agent-card-field-label {
   font-weight: 600;
-  color: #9ca3af;
+  color: var(--agent-card-muted);
   margin-right: 0.25rem;
+  opacity: 0.9;
 }
 
 .agent-card-row.agent-card-role-body {
@@ -224,13 +272,13 @@
 .agent-card-label {
   flex-shrink: 0;
   font-size: 11px;
-  color: #6b7280;
+  color: var(--agent-card-muted);
 }
 
 .agent-card-value {
   min-width: 0;
   font-size: 0.75rem;
-  color: #111827;
+  color: var(--agent-card-text);
   word-break: break-word;
 }
 
@@ -243,7 +291,7 @@
 
 .agent-template-host:has(.agent-cards-root),
 .agent-template-host.agent-cards-board {
-  background: #f4f5f7;
+  background: var(--agent-card-board, #f4f5f7);
   border-radius: 0.375rem;
   min-height: 100%;
 }

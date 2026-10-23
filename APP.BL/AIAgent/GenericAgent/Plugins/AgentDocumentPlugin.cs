@@ -203,10 +203,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     }
 
                     var pageSheet = LoadCards(context, content, sourcePath, datasetName, records, cardsPerRow, cardRows, rowLimit, pageGrid, cardsPerPage);
-                    await CardImageLoader.AttachAsync(pageSheet, context.CompanyId, ct).ConfigureAwait(false);
                     var gridDoc = ApplyPolishColumns(context, datasetName, flat.Doc, specJson);
-                    // Embed grid Image-column URLs (PLM /image/300) for Playwright print — same as cards.
-                    await CardImageLoader.AttachAsync(gridDoc, context.CompanyId, ct).ConfigureAwait(false);
+                    // Browser Print (.html): keep image URLs — inlining hundreds of cards blows the download (Failed to fetch).
+                    if (extension != ".html")
+                    {
+                        await CardImageLoader.AttachAsync(pageSheet, context.CompanyId, ct).ConfigureAwait(false);
+                        await CardImageLoader.AttachAsync(gridDoc, context.CompanyId, ct).ConfigureAwait(false);
+                    }
                     var pageTitle = string.IsNullOrWhiteSpace(gridDoc.Title) ? (pageSheet.Title ?? "Result") : gridDoc.Title;
                     var pageHtml = UiTemplateMerge.ComposePageExportHtml(gridDoc, pageSheet, pageTitle);
                     if (preview)
@@ -233,7 +236,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     // Always honor cardsPerRow / cardRows / pageGrid for fitted Print/Export HTML
                     // (not only PDF/DOCX/PPT). Screen Result uses TemplateContent; export uses WriteFittedCards.
                     var sheet = LoadCards(context, content, sourcePath, datasetName, records, cardsPerRow, cardRows, rowLimit, pageGrid, cardsPerPage);
-                    await CardImageLoader.AttachAsync(sheet, context.CompanyId, ct).ConfigureAwait(false);
+                    // Browser Print (.html) iframe loads URLs; skip data-URI embed for large card sets.
+                    if (extension != ".html")
+                        await CardImageLoader.AttachAsync(sheet, context.CompanyId, ct).ConfigureAwait(false);
                     var cardsForPrint = IsPrintOrHtmlExport(preview, extension);
                     string cardsTpl = null;
                     if (context != null && !string.IsNullOrWhiteSpace(context.ChatSessionKey)
@@ -249,8 +254,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
                 var doc = LoadDocument(context, content, sourcePath, datasetName);
                 doc = ApplyPolishColumns(context, datasetName, doc, specJson);
-                // Embed Image-column URLs before HTML merge (print/PDF need data-URIs).
-                await CardImageLoader.AttachAsync(doc, context.CompanyId, ct).ConfigureAwait(false);
+                // PDF/DOCX need data-URIs; browser .html Print can load URLs.
+                if (extension != ".html")
+                    await CardImageLoader.AttachAsync(doc, context.CompanyId, ct).ConfigureAwait(false);
                 var tableForPrint = IsPrintOrHtmlExport(preview, extension);
                 var html = mode == "form"
                     ? UiTemplateMerge.MergeForm(doc, tableForPrint)
@@ -275,6 +281,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             string records,
             int rowLimit)
         {
+            if (!string.IsNullOrWhiteSpace(records))
+            {
+                var fromRecords = CardSheet.ReadRecords(records);
+                if (fromRecords != null)
+                    return rowLimit > 0 ? AgentDataAnalyzeCacheBL.TakeFirst(fromRecords, rowLimit) : fromRecords;
+            }
             if (!string.IsNullOrWhiteSpace(datasetName)
                 && AgentDataAnalyzeCacheBL.TryExportDataJson(context.ChatSessionKey, datasetName.Trim(), out var dataJson, out _, out _))
             {
@@ -282,12 +294,6 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 if (rowLimit > 0 && arr.Count > rowLimit)
                     return AgentDataAnalyzeCacheBL.TakeFirst(arr, rowLimit);
                 return arr;
-            }
-            if (!string.IsNullOrWhiteSpace(records))
-            {
-                var fromRecords = CardSheet.ReadRecords(records);
-                if (fromRecords != null)
-                    return rowLimit > 0 ? AgentDataAnalyzeCacheBL.TakeFirst(fromRecords, rowLimit) : fromRecords;
             }
             if (!string.IsNullOrWhiteSpace(content))
             {
@@ -473,15 +479,20 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             var title = "Data";
             var limit = false;
             var fromDataset = false;
-            if (!string.IsNullOrWhiteSpace(datasetName)
+            // Explicit records (chrome filter) before full session dataset.
+            if (!string.IsNullOrWhiteSpace(records))
+            {
+                rows = CardSheet.ReadRecords(records);
+                if (!string.IsNullOrWhiteSpace(datasetName))
+                    title = datasetName.Trim();
+            }
+            else if (!string.IsNullOrWhiteSpace(datasetName)
                 && AgentDataAnalyzeCacheBL.TryExportDataJson(context.ChatSessionKey, datasetName.Trim(), out var dataJson, out _, out _))
             {
                 rows = JArray.Parse(dataJson);
                 title = datasetName.Trim();
                 fromDataset = true;
             }
-            else if (!string.IsNullOrWhiteSpace(records))
-                rows = CardSheet.ReadRecords(records);
             else if (!string.IsNullOrWhiteSpace(content))
                 rows = CardSheet.ReadRecords(content);
             else if (AgentDataAnalyzeCacheBL.TryGetCardRender(context.ChatSessionKey, out var panel, out var panelTitle)
@@ -648,15 +659,20 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             var title = "Cards";
             var limit = false;
             var fromDataset = false;
-            if (!string.IsNullOrWhiteSpace(datasetName)
+            // Explicit records first (Result chrome filter / reopen) — do not replace with full session dataset.
+            if (!string.IsNullOrWhiteSpace(records))
+            {
+                rows = CardSheet.ReadRecords(records);
+                if (!string.IsNullOrWhiteSpace(datasetName))
+                    title = datasetName.Trim();
+            }
+            else if (!string.IsNullOrWhiteSpace(datasetName)
                 && AgentDataAnalyzeCacheBL.TryExportDataJson(context.ChatSessionKey, datasetName.Trim(), out var dataJson, out _, out _))
             {
                 rows = JArray.Parse(dataJson);
                 title = datasetName.Trim();
                 fromDataset = true;
             }
-            else if (!string.IsNullOrWhiteSpace(records))
-                rows = CardSheet.ReadRecords(records);
             else if (!string.IsNullOrWhiteSpace(content))
                 rows = CardSheet.ReadRecords(content);
             else if (AgentDataAnalyzeCacheBL.TryGetCardRender(context.ChatSessionKey, out var panel, out var panelTitle)

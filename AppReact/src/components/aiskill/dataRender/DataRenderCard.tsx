@@ -34,8 +34,8 @@ export const DataRenderCard: React.FC<CardProps> = ({ fields }) => {
 
     return (
         <div
-            className={`min-w-[250px] overflow-hidden border rounded-[8px] bg-white flex flex-col ${theme.mainContentSection}`}
-            style={{ contentVisibility: 'auto', containIntrinsicSize: '250px 360px' }}
+            className={`min-w-[220px] overflow-hidden border rounded-[8px] bg-white flex flex-col ${theme.mainContentSection}`}
+            style={{ contentVisibility: 'auto', containIntrinsicSize: '220px 360px' }}
         >
             {hero && (cellImageKind(hero.value, hero.label) != null
                 || cellImageKind(hero.value, hero.role) != null
@@ -124,7 +124,7 @@ interface ListProps {
 
 export const DataRenderCardList: React.FC<ListProps> = ({ title, status, cards, cardsPerRow = 1 }) => {
     const { theme } = useTheme();
-    // cardsPerRow <= 0 → responsive auto-fill (min 250px), same as agent-cards.css.
+    // cardsPerRow <= 0 → responsive auto-fill (min 220px), same as agent-cards.css.
     const columns = cardsPerRow > 0 ? Math.min(6, Math.max(1, cardsPerRow)) : 0;
 
     return (
@@ -147,7 +147,7 @@ export const DataRenderCardList: React.FC<ListProps> = ({ title, status, cards, 
                     style={{
                         gridTemplateColumns: columns > 0
                             ? `repeat(${columns}, minmax(0, 1fr))`
-                            : 'repeat(auto-fill, minmax(250px, 1fr))',
+                            : 'repeat(auto-fill, minmax(220px, 1fr))',
                     }}
                 >
                     {cards.map((fields, i) => (

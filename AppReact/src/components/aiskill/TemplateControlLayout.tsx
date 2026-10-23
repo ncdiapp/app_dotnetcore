@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
+import { useSelector } from 'react-redux';
+import type { RootState } from '../../redux/store';
 
 function ensureStylesheet(id: string, href: string) {
     if (typeof document === 'undefined') return;
@@ -31,10 +33,14 @@ export function normalizeCardsHtmlForResult(html: string): string {
  * Cards / KPI — not iframe Wijmo.
  */
 const TemplateControlLayout: React.FC<{ html: string; className?: string }> = ({ html, className }) => {
+    // Result View only — Print/Export HTML is generated server-side without data-agent-theme=dark.
+    const themeId = useSelector((s: RootState) => s.theme.currentThemeId || 'light');
+    const agentTheme = themeId === 'dark' ? 'dark' : 'light';
+
     useEffect(() => {
         if (!html) return;
         if (/agent-cards\.css/i.test(html) || /agent-card/i.test(html)) {
-            ensureStylesheet('agent-cards-css', '/agent-ui/agent-cards.css?v=251');
+            ensureStylesheet('agent-cards-css', '/agent-ui/agent-cards.css?v=255');
         }
         if (/agent-kpi\.css/i.test(html) || /agent-kpi-/i.test(html)) {
             ensureStylesheet('agent-kpi-css', '/agent-ui/agent-kpi.css');
@@ -52,6 +58,7 @@ const TemplateControlLayout: React.FC<{ html: string; className?: string }> = ({
     const isCards = !!board || /agent-cards-grid/i.test(enriched);
     return (
         <div
+            data-agent-theme={isCards ? agentTheme : undefined}
             className={`agent-template-host min-w-0 max-w-full w-full ${board} ${isCards ? 'flex flex-col' : ''} ${className || ''}`}
             dangerouslySetInnerHTML={{ __html: enriched }}
         />

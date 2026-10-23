@@ -53,7 +53,14 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         public const string BlankCss = "font-size:8pt;line-height:8pt;padding:0;height:8px;";
 
         public const string PdfPrintCss =
-            "@page{size:A4 portrait;margin:15mm}thead{display:table-header-group}tr{page-break-inside:avoid}";
+            "@page{size:A4 portrait;margin:15mm}"
+            + "thead{display:table-header-group}"
+            + "tr{page-break-inside:avoid}"
+            // Kill Result scroll shells so Print shows all rows (no nested scrollbar).
+            + "[data-role=grid-scroll],.agent-wijmo-grid-wrap,.data-table{"
+            + "max-height:none!important;height:auto!important;overflow:visible!important}"
+            + "table[data-role=grid] img,td[data-role=image] img{"
+            + "max-width:120px;max-height:80px;object-fit:contain}";
 
         /// <summary>Dashboard/KPI export: landscape + shrink tables so wide grids fit page width.</summary>
         public const string DashboardPrintCss =

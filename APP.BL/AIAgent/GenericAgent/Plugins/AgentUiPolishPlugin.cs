@@ -80,13 +80,15 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     ["selectAllColumns"] = "Set true only when the user asked for all columns.",
                     ["fieldSelection"] = "Prefer name/theme fit to the dataset subject. Reject columns with low non-empty rate in sample even if the name fits. Max "
                         + AiPolishedRenderSpec.MaxDisplayFields + " fields + optional primaryImageField.",
-                    ["showLabelRule"] = "Set showLabel=true when multiple similar values on the same card would be ambiguous (several dates, several positions like 左上/右上, etc.). A single clear field of that kind → showLabel=false. Obscure business columns → showLabel=true with a short label. Clear ID/Code/Name/Status → showLabel=false.",
+                    ["showLabelRule"] = "Set showLabel=true when multiple similar values on the same card would be ambiguous (several dates, several positions like 左上/右上, etc.). A single clear field of that kind → showLabel=false. Obscure business columns → showLabel=true with a short label. Clear ID/Code/Name/Status → showLabel=false. Labels must be concise: Created Date→Created, Revised Date→Revised (drop redundant Date/Time words).",
+                    ["compactRule"] = "Set compact=true when the displayed value (plus short label if any) is short enough to share a meta row with siblings (e.g. S/S 2025, Men's, Ref #523, Created Jan 15, 2025). Long descriptions stay compact=false (full line).",
                     ["fieldBindingShape"] = new JObject
                     {
                         ["name"] = "exact column name",
                         ["role"] = "idLink|title|statusPill|colorSwatch|meta (optional)",
                         ["showLabel"] = "boolean",
-                        ["label"] = "optional short label when showLabel=true"
+                        ["label"] = "optional short label when showLabel=true (Created not Created Date)",
+                        ["compact"] = "boolean — short chips share a row"
                     }
                 };
 

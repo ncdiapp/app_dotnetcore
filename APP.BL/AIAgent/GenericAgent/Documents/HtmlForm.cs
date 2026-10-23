@@ -412,7 +412,15 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             var titleH = string.IsNullOrEmpty(sheet.Title) ? 0 : CardPageFit.TitleMm;
             // Print/PDF: catalog on white paper (screen Result keeps grey board via CSS).
             var gutter = 1.8;
-            var rowH = (pageH - titleH) / pageRows;
+            // border-spacing is OUTSIDE row heights; if we ignore it, .card-page{overflow:hidden}
+            // clips the last row's bottom border / radius (user-visible "no bottom edge").
+            var titleRows = titleH > 0 ? 1 : 0;
+            var tableRows = titleRows + pageRows;
+            var vGutterTotal = gutter * (tableRows + 1);
+            const double safetyMm = 0.6; // subpixel / print rounding
+            var cardBand = Math.Max(20, pageH - titleH - vGutterTotal - safetyMm);
+            var rowH = cardBand / pageRows;
+            var cellH = Math.Max(10, rowH);
             // Equal column % (avoid int 100/3=33 → 99% right gutter).
             var colPct = (100.0 / perRow).ToString("0.####", CultureInfo.InvariantCulture) + "%";
             var sb = new StringBuilder();
@@ -423,14 +431,16 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             sb.Append("*,*:before,*:after{box-sizing:border-box}");
             sb.Append(".card-page{width:100%;max-width:100%;height:").Append(Mm(pageH));
             sb.Append(";overflow:hidden;page-break-after:always;break-after:page;background:#ffffff;}");
-            sb.Append(".card-page>table{width:100%!important;max-width:100%;table-layout:fixed}");
+            sb.Append(".card-page>table{width:100%!important;max-width:100%;max-height:100%;table-layout:fixed}");
             sb.Append(".card-page table,.card-page tr,.card-page td{page-break-inside:auto;break-inside:auto;}");
+            // border-box so 1px stroke stays inside shell height (not clipped by page overflow).
             sb.Append(".mcp-card-shell{background:#fff;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;");
             sb.Append("height:100%;width:100%;box-sizing:border-box;}");
-            sb.Append(".mcp-card-hero{background:#f3f4f6;overflow:hidden;text-align:center;vertical-align:middle;position:relative;}");
+            // Print stays light: empty hero = same white as card body (no grey block).
+            sb.Append(".mcp-card-hero{background:#ffffff;overflow:hidden;text-align:center;vertical-align:middle;position:relative;}");
             sb.Append(".mcp-card-hero-blur{display:none!important;}");
             sb.Append(".mcp-card-hero-fg,.mcp-card-hero img{width:100%;height:100%;object-fit:cover;object-position:center center;");
-            sb.Append("border:0;display:block;background:#f3f4f6;}");
+            sb.Append("border:0;display:block;background:#ffffff;}");
             sb.Append(".mcp-card-body{overflow:hidden;background:#fff;box-sizing:border-box;}");
             sb.Append(".card-page-num{position:absolute;top:2mm;right:3mm;font-size:8px;line-height:10px;color:#9ca3af;font-weight:normal;}");
             sb.Append(".card-page:last-child{page-break-after:auto!important;break-after:auto!important}");
@@ -463,7 +473,6 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     sb.Append(WebUtility.HtmlEncode(pageTitle));
                     sb.Append("</td></tr>");
                 }
-                var cellH = Math.Max(10, rowH - gutter);
                 for (var r = 0; r < pageRows; r++)
                 {
                     sb.Append("<tr style=\"height:").Append(Mm(rowH)).Append("\">");
@@ -477,7 +486,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                         sb.Append("\" style=\"width:").Append(colPct);
                         sb.Append(";height:").Append(Mm(cellH));
                         sb.Append(";background:transparent;border:0;vertical-align:top;padding:0;\">");
-                        sb.Append("<div class=\"mcp-card-shell\" style=\"width:100%;height:").Append(Mm(cellH)).Append(";\">");
+                        sb.Append("<div class=\"mcp-card-shell\" style=\"width:100%;height:").Append(Mm(cellH)).Append(";box-sizing:border-box;\">");
                         if (card != null)
                             AppendFittedMcpCard(sb, card, cellH, perRow);
                         sb.Append("</div></td>");
@@ -514,23 +523,26 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                         image = field;
                     continue;
                 }
+                if (!CardSheet.HasMeaningfulDisplayValue(field.Value)
+                    && !(field.ImageBytes != null && field.ImageBytes.Length > 0))
+                    continue;
                 if (role is "idlink" or "id")
                 {
-                    if (id == null && !string.IsNullOrWhiteSpace(field.Value)) id = field;
+                    if (id == null) id = field;
                 }
                 else if (role == "title")
                 {
-                    if (title == null && !string.IsNullOrWhiteSpace(field.Value)) title = field;
+                    if (title == null) title = field;
                 }
                 else if (role is "statuspill" or "status")
                 {
-                    if (status == null && !string.IsNullOrWhiteSpace(field.Value)) status = field;
+                    if (status == null) status = field;
                 }
                 else if (role is "colorswatch" or "color")
                 {
-                    if (color == null && !string.IsNullOrWhiteSpace(field.Value)) color = field;
+                    if (color == null) color = field;
                 }
-                else if (role == "meta" && !string.IsNullOrWhiteSpace(field.Value))
+                else if (role == "meta")
                     metas.Add(field);
             }
 
@@ -542,7 +554,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             sb.Append("<tr style=\"height:").Append(Mm(imageBand)).Append("\"><td class=\"mcp-card-hero\" align=\"center\" valign=\"middle\" height=\"");
             sb.Append(Mm(imageBand)).Append("\" style=\"height:").Append(Mm(imageBand));
             sb.Append(";max-height:").Append(Mm(imageBand));
-            sb.Append(";background-color:#f3f4f6;text-align:center;vertical-align:middle;padding:0;overflow:hidden;\">");
+            sb.Append(";background-color:#ffffff;text-align:center;vertical-align:middle;padding:0;overflow:hidden;\">");
             if (image != null)
                 AppendCardImageFixedBox(sb, image, imageBand);
             sb.Append("</td></tr>");
@@ -585,21 +597,57 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             }
             else if (status != null && CardSheet.LooksLikeDateValue(status.Value))
                 metas.Insert(0, status);
-            foreach (var m in metas)
+            // Pack consecutive compact metas on one line (MCP · separators); long metas keep their own row.
+            var iMeta = 0;
+            while (iMeta < metas.Count)
             {
-                sb.Append("<div data-role=\"meta\" style=\"font-size:9px;line-height:11px;color:#6b7280;margin:1px 0 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;\">");
-                if (m.ShowLabel)
+                var m = metas[iMeta];
+                var lab = m.ShowLabel
+                    ? CardSheet.ShortenFieldLabel(
+                        !string.IsNullOrWhiteSpace(m.DisplayLabel) ? m.DisplayLabel : m.Label)
+                    : "";
+                var compact = m.Compact
+                    || CardSheet.LooksCompactDisplay(lab, m.Value, m.ShowLabel);
+                if (compact)
                 {
-                    var lab = !string.IsNullOrWhiteSpace(m.DisplayLabel) ? m.DisplayLabel : PrettyLabel(m.Label);
-                    if (!string.IsNullOrWhiteSpace(lab))
+                    sb.Append("<div data-role=\"meta-row\" style=\"font-size:9px;line-height:11px;color:#6b7280;margin:1px 0 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;\">");
+                    var first = true;
+                    while (iMeta < metas.Count)
+                    {
+                        var cur = metas[iMeta];
+                        var curLab = cur.ShowLabel
+                            ? CardSheet.ShortenFieldLabel(
+                                !string.IsNullOrWhiteSpace(cur.DisplayLabel) ? cur.DisplayLabel : cur.Label)
+                            : "";
+                        if (!(cur.Compact || CardSheet.LooksCompactDisplay(curLab, cur.Value, cur.ShowLabel)))
+                            break;
+                        if (!first)
+                            sb.Append("<span style=\"color:#9ca3af;\"> · </span>");
+                        first = false;
+                        if (cur.ShowLabel && !string.IsNullOrWhiteSpace(curLab))
+                        {
+                            sb.Append("<span style=\"font-weight:600;color:#9ca3af;margin-right:2px;\">");
+                            sb.Append(WebUtility.HtmlEncode(curLab));
+                            sb.Append("</span>");
+                        }
+                        sb.Append(WebUtility.HtmlEncode(CardSheet.FormatDisplayValue(cur.Value)));
+                        iMeta++;
+                    }
+                    sb.Append("</div>");
+                }
+                else
+                {
+                    sb.Append("<div data-role=\"meta\" style=\"font-size:9px;line-height:11px;color:#6b7280;margin:1px 0 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;\">");
+                    if (m.ShowLabel && !string.IsNullOrWhiteSpace(lab))
                     {
                         sb.Append("<span style=\"font-weight:600;color:#9ca3af;margin-right:3px;\">");
                         sb.Append(WebUtility.HtmlEncode(lab));
                         sb.Append("</span>");
                     }
+                    sb.Append(WebUtility.HtmlEncode(CardSheet.FormatDisplayValue(m.Value)));
+                    sb.Append("</div>");
+                    iMeta++;
                 }
-                sb.Append(WebUtility.HtmlEncode(CardSheet.FormatDisplayValue(m.Value)));
-                sb.Append("</div>");
             }
             sb.Append("</td></tr></table>");
             _ = perRow;

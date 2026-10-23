@@ -134,6 +134,40 @@ function applyFilters(
     return out;
 }
 
+/** Export/Print must not re-POST Result SpecJson.cardsHtml (can be MBs for large catalogs). */
+function slimExportSpecJson(raw: string | null | undefined, layout: string): string | undefined {
+    if (!raw?.trim()) return undefined;
+    try {
+        const obj = JSON.parse(raw) as Record<string, unknown>;
+        const polished = obj.polishedSpec ?? obj.PolishedSpec;
+        const slim: Record<string, unknown> = {};
+        if (polished) slim.polishedSpec = polished;
+        const fo = obj.filterOptions ?? obj.FilterOptions;
+        if (fo) slim.filterOptions = fo;
+        const title = obj.title ?? obj.Title;
+        if (title != null) slim.title = title;
+        const cpr = obj.cardsPerRow ?? obj.CardsPerRow;
+        const cr = obj.cardRows ?? obj.CardRows;
+        const pg = obj.pageGrid ?? obj.PageGrid;
+        if (typeof cpr === 'number' && cpr > 0) slim.cardsPerRow = cpr;
+        if (typeof cr === 'number' && cr > 0) slim.cardRows = cr;
+        if (typeof pg === 'string' && pg.trim()) slim.pageGrid = pg.trim();
+        // Dashboard / KPI / chart need structural spec (not painted HTML).
+        if (layout === 'kpi' || layout === 'dashboard' || layout === 'chart') {
+            if (obj.kpis != null || obj.Kpis != null) slim.kpis = obj.kpis ?? obj.Kpis;
+            if (obj.chart != null || obj.Chart != null) slim.chart = obj.chart ?? obj.Chart;
+            if (obj.charts != null || obj.Charts != null) slim.charts = obj.charts ?? obj.Charts;
+            if (obj.blocks != null || obj.Blocks != null) slim.blocks = obj.blocks ?? obj.Blocks;
+            if (obj.availableChartTypes != null) slim.availableChartTypes = obj.availableChartTypes;
+        }
+        if (layout === 'page' && (obj.views || obj.Views))
+            slim.views = obj.views ?? obj.Views;
+        return JSON.stringify(slim);
+    } catch {
+        return undefined;
+    }
+}
+
 function printHtmlInHiddenIframe(html: string): void {
     const prev = document.getElementById('agent-result-print-frame');
     if (prev) prev.remove();
@@ -275,14 +309,39 @@ export const ResultChrome: React.FC<Props> = ({
         : layoutNorm === 'kpi_dashboard' ? 'kpi'
         : layoutNorm;
 
-    // Always send SpecJson (kpi charts + polished columns after reopen).
-    const exportSpecJson = event.SpecJson || undefined;
-    // Prefer chrome-filtered rows; fall back to full Result DataJson for reopen/export.
+    // Slim SpecJson: polished bindings only — never re-POST cardsHtml (large catalogs).
+    const exportSpecJson = useMemo(
+        () => slimExportSpecJson(event.SpecJson || event.MetaJson, exportLayout),
+        [event.SpecJson, event.MetaJson, exportLayout],
+    );
+    // Unfiltered → rely on server session dataset (omit MBs of RecordsJson). Filtered → send subset.
+    const filtersActive = filteredRows.length !== allRows.length;
     const exportRecordsJson = useMemo(() => {
+        if (!filtersActive) return undefined;
         if (filteredRows.length > 0) return JSON.stringify(filteredRows);
-        if (event.DataJson?.trim()) return event.DataJson.trim();
         return undefined;
-    }, [filteredRows, event.DataJson]);
+    }, [filtersActive, filteredRows]);
+    // Fallback when session cache is gone (chat reopen): full DataJson once.
+    const exportRecordsFallback = useMemo(() => {
+        if (event.DataJson?.trim()) return event.DataJson.trim();
+        if (filteredRows.length > 0) return JSON.stringify(filteredRows);
+        return undefined;
+    }, [event.DataJson, filteredRows]);
+
+    const buildExportArgs = (format: string, withRecords: boolean) => ({
+        skillKey,
+        sessionKey: sessionKey!,
+        format,
+        layout: exportLayout,
+        title,
+        ...(cardsPerRow > 0 ? { cardsPerRow } : {}),
+        ...(cardRows > 0 ? { cardRows } : {}),
+        ...(pageGrid ? { pageGrid } : {}),
+        ...(exportSpecJson ? { specJson: exportSpecJson } : {}),
+        ...(withRecords && (exportRecordsJson || exportRecordsFallback)
+            ? { recordsJson: exportRecordsJson || exportRecordsFallback }
+            : {}),
+    });
 
     const runExport = async (format: string) => {
         if (!sessionKey) {
@@ -293,19 +352,11 @@ export const ResultChrome: React.FC<Props> = ({
         setMsg(null);
         setExportOpen(false);
         try {
-            const res = await genericAgentSvc.ExportResult({
-                skillKey,
-                sessionKey,
-                format,
-                layout: exportLayout,
-                title,
-                datasetName: undefined,
-                ...(cardsPerRow > 0 ? { cardsPerRow } : {}),
-                ...(cardRows > 0 ? { cardRows } : {}),
-                ...(pageGrid ? { pageGrid } : {}),
-                ...(exportSpecJson ? { specJson: exportSpecJson } : {}),
-                ...(exportRecordsJson ? { recordsJson: exportRecordsJson } : {}),
-            });
+            let res = await genericAgentSvc.ExportResult(buildExportArgs(format, filtersActive));
+            // Session analyze cache empty after reopen → retry with rows once (SpecJson stays slim).
+            if (!res?.path && !filtersActive && exportRecordsFallback) {
+                res = await genericAgentSvc.ExportResult(buildExportArgs(format, true));
+            }
             if (res?.path) {
                 setMsg(`Exported ${format.toUpperCase()}: ${res.path}`);
                 await genericAgentSvc.DownloadAgentFile(skillKey, sessionKey, res.path);
@@ -327,19 +378,10 @@ export const ResultChrome: React.FC<Props> = ({
         setBusy('print');
         setMsg(null);
         try {
-            // Same layout as Export (page → grid+cards; kpi/dashboard → dashboard HTML; not cards).
-            const res = await genericAgentSvc.ExportResult({
-                skillKey,
-                sessionKey,
-                format: 'html',
-                layout: exportLayout,
-                title,
-                ...(cardsPerRow > 0 ? { cardsPerRow } : {}),
-                ...(cardRows > 0 ? { cardRows } : {}),
-                ...(pageGrid ? { pageGrid } : {}),
-                ...(exportSpecJson ? { specJson: exportSpecJson } : {}),
-                ...(exportRecordsJson ? { recordsJson: exportRecordsJson } : {}),
-            });
+            let res = await genericAgentSvc.ExportResult(buildExportArgs('html', filtersActive));
+            if (!res?.path && !filtersActive && exportRecordsFallback) {
+                res = await genericAgentSvc.ExportResult(buildExportArgs('html', true));
+            }
             if (!res?.path) {
                 setMsg(res?.error || 'Print failed.');
                 return;
@@ -351,7 +393,10 @@ export const ResultChrome: React.FC<Props> = ({
             }
             printHtmlInHiddenIframe(html);
         } catch (e: unknown) {
-            setMsg(e instanceof Error ? e.message : 'Print failed.');
+            const raw = e instanceof Error ? e.message : 'Print failed.';
+            setMsg(/failed to fetch/i.test(raw)
+                ? 'Print failed (network). Try again; if it persists, filter fewer rows.'
+                : raw);
         } finally {
             setBusy(null);
         }

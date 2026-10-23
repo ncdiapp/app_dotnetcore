@@ -133,14 +133,16 @@ h1{margin:0 0 12px;font-size:18px;font-weight:700;text-align:center}
 <style>
 body{margin:0;padding:12px;font-family:Arial,Helvetica,sans-serif;background:#f7f8fa;color:#1a1a1a}
 h1{margin:0 0 12px;font-size:18px;font-weight:700;text-align:center}
+/* No max-height/overflow here — Print must show all rows (parent Result pane scrolls on screen). */
 table{border-collapse:collapse;width:100%;background:#fff}
 th,td{border:1px solid #dddddd;padding:4px 8px;font-size:10pt;vertical-align:top}
 th{background:#3d4f5f;color:#ffffff;font-weight:700;text-align:left}
+td img{max-width:120px;max-height:80px;width:auto;height:auto;object-fit:contain;display:block;border:0}
 </style>
 </head>
 <body>
 <h1 data-role=""title"">{{ title }}</h1>
-<div data-role=""grid-scroll"" style=""max-height:min(80vh,800px);overflow:auto"">
+<div data-role=""grid-scroll"">
 <table data-role=""grid"">
 <thead><tr>
 {{ for col in columns }}
@@ -151,7 +153,13 @@ th{background:#3d4f5f;color:#ffffff;font-weight:700;text-align:left}
 {{ for row in rows }}
 <tr>
 {{ for cell in row }}
-<td data-role=""value"">{{ cell.text }}</td>
+<td data-role=""{{ if cell.is_image }}image{{ else }}value{{ end }}"">
+{{ if cell.is_image && cell.image_src }}
+<img src=""{{ cell.image_src }}"" alt=""""/>
+{{ else }}
+{{ cell.text }}
+{{ end }}
+</td>
 {{ end }}
 </tr>
 {{ end }}
@@ -163,14 +171,14 @@ th{background:#3d4f5f;color:#ffffff;font-weight:700;text-align:left}
 
         /// <summary>
         /// Cards LAYOUT — MCP Client gallery shell (hero + blue id + name + status + meta).
-        /// Marker agent-cards-mcp-v7: show_label on ambiguous meta (dates/positions siblings).
+        /// Marker agent-cards-mcp-v8: short labels + compact meta packing.
         /// </summary>
         public const string CardsNoneInteractive = @"<!DOCTYPE html>
 <html>
 <head>
 <meta charset=""utf-8""/>
 <title>{{ title }}</title>
-<!-- agent-cards-mcp-v7 -->
+<!-- agent-cards-mcp-v8 -->
 <link rel=""stylesheet"" href=""/agent-ui/agent-cards.css""/>
 </head>
 <body>
@@ -182,7 +190,7 @@ th{background:#3d4f5f;color:#ffffff;font-weight:700;text-align:left}
 <div class=""agent-card-hero"" data-role=""image"">
 {{ for field in card.fields }}
 {{ if field.is_image && field.image_src && (field.role == ""primaryImage"" || field.role == ""primaryimage"") }}
-<img class=""agent-card-hero-img"" src=""{{ field.image_src }}"" alt="""" onerror=""this.setAttribute('data-broken','1');this.removeAttribute('src');""/>
+<img class=""agent-card-hero-img"" src=""{{ field.image_src }}"" alt="""" loading=""lazy"" decoding=""async"" onerror=""this.setAttribute('data-broken','1');this.removeAttribute('src');""/>
 {{ end }}
 {{ end }}
 </div>
@@ -197,10 +205,16 @@ th{background:#3d4f5f;color:#ffffff;font-weight:700;text-align:left}
 {{ if field.value }}<div class=""agent-card-color"" data-role=""colorSwatch""><span class=""agent-card-swatch"" aria-hidden=""true""></span>{{ if field.show_label }}<span class=""agent-card-field-label"">{{ field.display_label }}</span>{{ end }}{{ field.value }}</div>{{ end }}
 {{ else if field.role == ""statusPill"" || field.role == ""statuspill"" }}
 {{ if field.value }}<span class=""agent-card-status"" data-role=""statusPill"" data-status=""{{ field.value }}"">{{ if field.show_label }}<span class=""agent-card-field-label"">{{ field.display_label }}</span>{{ end }}{{ field.value }}</span>{{ end }}
+{{ end }}
+{{ end }}
+<div class=""agent-card-meta-wrap"" data-role=""meta-wrap"">
+{{ for field in card.fields }}
+{{ if field.is_image }}
 {{ else if field.role == ""meta"" }}
-{{ if field.value }}<div class=""agent-card-meta"" data-role=""meta"">{{ if field.show_label }}<span class=""agent-card-field-label"">{{ field.display_label }}</span>{{ end }}{{ field.value }}</div>{{ end }}
+{{ if field.value }}<span class=""agent-card-meta{{ if field.compact }} agent-card-meta-compact{{ end }}"" data-role=""meta"">{{ if field.show_label }}<span class=""agent-card-field-label"">{{ field.display_label }}</span>{{ end }}{{ field.value }}</span>{{ end }}
 {{ end }}
 {{ end }}
+</div>
 </div>
 </article>
 {{ end }}

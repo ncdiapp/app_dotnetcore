@@ -1225,6 +1225,8 @@ public class GenericAgentController : SecureBaseController
             if (string.IsNullOrEmpty(pageGrid) && cpr > 0 && cr > 0)
                 pageGrid = cpr + "x" + cr;
             var specJson = string.IsNullOrWhiteSpace(body.SpecJson) ? null : body.SpecJson.Trim();
+            // Drop painted HTML from SpecJson if a fat client still sent cardsHtml/kpiHtml.
+            specJson = StripHeavyUiFromExportSpecJson(specJson);
             // Restored Result carries DataJson; session analyze cache is empty after reopen.
             var recordsJson = string.IsNullOrWhiteSpace(body.RecordsJson) ? null : body.RecordsJson.Trim();
             string json = ext switch
@@ -1259,6 +1261,29 @@ public class GenericAgentController : SecureBaseController
             result.Object = new GenericAgentExportResultDto { Error = ex.Message };
         }
         return result;
+    }
+
+    /// <summary>
+    /// Result SpecJson often embeds full cardsHtml/kpiHtml. Export only needs polishedSpec + grid hints.
+    /// </summary>
+    private static string StripHeavyUiFromExportSpecJson(string specJson)
+    {
+        if (string.IsNullOrWhiteSpace(specJson)) return specJson;
+        try
+        {
+            var obj = JObject.Parse(specJson);
+            foreach (var key in new[]
+                     {
+                         "cardsHtml", "CardsHtml", "kpiHtml", "KpiHtml",
+                         "chartHostHtml", "ChartHostHtml", "gridHostHtml", "GridHostHtml"
+                     })
+                obj.Remove(key);
+            return obj.ToString(Newtonsoft.Json.Formatting.None);
+        }
+        catch
+        {
+            return specJson;
+        }
     }
 
     [HttpGet]

@@ -275,15 +275,25 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     var prop = FindProperty(obj, b.Name);
                     if (prop == null) continue;
                     var value = ValueText(prop.Value, out var image);
+                    var isImage = image || IsImageValue(value, prop.Name);
+                    // Empty text → skip (status ::before / color swatch would show a lone dot).
+                    if (!isImage && !HasMeaningfulDisplayValue(value)) continue;
+                    if (!isImage) value = FormatDisplayValue(value);
+                    var displayLabel = !string.IsNullOrWhiteSpace(b.Label)
+                        ? ShortenFieldLabel(b.Label)
+                        : (b.ShowLabel ? ShortenFieldLabel(prop.Name) : null);
+                    var compact = b.Compact
+                        || LooksCompactDisplay(displayLabel, value, b.ShowLabel);
                     fields.Add(new CardField
                     {
                         Label = prop.Name,
                         Value = value,
-                        IsImage = image || IsImageValue(value, prop.Name),
+                        IsImage = isImage,
                         Role = string.IsNullOrWhiteSpace(b.Role) ? "body" : b.Role,
                         TypographyHint = b.TypographyHint ?? "",
                         ShowLabel = b.ShowLabel,
-                        DisplayLabel = string.IsNullOrWhiteSpace(b.Label) ? null : b.Label.Trim()
+                        DisplayLabel = displayLabel,
+                        Compact = compact
                     });
                 }
             }
@@ -441,16 +451,75 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Card face label: drop redundant Date/Time suffixes (Created Date → Created, Revised_Date → Revised).
+        /// </summary>
+        public static string ShortenFieldLabel(string nameOrLabel)
+        {
+            var pretty = PrettyFieldLabel(nameOrLabel);
+            if (string.IsNullOrWhiteSpace(pretty)) return "";
+            var parts = pretty.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+            // Strip trailing noise: Date, Time, Datetime, Dt, On (keep "Created" / "Revised").
+            while (parts.Count > 1)
+            {
+                var last = parts[^1];
+                if (last.Equals("Date", StringComparison.OrdinalIgnoreCase)
+                    || last.Equals("Time", StringComparison.OrdinalIgnoreCase)
+                    || last.Equals("Datetime", StringComparison.OrdinalIgnoreCase)
+                    || last.Equals("Timestamp", StringComparison.OrdinalIgnoreCase)
+                    || last.Equals("Dt", StringComparison.OrdinalIgnoreCase)
+                    || last.Equals("On", StringComparison.OrdinalIgnoreCase))
+                {
+                    parts.RemoveAt(parts.Count - 1);
+                    continue;
+                }
+                break;
+            }
+            // "Date Created" → "Created"
+            if (parts.Count >= 2 && parts[0].Equals("Date", StringComparison.OrdinalIgnoreCase))
+                parts.RemoveAt(0);
+            return string.Join(' ', parts);
+        }
+
+        /// <summary>
+        /// True when label+value are short enough to share a meta row (MCP-style · packing).
+        /// </summary>
+        public static bool LooksCompactDisplay(string displayLabel, string value, bool showLabel)
+        {
+            var v = FormatDisplayValue(value ?? "");
+            if (string.IsNullOrWhiteSpace(v)) return false;
+            var len = v.Length;
+            if (showLabel && !string.IsNullOrWhiteSpace(displayLabel))
+                len += displayLabel.Trim().Length + 1;
+            return len <= 24;
+        }
+
         /// <summary>ISO / DateTime JSON → short display date (e.g. Jun 24, 2026). Other text unchanged.</summary>
         public static string FormatDisplayValue(string value)
         {
-            if (string.IsNullOrWhiteSpace(value)) return value ?? "";
+            if (string.IsNullOrWhiteSpace(value)) return "";
             var t = value.Trim().Trim('"', '\'');
-            if (!LooksLikeDateValue(t)) return value.Trim();
+            // PLM multi-value cells often end with ";" — drop trailing separators for card face.
+            while (t.Length > 0 && (t[^1] == ';' || t[^1] == ','))
+                t = t[..^1].TrimEnd();
+            if (string.IsNullOrWhiteSpace(t)) return "";
+            if (!LooksLikeDateValue(t)) return t;
             if (DateTime.TryParse(t, CultureInfo.InvariantCulture,
                     DateTimeStyles.RoundtripKind, out var dt))
                 return dt.ToString("MMM d, yyyy", CultureInfo.InvariantCulture);
             return t;
+        }
+
+        /// <summary>False for blank / punctuation-only — do not paint swatch/status/meta (avoids lone dots).</summary>
+        public static bool HasMeaningfulDisplayValue(string value)
+        {
+            var t = FormatDisplayValue(value);
+            if (string.IsNullOrWhiteSpace(t)) return false;
+            if (t.Equals("null", StringComparison.OrdinalIgnoreCase)) return false;
+            if (t.Equals("n/a", StringComparison.OrdinalIgnoreCase)) return false;
+            if (t.Equals("-", StringComparison.OrdinalIgnoreCase)) return false;
+            if (t.Equals("—", StringComparison.OrdinalIgnoreCase)) return false;
+            return true;
         }
 
         public static bool LooksLikeDateValue(string value)
@@ -531,5 +600,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         public bool ShowLabel { get; set; }
         /// <summary>Optional short label from polish; when null and ShowLabel, use column Label.</summary>
         public string DisplayLabel { get; set; }
+        /// <summary>Short value — may share a meta row with siblings.</summary>
+        public bool Compact { get; set; }
     }
 }

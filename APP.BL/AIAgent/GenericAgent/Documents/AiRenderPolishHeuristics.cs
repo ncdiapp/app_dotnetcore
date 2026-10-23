@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using Newtonsoft.Json.Linq;
 
 namespace App.BL.AIAgent.GenericAgent.Documents
@@ -79,6 +78,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             TryPick(c => c.Theme >= 40, max: AiPolishedRenderSpec.MaxDisplayFields);
 
             ApplyShowLabels(picked);
+            ApplyCompact(picked, sample);
 
             var fields = new List<AiPolishFieldBinding>();
             foreach (var c in picked.Take(AiPolishedRenderSpec.MaxDisplayFields))
@@ -89,7 +89,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     Role = RoleFor(c.Kind, fields),
                     TypographyHint = TypoFor(c.Kind),
                     ShowLabel = c.ShowLabel,
-                    Label = c.ShowLabel ? ShortLabel(c.Name) : null
+                    Label = c.ShowLabel ? CardSheet.ShortenFieldLabel(c.Name) : null,
+                    Compact = c.Compact
                 });
             }
 
@@ -213,6 +214,28 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             }
         }
 
+        private static void ApplyCompact(List<ColScore> picked, List<JObject> sample)
+        {
+            if (picked == null) return;
+            foreach (var p in picked)
+            {
+                if (p.Kind is FieldKind.Id or FieldKind.Title) continue;
+                var label = p.ShowLabel ? CardSheet.ShortenFieldLabel(p.Name) : "";
+                var maxLen = 0;
+                foreach (var row in (sample ?? new List<JObject>()).Take(12))
+                {
+                    var raw = row?[p.Name]?.ToString();
+                    if (string.IsNullOrWhiteSpace(raw)) continue;
+                    var display = CardSheet.FormatDisplayValue(raw);
+                    var len = display.Length + (p.ShowLabel ? label.Length + 1 : 0);
+                    if (len > maxLen) maxLen = len;
+                }
+                // Short chips (S/S 2025, Men's, Created Jan 15, 2025) share a meta row.
+                p.Compact = maxLen > 0 && maxLen <= 24
+                    || (maxLen == 0 && p.Kind is FieldKind.Date or FieldKind.Position or FieldKind.Meta);
+            }
+        }
+
         private static string RoleFor(FieldKind kind, List<AiPolishFieldBinding> existing)
         {
             bool Has(string role) => existing.Any(f =>
@@ -235,22 +258,6 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             FieldKind.Status => "status",
             _ => "muted-small"
         };
-
-        private static string ShortLabel(string name)
-        {
-            if (string.IsNullOrWhiteSpace(name)) return "";
-            var parts = name.Trim().Replace('-', ' ').Split(new[] { '_', ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            var sb = new StringBuilder();
-            foreach (var part in parts)
-            {
-                if (sb.Length > 0) sb.Append(' ');
-                if (part.Length == 1)
-                    sb.Append(char.ToUpperInvariant(part[0]));
-                else
-                    sb.Append(char.ToUpperInvariant(part[0])).Append(part.Substring(1));
-            }
-            return sb.ToString();
-        }
 
         private static string PickImageField(
             List<string> cols, List<JObject> sample, Dictionary<string, double> fillRates)
@@ -366,6 +373,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             public double Fill;
             public FieldKind Kind;
             public bool ShowLabel;
+            public bool Compact;
         }
     }
 }
