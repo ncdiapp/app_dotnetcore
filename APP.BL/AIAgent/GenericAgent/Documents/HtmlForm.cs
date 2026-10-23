@@ -152,12 +152,18 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             if (!string.IsNullOrEmpty(table.Title))
                 CellRow(sb, "section", 3, DocumentStyles.NestedCss, table.Title);
             sb.Append("<tr><td style=\"padding:0;\">");
+            // Horizontal rules only (no vertical column borders) — matches AI Chat Result grid.
             sb.Append("<table data-role=\"grid\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"width:100%;border-collapse:collapse;\">");
             sb.Append("<tr>");
-            foreach (var col in table.Columns)
+            for (var hi = 0; hi < table.Columns.Count; hi++)
             {
+                var field = table.Columns[hi];
+                var header = table.DisplayHeaders != null && hi < table.DisplayHeaders.Count
+                             && !string.IsNullOrWhiteSpace(table.DisplayHeaders[hi])
+                    ? table.DisplayHeaders[hi]
+                    : field;
                 sb.Append("<th style=\"").Append(DocumentStyles.HeaderCss).Append("\">");
-                sb.Append(WebUtility.HtmlEncode(col ?? ""));
+                sb.Append(WebUtility.HtmlEncode(header ?? ""));
                 sb.Append("</th>");
             }
             sb.Append("</tr>");
@@ -168,29 +174,49 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 {
                     var cell = i < row.Count ? row[i] : new FormCell();
                     var colName = i < table.Columns.Count ? table.Columns[i] : null;
-                    AppendGridCell(sb, cell, colName);
+                    var format = table.Formats != null && i < table.Formats.Count ? table.Formats[i] : null;
+                    AppendGridCell(sb, cell, colName, format);
                 }
                 sb.Append("</tr>");
             }
             sb.Append("</table></td></tr>");
         }
 
-        private static void AppendGridCell(StringBuilder sb, FormCell cell, string columnName = null)
+        private static void AppendGridCell(StringBuilder sb, FormCell cell, string columnName = null, string format = null)
         {
             cell ??= new FormCell();
             var text = cell.Text ?? "";
             var isImage = cell.IsImage
                           || (cell.ImageBytes != null && cell.ImageBytes.Length > 0)
-                          || CardSheet.IsRenderableImage(text, columnName, cell.IsImage);
+                          || CardSheet.IsRenderableImage(text, columnName, cell.IsImage)
+                          || string.Equals(format, "image", StringComparison.OrdinalIgnoreCase);
+            var fmt = AiPolishedRenderSpec.NormalizeColumnFormat(format);
             var css = cell.IsNumber && !isImage ? DocumentStyles.NumberCss : DocumentStyles.CellCss;
+            if (fmt is "delta" or "percent")
+                css = DocumentStyles.NumberCss;
+
             sb.Append("<td");
-            if (cell.IsNumber && !isImage) sb.Append(" data-num=\"1\"");
+            if ((cell.IsNumber || fmt is "delta" or "percent" or "number" or "currency") && !isImage)
+                sb.Append(" data-num=\"1\"");
             if (isImage) sb.Append(" data-role=\"image\"");
+            if (!string.IsNullOrEmpty(fmt)) sb.Append(" data-format=\"").Append(WebUtility.HtmlEncode(fmt)).Append("\"");
             sb.Append(" style=\"").Append(css).Append("\">");
             if (isImage)
                 AppendGridImage(sb, cell, text.Trim().Trim('"', '\''));
             else
-                sb.Append(WebUtility.HtmlEncode(FormatGridCellText(text)));
+            {
+                var html = FormGridCellPolish.FormatHtml(text, fmt);
+                if (!string.IsNullOrEmpty(html))
+                    sb.Append(html);
+                else
+                {
+                    var plain = FormGridCellPolish.FormatPlainText(text, fmt);
+                    if (string.IsNullOrEmpty(plain))
+                        sb.Append("&nbsp;");
+                    else
+                        sb.Append(WebUtility.HtmlEncode(plain));
+                }
+            }
             sb.Append("</td>");
         }
 

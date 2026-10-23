@@ -1,0 +1,28 @@
+/* AI Chat Result grid only — horizontal rules, no vertical column borders. */
+.agent-result-grid .wj-flexgrid .wj-cell {
+  border-left: none !important;
+  border-right: none !important;
+  /* Vertically center text / cell templates (images, delta chips). */
+  display: flex !important;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.agent-result-grid .wj-flexgrid .wj-header.wj-cell {
+  border-left: none !important;
+  border-right: none !important;
+  display: flex !important;
+  align-items: center;
+}
+
+.agent-result-grid .wj-flexgrid .wj-cell:not(.wj-header) {
+  border-bottom-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+/* Cell templates often wrap in a block; keep them centered in the flex cell. */
+.agent-result-grid .wj-flexgrid .wj-cell > div {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}

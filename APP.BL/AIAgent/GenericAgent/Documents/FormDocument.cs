@@ -116,6 +116,12 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             if (indexes.Count == 0 || indexes.Count == table.Columns.Count) return this;
 
             var newCols = indexes.Select(i => table.Columns[i]).ToList();
+            List<string> newHeaders = null;
+            List<string> newFormats = null;
+            if (table.DisplayHeaders != null && table.DisplayHeaders.Count == table.Columns.Count)
+                newHeaders = indexes.Select(i => table.DisplayHeaders[i]).ToList();
+            if (table.Formats != null && table.Formats.Count == table.Columns.Count)
+                newFormats = indexes.Select(i => table.Formats[i]).ToList();
             var newRows = new List<List<FormCell>>();
             if (table.Rows != null)
             {
@@ -127,7 +133,52 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     newRows.Add(cells);
                 }
             }
-            return FromTable(Title, newCols, newRows);
+            var projected = FromTable(Title, newCols, newRows);
+            var dest = FirstGridTable(projected);
+            if (dest != null)
+            {
+                dest.DisplayHeaders = newHeaders;
+                dest.Formats = newFormats;
+            }
+            return projected;
+        }
+
+        /// <summary>
+        /// Apply LLM short headers + cell formats onto the first grid (field keys stay in Columns).
+        /// </summary>
+        public void ApplyColumnPolish(IList<AiPolishColumnBinding> polishColumns)
+        {
+            if (polishColumns == null || polishColumns.Count == 0) return;
+            var table = FirstGridTable(this);
+            if (table?.Columns == null || table.Columns.Count == 0) return;
+
+            var headers = new List<string>(table.Columns.Count);
+            var formats = new List<string>(table.Columns.Count);
+            for (var i = 0; i < table.Columns.Count; i++)
+            {
+                var field = table.Columns[i];
+                var hit = polishColumns.FirstOrDefault(c =>
+                    c != null && string.Equals(c.Field, field, StringComparison.OrdinalIgnoreCase));
+                headers.Add(!string.IsNullOrWhiteSpace(hit?.Header) ? hit.Header.Trim() : field);
+                formats.Add(AiPolishedRenderSpec.NormalizeColumnFormat(hit?.Format));
+            }
+            table.DisplayHeaders = headers;
+            table.Formats = formats;
+        }
+
+        private static FormTable FirstGridTable(FormDocument doc)
+        {
+            if (doc?.Sections == null) return null;
+            foreach (var sec in doc.Sections)
+            {
+                if (sec?.Tables == null) continue;
+                foreach (var t in sec.Tables)
+                {
+                    if (t?.Columns != null && t.Columns.Count > 0)
+                        return t;
+                }
+            }
+            return null;
         }
 
         /// <summary>Column count of the first grid table, or 0.</summary>
@@ -359,6 +410,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 {
                     Title = table.Title,
                     Columns = table.Columns.ToList(),
+                    DisplayHeaders = table.DisplayHeaders?.ToList(),
+                    Formats = table.Formats?.ToList(),
                     Rows = table.Rows.Take(take).Select(r => r.ToList()).ToList()
                 });
             }
@@ -371,7 +424,12 @@ namespace App.BL.AIAgent.GenericAgent.Documents
     public sealed class FormTable
     {
         public string Title { get; set; } = "";
+        /// <summary>Field / binding keys (stable).</summary>
         public List<string> Columns { get; set; } = new List<string>();
+        /// <summary>Optional LLM short headers parallel to Columns; null → use Columns.</summary>
+        public List<string> DisplayHeaders { get; set; }
+        /// <summary>Optional cell formats parallel to Columns (delta|percent|date|…).</summary>
+        public List<string> Formats { get; set; }
         public List<List<FormCell>> Rows { get; set; } = new List<List<FormCell>>();
     }
 

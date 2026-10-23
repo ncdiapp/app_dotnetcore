@@ -34,14 +34,19 @@ export function isUrlValue(value: unknown): boolean {
 }
 
 /**
- * Image rendering field = field name means image AND value is a URL (or AppFile id).
- * App /api/… URLs use session fetch; other http(s) URLs load directly.
+ * Classify image cell value for rendering.
+ * Prefer LLM format=image (`trustFormat`) — do not require English field-name heuristics.
+ * Without trustFormat, keeps legacy name gate for non-Result callers.
  */
-export function cellImageKind(value: unknown, columnName?: string | null): 'resource' | 'external' | null {
-    if (!isImageColumnName(columnName)) return null;
+export function cellImageKind(
+    value: unknown,
+    columnName?: string | null,
+    opts?: { trustFormat?: boolean },
+): 'resource' | 'external' | null {
+    if (!opts?.trustFormat && !isImageColumnName(columnName)) return null;
     const text = unwrapQuoted(value);
     if (!text) return null;
-    // Numeric AppFile id in an Image/Sketch column.
+    // Numeric AppFile id when column is known image (LLM or legacy name).
     if (/^\d+$/.test(text) && Number(text) > 0) return 'resource';
     if (!isUrlValue(text)) return null;
     if (RESOURCE_API.test(text) || (text.startsWith('/api/') && /\/(?:image|regular|thumbnail|latest)\b/i.test(text)))

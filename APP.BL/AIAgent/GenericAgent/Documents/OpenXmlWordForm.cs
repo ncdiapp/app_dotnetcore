@@ -190,15 +190,25 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             var columns = Math.Max(1, source.Columns?.Count ?? 1);
             var table = new Table(TableProps(columns));
             var header = new TableRow();
-            foreach (var column in source.Columns ?? new List<string>())
-                header.Append(TextCell(column ?? "", true));
+            for (var hi = 0; hi < (source.Columns?.Count ?? 0); hi++)
+            {
+                var field = source.Columns[hi];
+                var label = source.DisplayHeaders != null && hi < source.DisplayHeaders.Count
+                            && !string.IsNullOrWhiteSpace(source.DisplayHeaders[hi])
+                    ? source.DisplayHeaders[hi]
+                    : field;
+                header.Append(TextCell(label ?? "", true));
+            }
+            if ((source.Columns?.Count ?? 0) == 0)
+                header.Append(TextCell("", true));
             table.Append(header);
             foreach (var line in source.Rows ?? new List<List<FormCell>>())
             {
+                var exportLine = FormGridCellPolish.FormatExportRow(line, source.Formats);
                 var row = new TableRow();
                 for (var i = 0; i < columns; i++)
                 {
-                    var cell = i < line.Count ? line[i] : null;
+                    var cell = i < exportLine.Count ? exportLine[i] : null;
                     row.Append(ValueCell(images, cell?.Text, cell?.ImageBytes));
                 }
                 table.Append(row);

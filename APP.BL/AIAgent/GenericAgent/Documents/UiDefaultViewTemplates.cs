@@ -125,6 +125,10 @@ h1{margin:0 0 12px;font-size:18px;font-weight:700;text-align:center}
 </body>
 </html>";
 
+        /// <summary>
+        /// None-interactive table — visual parity with Interactive Result Wijmo:
+        /// short LLM headers, horizontal rules only, delta/percent cell polish via cell.html.
+        /// </summary>
         public const string TableNoneInteractive = @"<!DOCTYPE html>
 <html>
 <head>
@@ -133,17 +137,18 @@ h1{margin:0 0 12px;font-size:18px;font-weight:700;text-align:center}
 <style>
 body{margin:0;padding:12px;font-family:Arial,Helvetica,sans-serif;background:#f7f8fa;color:#1a1a1a}
 h1{margin:0 0 12px;font-size:18px;font-weight:700;text-align:center}
-/* No max-height/overflow here — Print must show all rows (parent Result pane scrolls on screen). */
+/* No max-height/overflow — Print shows all rows (Result pane scrolls on screen). */
 table{border-collapse:collapse;width:100%;background:#fff}
-th,td{border:1px solid #dddddd;padding:4px 8px;font-size:10pt;vertical-align:top}
-th{background:#3d4f5f;color:#ffffff;font-weight:700;text-align:left}
+th,td{border:none;border-bottom:1px solid #f1f5f9;padding:6px 8px;font-size:10pt;vertical-align:middle;line-height:1.25}
+th{background:#3d4f5f;color:#ffffff;font-weight:700;text-align:left;border-bottom:1px solid #e2e8f0}
+td[data-num=""1""]{text-align:right}
 td img{max-width:120px;max-height:80px;width:auto;height:auto;object-fit:contain;display:block;border:0}
 </style>
 </head>
 <body>
 <h1 data-role=""title"">{{ title }}</h1>
 <div data-role=""grid-scroll"">
-<table data-role=""grid"">
+<table data-role=""grid"" class=""agent-result-grid"">
 <thead><tr>
 {{ for col in columns }}
 <th data-role=""label"">{{ col }}</th>
@@ -153,9 +158,11 @@ td img{max-width:120px;max-height:80px;width:auto;height:auto;object-fit:contain
 {{ for row in rows }}
 <tr>
 {{ for cell in row }}
-<td data-role=""{{ if cell.is_image }}image{{ else }}value{{ end }}"">
+<td data-role=""{{ if cell.is_image }}image{{ else }}value{{ end }}""{{ if cell.is_number }} data-num=""1""{{ end }}{{ if cell.format }} data-format=""{{ cell.format }}""{{ end }}>
 {{ if cell.is_image && cell.image_src }}
-<img src=""{{ cell.image_src }}"" alt=""""/>
+<img src=""{{ cell.image_src }}"" alt="""" onerror=""this.setAttribute('data-broken','1');this.removeAttribute('src');this.style.display='none';""/>
+{{ else if cell.html && cell.html.size > 0 }}
+{{ cell.html }}
 {{ else }}
 {{ cell.text }}
 {{ end }}

@@ -5,6 +5,8 @@ import { FlexGridFilter } from '@mescius/wijmo.react.grid.filter';
 import '@mescius/wijmo.styles/wijmo.css';
 import FlexGridAddOn from '../../common/FlexGridAddOn';
 import { useTheme } from '../../../redux/hooks/useTheme';
+import './agent-result-grid.css';
+import { FormattedResultCell, normalizeCellFormat } from './cellFormat';
 import { DataRenderImage } from './DataRenderImage';
 import { formatDateValue } from './dateValue';
 import { cellImageKind, unwrapQuoted } from './imageValue';
@@ -64,33 +66,25 @@ const DataRenderGridWijmoInner: React.FC<Props> = ({ colDefs, rowData, title, me
         () => visibleCols.map(c => c.field),
         [visibleCols],
     );
+    // Typed columns come only from AI polish dataType/format — no field-name / sample heuristics.
     const imageFields = useMemo(() => {
         const fields = new Set<string>();
         for (const col of visibleCols) {
-            if (col.dataType === 'image'
-                || (rowData ?? []).some(row => cellImageKind(row?.[col.field], col.field) != null))
+            if (normalizeCellFormat(col.dataType) === 'image')
                 fields.add(col.field);
         }
         return fields;
-    }, [visibleCols, rowData]);
-    const dateFields = useMemo(() => {
-        const fields = new Set<string>();
+    }, [visibleCols]);
+
+    const formatFields = useMemo(() => {
+        const map = new Map<string, string>();
         for (const col of visibleCols) {
-            if (imageFields.has(col.field)) continue;
-            if (col.dataType === 'date') {
-                fields.add(col.field);
-                continue;
-            }
-            const samples = (rowData ?? [])
-                .map(row => row?.[col.field])
-                .filter(v => v != null && String(v).trim() !== '');
-            if (samples.length === 0) continue;
-            const hits = samples.filter(v => formatDateValue(v) != null).length;
-            if (hits >= Math.max(1, Math.ceil(samples.length * 0.4)))
-                fields.add(col.field);
+            const kind = normalizeCellFormat(col.dataType);
+            if (kind === 'delta' || kind === 'percent' || kind === 'date')
+                map.set(col.field, kind);
         }
-        return fields;
-    }, [visibleCols, rowData, imageFields]);
+        return map;
+    }, [visibleCols]);
 
     const total = meta?.total ?? rowData.length;
     const rowHeight = imageFields.size > 0 ? 64 : 28;
@@ -138,7 +132,7 @@ const DataRenderGridWijmoInner: React.FC<Props> = ({ colDefs, rowData, title, me
             </div>
             <div
                 ref={hostRef}
-                className={`w-full min-h-0 ${fillHeight ? 'h-1 flex-auto' : ''}`}
+                className={`agent-result-grid w-full min-h-0 ${fillHeight ? 'h-1 flex-auto' : ''}`}
                 style={fillHeight ? undefined : { height: Math.max(160, height ?? 160), minHeight: 160 }}
             >
                 <FlexGrid
@@ -151,21 +145,26 @@ const DataRenderGridWijmoInner: React.FC<Props> = ({ colDefs, rowData, title, me
                     selectionMode="Row"
                     selectionChanged={onSelectionChanged}
                 >
-                    {visibleCols.map(col => (
+                    {visibleCols.map(col => {
+                        const fmt = formatFields.get(col.field);
+                        const useImage = imageFields.has(col.field);
+                        const useDate = !useImage && fmt === 'date';
+                        const useDeltaOrPct = !useImage && (fmt === 'delta' || fmt === 'percent');
+                        return (
                         <FlexGridColumn
                             key={col.field}
                             header={col.headerName || col.field}
                             binding={col.field}
-                            width={imageFields.has(col.field) ? Math.max(col.width ?? 90, 90) : Math.max(col.width ?? MIN_COL_WIDTH, MIN_COL_WIDTH)}
-                            minWidth={imageFields.has(col.field) ? 90 : MIN_COL_WIDTH}
+                            width={useImage ? Math.max(col.width ?? 90, 90) : Math.max(col.width ?? MIN_COL_WIDTH, MIN_COL_WIDTH)}
+                            minWidth={useImage ? 90 : MIN_COL_WIDTH}
                             format={wijmoFormat(col.dataType)}
                         >
-                            {imageFields.has(col.field) && (
+                            {useImage && (
                                 <FlexGridCellTemplate
                                     cellType="Cell"
                                     template={(cell: any) => {
                                         const value = cell.item?.[col.field];
-                                        const kind = cellImageKind(value, col.field);
+                                        const kind = cellImageKind(value, col.field, { trustFormat: true });
                                         if (kind == null)
                                             return <span>{value == null ? '' : String(value)}</span>;
                                         return (
@@ -178,19 +177,37 @@ const DataRenderGridWijmoInner: React.FC<Props> = ({ colDefs, rowData, title, me
                                     }}
                                 />
                             )}
-                            {!imageFields.has(col.field) && dateFields.has(col.field) && (
+                            {!useImage && useDeltaOrPct && (
+                                <FlexGridCellTemplate
+                                    cellType="Cell"
+                                    template={(cell: any) => (
+                                        <FormattedResultCell
+                                            value={cell.item?.[col.field]}
+                                            format={fmt}
+                                        />
+                                    )}
+                                />
+                            )}
+                            {!useImage && useDate && (
                                 <FlexGridCellTemplate
                                     cellType="Cell"
                                     template={(cell: any) => {
                                         const value = cell.item?.[col.field];
                                         if (value == null || String(value).trim() === '') return <span />;
                                         const formatted = formatDateValue(value);
-                                        return <span>{formatted ?? unwrapQuoted(value)}</span>;
+                                        return (
+                                            <FormattedResultCell
+                                                value={value}
+                                                format="date"
+                                                dateText={formatted ?? unwrapQuoted(value)}
+                                            />
+                                        );
                                     }}
                                 />
                             )}
                         </FlexGridColumn>
-                    ))}
+                        );
+                    })}
                     <FlexGridColumn header="" binding="" width="*" />
                     <FlexGridFilter filterColumns={filterColumns} />
                 </FlexGrid>

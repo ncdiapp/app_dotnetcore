@@ -155,9 +155,10 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
             dataJson: event.DataJson,
             columnsJson: event.ColumnsJson,
             metaJson: event.MetaJson,
+            specJson: event.SpecJson,
             title: undefined,
         }),
-        [event.DataJson, event.ColumnsJson, event.MetaJson],
+        [event.DataJson, event.ColumnsJson, event.MetaJson, event.SpecJson],
     );
     const chartProps = useMemo(
         () => adaptToChart({

@@ -351,12 +351,22 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     WriteMerged(data, merges, row, span, table.Title, StyleNested);
                     row++;
                 }
-                var header = table.Columns.Select(c => new FormCell { Text = c }).ToList();
+                var headerLabels = new List<string>();
+                for (var hi = 0; hi < table.Columns.Count; hi++)
+                {
+                    var label = table.DisplayHeaders != null && hi < table.DisplayHeaders.Count
+                                && !string.IsNullOrWhiteSpace(table.DisplayHeaders[hi])
+                        ? table.DisplayHeaders[hi]
+                        : table.Columns[hi];
+                    headerLabels.Add(label ?? "");
+                }
+                var header = headerLabels.Select(c => new FormCell { Text = c }).ToList();
                 WriteCells(data, row, header, StyleHeader, true, pictures, imageColumns);
                 row++;
                 foreach (var cells in table.Rows)
                 {
-                    WriteCells(data, row, cells, StyleCell, false, pictures, imageColumns);
+                    var exportCells = FormGridCellPolish.FormatExportRow(cells, table.Formats);
+                    WriteCells(data, row, exportCells, StyleCell, false, pictures, imageColumns);
                     row++;
                 }
             }

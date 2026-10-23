@@ -38,14 +38,15 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         public const string ValueCss =
             "font-family:Arial,Helvetica,sans-serif;font-size:10pt;font-weight:normal;text-align:left;color:#1a1a1a;padding:3px 8px;vertical-align:top;width:32%;";
 
+        // Horizontal rules only (no vertical borders) — AI Result / print-export grid look.
         public const string HeaderCss =
-            "font-family:Arial,Helvetica,sans-serif;font-size:10pt;font-weight:bold;text-align:left;color:#ffffff;background-color:#3d4f5f;padding:4px 8px;border:1px solid #dddddd;";
+            "font-family:Arial,Helvetica,sans-serif;font-size:10pt;font-weight:bold;text-align:left;vertical-align:middle;color:#ffffff;background-color:#3d4f5f;padding:4px 8px;border:none;border-bottom:1px solid #e2e8f0;";
 
         public const string CellCss =
-            "font-family:Arial,Helvetica,sans-serif;font-size:10pt;font-weight:normal;text-align:left;color:#1a1a1a;padding:3px 8px;border:1px solid #dddddd;";
+            "font-family:Arial,Helvetica,sans-serif;font-size:10pt;font-weight:normal;text-align:left;vertical-align:middle;color:#1a1a1a;padding:3px 8px;border:none;border-bottom:1px solid #f1f5f9;";
 
         public const string NumberCss =
-            "font-family:Arial,Helvetica,sans-serif;font-size:10pt;font-weight:normal;text-align:right;color:#1a1a1a;padding:3px 8px;border:1px solid #dddddd;";
+            "font-family:Arial,Helvetica,sans-serif;font-size:10pt;font-weight:normal;text-align:right;vertical-align:middle;color:#1a1a1a;padding:3px 8px;border:none;border-bottom:1px solid #f1f5f9;";
 
         public const string NotesCss =
             "font-family:Arial,Helvetica,sans-serif;font-size:10pt;font-weight:normal;text-align:left;color:#333333;padding:6px 8px;";

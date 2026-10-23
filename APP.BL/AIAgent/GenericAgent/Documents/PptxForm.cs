@@ -229,16 +229,24 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     table.Columns(spec.Table.Columns.Count);
                     table.Row(row =>
                     {
-                        foreach (var col in spec.Table.Columns)
-                            row.Cell(cell => cell.TextBox(col ?? ""));
+                        for (var hi = 0; hi < spec.Table.Columns.Count; hi++)
+                        {
+                            var field = spec.Table.Columns[hi];
+                            var label = spec.Table.DisplayHeaders != null && hi < spec.Table.DisplayHeaders.Count
+                                        && !string.IsNullOrWhiteSpace(spec.Table.DisplayHeaders[hi])
+                                ? spec.Table.DisplayHeaders[hi]
+                                : field;
+                            row.Cell(cell => cell.TextBox(label ?? ""));
+                        }
                     });
                     foreach (var line in spec.Table.Rows)
                     {
+                        var exportLine = FormGridCellPolish.FormatExportRow(line, spec.Table.Formats);
                         table.Row(row =>
                         {
                             for (var c = 0; c < spec.Table.Columns.Count; c++)
                             {
-                                var text = c < line.Count ? line[c].Text : "";
+                                var text = c < exportLine.Count ? exportLine[c].Text : "";
                                 row.Cell(cell => cell.TextBox(text ?? ""));
                             }
                         });
@@ -334,6 +342,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                         Table = new FormTable
                         {
                             Columns = table.Columns.ToList(),
+                            DisplayHeaders = table.DisplayHeaders?.ToList(),
+                            Formats = table.Formats?.ToList(),
                             Rows = table.Rows.Skip(offset).Take(take).Select(r => r.ToList()).ToList()
                         }
                     });

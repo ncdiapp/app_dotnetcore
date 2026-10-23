@@ -56,7 +56,19 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 }
             }
 
-            var columns = table?.Columns ?? new List<string>();
+            var fieldKeys = table?.Columns ?? new List<string>();
+            // LLM short headers when present (parity with Interactive Result / HtmlForm).
+            var displayColumns = new List<string>();
+            for (var hi = 0; hi < fieldKeys.Count; hi++)
+            {
+                var field = fieldKeys[hi];
+                var header = table.DisplayHeaders != null && hi < table.DisplayHeaders.Count
+                             && !string.IsNullOrWhiteSpace(table.DisplayHeaders[hi])
+                    ? table.DisplayHeaders[hi]
+                    : field;
+                displayColumns.Add(header ?? "");
+            }
+
             var rows = new List<object>();
             if (table?.Rows != null)
             {
@@ -65,25 +77,39 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     var cells = new List<object>();
                     if (row != null)
                     {
-                        for (var i = 0; i < row.Count; i++)
+                        for (var i = 0; i < fieldKeys.Count; i++)
                         {
-                            var c = row[i];
-                            var colName = i < columns.Count ? columns[i] : null;
+                            var c = i < row.Count ? row[i] : null;
+                            var colName = fieldKeys[i];
+                            var format = table.Formats != null && i < table.Formats.Count
+                                ? AiPolishedRenderSpec.NormalizeColumnFormat(table.Formats[i])
+                                : null;
                             var raw = c?.Text ?? "";
                             string imageSrc = null;
                             if (c?.ImageBytes != null && c.ImageBytes.Length > 0)
                                 imageSrc = "data:" + ImageMime(c.ImageBytes) + ";base64,"
                                            + Convert.ToBase64String(c.ImageBytes);
+                            else if (string.Equals(format, "image", StringComparison.OrdinalIgnoreCase)
+                                     && CardSheet.IsUrlValue(raw))
+                                imageSrc = raw.Trim().Trim('"', '\'');
                             else if (CardSheet.IsRenderableImage(raw, colName, c?.IsImage == true)
                                      || (c?.IsImage == true && CardSheet.IsUrlValue(raw)))
                                 imageSrc = raw.Trim().Trim('"', '\'');
                             var isImage = !string.IsNullOrEmpty(imageSrc);
+                            var plain = isImage
+                                ? ""
+                                : FormGridCellPolish.FormatPlainText(raw, format);
+                            var html = isImage ? null : FormGridCellPolish.FormatHtml(raw, format);
                             cells.Add(new
                             {
-                                text = Enc(isImage ? "" : CardSheet.FormatDisplayValue(raw)),
+                                text = Enc(plain),
+                                // Trusted platform HTML for delta/percent colors (not from user/LLM strings).
+                                html = html ?? "",
+                                format = format ?? "",
                                 is_image = isImage,
                                 image_src = EncAttr(imageSrc),
-                                is_number = c?.IsNumber == true && !isImage
+                                is_number = !isImage && (c?.IsNumber == true
+                                    || format is "delta" or "percent" or "number" or "currency")
                             });
                         }
                     }
@@ -93,7 +119,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return new
             {
                 title = Enc(doc.Title),
-                columns = columns.Select(Enc).ToList(),
+                columns = displayColumns.Select(Enc).ToList(),
                 rows
             };
         }

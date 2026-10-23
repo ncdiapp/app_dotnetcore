@@ -94,20 +94,21 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 });
             }
 
-            List<string> columns;
+            // Heuristic fallback: field names only — short headers/formats come from LLM polish, not here.
+            List<AiPolishColumnBinding> columns;
             if (selectAllColumns || layout == "form")
             {
-                columns = cols.ToList();
+                columns = cols.Select(n => new AiPolishColumnBinding { Field = n }).ToList();
             }
             else
             {
-                columns = new List<string>();
+                columns = new List<AiPolishColumnBinding>();
                 void AddCol(string n)
                 {
                     if (string.IsNullOrWhiteSpace(n)) return;
-                    if (columns.Any(x => string.Equals(x, n, StringComparison.OrdinalIgnoreCase))) return;
+                    if (columns.Any(x => string.Equals(x.Field, n, StringComparison.OrdinalIgnoreCase))) return;
                     if (columns.Count >= AiPolishedRenderSpec.MaxColumnsDefault) return;
-                    columns.Add(n);
+                    columns.Add(new AiPolishColumnBinding { Field = n });
                 }
                 foreach (var f in fields)
                     AddCol(f.Name);

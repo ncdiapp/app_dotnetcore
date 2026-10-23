@@ -19,7 +19,7 @@ export type PolishedSpecClient = {
     bindings?: {
         primaryImageField?: string;
         fields?: Array<{ name?: string; role?: string }>;
-        columns?: string[];
+        columns?: Array<string | { field?: string; header?: string; format?: string; dataType?: string }>;
         filterFields?: PolishedFilterField[];
     };
     layoutHints?: { cardsPerRow?: number; cardRows?: number; statusColorMap?: Record<string, string> };
@@ -45,7 +45,21 @@ function normalizePolished(raw: Record<string, unknown> | null | undefined): Pol
                         role: String(f?.role ?? f?.Role ?? '') || undefined,
                     }))
                     : undefined,
-                columns: Array.isArray(columnsArr) ? columnsArr.map(String) : undefined,
+                columns: Array.isArray(columnsArr)
+                    ? columnsArr.map(c => {
+                        if (typeof c === 'string') return c;
+                        if (c && typeof c === 'object') {
+                            const o = c as Record<string, unknown>;
+                            return {
+                                field: String(o.field ?? o.Field ?? o.name ?? o.Name ?? '') || undefined,
+                                header: String(o.header ?? o.Header ?? '') || undefined,
+                                format: String(o.format ?? o.Format ?? o.dataType ?? o.DataType ?? '') || undefined,
+                                dataType: String(o.dataType ?? o.DataType ?? o.format ?? o.Format ?? '') || undefined,
+                            };
+                        }
+                        return String(c);
+                    })
+                    : undefined,
                 filterFields: Array.isArray(filterArr)
                     ? filterArr.map(f => ({
                         name: String(f?.name ?? f?.Name ?? '') || undefined,

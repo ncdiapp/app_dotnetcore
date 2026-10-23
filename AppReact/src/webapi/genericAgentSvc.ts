@@ -108,6 +108,8 @@ export interface UiRenderEvent {
     HtmlUrl?: string | null;
     DataJson?: string | null;
     SpecJson?: string | null;
+    /** AI polish column defs (field/header/dataType). */
+    ColumnsJson?: string | null;
     ActionsJson?: string | null;
     RowCount?: number;
     Truncated?: boolean;
@@ -138,6 +140,7 @@ export function uiRenderToDataRender(evt: UiRenderEvent): DataRenderEvent {
         HtmlUrl: evt.HtmlUrl,
         DataJson: evt.DataJson,
         SpecJson: evt.SpecJson,
+        ColumnsJson: evt.ColumnsJson ?? (evt as { columnsJson?: string }).columnsJson ?? null,
         MetaJson: metaJson,
     };
 }

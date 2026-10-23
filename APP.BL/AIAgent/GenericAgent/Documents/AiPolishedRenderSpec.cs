@@ -193,11 +193,23 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 var arr = (b["columns"] ?? b["Columns"]) as JArray;
                 foreach (var c in arr)
                 {
-                    var name = c?.Type == JTokenType.String
-                        ? c.ToString()
-                        : (c as JObject)?["name"]?.ToString() ?? (c as JObject)?["Name"]?.ToString();
-                    if (!string.IsNullOrWhiteSpace(name))
-                        bindings.Columns.Add(name.Trim());
+                    if (c?.Type == JTokenType.String)
+                    {
+                        var name = c.ToString()?.Trim();
+                        if (!string.IsNullOrWhiteSpace(name))
+                            bindings.Columns.Add(new AiPolishColumnBinding { Field = name });
+                        continue;
+                    }
+                    if (c is not JObject co) continue;
+                    var field = (co["field"] ?? co["Field"] ?? co["name"] ?? co["Name"])?.ToString()?.Trim();
+                    if (string.IsNullOrWhiteSpace(field)) continue;
+                    bindings.Columns.Add(new AiPolishColumnBinding
+                    {
+                        Field = field,
+                        // Short display header — LLM only (never invent server-side).
+                        Header = (co["header"] ?? co["Header"] ?? co["headerName"] ?? co["HeaderName"])?.ToString()?.Trim(),
+                        Format = NormalizeColumnFormat((co["format"] ?? co["Format"] ?? co["dataType"] ?? co["DataType"])?.ToString())
+                    });
                 }
             }
             if (b["filterFields"] is JArray filters || b["FilterFields"] is JArray)
@@ -299,14 +311,79 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             catch { /* ignore */ }
             return null;
         }
+
+        /// <summary>
+        /// Normalize LLM-emitted format enum tokens only (not field/header name inference).
+        /// Classification is done by the model from field name + sample values.
+        /// </summary>
+        public static string NormalizeColumnFormat(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            var s = raw.Trim().ToLowerInvariant().Replace(' ', '_').Replace('-', '_');
+            if (s is "delta" or "percent" or "date" or "image" or "number" or "currency") return s;
+            // Token aliases for the same enum (not name heuristics).
+            if (s is "deltadays" or "delta_days" or "signed_delta" or "variance") return "delta";
+            if (s is "percentage" or "pct") return "percent";
+            if (s is "datetime") return "date";
+            if (s is "img" or "photo" or "sketch") return "image";
+            if (s is "money") return "currency";
+            if (s is "int" or "integer" or "float" or "decimal") return "number";
+            return null;
+        }
     }
 
     public sealed class AiPolishBindings
     {
         public string PrimaryImageField { get; set; }
         public List<AiPolishFieldBinding> Fields { get; set; } = new List<AiPolishFieldBinding>();
-        public List<string> Columns { get; set; } = new List<string>();
+        /// <summary>Table columns: field + optional LLM short header + cell format.</summary>
+        public List<AiPolishColumnBinding> Columns { get; set; } = new List<AiPolishColumnBinding>();
         public List<AiPolishFilterField> FilterFields { get; set; } = new List<AiPolishFilterField>();
+
+        /// <summary>Field names only (ProjectColumns / keep-list).</summary>
+        public List<string> ColumnFieldNames()
+        {
+            var list = new List<string>();
+            if (Columns == null) return list;
+            foreach (var c in Columns)
+            {
+                if (string.IsNullOrWhiteSpace(c?.Field)) continue;
+                if (list.Exists(x => string.Equals(x, c.Field, StringComparison.OrdinalIgnoreCase))) continue;
+                list.Add(c.Field.Trim());
+            }
+            return list;
+        }
+
+        /// <summary>ColumnsJson for React DataRender / ui_render (field, header, dataType).</summary>
+        public string ToColumnsJson()
+        {
+            var arr = new JArray();
+            if (Columns == null) return arr.ToString(Formatting.None);
+            foreach (var c in Columns)
+            {
+                if (string.IsNullOrWhiteSpace(c?.Field)) continue;
+                var o = new JObject { ["field"] = c.Field.Trim() };
+                if (!string.IsNullOrWhiteSpace(c.Header))
+                {
+                    o["header"] = c.Header.Trim();
+                    o["headerName"] = c.Header.Trim();
+                }
+                if (!string.IsNullOrWhiteSpace(c.Format))
+                    o["dataType"] = c.Format.Trim();
+                arr.Add(o);
+            }
+            return arr.ToString(Formatting.None);
+        }
+    }
+
+    /// <summary>One table column from AI polish (short header + cell format are LLM-authored).</summary>
+    public sealed class AiPolishColumnBinding
+    {
+        public string Field { get; set; }
+        /// <summary>Short display header from the model (e.g. COMP Δ). Null = use raw field name on client.</summary>
+        public string Header { get; set; }
+        /// <summary>delta | percent | date | image | number | currency</summary>
+        public string Format { get; set; }
     }
 
     public sealed class AiPolishFieldBinding

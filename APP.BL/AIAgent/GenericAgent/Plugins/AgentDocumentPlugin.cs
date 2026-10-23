@@ -430,13 +430,15 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 || polish.Bindings?.Columns == null || polish.Bindings.Columns.Count == 0)
                 return doc;
             // Keep Image/Sketch columns even when AI column list omitted them (print/Result parity).
-            var cols = new List<string>(polish.Bindings.Columns);
+            var cols = polish.Bindings.ColumnFieldNames();
             foreach (var name in ImageColumnNames(doc))
             {
                 if (!cols.Exists(c => string.Equals(c, name, StringComparison.OrdinalIgnoreCase)))
                     cols.Insert(0, name);
             }
-            return doc.ProjectColumns(cols);
+            var projected = doc.ProjectColumns(cols);
+            projected.ApplyColumnPolish(polish.Bindings.Columns);
+            return projected;
         }
 
         private static IEnumerable<string> ImageColumnNames(FormDocument doc)

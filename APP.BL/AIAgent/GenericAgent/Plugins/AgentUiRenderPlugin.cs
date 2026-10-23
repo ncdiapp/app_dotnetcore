@@ -246,7 +246,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     && !polish.SelectAllColumns)
                 {
                     // Keep Image/Sketch columns even when AI column list omitted them (Result/print parity).
-                    var cols = new List<string>(polish.Bindings.Columns);
+                    var cols = polish.Bindings.ColumnFieldNames();
                     foreach (var sec in formDoc.Sections ?? new List<FormSection>())
                     {
                         if (sec?.Tables == null) continue;
@@ -262,6 +262,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         }
                     }
                     formDoc = formDoc.ProjectColumns(cols);
+                    formDoc.ApplyColumnPolish(polish.Bindings.Columns);
+                }
+                else if (polish?.Bindings?.Columns != null && formDoc != null
+                         && (layout == "table" || UiTemplateMerge.IsPageLayout(layout)))
+                {
+                    formDoc.ApplyColumnPolish(polish.Bindings.Columns);
                 }
 
                 // Interactive Result: keep <img src="url"> — browser lazy-loads (no serial download → data-URI).
@@ -370,6 +376,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                             title = pageTitle,
                             sectionTitles,
                             columns = polish?.Bindings?.Columns,
+                            columnsJson = polish?.Bindings != null
+                                ? JToken.Parse(polish.Bindings.ToColumnsJson())
+                                : null,
                             polishedSpec = polishedClient,
                             filterOptions
                         }, Formatting.None);
@@ -417,6 +426,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     }
                 }
 
+                var columnsJsonEmit = polish?.Bindings != null && polish.Bindings.Columns.Count > 0
+                    ? polish.Bindings.ToColumnsJson()
+                    : null;
+
                 var evt = new AgentUiRenderEvent
                 {
                     RenderId = renderId,
@@ -428,6 +441,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     HtmlUrl = htmlUrl,
                     DataJson = dataJson,
                     SpecJson = emitSpecJson,
+                    ColumnsJson = columnsJsonEmit,
                     RowCount = rowCount,
                     Truncated = truncated,
                     ActionsJson = interactive ? actionsJson : null,
@@ -725,7 +739,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 {
                     cached.SelectAllColumns = true;
                     if (rows != null && rows.Count > 0 && rows[0] is JObject o0)
-                        cached.Bindings.Columns = o0.Properties().Select(p => p.Name).ToList();
+                        cached.Bindings.Columns = o0.Properties()
+                            .Select(p => new AiPolishColumnBinding { Field = p.Name })
+                            .ToList();
                 }
                 return cached;
             }

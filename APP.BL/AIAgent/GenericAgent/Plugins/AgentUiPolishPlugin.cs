@@ -82,6 +82,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         + AiPolishedRenderSpec.MaxDisplayFields + " fields + optional primaryImageField.",
                     ["showLabelRule"] = "Set showLabel=true when multiple similar values on the same card would be ambiguous (several dates, several positions like 左上/右上, etc.). A single clear field of that kind → showLabel=false. Obscure business columns → showLabel=true with a short label. Clear ID/Code/Name/Status → showLabel=false. Labels must be concise: Created Date→Created, Revised Date→Revised (drop redundant Date/Time words).",
                     ["compactRule"] = "Set compact=true when the displayed value (plus short label if any) is short enough to share a meta row with siblings (e.g. S/S 2025, Men's, Ref #523, Created Jan 15, 2025). Long descriptions stay compact=false (full line).",
+                    ["columnHeaderRule"] = "For layout=table (and page grid): bindings.columns MUST be objects {field,header,format}. header is a short human label you author (required for table), in the user's language when appropriate. Never leave long underscore field names as headers.",
+                    ["columnFormatRule"] = "YOU classify each column's format from the field name PLUS sample cell values (not English keyword matching alone — works for any language). Use exactly: delta (signed variance / day lag — Result shows red↓/green↑), percent, date, image (URLs or file ids), number, currency. Plain text/code/name → omit format. Look at sample values: ISO dates → date; http(s) image URLs → image; signed small integers next to Target/Actual pairs → delta; 0–100 with % → percent.",
                     ["fieldBindingShape"] = new JObject
                     {
                         ["name"] = "exact column name",
@@ -89,6 +91,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         ["showLabel"] = "boolean",
                         ["label"] = "optional short label when showLabel=true (Created not Created Date)",
                         ["compact"] = "boolean — short chips share a row"
+                    },
+                    ["columnBindingShape"] = new JObject
+                    {
+                        ["field"] = "exact column name from sample",
+                        ["header"] = "short display header (LLM required for table)",
+                        ["format"] = "optional — YOU decide from field+samples: delta|percent|date|image|number|currency"
                     }
                 };
 

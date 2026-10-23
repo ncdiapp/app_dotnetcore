@@ -1,33 +1,13 @@
 import type { DataRenderChartConfig, DataRenderColumn, DataRenderMeta } from './types';
 import { parseJsonSafe } from './types';
-import { isDateColumnName, parseDateValue } from './dateValue';
-import { cellImageKind, isImageColumnName } from './imageValue';
+import { normalizeCellFormat } from './cellFormat';
+import { imageUrlKind } from './imageValue';
 
 function toHeader(field: string): string {
     return field
         .split('_')
         .map(w => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
         .join(' ');
-}
-
-/** Infer image / date when ColumnsJson omitted (common for interactive Result). */
-function inferColumnDataType(field: string, rows: Record<string, unknown>[]): string | undefined {
-    const samples = rows
-        .slice(0, 30)
-        .map(r => r?.[field])
-        .filter(v => v != null && String(v).trim() !== '');
-    // Image field = name means image AND (empty or) value is URL.
-    if (isImageColumnName(field)
-        && (samples.length === 0 || samples.some(v => cellImageKind(v, field) != null)))
-        return 'image';
-    if (samples.length === 0) {
-        if (isDateColumnName(field)) return 'date';
-        return undefined;
-    }
-    const dateHits = samples.filter(v => parseDateValue(v) != null).length;
-    if (dateHits >= Math.max(1, Math.ceil(samples.length * 0.4))) return 'date';
-    if (isDateColumnName(field) && dateHits > 0) return 'date';
-    return undefined;
 }
 
 export function parseRows(dataJson: string | null | undefined): Record<string, unknown>[] {
@@ -42,15 +22,53 @@ export function parseRows(dataJson: string | null | undefined): Record<string, u
     return [];
 }
 
+/** Prefer ColumnsJson; else SpecJson.columnsJson / polishedSpec.bindings.columns (LLM short headers). */
+function resolveColumnDefs(
+    columnsJson?: string | null,
+    specJson?: string | null,
+): DataRenderColumn[] {
+    const fromColumns = parseJsonSafe<DataRenderColumn[]>(columnsJson, []);
+    if (Array.isArray(fromColumns) && fromColumns.length > 0 && fromColumns.some(c => c?.field))
+        return fromColumns;
+
+    const spec = parseJsonSafe<Record<string, unknown>>(specJson, {});
+    const nested = (spec.columnsJson ?? spec.ColumnsJson) as unknown;
+    if (Array.isArray(nested) && nested.length > 0)
+        return nested as DataRenderColumn[];
+
+    const polished = (spec.polishedSpec ?? spec.PolishedSpec) as Record<string, unknown> | undefined;
+    const bindings = (polished?.bindings ?? polished?.Bindings) as Record<string, unknown> | undefined;
+    const cols = (bindings?.columns ?? bindings?.Columns) as unknown;
+    if (!Array.isArray(cols)) return [];
+
+    const out: DataRenderColumn[] = [];
+    for (const c of cols) {
+        if (typeof c === 'string' && c.trim()) {
+            out.push({ field: c.trim() });
+            continue;
+        }
+        if (c && typeof c === 'object') {
+            const o = c as Record<string, unknown>;
+            const field = String(o.field ?? o.Field ?? o.name ?? o.Name ?? '').trim();
+            if (!field) continue;
+            const header = String(o.header ?? o.Header ?? o.headerName ?? o.HeaderName ?? '').trim() || undefined;
+            const dataType = String(o.format ?? o.Format ?? o.dataType ?? o.DataType ?? '').trim() || undefined;
+            out.push({ field, header, headerName: header, dataType });
+        }
+    }
+    return out;
+}
+
 export function adaptToGrid(args: {
     dataJson?: string | null;
     columnsJson?: string | null;
     metaJson?: string | null;
+    specJson?: string | null;
     title?: string | null;
 }) {
     const rows = parseRows(args.dataJson);
     const meta = parseJsonSafe<DataRenderMeta>(args.metaJson, {});
-    const columns = parseJsonSafe<DataRenderColumn[]>(args.columnsJson, []);
+    const columns = resolveColumnDefs(args.columnsJson, args.specJson);
 
     let colDefs: Array<{
         field: string;
@@ -61,19 +79,21 @@ export function adaptToGrid(args: {
     }>;
 
     if (Array.isArray(columns) && columns.length > 0) {
+        // dataType/format must come from AI polish (field + sample values) — no name heuristics here.
         colDefs = columns.map(col => ({
             field: col.field,
-            headerName: col.header ?? col.headerName ?? toHeader(col.field),
+            headerName: col.header ?? col.headerName ?? col.field,
             width: col.width ?? 150,
-            dataType: col.dataType || inferColumnDataType(col.field, rows),
+            dataType: normalizeCellFormat(col.dataType) ?? undefined,
             hide: col.hide ?? false,
         }));
     } else if (rows.length > 0) {
+        // No polish columns: raw field names, no typed cell formats.
         colDefs = Object.keys(rows[0]).map(field => ({
             field,
             headerName: toHeader(field),
             width: 150,
-            dataType: inferColumnDataType(field, rows),
+            dataType: undefined,
         }));
     } else {
         colDefs = [];
@@ -93,7 +113,8 @@ export type DataRenderCardFields = DataRenderCardField[];
 function fieldsFromObject(obj: Record<string, unknown>): DataRenderCardFields {
     // Prefer image column + up to 5 text fields (name + non-empty), not a full dump.
     const entries = Object.entries(obj);
-    const img = entries.find(([k, v]) => cellImageKind(v, k) != null);
+    // Card fallback: detect by URL value shape only (not English field-name keywords).
+    const img = entries.find(([, v]) => imageUrlKind(v) != null);
     const texts = entries
         .filter(([k, v]) => k !== img?.[0] && v != null && String(v).trim() !== '')
         .slice(0, 5);

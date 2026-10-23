@@ -299,6 +299,8 @@ namespace APP.Components.EntityDto
         public string DataJson { get; set; }
         /// <summary>Interactive dashboard: kpis/chart/blocks spec JSON.</summary>
         public string SpecJson { get; set; }
+        /// <summary>Optional grid column defs JSON (field/header/dataType) from AI polish.</summary>
+        public string ColumnsJson { get; set; }
         public string ActionsJson { get; set; }
         public int RowCount { get; set; }
         public bool Truncated { get; set; }
