@@ -158,8 +158,18 @@ function printHtmlInHiddenIframe(html: string): void {
             setTimeout(() => { try { iframe.remove(); } catch { /* ignore */ } }, 1000);
         }
     };
-    // Allow images/CSS to settle briefly before the system print dialog.
-    setTimeout(runPrint, 350);
+    // Wait for embedded/remote images before the system print dialog (data-URIs settle quickly).
+    const imgs = Array.from(doc.images || []);
+    const ready = imgs.length === 0
+        ? Promise.resolve()
+        : Promise.all(imgs.map(img => {
+            if (img.complete) return Promise.resolve();
+            return new Promise<void>(resolve => {
+                img.onload = () => resolve();
+                img.onerror = () => resolve();
+            });
+        }));
+    void ready.then(() => setTimeout(runPrint, 80));
 }
 
 interface Props {
@@ -457,7 +467,7 @@ export const ResultChrome: React.FC<Props> = ({
                     </div>
                 )}
             </div>
-            <div className="w-full h-1 flex-auto min-h-0 min-w-0 overflow-auto">
+            <div className="w-full h-1 flex-auto min-h-0 min-w-0 overflow-hidden">
                 {children(filteredEvent, polished)}
             </div>
         </div>

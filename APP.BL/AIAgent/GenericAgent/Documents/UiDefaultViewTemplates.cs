@@ -163,20 +163,20 @@ th{background:#3d4f5f;color:#ffffff;font-weight:700;text-align:left}
 
         /// <summary>
         /// Cards LAYOUT — MCP Client gallery shell (hero + blue id + name + status + meta).
-        /// Marker agent-cards-mcp-v5: square hero, object-fit cover center crop (catalog style).
+        /// Marker agent-cards-mcp-v7: show_label on ambiguous meta (dates/positions siblings).
         /// </summary>
         public const string CardsNoneInteractive = @"<!DOCTYPE html>
 <html>
 <head>
 <meta charset=""utf-8""/>
 <title>{{ title }}</title>
-<!-- agent-cards-mcp-v5 -->
+<!-- agent-cards-mcp-v7 -->
 <link rel=""stylesheet"" href=""/agent-ui/agent-cards.css""/>
 </head>
 <body>
 <div class=""agent-cards-root"" data-role=""cards-root"">
 <div class=""agent-cards-title"" data-role=""title"">{{ title }}</div>
-<div class=""agent-cards-grid"" data-role=""cards"" style=""--cards-per-row:{{ cards_per_row }}"">
+<div class=""agent-cards-grid"" data-role=""cards"">
 {{ for card in cards }}
 <article class=""agent-card"" data-role=""card"">
 <div class=""agent-card-hero"" data-role=""image"">
@@ -194,11 +194,11 @@ th{background:#3d4f5f;color:#ffffff;font-weight:700;text-align:left}
 {{ else if field.role == ""title"" }}
 {{ if field.value }}<div class=""agent-card-name"" data-role=""title"">{{ field.value }}</div>{{ end }}
 {{ else if field.role == ""colorSwatch"" || field.role == ""colorswatch"" }}
-{{ if field.value }}<div class=""agent-card-color"" data-role=""colorSwatch""><span class=""agent-card-swatch"" aria-hidden=""true""></span>{{ field.value }}</div>{{ end }}
+{{ if field.value }}<div class=""agent-card-color"" data-role=""colorSwatch""><span class=""agent-card-swatch"" aria-hidden=""true""></span>{{ if field.show_label }}<span class=""agent-card-field-label"">{{ field.display_label }}</span>{{ end }}{{ field.value }}</div>{{ end }}
 {{ else if field.role == ""statusPill"" || field.role == ""statuspill"" }}
-{{ if field.value }}<span class=""agent-card-status"" data-role=""statusPill"" data-status=""{{ field.value }}"">{{ field.value }}</span>{{ end }}
+{{ if field.value }}<span class=""agent-card-status"" data-role=""statusPill"" data-status=""{{ field.value }}"">{{ if field.show_label }}<span class=""agent-card-field-label"">{{ field.display_label }}</span>{{ end }}{{ field.value }}</span>{{ end }}
 {{ else if field.role == ""meta"" }}
-{{ if field.value }}<div class=""agent-card-meta"" data-role=""meta"">{{ field.value }}</div>{{ end }}
+{{ if field.value }}<div class=""agent-card-meta"" data-role=""meta"">{{ if field.show_label }}<span class=""agent-card-field-label"">{{ field.display_label }}</span>{{ end }}{{ field.value }}</div>{{ end }}
 {{ end }}
 {{ end }}
 </div>

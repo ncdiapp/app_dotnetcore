@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 
@@ -37,6 +39,24 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             if (value < 1) return DefaultCardRows;
             if (value > 20) return 20;
             return value;
+        }
+
+        /// <summary>
+        /// Print/export page grid when the tool/user did not pass cardsPerRow / cardRows / pageGrid.
+        /// Avoids 1×N strips (one wide short card per row). Catalog-style columns×rows by count.
+        /// </summary>
+        public static void SuggestPrintGrid(int cardCount, out int cols, out int rows)
+        {
+            if (cardCount <= 0) { cols = 3; rows = 3; return; }
+            if (cardCount == 1) { cols = 1; rows = 1; return; }
+            if (cardCount == 2) { cols = 2; rows = 1; return; }
+            if (cardCount <= 4) { cols = 2; rows = 2; return; }
+            if (cardCount <= 6) { cols = 3; rows = 2; return; }
+            if (cardCount <= 9) { cols = 3; rows = 3; return; }
+            if (cardCount <= 12) { cols = 3; rows = 4; return; }
+            // Many cards: fixed page tile 3×3 (page through).
+            cols = 3;
+            rows = 3;
         }
 
         /// <summary>
@@ -84,12 +104,25 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 perRow = cpr;
             if (pageRows <= 0 && polish?.LayoutHints?.CardRows is int cr && cr > 0)
                 pageRows = cr;
+            // Neither tool nor polish set a grid → suggest catalog tile (not 1×N wide strips).
+            if (perRow <= 0 && pageRows <= 0)
+            {
+                SuggestPrintGrid(rows?.Count ?? 0, out perRow, out pageRows);
+            }
+            else if (perRow <= 0)
+            {
+                SuggestPrintGrid(rows?.Count ?? 0, out perRow, out _);
+            }
+            else if (pageRows <= 0)
+            {
+                pageRows = DefaultCardRows;
+            }
 
             var sheet = new CardSheet
             {
                 Title = !string.IsNullOrWhiteSpace(polish?.Title) ? polish.Title : (title ?? ""),
-                CardsPerRow = ClampPerRow(perRow > 0 ? perRow : 1),
-                CardRows = ClampPageRows(pageRows > 0 ? pageRows : DefaultCardRows)
+                CardsPerRow = ClampPerRow(perRow),
+                CardRows = ClampPageRows(pageRows)
             };
             if (rows == null) return sheet;
             if (rows.Count > DocumentStyles.MaxDataRows)
@@ -248,15 +281,20 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                         Value = value,
                         IsImage = image || IsImageValue(value, prop.Name),
                         Role = string.IsNullOrWhiteSpace(b.Role) ? "body" : b.Role,
-                        TypographyHint = b.TypographyHint ?? ""
+                        TypographyHint = b.TypographyHint ?? "",
+                        ShowLabel = b.ShowLabel,
+                        DisplayLabel = string.IsNullOrWhiteSpace(b.Label) ? null : b.Label.Trim()
                     });
                 }
             }
 
-            // Polish names often miss data columns (Product Code vs Product) → only 1 field binds.
-            var textFields = fields.Count(f => f != null && !f.IsImage
-                && !string.Equals(f.Role, "primaryImage", StringComparison.OrdinalIgnoreCase));
-            if (allowHeuristicFallback && textFields <= 1)
+            // AI often emits role=body — gallery template only paints idLink/title/status/meta.
+            PromoteBodyRolesToGallery(fields);
+            DemoteDateStatusPills(fields);
+
+            // Still only one visible text role → rebuild from column heuristic.
+            var visible = fields.Count(f => f != null && !f.IsImage && IsGalleryTextRole(f.Role));
+            if (allowHeuristicFallback && visible <= 1)
             {
                 var heuristic = AiRenderPolishHeuristics.Build(
                     "cards", "", obj.Properties().Select(p => p.Name).ToList(), new JArray(obj));
@@ -264,6 +302,63 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     return FieldsOf(obj, heuristic, allowHeuristicFallback: false);
             }
             return fields;
+        }
+
+        private static bool IsGalleryTextRole(string role)
+        {
+            var r = (role ?? "").Trim().ToLowerInvariant();
+            return r is "idlink" or "title" or "statuspill" or "status" or "meta" or "colorswatch";
+        }
+
+        /// <summary>Map body/empty roles onto idLink → title → statusPill → meta so cards show AI fields.</summary>
+        private static void PromoteBodyRolesToGallery(List<CardField> fields)
+        {
+            if (fields == null || fields.Count == 0) return;
+            var text = fields
+                .Where(f => f != null && !f.IsImage
+                    && !string.Equals(f.Role, "primaryImage", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            bool Has(string role) => text.Any(f =>
+                string.Equals(f.Role, role, StringComparison.OrdinalIgnoreCase));
+
+            var bodies = text
+                .Where(f => string.IsNullOrWhiteSpace(f.Role)
+                    || string.Equals(f.Role, "body", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (bodies.Count == 0) return;
+
+            var slot = 0;
+            void Take(string role, bool allowMany = false)
+            {
+                if (!allowMany && Has(role)) return;
+                if (slot >= bodies.Count) return;
+                bodies[slot].Role = role;
+                slot++;
+            }
+
+            Take("idLink");
+            Take("title");
+            Take("colorSwatch");
+            // Dates are not status — leave them for meta.
+            while (slot < bodies.Count && LooksLikeDateValue(bodies[slot].Value))
+                Take("meta", allowMany: true);
+            if (slot < bodies.Count && !LooksLikeDateValue(bodies[slot].Value))
+                Take("statusPill");
+            while (slot < bodies.Count)
+                Take("meta", allowMany: true);
+        }
+
+        /// <summary>ISO dates must not render as green status pills.</summary>
+        private static void DemoteDateStatusPills(List<CardField> fields)
+        {
+            if (fields == null) return;
+            foreach (var f in fields)
+            {
+                if (f == null || string.IsNullOrWhiteSpace(f.Value)) continue;
+                var role = (f.Role ?? "").Trim().ToLowerInvariant();
+                if ((role == "statuspill" || role == "status") && LooksLikeDateValue(f.Value))
+                    f.Role = "meta";
+            }
         }
 
         /// <summary>Resolve polish field name to a row property (case / space / underscore insensitive).</summary>
@@ -304,6 +399,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         {
             image = false;
             if (token == null || token.Type == JTokenType.Null) return "";
+            if (token.Type == JTokenType.Date)
+                return FormatDisplayValue(token.Value<DateTime>().ToString("o", CultureInfo.InvariantCulture));
             if (token is JObject obj)
             {
                 if (obj["url"] != null)
@@ -317,7 +414,50 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     return obj["fileId"].ToString();
                 }
             }
-            return token.Type == JTokenType.String ? token.ToString() : token.ToString(Newtonsoft.Json.Formatting.None);
+            var raw = token.Type == JTokenType.String ? token.ToString() : token.ToString(Newtonsoft.Json.Formatting.None);
+            return FormatDisplayValue(raw);
+        }
+
+        private static readonly Regex IsoDateValue = new Regex(
+            @"^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$",
+            RegexOptions.Compiled);
+
+        /// <summary>Column name → short display label (Product_Code → Product Code).</summary>
+        public static string PrettyFieldLabel(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return "";
+            var parts = name.Trim().Replace('-', ' ').Split(new[] { '_', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            var sb = new StringBuilder();
+            foreach (var part in parts)
+            {
+                if (sb.Length > 0)
+                    sb.Append(' ');
+                if (part.Length == 1)
+                    sb.Append(char.ToUpperInvariant(part[0]));
+                else
+                    sb.Append(char.ToUpperInvariant(part[0])).Append(part.Substring(1));
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>ISO / DateTime JSON → short display date (e.g. Jun 24, 2026). Other text unchanged.</summary>
+        public static string FormatDisplayValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return value ?? "";
+            var t = value.Trim().Trim('"', '\'');
+            if (!LooksLikeDateValue(t)) return value.Trim();
+            if (DateTime.TryParse(t, CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind, out var dt))
+                return dt.ToString("MMM d, yyyy", CultureInfo.InvariantCulture);
+            return t;
+        }
+
+        public static bool LooksLikeDateValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return false;
+            var t = value.Trim().Trim('"', '\'');
+            return IsoDateValue.IsMatch(t);
         }
 
         private static readonly Regex ResourceImage = new Regex(
@@ -358,9 +498,23 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         {
             if (string.IsNullOrWhiteSpace(value)) return false;
             var text = value.Trim().Trim('"', '\'');
-            if (IsImageFieldName(fieldName) && IsUrlValue(text))
-                return true;
+            if (IsImageFieldName(fieldName))
+            {
+                if (IsUrlValue(text)) return true;
+                // Numeric AppFile id in an Image/Sketch column.
+                if (int.TryParse(text, out var fileId) && fileId > 0) return true;
+            }
             return ResourceImage.IsMatch(text) || FileImage.IsMatch(text) || ExtImage.IsMatch(text);
+        }
+
+        /// <summary>
+        /// True when a card/grid cell should render as an image (bytes, flagged IsImage+URL,
+        /// image field name+URL, or known app/file/extension URL).
+        /// </summary>
+        public static bool IsRenderableImage(string value, string fieldName = null, bool flaggedIsImage = false)
+        {
+            if (flaggedIsImage && IsUrlValue(value)) return true;
+            return IsImageValue(value, fieldName);
         }
     }
 
@@ -373,5 +527,9 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         /// <summary>AI polish role: idLink, title, statusPill, meta, colorSwatch, body, primaryImage.</summary>
         public string Role { get; set; } = "body";
         public string TypographyHint { get; set; } = "";
+        /// <summary>When true, render DisplayLabel (or PrettyLabel) with the value.</summary>
+        public bool ShowLabel { get; set; }
+        /// <summary>Optional short label from polish; when null and ShowLabel, use column Label.</summary>
+        public string DisplayLabel { get; set; }
     }
 }

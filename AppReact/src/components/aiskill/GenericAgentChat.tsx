@@ -2083,7 +2083,7 @@ const GenericAgentChat: React.FC<Props> = ({
                                             />
                                         </div>
                                     ) : isInteractiveTabular(filteredEvent) ? (
-                                        <div className="w-full h-full min-w-0 max-w-full overflow-auto">
+                                        <div className="w-full h-full min-w-0 max-w-full overflow-hidden">
                                             <DataRenderPanel
                                                 event={filteredEvent}
                                                 disabled={blocked}

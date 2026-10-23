@@ -10,15 +10,14 @@ using Newtonsoft.Json.Linq;
 namespace App.BL.AIAgent.GenericAgent.Plugins
 {
     /// <summary>
-    /// Prepare polish inputs (templates + ≤10 sample rows + schema) and cache AiPolishedRenderSpec.
+    /// Prepare polish inputs (templates + sample rows + fill-rates + schema) and cache AiPolishedRenderSpec.
     /// Iron rule: never merge Result data into HTML here; never return a painted page.
     /// </summary>
     public class AgentUiPolishPlugin
     {
         /// <summary>
         /// Returns library TemplateContent for interactive + none-interactive, field schema,
-        /// and at most 10 sample rows. Model must polish structure only, then call cache_ui_render_polish
-        /// and/or pass aiPolishedRenderSpec into render_*.
+        /// sample rows (≤ SampleMaxRows), and per-column fill rates. Model polishes structure only.
         /// </summary>
         public Task<string> PrepareUiRenderPolish(
             AgentToolContext context,
@@ -45,6 +44,21 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
                 var rows = JArray.Parse(dataJson);
                 var sample = AgentDataAnalyzeCacheBL.TakeFirst(rows, AgentAiPolishCacheBL.SampleMaxRows);
+                var colNames = JArray.Parse(columnsJson ?? "[]")
+                    .Select(t => t?.Type == JTokenType.String
+                        ? t.ToString()
+                        : (t as JObject)?["name"]?.ToString() ?? (t as JObject)?["Name"]?.ToString())
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Select(s => s.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (colNames.Count == 0 && sample?.Count > 0 && sample[0] is JObject first)
+                    colNames = first.Properties().Select(p => p.Name).ToList();
+                var sampleObjs = sample?.OfType<JObject>().ToList() ?? new System.Collections.Generic.List<JObject>();
+                var fillRates = AiRenderPolishHeuristics.ComputeFillRates(colNames, sampleObjs);
+                var columnFillRates = new JObject();
+                foreach (var kv in fillRates)
+                    columnFillRates[kv.Key] = Math.Round(kv.Value, 3);
 
                 UiTemplateContentMaterialize.EnsureOnce();
                 var interactiveMap = LoadTemplateMap(UiTemplateMerge.InteractiveTool);
@@ -56,13 +70,24 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
                 var contract = new JObject
                 {
-                    ["rule"] = "Return AiPolishedRenderSpec: polished TemplateContent fragments + bindings (field names/roles/columns/filters). Do NOT merge sample or full rows into HTML. Do NOT emit a Result page.",
+                    ["rule"] = "Return AiPolishedRenderSpec: polished TemplateContent fragments + bindings (field names/roles/showLabel/label/columns/filters). Do NOT merge sample or full rows into HTML. Do NOT emit a Result page.",
                     ["renderTools"] = new JArray("render_interactive", "render_none_interactive"),
                     ["cacheTool"] = "cache_ui_render_polish",
                     ["sampleMaxRows"] = AgentAiPolishCacheBL.SampleMaxRows,
                     ["maxDisplayFields"] = AiPolishedRenderSpec.MaxDisplayFields,
                     ["maxColumnsDefault"] = AiPolishedRenderSpec.MaxColumnsDefault,
-                    ["selectAllColumns"] = "Set true only when the user asked for all columns."
+                    ["minFillRate"] = AiRenderPolishHeuristics.MinFillRate,
+                    ["selectAllColumns"] = "Set true only when the user asked for all columns.",
+                    ["fieldSelection"] = "Prefer name/theme fit to the dataset subject. Reject columns with low non-empty rate in sample even if the name fits. Max "
+                        + AiPolishedRenderSpec.MaxDisplayFields + " fields + optional primaryImageField.",
+                    ["showLabelRule"] = "Set showLabel=true when multiple similar values on the same card would be ambiguous (several dates, several positions like 左上/右上, etc.). A single clear field of that kind → showLabel=false. Obscure business columns → showLabel=true with a short label. Clear ID/Code/Name/Status → showLabel=false.",
+                    ["fieldBindingShape"] = new JObject
+                    {
+                        ["name"] = "exact column name",
+                        ["role"] = "idLink|title|statusPill|colorSwatch|meta (optional)",
+                        ["showLabel"] = "boolean",
+                        ["label"] = "optional short label when showLabel=true"
+                    }
                 };
 
                 return Task.FromResult(JsonConvert.SerializeObject(new
@@ -73,6 +98,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     rowCount,
                     sampleRowCount = sample?.Count ?? 0,
                     columnsJson = JToken.Parse(columnsJson ?? "[]"),
+                    columnFillRates,
                     sampleRows = sample,
                     templateContentInteractive = interactiveBody,
                     templateContentNoneInteractive = noneBody,

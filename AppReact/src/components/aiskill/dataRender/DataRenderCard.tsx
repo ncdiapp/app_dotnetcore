@@ -33,15 +33,18 @@ export const DataRenderCard: React.FC<CardProps> = ({ fields }) => {
     const rest = fields.filter(f => f !== hero);
 
     return (
-        <div className={`min-w-0 overflow-hidden border rounded-[8px] ${theme.mainContentSection} flex flex-col`}>
+        <div
+            className={`min-w-[250px] overflow-hidden border rounded-[8px] bg-white flex flex-col ${theme.mainContentSection}`}
+            style={{ contentVisibility: 'auto', containIntrinsicSize: '250px 360px' }}
+        >
             {hero && (cellImageKind(hero.value, hero.label) != null
                 || cellImageKind(hero.value, hero.role) != null
                 || (hero.role || '').toLowerCase() === 'primaryimage') && (
-                <div className="bg-gray-100 min-h-[120px] max-h-[160px] flex items-center justify-center overflow-hidden">
+                <div className="bg-gray-100 w-full max-h-[200px] aspect-square overflow-hidden relative">
                     <DataRenderImage
                         url={hero.value}
                         alt={hero.label}
-                        size="compact"
+                        size="card"
                         kind={cellImageKind(hero.value, hero.label) || cellImageKind(hero.value, hero.role) || 'external'}
                     />
                 </div>
@@ -121,10 +124,11 @@ interface ListProps {
 
 export const DataRenderCardList: React.FC<ListProps> = ({ title, status, cards, cardsPerRow = 1 }) => {
     const { theme } = useTheme();
-    const columns = Math.min(6, Math.max(1, cardsPerRow || 1));
+    // cardsPerRow <= 0 → responsive auto-fill (min 250px), same as agent-cards.css.
+    const columns = cardsPerRow > 0 ? Math.min(6, Math.max(1, cardsPerRow)) : 0;
 
     return (
-        <div className="min-w-0 flex flex-col gap-3">
+        <div className="min-w-0 flex flex-col gap-3 agent-cards-board rounded-[6px] p-3" style={{ background: '#e8ecf1' }}>
             {(title || status) && (
                 <div className="flex items-start justify-between gap-3 min-w-0">
                     {title && <div className={`min-w-0 text-sm font-medium break-words ${theme.title}`}>{title}</div>}
@@ -140,7 +144,11 @@ export const DataRenderCardList: React.FC<ListProps> = ({ title, status, cards, 
             ) : (
                 <div
                     className="grid gap-3 min-w-0"
-                    style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+                    style={{
+                        gridTemplateColumns: columns > 0
+                            ? `repeat(${columns}, minmax(0, 1fr))`
+                            : 'repeat(auto-fill, minmax(250px, 1fr))',
+                    }}
                 >
                     {cards.map((fields, i) => (
                         <DataRenderCard key={i} fields={fields} />

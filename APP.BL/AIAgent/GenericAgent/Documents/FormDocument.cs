@@ -236,12 +236,15 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 if (rowToken is JArray cells)
                 {
                     for (var i = 0; i < columns.Count; i++)
-                        row.Add(i < cells.Count ? CellOf(cells[i]) : new FormCell());
+                    {
+                        var colName = i < columns.Count ? columns[i] : null;
+                        row.Add(i < cells.Count ? CellOf(cells[i], colName) : new FormCell());
+                    }
                 }
                 else if (rowToken is JObject map)
                 {
                     foreach (var col in columns)
-                        row.Add(CellOf(map[col]));
+                        row.Add(CellOf(map[col], col));
                 }
                 else
                 {
@@ -258,10 +261,11 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             if (token is not JArray arr) return list;
             foreach (var item in arr.OfType<JObject>())
             {
-                var cell = CellOf(item["value"]);
+                var label = StringOf(item["label"]);
+                var cell = CellOf(item["value"], label);
                 list.Add(new FormField
                 {
-                    Label = StringOf(item["label"]),
+                    Label = label,
                     Value = cell.Text,
                     IsNumber = cell.IsNumber
                 });
@@ -269,16 +273,18 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return list;
         }
 
-        private static FormCell CellOf(JToken token)
+        private static FormCell CellOf(JToken token, string columnName = null)
         {
             if (token == null || token.Type == JTokenType.Null || token.Type == JTokenType.Undefined)
                 return new FormCell();
             if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
             {
+                var numText = ((JValue)token).ToString(CultureInfo.InvariantCulture);
                 return new FormCell
                 {
-                    Text = ((JValue)token).ToString(CultureInfo.InvariantCulture),
-                    IsNumber = true
+                    Text = numText,
+                    IsNumber = !CardSheet.IsImageValue(numText, columnName),
+                    IsImage = CardSheet.IsImageValue(numText, columnName)
                 };
             }
             if (token.Type == JTokenType.Boolean)
@@ -299,7 +305,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             if (token.Type == JTokenType.Array)
                 return new FormCell { Text = token.ToString(Newtonsoft.Json.Formatting.None) };
             var text = token.ToString();
-            return new FormCell { Text = text, IsImage = CardSheet.IsImageValue(text) };
+            // Column/field name + URL (or known app/file/extension URL) → image cell for print/export.
+            return new FormCell { Text = text, IsImage = CardSheet.IsImageValue(text, columnName) };
         }
 
         private static string StringOf(JToken token)

@@ -181,7 +181,9 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     {
                         Name = (f["name"] ?? f["Name"])?.ToString(),
                         Role = (f["role"] ?? f["Role"])?.ToString() ?? "body",
-                        TypographyHint = (f["typographyHint"] ?? f["TypographyHint"])?.ToString()
+                        TypographyHint = (f["typographyHint"] ?? f["TypographyHint"])?.ToString(),
+                        ShowLabel = ReadBool(f["showLabel"] ?? f["ShowLabel"]) ?? false,
+                        Label = (f["label"] ?? f["Label"])?.ToString()
                     });
                 }
             }
@@ -311,6 +313,12 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         public string Name { get; set; }
         public string Role { get; set; } = "body";
         public string TypographyHint { get; set; }
+        /// <summary>
+        /// When true, render a short label with the value (ambiguous siblings on the same card).
+        /// </summary>
+        public bool ShowLabel { get; set; }
+        /// <summary>Optional short display label when ShowLabel is true; else PrettyLabel(Name).</summary>
+        public string Label { get; set; }
     }
 
     public sealed class AiPolishFilterField

@@ -25,6 +25,8 @@ interface Props {
     title?: string;
     meta?: { total?: number };
     onRowSelected?: (row: Record<string, unknown>) => void;
+    /** Single-control Result: grid fills remaining chrome height (no ~420px cap). */
+    fillHeight?: boolean;
 }
 
 function wijmoFormat(dataType?: string): string | undefined {
@@ -35,9 +37,10 @@ function wijmoFormat(dataType?: string): string | undefined {
 }
 
 /** Default Wijmo FlexGrid implementation for data_render. */
-export const DataRenderGridWijmo: React.FC<Props> = ({ colDefs, rowData, title, meta, onRowSelected }) => {
+export const DataRenderGridWijmo: React.FC<Props> = ({ colDefs, rowData, title, meta, onRowSelected, fillHeight }) => {
     const { theme } = useTheme();
     const flexGridRef = useRef<any>(null);
+    const hostRef = useRef<HTMLDivElement>(null);
     const [cv] = useState(() => new CollectionView<any>([]));
 
     useEffect(() => {
@@ -83,12 +86,27 @@ export const DataRenderGridWijmo: React.FC<Props> = ({ colDefs, rowData, title, 
 
     const total = meta?.total ?? rowData.length;
     const rowHeight = imageFields.size > 0 ? 64 : 28;
-    const height = Math.min(420, 48 + Math.max(rowData.length, 1) * rowHeight);
+    const height = fillHeight ? undefined : Math.min(420, 48 + Math.max(rowData.length, 1) * rowHeight);
 
     useEffect(() => {
         const flex = flexGridRef.current?.control;
         if (flex?.rows) flex.rows.defaultSize = rowHeight;
     }, [rowHeight]);
+
+    // Keep Wijmo sized when the Result pane fills remaining height.
+    useEffect(() => {
+        if (!fillHeight || !hostRef.current) return;
+        const el = hostRef.current;
+        const sync = () => {
+            const flex = flexGridRef.current?.control;
+            if (!flex) return;
+            try { flex.invalidate(); } catch { /* ignore */ }
+        };
+        const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(sync) : null;
+        ro?.observe(el);
+        sync();
+        return () => ro?.disconnect();
+    }, [fillHeight, rowData, visibleCols]);
 
     const onSelectionChanged = (s: any) => {
         const flex = s?.control ?? s;
@@ -99,8 +117,8 @@ export const DataRenderGridWijmo: React.FC<Props> = ({ colDefs, rowData, title, 
     };
 
     return (
-        <div className="flex flex-col gap-1">
-            <div className={`flex items-center justify-between gap-2 text-xs ${theme.label}`}>
+        <div className={`flex flex-col gap-1 min-h-0 ${fillHeight ? 'h-full' : ''}`}>
+            <div className={`flex items-center justify-between gap-2 text-xs shrink-0 ${theme.label}`}>
                 <div className="flex items-center gap-2 min-w-0">
                     {title && <span className="font-medium truncate">{title}</span>}
                     <FlexGridAddOn
@@ -110,7 +128,11 @@ export const DataRenderGridWijmo: React.FC<Props> = ({ colDefs, rowData, title, 
                 </div>
                 <span className="shrink-0">{total} row{total === 1 ? '' : 's'}</span>
             </div>
-            <div className="w-full" style={{ height: Math.max(160, height), minHeight: 160 }}>
+            <div
+                ref={hostRef}
+                className={`w-full min-h-0 ${fillHeight ? 'h-1 flex-auto' : ''}`}
+                style={fillHeight ? undefined : { height: Math.max(160, height ?? 160), minHeight: 160 }}
+            >
                 <FlexGrid
                     ref={flexGridRef}
                     className="w-full h-full"

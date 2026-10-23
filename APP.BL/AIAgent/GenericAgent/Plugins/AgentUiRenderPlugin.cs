@@ -171,8 +171,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     if (views.Contains("cards"))
                     {
                         polish = ResolvePolish(context, resolvedDataset, "cards", title, dashRows, aiPolishedRenderSpec, selectAllColumns, promptHash);
+                        // 0,0 → CardSheet.SuggestPrintGrid (not hard-coded 3×3 when count is small).
                         cardSheet = CardSheet.FromRows(
-                            title ?? resolvedDataset ?? "Cards", dashRows, cardsPerRow ?? 3, cardRows ?? CardSheet.DefaultCardRows, polish);
+                            title ?? resolvedDataset ?? "Cards", dashRows, cardsPerRow ?? 0, cardRows ?? 0, polish);
                         if (!string.IsNullOrWhiteSpace(polish?.Title)) cardSheet.Title = polish.Title;
                         else if (!string.IsNullOrWhiteSpace(title)) cardSheet.Title = title.Trim();
                     }
@@ -190,12 +191,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     {
                         dashRows = LoadRows(context, datasetName, content, null, out resolvedDataset, out truncated, out rowCount);
                         polish = ResolvePolish(context, resolvedDataset, layout, title, dashRows, aiPolishedRenderSpec, selectAllColumns, promptHash);
+                        // 0,0 → SuggestPrintGrid when tool/polish omitted page grid (avoid 1×N print strips).
                         cardSheet = CardSheet.FromRows(
-                            title ?? resolvedDataset ?? "Cards", dashRows, cardsPerRow ?? 1, cardRows ?? CardSheet.DefaultCardRows, polish);
+                            title ?? resolvedDataset ?? "Cards", dashRows, cardsPerRow ?? 0, cardRows ?? 0, polish);
                     }
                     else
                     {
-                        cardSheet = LoadCards(context, datasetName, content, title, cardsPerRow ?? 1, cardRows ?? CardSheet.DefaultCardRows, effLimit,
+                        cardSheet = LoadCards(context, datasetName, content, title, cardsPerRow ?? 0, cardRows ?? 0, effLimit,
                             out resolvedDataset, out truncated, out dashRows, aiPolishedRenderSpec, selectAllColumns, promptHash, out polish);
                         rowCount = cardSheet.CardCount;
                     }
@@ -243,8 +245,31 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     && polish.Bindings?.Columns != null && polish.Bindings.Columns.Count > 0
                     && !polish.SelectAllColumns)
                 {
-                    formDoc = formDoc.ProjectColumns(polish.Bindings.Columns);
+                    // Keep Image/Sketch columns even when AI column list omitted them (Result/print parity).
+                    var cols = new List<string>(polish.Bindings.Columns);
+                    foreach (var sec in formDoc.Sections ?? new List<FormSection>())
+                    {
+                        if (sec?.Tables == null) continue;
+                        foreach (var t in sec.Tables)
+                        {
+                            if (t?.Columns == null) continue;
+                            foreach (var c in t.Columns)
+                            {
+                                if (!CardSheet.IsImageFieldName(c)) continue;
+                                if (!cols.Exists(x => string.Equals(x, c, StringComparison.OrdinalIgnoreCase)))
+                                    cols.Insert(0, c);
+                            }
+                        }
+                    }
+                    formDoc = formDoc.ProjectColumns(cols);
                 }
+
+                // Embed Image URLs for TemplateContent HTML (none-interactive Result + export twin).
+                // Interactive React grids load via session fetch; Print regenerates via ExportResult + AttachAsync.
+                if (cardSheet != null)
+                    await CardImageLoader.AttachAsync(cardSheet, context.CompanyId, default).ConfigureAwait(false);
+                if (formDoc != null)
+                    await CardImageLoader.AttachAsync(formDoc, context.CompanyId, default).ConfigureAwait(false);
 
                 var cardsTplInteractive = polish?.TemplateBody(interactive: true, "cards");
                 var cardsTplNone = polish?.TemplateBody(interactive: false, "cards");
@@ -295,8 +320,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     }
                     else if (UiTemplateMerge.IsPageLayout(layout))
                     {
-                        var pageCpr = cardsPerRow ?? polish?.LayoutHints?.CardsPerRow ?? 3;
-                        var pageCr = cardRows ?? polish?.LayoutHints?.CardRows ?? CardSheet.DefaultCardRows;
+                        // Prefer resolved CardSheet grid (includes SuggestPrintGrid); else tool/polish; else 3×3.
+                        var pageCpr = cardSheet != null && cardSheet.CardsPerRow > 0
+                            ? cardSheet.CardsPerRow
+                            : (cardsPerRow ?? polish?.LayoutHints?.CardsPerRow ?? 3);
+                        var pageCr = cardSheet != null && cardSheet.CardRows > 0
+                            ? cardSheet.CardRows
+                            : (cardRows ?? polish?.LayoutHints?.CardRows ?? CardSheet.DefaultCardRows);
                         emitSpecJson = JsonConvert.SerializeObject(new
                         {
                             title = pageTitle,
@@ -312,8 +342,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     }
                     else if (layout == "cards")
                     {
-                        var cpr = cardsPerRow ?? polish?.LayoutHints?.CardsPerRow ?? 1;
-                        var cr = cardRows ?? polish?.LayoutHints?.CardRows ?? CardSheet.DefaultCardRows;
+                        var cpr = cardSheet != null && cardSheet.CardsPerRow > 0
+                            ? cardSheet.CardsPerRow
+                            : (cardsPerRow ?? polish?.LayoutHints?.CardsPerRow ?? 3);
+                        var cr = cardSheet != null && cardSheet.CardRows > 0
+                            ? cardSheet.CardRows
+                            : (cardRows ?? polish?.LayoutHints?.CardRows ?? CardSheet.DefaultCardRows);
                         emitSpecJson = JsonConvert.SerializeObject(new
                         {
                             title = pageTitle,
@@ -811,7 +845,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 if (row is JObject obj)
                 {
                     foreach (var col in columns)
-                        cells.Add(CellFromToken(obj[col]));
+                        cells.Add(CellFromToken(obj[col], col));
                 }
                 data.Add(cells);
             }
@@ -841,6 +875,14 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
             var text = v.Type == JTokenType.String ? v.ToString() : v.ToString(Formatting.None);
             return new FormCell { Text = text, IsImage = CardSheet.IsImageValue(text) };
+        }
+
+        private static FormCell CellFromToken(JToken v, string columnName)
+        {
+            var cell = CellFromToken(v);
+            if (cell != null && !cell.IsImage && CardSheet.IsRenderableImage(cell.Text, columnName, cell.IsImage))
+                cell.IsImage = true;
+            return cell;
         }
 
         private static string Err(string message) =>

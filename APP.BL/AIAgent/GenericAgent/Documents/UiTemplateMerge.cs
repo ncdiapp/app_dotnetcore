@@ -204,8 +204,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 
         private static string RenderCardsView(string body, CardSheet cardSheet)
         {
-            if (IsCodeDefault(body))
-                body = UiDefaultViewTemplates.CardsNoneInteractive;
+            body = EnsureGalleryCardsTemplate(body);
             try
             {
                 return UiTemplateScriban.Render(body, UiTemplateScriban.ModelFromCards(cardSheet));
@@ -214,6 +213,32 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             {
                 return HtmlForm.WriteCards(cardSheet, false);
             }
+        }
+
+        /// <summary>
+        /// AI polish sometimes returns a cards TemplateContent that only paints idLink.
+        /// Fall back to the platform gallery template so Result matches Print (id/title/status/meta).
+        /// </summary>
+        private static string EnsureGalleryCardsTemplate(string body)
+        {
+            if (IsCodeDefault(body) || string.IsNullOrWhiteSpace(body))
+                return UiDefaultViewTemplates.CardsNoneInteractive;
+            // Must bind gallery roles (not only primaryImage + idLink).
+            var hasId = body.IndexOf("idLink", StringComparison.OrdinalIgnoreCase) >= 0
+                || body.IndexOf("agent-card-id", StringComparison.OrdinalIgnoreCase) >= 0;
+            var hasTitle = body.IndexOf("\"title\"", StringComparison.OrdinalIgnoreCase) >= 0
+                || body.IndexOf("role == \"title\"", StringComparison.OrdinalIgnoreCase) >= 0
+                || body.IndexOf("agent-card-name", StringComparison.OrdinalIgnoreCase) >= 0;
+            var hasMetaOrStatus = body.IndexOf("statusPill", StringComparison.OrdinalIgnoreCase) >= 0
+                || body.IndexOf("agent-card-status", StringComparison.OrdinalIgnoreCase) >= 0
+                || body.IndexOf("agent-card-meta", StringComparison.OrdinalIgnoreCase) >= 0
+                || body.IndexOf("role == \"meta\"", StringComparison.OrdinalIgnoreCase) >= 0;
+            // Prefer platform template when AI shell cannot honor show_label (ambiguous meta).
+            var hasShowLabel = body.IndexOf("show_label", StringComparison.OrdinalIgnoreCase) >= 0
+                || body.IndexOf("agent-card-field-label", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (hasId && hasTitle && hasMetaOrStatus && hasShowLabel)
+                return body;
+            return UiDefaultViewTemplates.CardsNoneInteractive;
         }
 
         /// <summary>
@@ -487,11 +512,10 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             sb.Append("#export-grid img{max-width:100%;max-height:48px;width:auto;height:auto;object-fit:contain}");
             if (!string.IsNullOrEmpty(fitStub))
                 sb.Append(UiDashboardHtml.BuildGridPageFitCss(fitStub));
-            // Fitted cards use fixed 180mm; inside page export that leaves a right gutter — stretch to 100%.
+            // Fitted cards must span full printable width (not fixed 180mm left gutter).
             sb.Append("#export-cards{width:100%;max-width:100%}");
-            sb.Append("#export-cards .card-page{width:100%!important;max-width:100%;height:auto!important;");
-            sb.Append("min-height:240mm;margin:0 auto}");
-            sb.Append("#export-cards .card-page>table{width:100%!important;max-width:100%;height:auto!important}");
+            sb.Append("#export-cards .card-page{width:100%!important;max-width:100%;margin:0}");
+            sb.Append("#export-cards .card-page>table{width:100%!important;max-width:100%;table-layout:fixed}");
             // Last fitted page must not force a trailing blank sheet.
             sb.Append("#export-cards .card-page:last-child{page-break-after:auto!important;break-after:auto!important}");
             sb.Append("</style></head><body>");

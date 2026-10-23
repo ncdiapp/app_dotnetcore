@@ -14,7 +14,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
     /// </summary>
     public static class AgentAiPolishCacheBL
     {
-        public const int SampleMaxRows = 10;
+        /// <summary>Sample rows sent to polish / used for fill-rate (theme fit first; empty columns rejected).</summary>
+        public const int SampleMaxRows = 20;
 
         private static readonly ConcurrentDictionary<string, ConcurrentDictionary<string, AiPolishedRenderSpec>> Sessions
             = new(StringComparer.OrdinalIgnoreCase);

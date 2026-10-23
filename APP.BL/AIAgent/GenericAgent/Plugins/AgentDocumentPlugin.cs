@@ -205,6 +205,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     var pageSheet = LoadCards(context, content, sourcePath, datasetName, records, cardsPerRow, cardRows, rowLimit, pageGrid, cardsPerPage);
                     await CardImageLoader.AttachAsync(pageSheet, context.CompanyId, ct).ConfigureAwait(false);
                     var gridDoc = ApplyPolishColumns(context, datasetName, flat.Doc, specJson);
+                    // Embed grid Image-column URLs (PLM /image/300) for Playwright print — same as cards.
+                    await CardImageLoader.AttachAsync(gridDoc, context.CompanyId, ct).ConfigureAwait(false);
                     var pageTitle = string.IsNullOrWhiteSpace(gridDoc.Title) ? (pageSheet.Title ?? "Result") : gridDoc.Title;
                     var pageHtml = UiTemplateMerge.ComposePageExportHtml(gridDoc, pageSheet, pageTitle);
                     if (preview)
@@ -232,12 +234,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     // (not only PDF/DOCX/PPT). Screen Result uses TemplateContent; export uses WriteFittedCards.
                     var sheet = LoadCards(context, content, sourcePath, datasetName, records, cardsPerRow, cardRows, rowLimit, pageGrid, cardsPerPage);
                     await CardImageLoader.AttachAsync(sheet, context.CompanyId, ct).ConfigureAwait(false);
-                    var forPrint = preview || extension == ".pdf" || extension == ".docx" || extension == ".pptx" || extension == ".html";
+                    var cardsForPrint = IsPrintOrHtmlExport(preview, extension);
                     string cardsTpl = null;
                     if (context != null && !string.IsNullOrWhiteSpace(context.ChatSessionKey)
                         && AgentAiPolishCacheBL.TryGet(context.ChatSessionKey, datasetName?.Trim() ?? "_", "cards", out var polishTpl))
                         cardsTpl = polishTpl.TemplateBody(interactive: false, "cards");
-                    var cardHtml = UiTemplateMerge.MergeCards(sheet, forPrint, cardsTpl);
+                    var cardHtml = UiTemplateMerge.MergeCards(sheet, cardsForPrint, cardsTpl);
                     if (preview)
                         return PreviewHtml(context, path, cardHtml, sheet.CardCount, sheet.CacheLimitReached, sheet.MissingImages, "playwright");
                     path = WithExtension(path, extension);
@@ -246,11 +248,15 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
 
                 var doc = LoadDocument(context, content, sourcePath, datasetName);
+                doc = ApplyPolishColumns(context, datasetName, doc, specJson);
+                // Embed Image-column URLs before HTML merge (print/PDF need data-URIs).
+                await CardImageLoader.AttachAsync(doc, context.CompanyId, ct).ConfigureAwait(false);
+                var tableForPrint = IsPrintOrHtmlExport(preview, extension);
                 var html = mode == "form"
-                    ? UiTemplateMerge.MergeForm(doc, false)
-                    : UiTemplateMerge.MergeTable(doc, false);
+                    ? UiTemplateMerge.MergeForm(doc, tableForPrint)
+                    : UiTemplateMerge.MergeTable(doc, tableForPrint);
                 if (preview)
-                    return PreviewHtml(context, path, HtmlForm.ForPrint(html), doc.DataRowCount(), false, null, "playwright");
+                    return PreviewHtml(context, path, html, doc.DataRowCount(), false, null, "playwright");
                 path = WithExtension(path, extension);
                 var written = await WriteFormBytes(extension, doc, html, context.CompanyId, ct).ConfigureAwait(false);
                 return Saved(context, path, written.Bytes, doc.DataRowCount(), false, null, written.Engine);
@@ -335,14 +341,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (extension == ".csv")
                 return (CsvForm.Write(doc), "csv");
             if (extension == ".xlsx")
-            {
-                await CardImageLoader.AttachAsync(doc, companyId, ct).ConfigureAwait(false);
                 return (ExcelForm.Write(doc), "openxml");
-            }
+            // Caller attaches images and merges forPrint HTML (data-URIs already in html).
             if (extension == ".pdf")
-                return (await AppReportPdfService.RenderHtmlToPdfAsync(HtmlForm.ForPrint(html)).ConfigureAwait(false), "playwright");
+                return (await AppReportPdfService.RenderHtmlToPdfAsync(html).ConfigureAwait(false), "playwright");
             if (extension == ".docx")
-                return WriteDocx(System.Text.Encoding.UTF8.GetBytes(HtmlForm.ForPrint(html)), doc, null);
+                return WriteDocx(System.Text.Encoding.UTF8.GetBytes(html ?? ""), doc, null);
             if (extension == ".pptx")
                 return (PptxForm.Write(doc, TemplatePaint.FromHtml(html)), "shapecrawler");
             throw new InvalidOperationException("Unsupported export.");
@@ -399,6 +403,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         /// Honor AI polish bindings.columns for Print/Export grid (same as interactive Result).
         /// Cache first; after reopen, columns come from Result SpecJson.polishedSpec.
         /// </summary>
+        private static bool IsPrintOrHtmlExport(bool preview, string extension)
+            => preview || extension == ".pdf" || extension == ".docx"
+                || extension == ".pptx" || extension == ".html";
+
         private static FormDocument ApplyPolishColumns(
             AgentToolContext context, string datasetName, FormDocument doc, string specJson = null)
         {
@@ -415,7 +423,32 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (polish == null || polish.SelectAllColumns
                 || polish.Bindings?.Columns == null || polish.Bindings.Columns.Count == 0)
                 return doc;
-            return doc.ProjectColumns(polish.Bindings.Columns);
+            // Keep Image/Sketch columns even when AI column list omitted them (print/Result parity).
+            var cols = new List<string>(polish.Bindings.Columns);
+            foreach (var name in ImageColumnNames(doc))
+            {
+                if (!cols.Exists(c => string.Equals(c, name, StringComparison.OrdinalIgnoreCase)))
+                    cols.Insert(0, name);
+            }
+            return doc.ProjectColumns(cols);
+        }
+
+        private static IEnumerable<string> ImageColumnNames(FormDocument doc)
+        {
+            if (doc?.Sections == null) yield break;
+            foreach (var sec in doc.Sections)
+            {
+                if (sec?.Tables == null) continue;
+                foreach (var t in sec.Tables)
+                {
+                    if (t?.Columns == null) continue;
+                    foreach (var c in t.Columns)
+                    {
+                        if (CardSheet.IsImageFieldName(c))
+                            yield return c;
+                    }
+                }
+            }
         }
 
         private static AiPolishedRenderSpec TryParsePolishedFromSpecJson(string specJson)

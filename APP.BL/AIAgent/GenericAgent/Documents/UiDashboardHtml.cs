@@ -324,7 +324,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 {
                     var v = row[c];
                     sb.Append("<td>");
-                    AppendTableCell(sb, v);
+                    AppendTableCell(sb, v, c);
                     sb.Append("</td>");
                 }
                 sb.Append("</tr>");
@@ -665,7 +665,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return double.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out d);
         }
 
-        private static void AppendTableCell(StringBuilder sb, JToken v)
+        private static void AppendTableCell(StringBuilder sb, JToken v, string columnName = null)
         {
             if (v == null || v.Type == JTokenType.Null)
                 return;
@@ -674,16 +674,17 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             if (v is JObject o)
             {
                 text = o["url"]?.ToString() ?? o["Url"]?.ToString() ?? o["fileId"]?.ToString() ?? o.ToString(Newtonsoft.Json.Formatting.None);
-                image = o["url"] != null || o["Url"] != null || CardSheet.IsImageValue(text);
+                image = o["url"] != null || o["Url"] != null
+                    || CardSheet.IsRenderableImage(text, columnName, flaggedIsImage: false);
             }
             else
             {
                 text = v.Type == JTokenType.String ? v.ToString() : v.ToString();
-                image = CardSheet.IsImageValue(text);
+                image = CardSheet.IsRenderableImage(text, columnName, flaggedIsImage: false);
             }
             if (image && !string.IsNullOrWhiteSpace(text))
             {
-                sb.Append("<img src=\"").Append(Enc(text.Trim()))
+                sb.Append("<img src=\"").Append(Enc(text.Trim().Trim('"', '\'')))
                     .Append("\" alt=\"\" style=\"border:0;max-width:120px;max-height:80px;object-fit:contain;display:block\"/>");
                 return;
             }

@@ -32,6 +32,7 @@ interface Props {
     title?: string;
     meta?: { total?: number };
     onRowSelected?: (row: Record<string, unknown>) => void;
+    fillHeight?: boolean;
 }
 
 const currencyFormatter = (p: { value?: unknown }) =>
@@ -46,7 +47,7 @@ const dateFormatter = (p: { value?: unknown }) => {
 };
 
 /** AG Grid implementation — kept for future use; selected when DATA_RENDER_ENGINE === 'aggrid'. */
-export const DataRenderGridAg: React.FC<Props> = ({ colDefs, rowData, title, meta, onRowSelected }) => {
+export const DataRenderGridAg: React.FC<Props> = ({ colDefs, rowData, title, meta, onRowSelected, fillHeight }) => {
     const { theme } = useTheme();
     const gridRef = useRef<AgGridReact>(null);
 
@@ -90,15 +91,20 @@ export const DataRenderGridAg: React.FC<Props> = ({ colDefs, rowData, title, met
 
     const total = meta?.total ?? rowData.length;
 
+    const cappedH = Math.min(420, 48 + rowData.length * (imageFields.size > 0 ? 68 : 36));
+
     return (
-        <div className="flex flex-col gap-1">
+        <div className={`flex flex-col gap-1 min-h-0 ${fillHeight ? 'h-full' : ''}`}>
             {(title || total != null) && (
-                <div className={`flex items-center justify-between text-xs ${theme.label}`}>
+                <div className={`flex items-center justify-between text-xs shrink-0 ${theme.label}`}>
                     <span className="font-medium">{title}</span>
                     <span>{total} row{total === 1 ? '' : 's'}</span>
                 </div>
             )}
-            <div className="ag-theme-alpine w-full" style={{ height: Math.min(420, 48 + rowData.length * (imageFields.size > 0 ? 68 : 36)), minHeight: 160 }}>
+            <div
+                className={`ag-theme-alpine w-full min-h-0 ${fillHeight ? 'h-1 flex-auto' : ''}`}
+                style={fillHeight ? undefined : { height: Math.max(160, cappedH), minHeight: 160 }}
+            >
                 <AgGridReact
                     ref={gridRef}
                     rowData={rowData}

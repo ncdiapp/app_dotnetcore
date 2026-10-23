@@ -8,41 +8,49 @@
   box-sizing: border-box;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: #111827;
-  background: #e8ecf1;
+  /* Light board (MCP-clean) — avoid heavy grey-blue. */
+  background: #f4f5f7;
+  contain: layout style;
 }
 
 .agent-cards-title {
   display: none;
 }
 
+/* Result Card view: responsive columns (min 250px). */
 .agent-cards-grid {
   display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 0.875rem;
   min-width: 0;
+  width: 100%;
   align-items: stretch;
-  grid-template-columns: repeat(var(--cards-per-row, 4), minmax(0, 1fr));
 }
 
 .agent-card {
-  min-width: 0;
-  height: 100%;
-  min-height: 16rem;
+  min-width: 250px;
+  max-width: 100%;
+  height: auto;
+  min-height: 0;
   overflow: hidden;
-  border: 1px solid #e5e7eb;
+  border: none;
   border-radius: 0.5rem;
   padding: 0;
   background: #ffffff;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 2px 8px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  content-visibility: auto;
+  contain-intrinsic-size: 250px 360px;
 }
 
-/* Fixed square hero: object-fit cover + center crop (Amazon / Shopify catalog style). */
+/* Hero: square crop but capped so body fields stay visible (was 1:1 of full width → crushed text). */
 .agent-card-hero {
   background: #f3f4f6;
   aspect-ratio: 1 / 1;
   width: 100%;
+  max-height: 200px;
   flex: 0 0 auto;
   min-height: 8rem;
   display: block;
@@ -84,7 +92,7 @@
   flex: 1 1 auto;
   min-height: 5.5rem;
   background: #ffffff;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .agent-card-id {
@@ -196,6 +204,12 @@
   white-space: nowrap;
 }
 
+.agent-card-field-label {
+  font-weight: 600;
+  color: #9ca3af;
+  margin-right: 0.25rem;
+}
+
 .agent-card-row.agent-card-role-body {
   display: none;
 }
@@ -229,19 +243,17 @@
 
 .agent-template-host:has(.agent-cards-root),
 .agent-template-host.agent-cards-board {
-  background: #e8ecf1;
+  background: #f4f5f7;
   border-radius: 0.375rem;
   min-height: 100%;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 440px) {
   .agent-cards-grid {
-    grid-template-columns: repeat(min(2, var(--cards-per-row, 4)), minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
-}
-
-@media (max-width: 560px) {
-  .agent-cards-grid {
-    grid-template-columns: minmax(0, 1fr);
+  .agent-card {
+    min-width: 0;
+    width: 100%;
   }
 }

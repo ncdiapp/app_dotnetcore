@@ -91,11 +91,24 @@ export type DataRenderCardField = { label: string; value: string; role?: string 
 export type DataRenderCardFields = DataRenderCardField[];
 
 function fieldsFromObject(obj: Record<string, unknown>): DataRenderCardFields {
-    return Object.entries(obj).map(([key, value]) => ({
-        label: toHeader(key),
-        value: value != null ? String(value) : '',
-        role: 'body',
-    }));
+    // Prefer image column + up to 5 text fields (name + non-empty), not a full dump.
+    const entries = Object.entries(obj);
+    const img = entries.find(([k, v]) => cellImageKind(v, k) != null);
+    const texts = entries
+        .filter(([k, v]) => k !== img?.[0] && v != null && String(v).trim() !== '')
+        .slice(0, 5);
+    const out: DataRenderCardFields = [];
+    if (img) {
+        out.push({ label: img[0], value: String(img[1] ?? ''), role: 'primaryImage' });
+    }
+    for (const [key, value] of texts) {
+        out.push({
+            label: key,
+            value: value != null ? String(value) : '',
+            role: 'body',
+        });
+    }
+    return promoteCardFieldRoles(out);
 }
 
 function fieldsFromLabeled(raw: unknown): DataRenderCardFields | null {
@@ -120,6 +133,30 @@ export type PolishedCardBindings = {
     fields?: Array<{ name?: string; role?: string }>;
 };
 
+/** Map body/empty roles → gallery roles (parity with CardSheet.PromoteBodyRolesToGallery). */
+export function promoteCardFieldRoles(fields: DataRenderCardFields): DataRenderCardFields {
+    const text = fields.filter(f => (f.role || '').toLowerCase() !== 'primaryimage');
+    const has = (role: string) => text.some(f => (f.role || '').toLowerCase() === role.toLowerCase());
+    const bodies = text.filter(f => {
+        const r = (f.role || 'body').toLowerCase();
+        return !r || r === 'body';
+    });
+    if (bodies.length === 0) return fields;
+    let slot = 0;
+    const take = (role: string, allowMany = false) => {
+        if (!allowMany && has(role)) return;
+        if (slot >= bodies.length) return;
+        bodies[slot].role = role;
+        slot++;
+    };
+    take('idLink');
+    take('title');
+    take('colorSwatch');
+    take('statusPill');
+    while (slot < bodies.length) take('meta', true);
+    return fields;
+}
+
 function fieldsFromPolish(obj: Record<string, unknown>, bindings: PolishedCardBindings): DataRenderCardFields {
     const out: DataRenderCardFields = [];
     const img = bindings.primaryImageField;
@@ -136,7 +173,8 @@ function fieldsFromPolish(obj: Record<string, unknown>, bindings: PolishedCardBi
             role: f.role || 'body',
         });
     }
-    return out.length > 0 ? out : fieldsFromObject(obj);
+    const selected = out.length > 0 ? out : fieldsFromObject(obj);
+    return promoteCardFieldRoles(selected);
 }
 
 export function adaptToCard(args: {

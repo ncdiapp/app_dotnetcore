@@ -90,32 +90,45 @@ export const ReasoningLoopPanel: React.FC<Props> = ({ text, steps, isLive }) => 
                     )}
                     {segments.map((seg, idx) => {
                         const hasDetail = !!(seg.details || '').trim();
+                        const desc = (seg.description || '').replace(/\s+/g, ' ').trim();
+                        // Expand when there is detail, or description alone would overflow a single line.
+                        const canExpand = hasDetail || desc.length > 80;
                         const isStepOpen = expanded.has(idx);
                         return (
                             <div
                                 key={idx}
-                                className={`rounded-[4px] leading-relaxed ${theme.label} ${t('border_mainContentSection')} border`}
+                                className={`rounded-[4px] leading-snug ${theme.label} ${t('border_mainContentSection')} border`}
                             >
                                 <button
                                     type="button"
-                                    className="w-full flex items-start gap-1.5 px-2 py-1.5 text-left"
-                                    onClick={() => hasDetail && toggleStep(idx)}
-                                    disabled={!hasDetail}
+                                    className="w-full flex items-center gap-1.5 px-2 py-1 text-left min-w-0"
+                                    onClick={() => canExpand && toggleStep(idx)}
+                                    disabled={!canExpand}
+                                    title={canExpand && !isStepOpen ? desc : undefined}
                                 >
-                                    {hasDetail ? (
-                                        <i className={`fa-solid fa-chevron-${isStepOpen ? 'down' : 'right'} mt-0.5 opacity-40 shrink-0 text-[10px]`} aria-hidden />
+                                    {canExpand ? (
+                                        <i className={`fa-solid fa-chevron-${isStepOpen ? 'down' : 'right'} opacity-40 shrink-0 text-[10px]`} aria-hidden />
                                     ) : (
                                         <span className="w-2.5 shrink-0" />
                                     )}
-                                    <span className="w-1 flex-auto min-w-0 whitespace-pre-wrap break-words">
-                                        <span className="opacity-40 mr-1.5 text-[10px]">#{idx + 1}</span>
-                                        {seg.description}
+                                    <span className="w-1 flex-auto min-w-0 flex items-center gap-1.5 overflow-hidden">
+                                        <span className="opacity-40 shrink-0 text-[10px]">#{idx + 1}</span>
+                                        <span className="min-w-0 w-1 flex-auto truncate whitespace-nowrap">
+                                            {desc || '—'}
+                                        </span>
                                     </span>
                                 </button>
-                                {hasDetail && isStepOpen && (
-                                    <pre className={`px-2 pb-2 pt-0 text-[11px] whitespace-pre-wrap break-words opacity-80 border-t ${t('border_mainContentSection')}`}>
-                                        {seg.details}
-                                    </pre>
+                                {isStepOpen && (
+                                    <div className={`px-2 pb-2 pt-1.5 text-[11px] border-t ${t('border_mainContentSection')}`}>
+                                        <div className="whitespace-pre-wrap break-words opacity-90 mb-1">
+                                            {seg.description}
+                                        </div>
+                                        {hasDetail && (
+                                            <pre className="whitespace-pre-wrap break-words opacity-80 m-0">
+                                                {seg.details}
+                                            </pre>
+                                        )}
+                                    </div>
                                 )}
                             </div>
                         );

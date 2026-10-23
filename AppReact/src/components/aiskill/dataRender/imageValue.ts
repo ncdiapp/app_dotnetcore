@@ -34,12 +34,15 @@ export function isUrlValue(value: unknown): boolean {
 }
 
 /**
- * Image rendering field = field name means image AND value is a URL.
+ * Image rendering field = field name means image AND value is a URL (or AppFile id).
  * App /api/… URLs use session fetch; other http(s) URLs load directly.
  */
 export function cellImageKind(value: unknown, columnName?: string | null): 'resource' | 'external' | null {
     if (!isImageColumnName(columnName)) return null;
     const text = unwrapQuoted(value);
+    if (!text) return null;
+    // Numeric AppFile id in an Image/Sketch column.
+    if (/^\d+$/.test(text) && Number(text) > 0) return 'resource';
     if (!isUrlValue(text)) return null;
     if (RESOURCE_API.test(text) || (text.startsWith('/api/') && /\/(?:image|regular|thumbnail|latest)\b/i.test(text)))
         return 'resource';
@@ -60,6 +63,8 @@ export function imageUrlKind(value: unknown): 'resource' | 'external' | null {
 /** Path passed to fetchAuthenticatedImageBlobUrl (it prefixes BASE_URL). */
 export function toAppResourcePath(url: string): string {
     let path = unwrapQuoted(url);
+    if (/^\d+$/.test(path) && Number(path) > 0)
+        return `/api/files/image/${path}`;
     if (/^https?:\/\//i.test(path)) {
         try {
             path = new URL(path).pathname;

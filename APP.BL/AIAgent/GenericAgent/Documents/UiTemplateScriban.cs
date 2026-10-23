@@ -107,19 +107,33 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                             if (f?.ImageBytes != null && f.ImageBytes.Length > 0)
                                 imageSrc = "data:" + ImageMime(f.ImageBytes) + ";base64,"
                                            + Convert.ToBase64String(f.ImageBytes);
-                            else if (f != null && (f.IsImage || CardSheet.IsImageValue(f.Value, f.Label)
+                            else if (f != null && (CardSheet.IsRenderableImage(f.Value, f.Label, f.IsImage)
                                      || (string.Equals(f.Role, "primaryImage", StringComparison.OrdinalIgnoreCase)
                                          && CardSheet.IsUrlValue(f.Value))))
                                 imageSrc = (f.Value ?? "").Trim().Trim('"', '\'');
                             var isImage = !string.IsNullOrEmpty(imageSrc);
+                            var display = isImage ? (f?.Value ?? "") : CardSheet.FormatDisplayValue(f?.Value);
+                            var displayRole = f?.Role;
+                            if (!isImage && CardSheet.LooksLikeDateValue(f?.Value)
+                                && (string.Equals(displayRole, "statusPill", StringComparison.OrdinalIgnoreCase)
+                                    || string.Equals(displayRole, "status", StringComparison.OrdinalIgnoreCase)))
+                                displayRole = "meta";
+                            var showLabel = f?.ShowLabel == true && !isImage;
+                            var displayLabel = showLabel
+                                ? (!string.IsNullOrWhiteSpace(f.DisplayLabel)
+                                    ? f.DisplayLabel
+                                    : CardSheet.PrettyFieldLabel(f.Label))
+                                : "";
                             fields.Add(new
                             {
                                 label = Enc(f?.Label),
-                                value = Enc(f?.Value),
+                                value = Enc(display),
                                 is_image = isImage,
                                 image_src = EncAttr(imageSrc),
-                                role = Enc(string.IsNullOrWhiteSpace(f?.Role) ? "body" : f.Role),
-                                typography_hint = Enc(f?.TypographyHint ?? "")
+                                role = Enc(string.IsNullOrWhiteSpace(displayRole) ? "body" : displayRole),
+                                typography_hint = Enc(f?.TypographyHint ?? ""),
+                                show_label = showLabel,
+                                display_label = Enc(displayLabel)
                             });
                             if (string.Equals(f?.Role, "title", StringComparison.OrdinalIgnoreCase)
                                 && !string.IsNullOrWhiteSpace(f?.Value))

@@ -10,13 +10,19 @@ function ensureStylesheet(id: string, href: string) {
     document.head.appendChild(link);
 }
 
-/** Strip legacy v4 blur layers from cached card HTML. */
-export function stripCardHeroBlurLayers(html: string): string {
+/** Strip legacy blur layers + drop fixed --cards-per-row so CSS flex wrap can size columns. */
+export function normalizeCardsHtmlForResult(html: string): string {
     if (!html?.trim() || typeof document === 'undefined') return html;
-    if (!/agent-card-hero-blur/i.test(html)) return html;
+    if (!/agent-card/i.test(html)) return html;
     const wrap = document.createElement('div');
     wrap.innerHTML = html;
     wrap.querySelectorAll('.agent-card-hero-blur').forEach(el => el.remove());
+    wrap.querySelectorAll('.agent-cards-grid, [data-role="cards"]').forEach(grid => {
+        (grid as HTMLElement).style.removeProperty('--cards-per-row');
+        if ((grid as HTMLElement).getAttribute('style')?.trim() === '')
+            grid.removeAttribute('style');
+        grid.classList.add('agent-cards-grid');
+    });
     return wrap.innerHTML;
 }
 
@@ -28,7 +34,7 @@ const TemplateControlLayout: React.FC<{ html: string; className?: string }> = ({
     useEffect(() => {
         if (!html) return;
         if (/agent-cards\.css/i.test(html) || /agent-card/i.test(html)) {
-            ensureStylesheet('agent-cards-css', '/agent-ui/agent-cards.css');
+            ensureStylesheet('agent-cards-css', '/agent-ui/agent-cards.css?v=251');
         }
         if (/agent-kpi\.css/i.test(html) || /agent-kpi-/i.test(html)) {
             ensureStylesheet('agent-kpi-css', '/agent-ui/agent-kpi.css');
@@ -36,16 +42,17 @@ const TemplateControlLayout: React.FC<{ html: string; className?: string }> = ({
     }, [html]);
 
     const enriched = useMemo(
-        () => (/agent-card/i.test(html || '') ? stripCardHeroBlurLayers(html) : html),
+        () => (/agent-card/i.test(html || '') ? normalizeCardsHtmlForResult(html) : html),
         [html],
     );
 
     if (!enriched?.trim()) return null;
 
     const board = /agent-cards-root/i.test(enriched || '') ? 'agent-cards-board' : '';
+    const isCards = !!board || /agent-cards-grid/i.test(enriched);
     return (
         <div
-            className={`agent-template-host min-w-0 max-w-full ${board} ${className || ''}`}
+            className={`agent-template-host min-w-0 max-w-full w-full ${board} ${isCards ? 'flex flex-col' : ''} ${className || ''}`}
             dangerouslySetInnerHTML={{ __html: enriched }}
         />
     );
@@ -94,6 +101,10 @@ export function filterCardsHtmlByRows(
     rows: Record<string, unknown>[],
 ): string {
     if (!html?.trim() || typeof document === 'undefined') return html;
+    // Fast path: unfiltered full set — skip DOM parse (critical for resize smoothness).
+    const cardApprox = (html.match(/<article\b/gi) || []).length;
+    if (cardApprox > 0 && rows.length >= cardApprox) return html;
+
     const wrap = document.createElement('div');
     wrap.innerHTML = html;
     const cards = Array.from(

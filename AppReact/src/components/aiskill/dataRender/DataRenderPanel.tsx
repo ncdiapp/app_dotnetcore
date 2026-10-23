@@ -135,13 +135,17 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
         : uiRaw;
     const actions = useMemo(() => parseActions(event.ActionsJson), [event.ActionsJson]);
     const blocks = useMemo(() => parseBlocks(event.BlocksJson), [event.BlocksJson]);
-    const btn = `px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default}`;
+    const btn = useMemo(
+        () => `px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default}`,
+        [theme.button_default],
+    );
     const useWijmo = DATA_RENDER_ENGINE === 'wijmo';
+    const labelClass = theme.label;
 
     const body = useMemo(() => {
         if (ui === 'kpi_dashboard') {
             if (blocks.length === 0) {
-                return <div className={`text-xs ${theme.label}`}>No dashboard blocks.</div>;
+                return <div className={`text-xs ${labelClass}`}>No dashboard blocks.</div>;
             }
             return (
                 <div className="flex flex-col gap-3">
@@ -159,15 +163,15 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
             );
         }
         if (ui === 'card') {
-            // cards-only: sync TemplateContent to ResultChrome-filtered DataJson.
-            // layout=page filters inside InteractivePagePanel (own Search per section).
+            // Agent Result cards = TemplateContent / cardsHtml only (not React DataRenderCard).
+            // Thin AI templates are rejected server-side (EnsureGalleryCardsTemplate → platform Scriban).
             const full = parseCardsHtmlFromSpec(event.SpecJson);
             const cardsHtml = full
                 ? filterCardsHtmlByRows(full, parseRows(event.DataJson))
                 : null;
             if (cardsHtml) return <TemplateControlLayout html={cardsHtml} />;
             return (
-                <div className={`text-xs ${theme.label}`}>
+                <div className={`text-xs ${labelClass}`}>
                     Card Result requires TemplateContent (cardsHtml). Re-run render_interactive with polish.
                 </div>
             );
@@ -183,20 +187,22 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
                 ? <DataRenderChartWijmo {...props} />
                 : <DataRenderChartRecharts {...props} />;
         }
+        // Single-control Result (grid only): fill remaining height — no ~420px cap.
         const props = adaptToGrid({
             dataJson: event.DataJson,
             columnsJson: event.ColumnsJson,
             metaJson: event.MetaJson,
-            title: event.Title,
+            title: undefined,
         });
         const Grid = useWijmo ? DataRenderGridWijmo : DataRenderGridAg;
         return (
             <Grid
                 {...props}
+                fillHeight
                 onRowSelected={row => setSelectedRow(row)}
             />
         );
-    }, [event, ui, useWijmo, blocks, disabled, btn, onAction, theme.label]);
+    }, [event, ui, useWijmo, blocks, disabled, btn, onAction, labelClass]);
 
     const handleAction = (actionId: string) => {
         if (disabled || !onAction) return;
@@ -205,16 +211,20 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
     };
 
     const cardOnly = ui === 'card';
-    const panelTitle = (event.Title || '').trim();
-    const showPanelHeader = !cardOnly && (!!panelTitle || actions.length > 0 || !!event.Truncated);
+    const gridOnly = ui === 'grid' || ui === 'table';
+    // ResultChrome already shows the title — keep a slim toolbar only for actions / truncated.
+    const showPanelHeader = !cardOnly && (actions.length > 0 || !!event.Truncated);
     return (
-        <div className={cardOnly ? '' : `rounded-[4px] p-4 border ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
+        <div className={
+            cardOnly
+                ? 'h-full min-h-0 overflow-auto'
+                : `h-full min-h-0 flex flex-col rounded-[4px] border ${t('border_mainContentSection')} ${theme.mainContentSection} ${gridOnly ? 'p-2' : 'p-4'}`
+        }>
             {showPanelHeader && (
-            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap shrink-0">
                 <div className={`text-sm font-semibold ${theme.title}`}>
-                    {panelTitle}
                     {event.Truncated && (
-                        <span className={`ml-2 text-xs font-normal ${theme.label}`}>(truncated)</span>
+                        <span className={`text-xs font-normal ${theme.label}`}>(truncated)</span>
                     )}
                 </div>
                 {actions.length > 0 && (
@@ -234,7 +244,9 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
                 )}
             </div>
             )}
+            <div className={`min-h-0 min-w-0 ${gridOnly || cardOnly ? 'h-1 flex-auto' : ''}`}>
             {body}
+            </div>
             {cardOnly && actions.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">
                     {actions.map(a => (

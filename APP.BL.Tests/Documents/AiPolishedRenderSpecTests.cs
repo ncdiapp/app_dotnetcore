@@ -100,4 +100,60 @@ public class AiPolishedRenderSpecTests
         Assert.Equal(3, spec.LayoutHints.CardsPerRow);
         Assert.Equal(4, spec.LayoutHints.CardRows);
     }
+
+    [Fact]
+    public void TryParse_reads_showLabel_and_label()
+    {
+        var json = """
+            {
+              "layout": "cards",
+              "bindings": {
+                "fields": [
+                  {"name": "Code", "role": "idLink", "showLabel": false},
+                  {"name": "Adoption_Date", "role": "meta", "showLabel": true, "label": "Adopted"}
+                ]
+              }
+            }
+            """;
+        Assert.True(AiPolishedRenderSpec.TryParse(json, out var spec, out var err), err);
+        Assert.False(spec.Bindings.Fields[0].ShowLabel);
+        Assert.True(spec.Bindings.Fields[1].ShowLabel);
+        Assert.Equal("Adopted", spec.Bindings.Fields[1].Label);
+    }
+
+    [Fact]
+    public void Heuristics_showLabel_when_multiple_dates()
+    {
+        var rows = JArray.Parse("""
+            [
+              {"Code":"A1","Name":"Item","Adopt_Date":"2026-01-01","Ship_Date":"2026-02-01"},
+              {"Code":"A2","Name":"Item2","Adopt_Date":"2026-01-02","Ship_Date":"2026-02-02"}
+            ]
+            """);
+        var cols = ((JObject)rows[0]).Properties().Select(p => p.Name).ToList();
+        var spec = AiRenderPolishHeuristics.Build("cards", "T", cols, rows);
+        var dateFields = spec.Bindings.Fields
+            .Where(f => f.Name.Contains("Date", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Assert.True(dateFields.Count >= 2);
+        Assert.All(dateFields, f => Assert.True(f.ShowLabel));
+        Assert.Contains(spec.Bindings.Fields, f => f.Name == "Code" && !f.ShowLabel);
+    }
+
+    [Fact]
+    public void Heuristics_reject_low_fill_rate_despite_theme_name()
+    {
+        var rows = JArray.Parse("""
+            [
+              {"Code":"A1","Name":"Item","Description":null},
+              {"Code":"A2","Name":"Item2","Description":""},
+              {"Code":"A3","Name":"Item3","Description":null}
+            ]
+            """);
+        var cols = ((JObject)rows[0]).Properties().Select(p => p.Name).ToList();
+        var spec = AiRenderPolishHeuristics.Build("cards", "T", cols, rows);
+        Assert.DoesNotContain(spec.Bindings.Fields, f =>
+            string.Equals(f.Name, "Description", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(spec.Bindings.Fields, f => f.Name == "Code");
+    }
 }

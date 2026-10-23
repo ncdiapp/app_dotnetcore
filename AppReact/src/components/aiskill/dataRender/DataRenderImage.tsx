@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { fetchAuthenticatedImageBlobUrl } from '../../../webapi/fileEndpoints';
 import { toAppResourcePath, unwrapQuoted } from './imageValue';
 
+const APP_API_IMAGE = /\/api\/(?:resources|files)\//i;
+
 interface Props {
     url: string;
     alt?: string;
@@ -13,7 +15,10 @@ interface Props {
 /** Renders an image URL. App resource URLs are loaded with the session header. */
 export const DataRenderImage: React.FC<Props> = ({ url, alt, size = 'cell', kind: kindProp }) => {
     const clean = unwrapQuoted(url);
-    const kind = kindProp ?? (/^https?:\/\//i.test(clean) ? 'external' : 'resource');
+    // App /api/files|resources always need session fetch — never treat as bare external img src.
+    const kind = APP_API_IMAGE.test(clean) || /^\d+$/.test(clean)
+        ? 'resource'
+        : (kindProp ?? (/^https?:\/\//i.test(clean) ? 'external' : 'resource'));
     const [src, setSrc] = useState<string | null>(kind === 'external' ? clean : null);
 
     useEffect(() => {
@@ -29,11 +34,21 @@ export const DataRenderImage: React.FC<Props> = ({ url, alt, size = 'cell', kind
         return () => { cancelled = true; };
     }, [clean, kind]);
 
-    const box = size === 'card'
-        ? 'relative h-44 w-full'
-        : size === 'compact'
-            ? 'relative h-32 w-full'
-            : 'relative h-[60px] w-[60px]';
+    if (size === 'card') {
+        if (!src) return <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.04)' }} />;
+        return (
+            <img
+                src={src}
+                alt={alt || ''}
+                className="absolute inset-0 w-full h-full object-cover object-center"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            />
+        );
+    }
+
+    const box = size === 'compact'
+        ? 'relative h-32 w-full'
+        : 'relative h-[60px] w-[60px]';
 
     if (!src) {
         return <div className={box} style={{ background: 'rgba(0,0,0,0.04)' }} />;
