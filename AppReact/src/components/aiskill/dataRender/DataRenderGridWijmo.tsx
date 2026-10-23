@@ -37,14 +37,22 @@ function wijmoFormat(dataType?: string): string | undefined {
 }
 
 /** Default Wijmo FlexGrid implementation for data_render. */
-export const DataRenderGridWijmo: React.FC<Props> = ({ colDefs, rowData, title, meta, onRowSelected, fillHeight }) => {
+const DataRenderGridWijmoInner: React.FC<Props> = ({ colDefs, rowData, title, meta, onRowSelected, fillHeight }) => {
     const { theme } = useTheme();
     const flexGridRef = useRef<any>(null);
     const hostRef = useRef<HTMLDivElement>(null);
     const [cv] = useState(() => new CollectionView<any>([]));
+    const dataSigRef = useRef<string>('');
 
+    // Only rebind when row content actually changes — parent chat re-renders must not refresh Wijmo.
     useEffect(() => {
-        cv.sourceCollection = Array.isArray(rowData) ? rowData : [];
+        const next = Array.isArray(rowData) ? rowData : [];
+        const sig = `${next.length}:${next[0] ? JSON.stringify(next[0]) : ''}:${next.length > 1 ? JSON.stringify(next[next.length - 1]) : ''}`;
+        if (sig === dataSigRef.current && cv.sourceCollection === next) return;
+        if (sig === dataSigRef.current && Array.isArray(cv.sourceCollection) && (cv.sourceCollection as any[]).length === next.length)
+            return;
+        dataSigRef.current = sig;
+        cv.sourceCollection = next;
         cv.refresh();
     }, [cv, rowData]);
 
@@ -106,7 +114,7 @@ export const DataRenderGridWijmo: React.FC<Props> = ({ colDefs, rowData, title, 
         ro?.observe(el);
         sync();
         return () => ro?.disconnect();
-    }, [fillHeight, rowData, visibleCols]);
+    }, [fillHeight]);
 
     const onSelectionChanged = (s: any) => {
         const flex = s?.control ?? s;
@@ -190,3 +198,24 @@ export const DataRenderGridWijmo: React.FC<Props> = ({ colDefs, rowData, title, 
         </div>
     );
 };
+
+function sameColDefs(a: ColInput[] | undefined, b: ColInput[] | undefined): boolean {
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        const x = a[i], y = b[i];
+        if (x.field !== y.field || x.headerName !== y.headerName || x.width !== y.width
+            || x.dataType !== y.dataType || !!x.hide !== !!y.hide) return false;
+    }
+    return true;
+}
+
+/** Skip re-render when chat parent churns but grid data is unchanged. */
+export const DataRenderGridWijmo = React.memo(DataRenderGridWijmoInner, (prev, next) => (
+    prev.fillHeight === next.fillHeight
+    && prev.title === next.title
+    && prev.meta?.total === next.meta?.total
+    && prev.rowData === next.rowData
+    && sameColDefs(prev.colDefs, next.colDefs)
+    && prev.onRowSelected === next.onRowSelected
+));

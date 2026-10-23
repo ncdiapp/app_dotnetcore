@@ -233,28 +233,35 @@ export const ResultChrome: React.FC<Props> = ({
     );
     const allRows = useMemo(() => parseRows(event.DataJson), [event.DataJson]);
 
-    const polishFilterFields = polished?.bindings?.filterFields ?? [];
+    const polishFilterFields = polished?.bindings?.filterFields;
     // Fallback: always offer Search when rows exist but polish omitted filterFields.
     const filterFields = useMemo((): PolishedFilterField[] => {
-        if (polishFilterFields.length > 0) return polishFilterFields;
+        if (polishFilterFields && polishFilterFields.length > 0) return polishFilterFields;
         if (allRows.length === 0) return [];
         const keys = Object.keys(allRows[0] || {}).filter(k => k && !/^image|sketch|photo|thumb/i.test(k)).slice(0, 8);
         if (keys.length === 0) return [];
         return [{ name: '_search', control: 'search', searchFields: keys }];
     }, [polishFilterFields, allRows]);
-    const searchField = filterFields.find(
-        f => (f.control || f.Control || '').toLowerCase() === 'search'
-            || (f.name || f.Name) === '_search'
+    const searchField = useMemo(
+        () => filterFields.find(
+            f => (f.control || f.Control || '').toLowerCase() === 'search'
+                || (f.name || f.Name) === '_search'
+        ),
+        [filterFields],
     );
-    const searchFields = searchField?.searchFields || searchField?.SearchFields
-        || polished?.bindings?.fields?.map(f => f.name).filter(Boolean) as string[]
-        || [];
-    const multiFields = filterFields.filter(
-        f => {
+    const searchFields = useMemo((): string[] => {
+        const fromField = searchField?.searchFields || searchField?.SearchFields;
+        if (Array.isArray(fromField) && fromField.length) return fromField.filter(Boolean) as string[];
+        const fromBindings = polished?.bindings?.fields?.map(f => f.name).filter(Boolean) as string[] | undefined;
+        return fromBindings?.length ? fromBindings : [];
+    }, [searchField, polished?.bindings?.fields]);
+    const multiFields = useMemo(
+        () => filterFields.filter(f => {
             const c = (f.control || f.Control || '').toLowerCase();
             const n = (f.name || f.Name || '').trim();
             return (c === 'multiselect' || c === 'multi-select') && !!n && n !== '_search';
-        }
+        }),
+        [filterFields],
     );
 
     const [search, setSearch] = useState('');

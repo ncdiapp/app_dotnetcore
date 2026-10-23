@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import TemplateControlLayout, {
     filterCardsHtmlByRows,
@@ -128,6 +128,13 @@ function DashboardBlockView(props: {
 export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) => {
     const { theme, t } = useTheme();
     const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
+    // Keep latest onAction without forcing grid/card body remount when chat re-renders.
+    const onActionRef = useRef(onAction);
+    useEffect(() => { onActionRef.current = onAction; }, [onAction]);
+    const fireAction = useMemo(
+        () => (actionId: string, selectionJson?: string) => onActionRef.current?.(actionId, selectionJson),
+        [],
+    );
     // Persisted ui_render often stores Layout in Ui ("cards"); accept both.
     const uiRaw = (event.Ui || event.Layout || 'grid').toLowerCase();
     const ui = uiRaw === 'cards' ? 'card'
@@ -141,6 +148,35 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
     );
     const useWijmo = DATA_RENDER_ENGINE === 'wijmo';
     const labelClass = theme.label;
+
+    // Stable adapt — chat keystrokes must not rebuild rowData arrays.
+    const gridProps = useMemo(
+        () => adaptToGrid({
+            dataJson: event.DataJson,
+            columnsJson: event.ColumnsJson,
+            metaJson: event.MetaJson,
+            title: undefined,
+        }),
+        [event.DataJson, event.ColumnsJson, event.MetaJson],
+    );
+    const chartProps = useMemo(
+        () => adaptToChart({
+            dataJson: event.DataJson,
+            chartConfigJson: event.ChartConfigJson,
+            metaJson: event.MetaJson,
+            title: event.Title,
+        }),
+        [event.DataJson, event.ChartConfigJson, event.MetaJson, event.Title],
+    );
+    const cardsHtml = useMemo(() => {
+        if (ui !== 'card') return null;
+        const full = parseCardsHtmlFromSpec(event.SpecJson);
+        return full ? filterCardsHtmlByRows(full, parseRows(event.DataJson)) : null;
+    }, [ui, event.SpecJson, event.DataJson]);
+
+    const onRowSelected = useCallback((row: Record<string, unknown>) => {
+        setSelectedRow(row);
+    }, []);
 
     const body = useMemo(() => {
         if (ui === 'kpi_dashboard') {
@@ -156,7 +192,7 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
                             disabled={disabled}
                             btn={btn}
                             useWijmo={useWijmo}
-                            onAction={onAction}
+                            onAction={fireAction}
                         />
                     ))}
                 </div>
@@ -164,11 +200,6 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
         }
         if (ui === 'card') {
             // Agent Result cards = TemplateContent / cardsHtml only (not React DataRenderCard).
-            // Thin AI templates are rejected server-side (EnsureGalleryCardsTemplate → platform Scriban).
-            const full = parseCardsHtmlFromSpec(event.SpecJson);
-            const cardsHtml = full
-                ? filterCardsHtmlByRows(full, parseRows(event.DataJson))
-                : null;
             if (cardsHtml) return <TemplateControlLayout html={cardsHtml} />;
             return (
                 <div className={`text-xs ${labelClass}`}>
@@ -177,32 +208,20 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
             );
         }
         if (ui === 'chart') {
-            const props = adaptToChart({
-                dataJson: event.DataJson,
-                chartConfigJson: event.ChartConfigJson,
-                metaJson: event.MetaJson,
-                title: event.Title,
-            });
             return useWijmo
-                ? <DataRenderChartWijmo {...props} />
-                : <DataRenderChartRecharts {...props} />;
+                ? <DataRenderChartWijmo {...chartProps} />
+                : <DataRenderChartRecharts {...chartProps} />;
         }
         // Single-control Result (grid only): fill remaining height — no ~420px cap.
-        const props = adaptToGrid({
-            dataJson: event.DataJson,
-            columnsJson: event.ColumnsJson,
-            metaJson: event.MetaJson,
-            title: undefined,
-        });
         const Grid = useWijmo ? DataRenderGridWijmo : DataRenderGridAg;
         return (
             <Grid
-                {...props}
+                {...gridProps}
                 fillHeight
-                onRowSelected={row => setSelectedRow(row)}
+                onRowSelected={onRowSelected}
             />
         );
-    }, [event, ui, useWijmo, blocks, disabled, btn, onAction, labelClass]);
+    }, [ui, useWijmo, blocks, disabled, btn, fireAction, labelClass, cardsHtml, chartProps, gridProps, onRowSelected]);
 
     const handleAction = (actionId: string) => {
         if (disabled || !onAction) return;

@@ -212,7 +212,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             }
             sb.Append("<img src=\"");
             sb.Append(WebUtility.HtmlEncode(src));
-            sb.Append("\" alt=\"\" style=\"border:0;max-width:120px;max-height:80px;width:auto;height:auto;object-fit:contain;display:block;\" />");
+            sb.Append("\" alt=\"\" style=\"border:0;max-width:120px;max-height:80px;width:auto;height:auto;object-fit:contain;display:block;\"");
+            sb.Append(" onerror=\"this.setAttribute('data-broken','1');this.removeAttribute('src');this.style.display='none';\" />");
         }
 
         private static void CellRow(StringBuilder sb, string role, int level, string css, string text)
@@ -441,6 +442,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             sb.Append(".mcp-card-hero-blur{display:none!important;}");
             sb.Append(".mcp-card-hero-fg,.mcp-card-hero img{width:100%;height:100%;object-fit:cover;object-position:center center;");
             sb.Append("border:0;display:block;background:#ffffff;}");
+            // Match Result View: hide broken/missing images (no browser broken-image icon).
+            sb.Append(".mcp-card-hero-fg[data-broken=\"1\"],.mcp-card-hero img[data-broken=\"1\"]{display:none!important;}");
             sb.Append(".mcp-card-body{overflow:hidden;background:#fff;box-sizing:border-box;}");
             sb.Append(".card-page-num{position:absolute;top:2mm;right:3mm;font-size:8px;line-height:10px;color:#9ca3af;font-weight:normal;}");
             sb.Append(".card-page:last-child{page-break-after:auto!important;break-after:auto!important}");
@@ -720,7 +723,9 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             sb.Append(WebUtility.HtmlEncode(src));
             sb.Append("\" alt=\"\" style=\"border:0;width:100%;height:").Append(h);
             sb.Append(";max-height:").Append(h);
-            sb.Append(";object-fit:cover;object-position:center center;display:block;\" />");
+            sb.Append(";object-fit:cover;object-position:center center;display:block;\"");
+            // Same as Result agent-card-hero-img: hide chrome when URL fails (no broken-image icon).
+            sb.Append(" onerror=\"this.setAttribute('data-broken','1');this.removeAttribute('src');\" />");
         }
 
         private static string Mm(double value)
@@ -739,6 +744,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 src = (field.Value ?? "").Trim().Trim('"', '\'');
             if (string.IsNullOrEmpty(src))
                 return; // blank hero — never broken-image chrome or em dash
+            const string onErr = " onerror=\"this.setAttribute('data-broken','1');this.removeAttribute('src');this.style.display='none';\"";
             sb.Append("<img src=\"");
             sb.Append(WebUtility.HtmlEncode(src));
             sb.Append("\" alt=\"");
@@ -748,14 +754,16 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             {
                 sb.Append(" style=\"border:0;max-width:100%;max-height:");
                 sb.Append(Mm(maxHeightMm));
-                sb.Append(";width:auto;height:auto;object-fit:contain;\" />");
+                sb.Append(";width:auto;height:auto;object-fit:contain;\"");
+                sb.Append(onErr).Append(" />");
                 return;
             }
             sb.Append(" width=\"");
             sb.Append(imageWidth.ToString(CultureInfo.InvariantCulture));
             sb.Append("\" height=\"148\" style=\"border:0;width:");
             sb.Append(imageWidth.ToString(CultureInfo.InvariantCulture));
-            sb.Append("px;height:148px;object-fit:contain;\" />");
+            sb.Append("px;height:148px;object-fit:contain;\"");
+            sb.Append(onErr).Append(" />");
         }
 
         private static string PrettyLabel(string name) => CardSheet.PrettyFieldLabel(name);
