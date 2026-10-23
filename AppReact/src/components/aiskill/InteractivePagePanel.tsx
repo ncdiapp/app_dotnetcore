@@ -134,14 +134,16 @@ const InteractivePagePanel: React.FC<Props> = ({ event, disabled, onAction }) =>
                         />
                     )}
                 >
-                    <div
-                        className="min-w-0 max-w-full overflow-auto border border-gray-200 rounded-[4px]"
-                        style={{ maxHeight: 'min(80vh, 800px)' }}
-                    >
+                    {/*
+                      Do not use fillHeight here: parent only had maxHeight, so Wijmo h-1 flex-auto
+                      collapsed to a ~toolbar strip when Card view shared the page.
+                    */}
+                    <div className="min-w-0 max-w-full overflow-auto border border-gray-200 rounded-[4px]">
                         <DataRenderPanel
                             event={gridEvent}
                             disabled={disabled}
                             onAction={onAction}
+                            fillHeight={false}
                         />
                     </div>
                 </PageSection>

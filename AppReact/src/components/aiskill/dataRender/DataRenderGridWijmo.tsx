@@ -88,7 +88,8 @@ const DataRenderGridWijmoInner: React.FC<Props> = ({ colDefs, rowData, title, me
 
     const total = meta?.total ?? rowData.length;
     const rowHeight = imageFields.size > 0 ? 64 : 28;
-    const height = fillHeight ? undefined : Math.min(420, 48 + Math.max(rowData.length, 1) * rowHeight);
+    // Stacked page (grid+cards): size by rows, cap so Card view still has room below.
+    const height = fillHeight ? undefined : Math.min(480, 48 + Math.max(rowData.length, 1) * rowHeight);
 
     useEffect(() => {
         const flex = flexGridRef.current?.control;

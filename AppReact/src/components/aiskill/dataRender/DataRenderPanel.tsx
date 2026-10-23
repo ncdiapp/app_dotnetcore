@@ -18,6 +18,11 @@ interface Props {
     event: DataRenderEvent; 
     disabled?: boolean;
     onAction?: (actionId: string, selectionJson?: string) => void;
+    /**
+     * true (default): grid fills chrome height (single-control Result).
+     * false: size by rows (capped) — required when stacked with cards/other controls.
+     */
+    fillHeight?: boolean;
 }
 
 function BlockActions(props: {
@@ -125,7 +130,7 @@ function DashboardBlockView(props: {
     );
 }
 
-export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) => {
+export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction, fillHeight = true }) => {
     const { theme, t } = useTheme();
     const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
     // Keep latest onAction without forcing grid/card body remount when chat re-renders.
@@ -213,16 +218,16 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
                 ? <DataRenderChartWijmo {...chartProps} />
                 : <DataRenderChartRecharts {...chartProps} />;
         }
-        // Single-control Result (grid only): fill remaining height — no ~420px cap.
+        // fillHeight: single-control Result. Stacked page (grid+cards) must pass fillHeight={false}.
         const Grid = useWijmo ? DataRenderGridWijmo : DataRenderGridAg;
         return (
             <Grid
                 {...gridProps}
-                fillHeight
+                fillHeight={fillHeight}
                 onRowSelected={onRowSelected}
             />
         );
-    }, [ui, useWijmo, blocks, disabled, btn, fireAction, labelClass, cardsHtml, chartProps, gridProps, onRowSelected]);
+    }, [ui, useWijmo, blocks, disabled, btn, fireAction, labelClass, cardsHtml, chartProps, gridProps, onRowSelected, fillHeight]);
 
     const handleAction = (actionId: string) => {
         if (disabled || !onAction) return;
@@ -234,11 +239,13 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
     const gridOnly = ui === 'grid' || ui === 'table';
     // ResultChrome already shows the title — keep a slim toolbar only for actions / truncated.
     const showPanelHeader = !cardOnly && (actions.length > 0 || !!event.Truncated);
+    const rootH = fillHeight ? 'h-full' : '';
+    const bodyFlex = fillHeight && (gridOnly || cardOnly) ? 'h-1 flex-auto' : '';
     return (
         <div className={
             cardOnly
-                ? 'h-full min-h-0 overflow-auto'
-                : `h-full min-h-0 flex flex-col rounded-[4px] border ${t('border_mainContentSection')} ${theme.mainContentSection} ${gridOnly ? 'p-2' : 'p-4'}`
+                ? `${rootH} min-h-0 overflow-auto`
+                : `${rootH} min-h-0 flex flex-col rounded-[4px] border ${t('border_mainContentSection')} ${theme.mainContentSection} ${gridOnly ? 'p-2' : 'p-4'}`
         }>
             {showPanelHeader && (
             <div className="flex items-center justify-between gap-2 mb-2 flex-wrap shrink-0">
@@ -264,7 +271,7 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
                 )}
             </div>
             )}
-            <div className={`min-h-0 min-w-0 ${gridOnly || cardOnly ? 'h-1 flex-auto' : ''}`}>
+            <div className={`min-h-0 min-w-0 ${bodyFlex}`}>
             {body}
             </div>
             {cardOnly && actions.length > 0 && (
