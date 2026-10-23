@@ -636,8 +636,8 @@ public class GenericAgentController : SecureBaseController
             SessionKey = key,
             SkillKey   = skillKey,
             Title      = null,
-            // DB insert uses GETUTCDATE(); return client-local for sidebar display.
-            UpdatedAt  = SessionBL.ToClientDateTime(DateTime.UtcNow),
+            // DB insert uses GETUTCDATE(); return UTC so the React chat list shows browser local time.
+            UpdatedAt  = DateTime.UtcNow,
             IsFixedTestSession = false
         };
         return result;

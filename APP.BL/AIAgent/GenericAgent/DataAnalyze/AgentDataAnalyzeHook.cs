@@ -195,14 +195,17 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
 
                 if (token is not JObject obj) return false;
 
+                // Prefer the largest object-array — small metadata lists (e.g. column defs) must not
+                // win over the real 600-row grid when both appear under different keys.
+                JArray best = null;
                 foreach (var key in new[] { "Rows", "rows", "data", "Data", "items", "Items", "result", "Result", "records", "Records" })
                 {
                     if (obj.TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var child)
                         && child is JArray arr
-                        && LooksLikeRowArray(arr))
+                        && LooksLikeRowArray(arr)
+                        && (best == null || arr.Count > best.Count))
                     {
-                        rows = arr;
-                        return true;
+                        best = arr;
                     }
                     if (child is JObject nested)
                     {
@@ -210,13 +213,19 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                         {
                             if (nested.TryGetValue(key2, StringComparison.OrdinalIgnoreCase, out var inner)
                                 && inner is JArray arr2
-                                && LooksLikeRowArray(arr2))
+                                && LooksLikeRowArray(arr2)
+                                && (best == null || arr2.Count > best.Count))
                             {
-                                rows = arr2;
-                                return true;
+                                best = arr2;
                             }
                         }
                     }
+                }
+
+                if (best != null)
+                {
+                    rows = best;
+                    return true;
                 }
 
                 return false;

@@ -211,6 +211,10 @@ interface Props {
     skillKey: string;
     sessionKey: string | null;
     disabled?: boolean;
+    /** When true, show compress + close on this header (top tab bar is hidden). */
+    fullscreen?: boolean;
+    onExitFullscreen?: () => void;
+    onCloseFullscreen?: () => void;
     children: (filteredEvent: DataRenderEvent, polished: PolishedSpecClient | null) => React.ReactNode;
 }
 
@@ -224,6 +228,9 @@ export const ResultChrome: React.FC<Props> = ({
     skillKey,
     sessionKey,
     disabled,
+    fullscreen,
+    onExitFullscreen,
+    onCloseFullscreen,
     children,
 }) => {
     const { theme } = useTheme();
@@ -428,7 +435,7 @@ export const ResultChrome: React.FC<Props> = ({
                             <span className={`ml-2 text-xs font-normal ${theme.label}`}>(truncated)</span>
                         )}
                     </div>
-                    <div className="flex flex-wrap gap-1 relative">
+                    <div className="flex flex-wrap items-center gap-1">
                         <button
                             type="button"
                             className={btnPrimary}
@@ -438,29 +445,53 @@ export const ResultChrome: React.FC<Props> = ({
                             <i className="fa-solid fa-print mr-1" />
                             {busy === 'print' || busy === 'pdf' ? 'Working…' : 'Print'}
                         </button>
-                        <button
-                            type="button"
-                            className={btnSecondary}
-                            disabled={!!busy}
-                            onClick={() => setExportOpen(v => !v)}
-                        >
-                            <i className="fa-solid fa-file-export mr-1" />
-                            Export
-                        </button>
-                        {exportOpen && (
-                            <div className={`absolute right-0 top-full mt-1 z-20 min-w-[140px] rounded-[4px] border shadow-md py-1 bg-white ${theme.mainContentSection}`}>
-                                {(['pdf', 'docx', 'pptx', 'html', 'xlsx'] as const).map(fmt => (
-                                    <button
-                                        key={fmt}
-                                        type="button"
-                                        className="block w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-blue-50"
-                                        disabled={!!busy}
-                                        onClick={() => void runExport(fmt)}
-                                    >
-                                        {fmt.toUpperCase()}
-                                    </button>
-                                ))}
-                            </div>
+                        <div className="relative">
+                            <button
+                                type="button"
+                                className={btnSecondary}
+                                disabled={!!busy}
+                                onClick={() => setExportOpen(v => !v)}
+                            >
+                                <i className="fa-solid fa-file-export mr-1" />
+                                Export
+                            </button>
+                            {exportOpen && (
+                                <div className={`absolute right-0 top-full mt-1 z-20 min-w-[140px] rounded-[4px] border shadow-md py-1 bg-white ${theme.mainContentSection}`}>
+                                    {(['pdf', 'docx', 'pptx', 'html', 'xlsx'] as const).map(fmt => (
+                                        <button
+                                            key={fmt}
+                                            type="button"
+                                            className="block w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-blue-50"
+                                            disabled={!!busy}
+                                            onClick={() => void runExport(fmt)}
+                                        >
+                                            {fmt.toUpperCase()}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        {fullscreen && (
+                            <>
+                                <button
+                                    type="button"
+                                    className={`rounded-[4px] p-1.5 h-7 w-7 inline-flex items-center justify-center ${theme.button_default}`}
+                                    onClick={() => onExitFullscreen?.()}
+                                    title="Exit full screen"
+                                    aria-label="Exit full screen"
+                                >
+                                    <i className="fa-solid fa-compress" aria-hidden />
+                                </button>
+                                <button
+                                    type="button"
+                                    className="text-lg leading-none opacity-50 hover:opacity-100 px-1.5 h-7 inline-flex items-center justify-center"
+                                    onClick={() => onCloseFullscreen?.()}
+                                    title="Close"
+                                    aria-label="Close"
+                                >
+                                    <i className="fa-solid fa-xmark" aria-hidden />
+                                </button>
+                            </>
                         )}
                     </div>
                 </div>

@@ -571,6 +571,7 @@ const GenericAgentChat: React.FC<Props> = ({
     const chatRootRef = useRef<HTMLDivElement | null>(null);
     const [showEarlierTurns, setShowEarlierTurns] = useState(false);
     const [rightTab, setRightTab] = useState<'result' | 'tools' | 'files'>('tools');
+    const [resultFullscreen, setResultFullscreen] = useState(false);
     const [uiModules, setUiModules] = useState<Set<AgentChatUiModule>>(() => new Set());
     const [fileSessionKey, setFileSessionKey] = useState<string | null>(null);
     const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
@@ -702,6 +703,20 @@ const GenericAgentChat: React.FC<Props> = ({
     useEffect(() => {
         if ((rightTab === 'files' && !uiModules.has('files')) || (rightTab === 'result' && !openRender)) setRightTab('tools');
     }, [rightTab, uiModules, openRender]);
+
+    // Leave Result fullscreen when result closes / tab changes away.
+    useEffect(() => {
+        if (!openRender || rightTab !== 'result') setResultFullscreen(false);
+    }, [openRender, rightTab]);
+
+    useEffect(() => {
+        if (!resultFullscreen) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setResultFullscreen(false);
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [resultFullscreen]);
 
     const buildSnapshot = (): GenericAgentChatUiSnapshot => ({
         skillKey: skillKeyRef.current,
@@ -2019,13 +2034,21 @@ const GenericAgentChat: React.FC<Props> = ({
             {sidebarOpen && (
                 <div
                     data-agent-side-panel
-                    style={{
+                    style={resultFullscreen ? undefined : {
                         width: openRender ? (renderWidth ?? Math.max(280, Math.round(((chatRootRef.current?.clientWidth ?? 900) - 8) / 2))) : toolsWidth,
                         maxWidth: '100%',
                         minWidth: 0,
                     }}
-                    className={`shrink-0 border flex flex-col min-w-0 min-h-0 overflow-hidden ${regionBorder} ${windowCard}`}
+                    className={
+                        resultFullscreen
+                            ? `fixed inset-0 z-[12000] border flex flex-col min-w-0 min-h-0 overflow-hidden shadow-xl ${regionBorder} ${theme.mainContentSection}`
+                            : `shrink-0 border flex flex-col min-w-0 min-h-0 overflow-hidden ${regionBorder} ${windowCard}`
+                    }
+                    role={resultFullscreen ? 'dialog' : undefined}
+                    aria-modal={resultFullscreen ? true : undefined}
+                    aria-label={resultFullscreen ? 'Result full screen' : undefined}
                 >
+                    {!resultFullscreen && (
                     <div className={`flex items-center gap-1 px-2 py-1.5 border-b ${regionBorder}`}>
                         <button
                             type="button"
@@ -2052,10 +2075,29 @@ const GenericAgentChat: React.FC<Props> = ({
                             Result
                         </button>
                         )}
-                        <button className="text-xs opacity-50 hover:opacity-100 ml-auto" onClick={() => setSidebarOpen(false)}>
-                            <i className="fa-solid fa-xmark" />
-                        </button>
+                        <div className="ml-auto flex items-center gap-1 shrink-0">
+                            {rightTab === 'result' && openRender && (
+                                <button
+                                    type="button"
+                                    className={`rounded-[4px] p-1.5 text-xs ${theme.button_default}`}
+                                    onClick={() => setResultFullscreen(true)}
+                                    title="Full screen"
+                                    aria-label="Full screen"
+                                >
+                                    <i className="fa-solid fa-expand" aria-hidden />
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                className="text-xs opacity-50 hover:opacity-100 px-1"
+                                title="Close panel"
+                                onClick={() => setSidebarOpen(false)}
+                            >
+                                <i className="fa-solid fa-xmark" />
+                            </button>
+                        </div>
                     </div>
+                    )}
 
                     {rightTab === 'result' && openRender ? (
                         <div className="w-full h-1 flex-auto overflow-hidden min-w-0 min-h-0 max-w-full p-2 box-border">
@@ -2064,6 +2106,9 @@ const GenericAgentChat: React.FC<Props> = ({
                                 skillKey={skillKey}
                                 sessionKey={fileSessionKey}
                                 disabled={blocked}
+                                fullscreen={resultFullscreen}
+                                onExitFullscreen={() => setResultFullscreen(false)}
+                                onCloseFullscreen={() => { setResultFullscreen(false); setSidebarOpen(false); }}
                             >
                                 {(filteredEvent) => (
                                     isInteractiveDashboard(filteredEvent) ? (

@@ -38,7 +38,16 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
             var cached   = _methodCache.GetOrAdd(cacheKey, _ => ResolveTypeAndMethod(cfg.TypeName, cfg.MethodName));
 
             if (cached == null)
+            {
+                if (string.IsNullOrWhiteSpace(cfg.TypeName) || string.IsNullOrWhiteSpace(cfg.MethodName))
+                    return JsonConvert.SerializeObject(new
+                    {
+                        Error = "BuiltIn tool has empty TypeName/MethodName in ToolConfig. " +
+                                "Remove this stub from AppAgentToolRegister (it is not an MCP tool) " +
+                                "or set TypeName+MethodName to a real [AgentTool] method."
+                    });
                 return JsonConvert.SerializeObject(new { Error = $"BuiltIn type or method not found: {cfg.TypeName}.{cfg.MethodName}" });
+            }
 
             var type   = cached.Value.Type;
             var method = cached.Value.Method;

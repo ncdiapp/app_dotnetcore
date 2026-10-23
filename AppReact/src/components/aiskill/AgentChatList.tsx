@@ -15,10 +15,25 @@ interface Props {
     widthPx?: number;
 }
 
+/** Parse API UpdatedAt (UTC) into a Date for browser-local display. */
+const parseChatUtc = (raw?: string): Date | null => {
+    if (!raw) return null;
+    const s = String(raw).trim();
+    if (!s) return null;
+    // Already ISO with Z or offset — trust the browser.
+    if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) {
+        const d = new Date(s);
+        return Number.isNaN(d.getTime()) ? null : d;
+    }
+    // Unspecified / SQL-style UTC without timezone → treat as UTC.
+    const normalized = s.includes('T') ? s : s.replace(' ', 'T');
+    const d = new Date(normalized.endsWith('Z') ? normalized : `${normalized}Z`);
+    return Number.isNaN(d.getTime()) ? null : d;
+};
+
 const formatWhen = (raw?: string) => {
-    if (!raw) return '';
-    const d = new Date(raw);
-    if (Number.isNaN(d.getTime())) return '';
+    const d = parseChatUtc(raw);
+    if (!d) return '';
     return d.toLocaleString();
 };
 
@@ -36,7 +51,7 @@ const groupChats = (chats: GenericAgentChatSummary[]): ChatGroup[] => {
         { key: 'older', label: 'Older', items: [] },
     ];
     for (const c of chats) {
-        const t = c.UpdatedAt ? new Date(c.UpdatedAt).getTime() : 0;
+        const t = parseChatUtc(c.UpdatedAt)?.getTime() ?? 0;
         if (t >= startOfToday) buckets[0].items.push(c);
         else if (t >= startOfToday - day) buckets[1].items.push(c);
         else if (t >= startOfToday - 6 * day) buckets[2].items.push(c);

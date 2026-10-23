@@ -104,8 +104,9 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
                         SessionKey = key,
                         SkillKey   = row["SkillKey"] as string,
                         Title      = ResolveTitle(row),
-                        // DB stores UTC; UI expects client timezone (same as EntityConverter pattern).
-                        UpdatedAt  = ToClientDateTime(ColDt(row, "UpdatedAt")),
+                        // DB stores UTC (GETUTCDATE). Mark Kind=Utc so JSON emits Z and the
+                        // React chat list can convert to the browser's local ("client") time.
+                        UpdatedAt  = AsUtc(ColDt(row, "UpdatedAt")),
                         IsFixedTestSession = string.Equals(key, fixedKey, StringComparison.Ordinal)
                     });
                 }
@@ -842,14 +843,15 @@ ELSE
         }
 
         /// <summary>
-        /// Convert UTC datetime from DB to the current user's client timezone for API/UI.
-        /// Writes always use GETUTCDATE() / UtcNow — no client→UTC needed on save.
+        /// SQL datetime comes back as Unspecified even though we store UTC (GETUTCDATE).
+        /// Mark Kind=Utc so Newtonsoft emits a trailing Z for the React client.
         /// </summary>
-        public static DateTime ToClientDateTime(DateTime utcDateTime)
+        private static DateTime AsUtc(DateTime utcDateTime)
         {
-            if (utcDateTime == default || !ClientTimeZoneHelper.IsClientUsingTimeZone)
-                return utcDateTime;
-            return ClientTimeZoneHelper.ConvertUTCToClientDateTime(utcDateTime);
+            if (utcDateTime == default) return utcDateTime;
+            return utcDateTime.Kind == DateTimeKind.Utc
+                ? utcDateTime
+                : DateTime.SpecifyKind(utcDateTime, DateTimeKind.Utc);
         }
     }
 }

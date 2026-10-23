@@ -47,7 +47,8 @@ namespace App.BL.AIAgent.GenericAgent
     {
         private static readonly HttpClient McpHttpClient = McpConnectionHelper.CreateHttpClient();
         private const int DefaultMaxToolResultChars = 32000;
-        private const int McpToolCallTimeoutSeconds  = 30;
+        /// <summary>Large PLM list tools (hundreds of wide rows) often exceed 30s; fail-closed cancel looked like “empty/partial” tool results.</summary>
+        private const int McpToolCallTimeoutSeconds  = 180;
 
         /// <summary>Capability marker tool in library data-analyze. Presence (subscribed, not excluded) enables followups inject.</summary>
         private const string DataAnalyzeToolName = "data_analyze";
@@ -216,7 +217,11 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     if (systemPrompt.IndexOf("Follow-up suggestions (soft chips)", StringComparison.OrdinalIgnoreCase) < 0)
                         systemPrompt += FollowupsPromptHint;
                 }
-                var callableTools = toolRows.Where(r => !IsPromptHintTool(r)).ToList();
+                // Skip BuiltIn stubs with empty TypeName/MethodName (UI default) — they surface as
+                // "BuiltIn type or method not found: ." and shadow real MCP tools with the same name.
+                var callableTools = toolRows
+                    .Where(r => !IsPromptHintTool(r) && !IsBrokenBuiltInTool(r))
+                    .ToList();
                 if (callableTools.Count > 0)
                     kernel.Plugins.AddFromFunctions("tools",
                         callableTools.Select(r => WrapRegisteredTool(r, context, skillSet.MaxToolResultChars, instancePool)).ToArray());
@@ -637,29 +642,130 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
             return KernelFunctionFactory.CreateFromMethod(
                 async (KernelArguments args, CancellationToken ct) =>
                 {
-                    var mcpArgs = args
-                        .Where(kv => kv.Value != null)
-                        .ToDictionary(kv => kv.Key, kv => kv.Value!);
+                    // SK/Gemini often pass JsonElement / objects; gateway tools (queryParamsJson) need
+                    // real JSON strings, and typed MCP params need objects — normalize both.
+                    var mcpArgs = NormalizeMcpArgs(args);
 
                     using var callCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                     callCts.CancelAfter(TimeSpan.FromSeconds(McpToolCallTimeoutSeconds));
 
-                    var result = await client.CallToolAsync(
-                        toolName,
-                        (IReadOnlyDictionary<string, object?>)mcpArgs,
-                        cancellationToken: callCts.Token).ConfigureAwait(false);
+                    try
+                    {
+                        var result = await client.CallToolAsync(
+                            toolName,
+                            mcpArgs,
+                            cancellationToken: callCts.Token).ConfigureAwait(false);
 
-                    var text = string.Join("\n", result.Content
-                        .OfType<TextContentBlock>()
-                        .Select(c => c.Text ?? ""));
+                        var text = string.Join("\n", result.Content
+                            .OfType<TextContentBlock>()
+                            .Select(c => c.Text ?? ""));
 
-                    text = DataAnalyze.AgentDataAnalyzeHook.MaybeCacheAndRewrite(context, "MCP", toolName, text);
-                    return CapResult(text, cap);
+                        // Cache full payload before CapResult — char cap must never shrink dataset_cached rows.
+                        text = DataAnalyze.AgentDataAnalyzeHook.MaybeCacheAndRewrite(context, "MCP", toolName, text);
+                        return CapResult(text, cap);
+                    }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                        return JsonSerializer.Serialize(new
+                        {
+                            Error = $"MCP tool '{toolName}' timed out after {McpToolCallTimeoutSeconds}s. Retry or narrow filters."
+                        });
+                    }
                 },
                 functionName:    SanitizeName(toolName),
                 description:     description,
                 parameters:      parameters,
                 returnParameter: returnParameter);
+        }
+
+        /// <summary>
+        /// Convert SK KernelArguments into MCP JSON-RPC argument values.
+        /// JsonElement/JToken → CLR primitives or parsed JSON; keep objects for typed schemas;
+        /// string-named *Json params that arrive as objects are serialized to JSON text.
+        /// </summary>
+        private static IReadOnlyDictionary<string, object?> NormalizeMcpArgs(KernelArguments args)
+        {
+            var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            if (args == null) return dict;
+            foreach (var kv in args)
+            {
+                if (kv.Value == null) continue;
+                dict[kv.Key] = NormalizeMcpArgValue(kv.Key, kv.Value);
+            }
+            return dict;
+        }
+
+        private static object? NormalizeMcpArgValue(string name, object value)
+        {
+            var wantsJsonString = name != null
+                && (name.EndsWith("Json", StringComparison.OrdinalIgnoreCase)
+                    || name.EndsWith("_json", StringComparison.OrdinalIgnoreCase));
+
+            switch (value)
+            {
+                case string s:
+                    return s;
+                case JsonElement je:
+                    if (wantsJsonString)
+                        return je.ValueKind == JsonValueKind.String ? je.GetString() : je.GetRawText();
+                    return JsonElementToMcpValue(je);
+                case JToken jt:
+                    if (wantsJsonString)
+                        return jt.Type == JTokenType.String ? jt.ToString() : jt.ToString(Newtonsoft.Json.Formatting.None);
+                    if (jt.Type == JTokenType.String) return jt.ToString();
+                    if (jt.Type == JTokenType.Integer) return jt.Value<long>();
+                    if (jt.Type == JTokenType.Float) return jt.Value<double>();
+                    if (jt.Type == JTokenType.Boolean) return jt.Value<bool>();
+                    if (jt.Type == JTokenType.Null) return null;
+                    return JsonSerializer.Deserialize<object>(jt.ToString(Newtonsoft.Json.Formatting.None));
+                case bool or byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal:
+                    return value;
+                default:
+                    if (wantsJsonString)
+                    {
+                        try { return JsonSerializer.Serialize(value); }
+                        catch { return value.ToString(); }
+                    }
+                    return value;
+            }
+        }
+
+        private static object? JsonElementToMcpValue(JsonElement je)
+        {
+            switch (je.ValueKind)
+            {
+                case JsonValueKind.String: return je.GetString();
+                case JsonValueKind.Number:
+                    if (je.TryGetInt64(out var l)) return l;
+                    if (je.TryGetDouble(out var d)) return d;
+                    return je.GetRawText();
+                case JsonValueKind.True: return true;
+                case JsonValueKind.False: return false;
+                case JsonValueKind.Null:
+                case JsonValueKind.Undefined: return null;
+                default:
+                    // Object / Array — keep as parsed structure for typed MCP schemas.
+                    return JsonSerializer.Deserialize<object>(je.GetRawText());
+            }
+        }
+
+        private static bool IsBrokenBuiltInTool(TbToolDto row)
+        {
+            if (row == null) return true;
+            if (!string.Equals(row.ToolType, "BuiltIn", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(row.ToolType))
+                return false;
+            try
+            {
+                var obj = JObject.Parse(string.IsNullOrWhiteSpace(row.ToolConfig) ? "{}" : row.ToolConfig);
+                var typeName = (obj["TypeName"] ?? obj["typeName"])?.ToString()?.Trim();
+                var methodName = (obj["MethodName"] ?? obj["methodName"])?.ToString()?.Trim();
+                return string.IsNullOrEmpty(typeName) || string.IsNullOrEmpty(methodName);
+            }
+            catch
+            {
+                return true;
+            }
         }
 
         // ─────────────────────────────────────────────────────────────────────

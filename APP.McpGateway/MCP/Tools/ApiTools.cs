@@ -170,7 +170,12 @@ public class ApiTools
         try
         {
             var dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
-            return dict?.ToDictionary(kv => kv.Key, kv => kv.Value.ToString());
+            // JsonElement.ToString() on String includes quotes in some runtimes — use GetString/GetRawText.
+            return dict?.ToDictionary(
+                kv => kv.Key,
+                kv => kv.Value.ValueKind == JsonValueKind.String
+                    ? (kv.Value.GetString() ?? "")
+                    : kv.Value.GetRawText());
         }
         catch (Exception ex)
         {
