@@ -127,7 +127,8 @@ public class FormDocumentTests
     {
         var bytes = PptxForm.Write(FormDocument.Parse(Sample));
         var back = PptxForm.Read(bytes);
-        Assert.Equal("Sales Order", back.Title);
+        // Title lives on the first data slide (no orphan title-only slide); may include " (1/n)".
+        Assert.StartsWith("Sales Order", back.Title);
         Assert.Contains(back.Sections, s => s.Tables.Any(t => t.Rows.Any(r => r.Any(c => c.Text == "Widget"))));
     }
 

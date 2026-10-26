@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using APP.Framework.Plugin;
@@ -18,23 +19,23 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     /// </summary>
     public class AgentDocumentPlugin
     {
-        public Task<string> ExportHtml(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".html", false, pageGrid, cardsPerPage, specJson);
+        public Task<string> ExportHtml(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null, string exportTitle = null)
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".html", false, pageGrid, cardsPerPage, specJson, exportTitle);
 
-        public Task<string> ExportCsv(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".csv", false, pageGrid, cardsPerPage, specJson);
+        public Task<string> ExportCsv(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null, string exportTitle = null)
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".csv", false, pageGrid, cardsPerPage, specJson, exportTitle);
 
-        public Task<string> ExportExcel(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".xlsx", false, pageGrid, cardsPerPage, specJson);
+        public Task<string> ExportExcel(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null, string exportTitle = null)
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".xlsx", false, pageGrid, cardsPerPage, specJson, exportTitle);
 
-        public Task<string> ExportDocx(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".docx", true, pageGrid, cardsPerPage, specJson);
+        public Task<string> ExportDocx(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null, string exportTitle = null)
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".docx", true, pageGrid, cardsPerPage, specJson, exportTitle);
 
-        public Task<string> ExportPdf(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".pdf", true, pageGrid, cardsPerPage, specJson);
+        public Task<string> ExportPdf(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null, string exportTitle = null)
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".pdf", true, pageGrid, cardsPerPage, specJson, exportTitle);
 
-        public Task<string> ExportPptx(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".pptx", true, pageGrid, cardsPerPage, specJson);
+        public Task<string> ExportPptx(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null, string exportTitle = null)
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".pptx", true, pageGrid, cardsPerPage, specJson, exportTitle);
 
         public Task<string> ConvertDocxToPdf(AgentToolContext context, CancellationToken ct, string sourcePath, string path)
         {
@@ -151,7 +152,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             bool paged,
             string pageGrid = null,
             int cardsPerPage = 0,
-            string specJson = null)
+            string specJson = null,
+            string exportTitle = null)
         {
             try
             {
@@ -160,6 +162,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 if (mode != "form" && mode != "table" && mode != "cards" && mode != "page"
                     && mode != "kpi" && mode != "chart" && mode != "dashboard")
                     throw new InvalidOperationException("layout must be form, table, cards, page, kpi, chart, or dashboard.");
+                var preferredTitle = ResolveExportTitle(exportTitle, datasetName, specJson);
 
                 if (UiTemplateMerge.IsDashboardLayout(mode))
                 {
@@ -176,7 +179,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     if (!UiRenderSpec.TryParse(specJson, out spec, out var specErr))
                     {
                         // Chat reopen / client omitted SpecJson: synthesize from rows so Print still works.
-                        spec = SynthesizeDashboardSpec(mode, rows, null);
+                        spec = SynthesizeDashboardSpec(mode, rows, preferredTitle);
                         var synErr = spec.ValidateForLayout(mode);
                         if (!string.IsNullOrEmpty(synErr))
                             throw new InvalidOperationException(specErr ?? synErr);
@@ -186,7 +189,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         var valErr = spec.ValidateForLayout(mode);
                         if (!string.IsNullOrEmpty(valErr))
                         {
-                            var synthesized = SynthesizeDashboardSpec(mode, rows, spec.Title);
+                            var synthesized = SynthesizeDashboardSpec(mode, rows, FirstMeaningfulTitle(spec.Title, preferredTitle));
                             if (spec.Kpis != null && spec.Kpis.Count > 0)
                                 synthesized.Kpis = spec.Kpis;
                             if (spec.Chart != null)
@@ -201,6 +204,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                             spec = synthesized;
                         }
                     }
+                    if (IsGenericExportTitle(spec.Title) && !string.IsNullOrWhiteSpace(preferredTitle))
+                        spec.Title = preferredTitle;
                     var dashHtml = UiTemplateMerge.MergeDashboard(mode, rows, spec, spec.Title, forExport: true);
                     var raster = await ChartRasterize.EmbedChartPngsAsync(dashHtml, ct).ConfigureAwait(false);
                     dashHtml = raster.Html;
@@ -228,13 +233,14 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
                     var pageSheet = LoadCards(context, content, sourcePath, datasetName, records, cardsPerRow, cardRows, rowLimit, pageGrid, cardsPerPage);
                     var gridDoc = ApplyPolishColumns(context, datasetName, flat.Doc, specJson);
+                    ApplyExportTitle(preferredTitle, gridDoc, pageSheet);
                     // Browser Print (.html): keep image URLs — inlining hundreds of cards blows the download (Failed to fetch).
                     if (extension != ".html")
                     {
                         await CardImageLoader.AttachAsync(pageSheet, context.CompanyId, ct).ConfigureAwait(false);
                         await CardImageLoader.AttachAsync(gridDoc, context.CompanyId, ct).ConfigureAwait(false);
                     }
-                    var pageTitle = string.IsNullOrWhiteSpace(gridDoc.Title) ? (pageSheet.Title ?? "Result") : gridDoc.Title;
+                    var pageTitle = FirstMeaningfulTitle(gridDoc?.Title, pageSheet?.Title, preferredTitle) ?? "Result";
                     var pageHtml = UiTemplateMerge.ComposePageExportHtml(gridDoc, pageSheet, pageTitle);
                     if (preview)
                         return PreviewHtml(context, path, pageHtml, pageSheet.CardCount, pageSheet.CacheLimitReached, pageSheet.MissingImages, "playwright");
@@ -260,6 +266,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     // Always honor cardsPerRow / cardRows / pageGrid for fitted Print/Export HTML
                     // (not only PDF/DOCX/PPT). Screen Result uses TemplateContent; export uses WriteFittedCards.
                     var sheet = LoadCards(context, content, sourcePath, datasetName, records, cardsPerRow, cardRows, rowLimit, pageGrid, cardsPerPage);
+                    ApplyExportTitle(preferredTitle, null, sheet);
                     // Browser Print (.html) iframe loads URLs; skip data-URI embed for large card sets.
                     if (extension != ".html")
                         await CardImageLoader.AttachAsync(sheet, context.CompanyId, ct).ConfigureAwait(false);
@@ -278,6 +285,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
                 var doc = LoadDocument(context, content, sourcePath, datasetName, records);
                 doc = ApplyPolishColumns(context, datasetName, doc, specJson);
+                ApplyExportTitle(preferredTitle, doc, null);
                 // PDF/DOCX need data-URIs; browser .html Print can load URLs.
                 if (extension != ".html")
                     await CardImageLoader.AttachAsync(doc, context.CompanyId, ct).ConfigureAwait(false);
@@ -577,6 +585,63 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             return null;
         }
 
+        /// <summary>True for placeholder titles that should lose to dataset / polish names.</summary>
+        public static bool IsGenericExportTitle(string title)
+        {
+            if (string.IsNullOrWhiteSpace(title)) return true;
+            return Regex.IsMatch(title.Trim(),
+                @"^(result|data|cards|table|grid|page|export|dashboard|chart|kpi)$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        }
+
+        public static string FirstMeaningfulTitle(params string[] candidates)
+        {
+            if (candidates == null) return null;
+            foreach (var c in candidates)
+            {
+                if (!IsGenericExportTitle(c))
+                    return c.Trim();
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Prefer chrome/polish title, then SpecJson title, then dataset name (e.g. PLM_Product_ForwardTimeline).
+        /// </summary>
+        public static string ResolveExportTitle(string requested, string datasetName, string specJson)
+        {
+            string fromSpec = null;
+            string fromPolish = null;
+            string fromDatasetField = null;
+            if (!string.IsNullOrWhiteSpace(specJson))
+            {
+                try
+                {
+                    var root = JObject.Parse(specJson);
+                    fromSpec = root["title"]?.ToString() ?? root["Title"]?.ToString();
+                    var polished = root["polishedSpec"] ?? root["PolishedSpec"];
+                    if (polished is JObject po)
+                        fromPolish = po["title"]?.ToString() ?? po["Title"]?.ToString();
+                    fromDatasetField = root["dataset_name"]?.ToString()
+                        ?? root["datasetName"]?.ToString()
+                        ?? root["DatasetName"]?.ToString();
+                }
+                catch { /* ignore */ }
+            }
+            return FirstMeaningfulTitle(requested, fromPolish, fromSpec, datasetName, fromDatasetField)
+                   ?? (string.IsNullOrWhiteSpace(datasetName) ? "Result" : datasetName.Trim());
+        }
+
+        private static void ApplyExportTitle(string preferredTitle, FormDocument doc, CardSheet sheet)
+        {
+            if (IsGenericExportTitle(preferredTitle)) return;
+            var t = preferredTitle.Trim();
+            if (doc != null && IsGenericExportTitle(doc.Title))
+                doc.Title = t;
+            if (sheet != null && IsGenericExportTitle(sheet.Title))
+                sheet.Title = t;
+        }
+
         /// <summary>Full dataset as a normal table (one row per record). Ignores card polish / gallery layout.</summary>
         private static (FormDocument Doc, int RowCount, bool CacheLimitReached) LoadCardsAsDataTable(
             AgentToolContext context, string content, string sourcePath, string datasetName, string records, int rowLimit)
@@ -639,6 +704,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     : null;
                 return (HtmlToOpenXmlWord.WriteCardsHtml(html, sheet), "openxml");
             }
+            // Table/form grids: OpenXML (controlled title size/color). LibreOffice maps the title
+            // cell to a huge Heading style and drops inline color — avoid for Result Export Word.
+            if (doc != null)
+                return (OpenXmlWordForm.Write(doc), "openxml");
             if (LibreOfficeConvert.IsInstalled())
                 return (LibreOfficeConvert.Convert(printHtml, ".html", "docx"), "libreoffice");
             return (OpenXmlWordForm.Write(doc), "openxml");

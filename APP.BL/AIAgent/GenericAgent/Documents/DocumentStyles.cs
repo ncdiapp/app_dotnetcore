@@ -24,7 +24,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         public const string Line = "#dddddd";
 
         public const string TitleCss =
-            "font-family:Arial,Helvetica,sans-serif;font-size:18pt;font-weight:bold;text-align:center;color:#1a1a1a;padding:6px 8px;";
+            "font-family:Arial,Helvetica,sans-serif;font-size:14pt;font-weight:bold;text-align:center;color:#3d4f5f;padding:6px 8px;";
 
         public const string SectionCss =
             "font-family:Arial,Helvetica,sans-serif;font-size:13pt;font-weight:bold;text-align:left;color:#1a1a1a;background-color:#f0f2f4;padding:6px 8px;";
@@ -38,15 +38,15 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         public const string ValueCss =
             "font-family:Arial,Helvetica,sans-serif;font-size:10pt;font-weight:normal;text-align:left;color:#1a1a1a;padding:3px 8px;vertical-align:top;width:32%;";
 
-        // Horizontal rules only (no vertical borders) — AI Result / print-export grid look.
+        // Light header + full grid (matches preferred PDF Result export look).
         public const string HeaderCss =
-            "font-family:Arial,Helvetica,sans-serif;font-size:10pt;font-weight:bold;text-align:left;vertical-align:middle;color:#ffffff;background-color:#3d4f5f;padding:4px 8px;border:none;border-bottom:1px solid #e2e8f0;";
+            "font-family:Arial,Helvetica,sans-serif;font-size:9pt;font-weight:bold;text-align:left;vertical-align:middle;color:#1e293b;background-color:#f1f5f9;padding:5px 6px;border:1px solid #cbd5e1;";
 
         public const string CellCss =
-            "font-family:Arial,Helvetica,sans-serif;font-size:10pt;font-weight:normal;text-align:left;vertical-align:middle;color:#1a1a1a;padding:3px 8px;border:none;border-bottom:1px solid #f1f5f9;";
+            "font-family:Arial,Helvetica,sans-serif;font-size:9pt;font-weight:normal;text-align:left;vertical-align:middle;color:#1a1a1a;padding:4px 6px;border:1px solid #e2e8f0;";
 
         public const string NumberCss =
-            "font-family:Arial,Helvetica,sans-serif;font-size:10pt;font-weight:normal;text-align:right;vertical-align:middle;color:#1a1a1a;padding:3px 8px;border:none;border-bottom:1px solid #f1f5f9;";
+            "font-family:Arial,Helvetica,sans-serif;font-size:9pt;font-weight:normal;text-align:right;vertical-align:middle;color:#1a1a1a;padding:4px 6px;border:1px solid #e2e8f0;";
 
         public const string NotesCss =
             "font-family:Arial,Helvetica,sans-serif;font-size:10pt;font-weight:normal;text-align:left;color:#333333;padding:6px 8px;";

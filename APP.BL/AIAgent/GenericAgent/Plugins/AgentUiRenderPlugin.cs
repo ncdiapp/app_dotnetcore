@@ -216,16 +216,14 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     {
                         formDoc = LoadFormOrTable(context, layout, datasetName, content, title, effLimit, out resolvedDataset, out truncated, out rowCount);
                     }
-                    if (!string.IsNullOrWhiteSpace(title) && formDoc != null) formDoc.Title = title.Trim();
+                    if (!AgentDocumentPlugin.IsGenericExportTitle(title) && formDoc != null)
+                        formDoc.Title = title.Trim();
                 }
 
                 string html;
                 string htmlPath = null;
                 string htmlUrl = null;
                 var mode = interactive ? "Interactive" : "NoneInteractive";
-                var pageTitle = string.IsNullOrWhiteSpace(title)
-                    ? (dashSpec?.Title ?? formDoc?.Title ?? cardSheet?.Title)
-                    : title.Trim();
 
                 string dataJson = null;
                 string emitSpecJson = null;
@@ -239,6 +237,23 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     var polishLayout = layout == "page" ? "table" : layout;
                     polish = ResolvePolish(context, resolvedDataset, polishLayout, title,
                         dashRows, aiPolishedRenderSpec, selectAllColumns, promptHash);
+                }
+                // Prefer tool / polish / dashboard / dataset — skip placeholders like "Result".
+                var pageTitle = AgentDocumentPlugin.FirstMeaningfulTitle(
+                    title,
+                    polish?.Title,
+                    dashSpec?.Title,
+                    formDoc?.Title,
+                    cardSheet?.Title,
+                    resolvedDataset) ?? "Result";
+                if (!AgentDocumentPlugin.IsGenericExportTitle(pageTitle))
+                {
+                    if (formDoc != null && AgentDocumentPlugin.IsGenericExportTitle(formDoc.Title))
+                        formDoc.Title = pageTitle;
+                    if (cardSheet != null && AgentDocumentPlugin.IsGenericExportTitle(cardSheet.Title))
+                        cardSheet.Title = pageTitle;
+                    if (dashSpec != null && AgentDocumentPlugin.IsGenericExportTitle(dashSpec.Title))
+                        dashSpec.Title = pageTitle;
                 }
                 if (polish != null && formDoc != null
                     && (layout == "table" || UiTemplateMerge.IsPageLayout(layout))
@@ -315,6 +330,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         emitSpecJson = JsonConvert.SerializeObject(new
                         {
                             title = dashSpec?.Title ?? pageTitle,
+                            dataset_name = resolvedDataset,
                             kpis = dashSpec?.Kpis,
                             chart = dashSpec?.Chart,
                             charts = dashSpec?.Charts,
@@ -339,6 +355,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         emitSpecJson = JsonConvert.SerializeObject(new
                         {
                             title = pageTitle,
+                            dataset_name = resolvedDataset,
                             views = ParsePageViews(specJson),
                             cardsPerRow = pageCpr,
                             cardRows = pageCr,
@@ -360,6 +377,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         emitSpecJson = JsonConvert.SerializeObject(new
                         {
                             title = pageTitle,
+                            dataset_name = resolvedDataset,
                             cardsPerRow = cpr,
                             cardRows = cr,
                             pageGrid = cpr + "x" + cr,
@@ -374,6 +392,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         emitSpecJson = JsonConvert.SerializeObject(new
                         {
                             title = pageTitle,
+                            dataset_name = resolvedDataset,
                             sectionTitles,
                             columns = polish?.Bindings?.Columns,
                             columnsJson = polish?.Bindings != null

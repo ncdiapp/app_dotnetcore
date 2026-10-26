@@ -1,4 +1,8 @@
 using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.IO;
 
 namespace App.BL.AIAgent.GenericAgent.Documents
 {
@@ -29,6 +33,44 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 return (maxWidth, maxHeight);
             var scale = Math.Min(maxWidth / (double)size.Width, maxHeight / (double)size.Height);
             return (Math.Max(1, (int)Math.Round(size.Width * scale)), Math.Max(1, (int)Math.Round(size.Height * scale)));
+        }
+
+        /// <summary>
+        /// Draw the image centered in a boxW×boxH canvas (letterbox / pillarbox) as PNG.
+        /// Use before PPT/Word cell picture fills that stretch-to-fill — the padded bitmap
+        /// keeps the visual aspect ratio when the fill stretches to the cell.
+        /// </summary>
+        public static byte[] ContainPng(byte[] bytes, int boxW, int boxH)
+        {
+            if (bytes == null || bytes.Length == 0) return bytes;
+            if (boxW < 1) boxW = 1;
+            if (boxH < 1) boxH = 1;
+            try
+            {
+                using var input = new MemoryStream(bytes);
+                using var src = Image.FromStream(input, useEmbeddedColorManagement: false, validateImageData: false);
+                var fit = Fit(bytes, boxW, boxH);
+                if (fit.Width <= 0 || fit.Height <= 0)
+                    fit = (boxW, boxH);
+                using var canvas = new Bitmap(boxW, boxH);
+                using (var g = Graphics.FromImage(canvas))
+                {
+                    g.Clear(Color.White);
+                    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                    g.SmoothingMode = SmoothingMode.HighQuality;
+                    var dx = Math.Max(0, (boxW - fit.Width) / 2);
+                    var dy = Math.Max(0, (boxH - fit.Height) / 2);
+                    g.DrawImage(src, new Rectangle(dx, dy, fit.Width, fit.Height));
+                }
+                using var output = new MemoryStream();
+                canvas.Save(output, ImageFormat.Png);
+                return output.ToArray();
+            }
+            catch
+            {
+                return bytes;
+            }
         }
 
         private static (int Width, int Height) Jpeg(byte[] bytes)

@@ -86,6 +86,19 @@ function normalizePolished(raw: Record<string, unknown> | null | undefined): Pol
     };
 }
 
+/** Placeholders that should lose to polish / SpecJson / dataset titles. */
+function isGenericExportTitle(t: string | null | undefined): boolean {
+    if (!t || !t.trim()) return true;
+    return /^(result|data|cards|table|grid|page|export|dashboard|chart|kpi)$/i.test(t.trim());
+}
+
+function firstMeaningfulTitle(...candidates: Array<string | null | undefined>): string | null {
+    for (const c of candidates) {
+        if (!isGenericExportTitle(c)) return (c as string).trim();
+    }
+    return null;
+}
+
 function parseSpecBlob(event: DataRenderEvent | null | undefined): {
     polished: PolishedSpecClient | null;
     filterOptions: Record<string, string[]>;
@@ -95,6 +108,8 @@ function parseSpecBlob(event: DataRenderEvent | null | undefined): {
     pageGrid: string | null;
     /** SpecJson root title (kpi/dashboard often set this when polishedSpec.title is empty). */
     specTitle: string | null;
+    /** Analyze-cache dataset name from ui_render SpecJson. */
+    datasetName: string | null;
 } {
     const raw = event?.SpecJson || event?.MetaJson || null;
     const obj = parseJsonSafe<Record<string, unknown>>(raw, {});
@@ -106,6 +121,8 @@ function parseSpecBlob(event: DataRenderEvent | null | undefined): {
     const htmlPath = event?.HtmlPath || (obj.htmlPath as string) || null;
     const specTitleRaw = obj.title ?? obj.Title;
     const specTitle = typeof specTitleRaw === 'string' && specTitleRaw.trim() ? specTitleRaw.trim() : null;
+    const dsRaw = obj.dataset_name ?? obj.datasetName ?? obj.DatasetName;
+    const datasetName = typeof dsRaw === 'string' && dsRaw.trim() ? dsRaw.trim() : null;
     const hintCpr = polished?.layoutHints?.cardsPerRow;
     const hintCr = polished?.layoutHints?.cardRows;
     const rawCpr = typeof obj.cardsPerRow === 'number' ? obj.cardsPerRow
@@ -133,6 +150,7 @@ function parseSpecBlob(event: DataRenderEvent | null | undefined): {
         cardRows,
         pageGrid,
         specTitle,
+        datasetName,
     };
 }
 
@@ -195,6 +213,8 @@ function slimExportSpecJson(raw: unknown, layout: string): string | undefined {
         if (fo) slim.filterOptions = fo;
         const title = obj.title ?? obj.Title;
         if (title != null) slim.title = title;
+        const ds = obj.dataset_name ?? obj.datasetName ?? obj.DatasetName;
+        if (typeof ds === 'string' && ds.trim()) slim.dataset_name = ds.trim();
         const cpr = obj.cardsPerRow ?? obj.CardsPerRow;
         const cr = obj.cardRows ?? obj.CardRows;
         const pg = obj.pageGrid ?? obj.PageGrid;
@@ -392,7 +412,7 @@ export const ResultChrome: React.FC<Props> = ({
 }) => {
     const dispatch = useDispatch();
     const { theme } = useTheme();
-    const { polished, filterOptions, cardsPerRow, cardRows, pageGrid, specTitle } = useMemo(
+    const { polished, filterOptions, cardsPerRow, cardRows, pageGrid, specTitle, datasetName } = useMemo(
         () => parseSpecBlob(event),
         [event]
     );
@@ -434,6 +454,7 @@ export const ResultChrome: React.FC<Props> = ({
     const [busy, setBusy] = useState<string | null>(null);
     const [exportOpen, setExportOpen] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
+    /** Last export path — manual Save uses a fresh click (gesture) if auto-download was blocked. */
 
     const filteredRows = useMemo(
         () => applyFilters(allRows, search, searchFields.filter(Boolean) as string[], multi),
@@ -457,7 +478,8 @@ export const ResultChrome: React.FC<Props> = ({
         };
     }, [event, filteredRows, allRows.length]);
 
-    const title = polished?.title || event.Title || specTitle || 'Result';
+    // Prefer polish / event / SpecJson / dataset — skip placeholder "Result".
+    const title = firstMeaningfulTitle(polished?.title, event.Title, specTitle, datasetName) || 'Result';
     const total = allRows.length > 0 ? allRows.length : (event.RowCount || 0);
     const shown = allRows.length > 0 ? filteredRows.length : total;
 
@@ -524,6 +546,7 @@ export const ResultChrome: React.FC<Props> = ({
         format,
         layout: exportLayout,
         title,
+        ...(datasetName ? { datasetName } : {}),
         ...(cardsPerRow > 0 ? { cardsPerRow } : {}),
         ...(cardRows > 0 ? { cardRows } : {}),
         ...(pageGrid ? { pageGrid } : {}),
@@ -542,9 +565,10 @@ export const ResultChrome: React.FC<Props> = ({
             setMsg('Print/Export needs KPI/dashboard SpecJson. Re-run the render, then try again.');
             return;
         }
-        setBusy(format);
         setMsg(null);
         setExportOpen(false);
+
+        setBusy(format);
         // Same global BusyLoader as Print (GENERATE → download, or error).
         dispatch(setIsBusy());
         try {
@@ -554,8 +578,13 @@ export const ResultChrome: React.FC<Props> = ({
                 res = await genericAgentSvc.ExportResult(buildExportArgs(format, true));
             }
             if (res?.path) {
-                setMsg(`Exported ${format.toUpperCase()}: ${res.path}`);
-                await genericAgentSvc.DownloadAgentFile(skillKey, sessionKey, res.path);
+                try {
+                    await genericAgentSvc.DownloadAgentFile(skillKey, sessionKey, res.path);
+                    setMsg(`Exported ${format.toUpperCase()}: ${res.path}`);
+                } catch (dlErr: unknown) {
+                    const detail = dlErr instanceof Error ? dlErr.message : 'Download failed.';
+                    setMsg(detail);
+                }
             } else {
                 setMsg(res?.error || 'Export failed.');
             }

@@ -1193,6 +1193,16 @@ public class GenericAgentController : SecureBaseController
         if (layout == "kpi_dashboard") layout = "kpi";
 
         var dataset = body.DatasetName?.Trim();
+        // SpecJson from Result chrome often carries dataset_name when body omits it.
+        if (string.IsNullOrWhiteSpace(dataset) && !string.IsNullOrWhiteSpace(body.SpecJson))
+        {
+            try
+            {
+                var root = JObject.Parse(body.SpecJson);
+                dataset = (root["dataset_name"] ?? root["datasetName"] ?? root["DatasetName"])?.ToString()?.Trim();
+            }
+            catch { /* ignore */ }
+        }
         if (string.IsNullOrWhiteSpace(dataset))
             dataset = App.BL.AIAgent.GenericAgent.DataAnalyze.AgentDataAnalyzeCacheBL
                 .Latest(body.SessionKey.Trim())?.Name;
@@ -1215,7 +1225,6 @@ public class GenericAgentController : SecureBaseController
         try
         {
             var plugin = new App.BL.AIAgent.GenericAgent.Plugins.AgentDocumentPlugin();
-            var title = string.IsNullOrWhiteSpace(body.Title) ? "Result" : body.Title.Trim();
             var path = "output/result_export";
             var ct = HttpContext?.RequestAborted ?? CancellationToken.None;
             var cpr = body.CardsPerRow > 0 ? body.CardsPerRow : 0;
@@ -1229,15 +1238,18 @@ public class GenericAgentController : SecureBaseController
             specJson = StripHeavyUiFromExportSpecJson(specJson);
             // Restored Result carries DataJson; session analyze cache is empty after reopen.
             var recordsJson = string.IsNullOrWhiteSpace(body.RecordsJson) ? null : body.RecordsJson.Trim();
+            // Prefer chrome/polish title, else SpecJson, else dataset name (not the placeholder "Result").
+            var title = App.BL.AIAgent.GenericAgent.Plugins.AgentDocumentPlugin
+                .ResolveExportTitle(body.Title, dataset, specJson);
             string json = ext switch
             {
-                ".pdf" => await plugin.ExportPdf(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson).ConfigureAwait(false),
-                ".docx" => await plugin.ExportDocx(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson).ConfigureAwait(false),
-                ".pptx" => await plugin.ExportPptx(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson).ConfigureAwait(false),
-                ".html" => await plugin.ExportHtml(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson).ConfigureAwait(false),
-                ".xlsx" => await plugin.ExportExcel(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson).ConfigureAwait(false),
-                ".csv" => await plugin.ExportCsv(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson).ConfigureAwait(false),
-                _ => await plugin.ExportPdf(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson).ConfigureAwait(false)
+                ".pdf" => await plugin.ExportPdf(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson, title).ConfigureAwait(false),
+                ".docx" => await plugin.ExportDocx(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson, title).ConfigureAwait(false),
+                ".pptx" => await plugin.ExportPptx(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson, title).ConfigureAwait(false),
+                ".html" => await plugin.ExportHtml(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson, title).ConfigureAwait(false),
+                ".xlsx" => await plugin.ExportExcel(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson, title).ConfigureAwait(false),
+                ".csv" => await plugin.ExportCsv(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson, title).ConfigureAwait(false),
+                _ => await plugin.ExportPdf(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson, title).ConfigureAwait(false)
             };
 
             var obj = JObject.Parse(json);

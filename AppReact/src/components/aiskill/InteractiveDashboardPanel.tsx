@@ -375,15 +375,15 @@ const InteractiveDashboardPanel: React.FC<Props> = ({ event, disabled, onAction 
         return chart;
     };
 
+    // No maxHeight/overflow wrapper — Wijmo grid already caps height + scrolls internally.
+    // An extra overflow:auto here created a middle scrollbar between panel and grid.
     const gridBody = (
-        <div style={{ maxHeight: 'min(80vh, 800px)', overflow: 'auto' }}>
-            <DataRenderGridWijmo
-                colDefs={colDefs}
-                rowData={filteredRows}
-                title="Data"
-                meta={{ total: filteredRows.length }}
-            />
-        </div>
+        <DataRenderGridWijmo
+            colDefs={colDefs}
+            rowData={filteredRows}
+            title="Data"
+            meta={{ total: filteredRows.length }}
+        />
     );
 
     return (

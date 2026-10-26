@@ -7,7 +7,12 @@ export const getHeaders = () => {
     headers.append('Content-Type', 'application/json');
 
     if (userContext?.SessionId) {
-        headers.append('CurrentUserSessionId', userContext.SessionId);
+        const sid = String(userContext.SessionId);
+        headers.append('CurrentUserSessionId', sid);
+        // Cookie fallback for SessionValidationFilter when a caller mishandles Headers (e.g. object spread).
+        try {
+            document.cookie = `CurrentUserSessionId=${sid}; path=/`;
+        } catch { /* ignore */ }
     }
 
     return headers;

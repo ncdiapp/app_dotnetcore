@@ -107,4 +107,46 @@ public class HtmlGridImageTests
         Assert.Contains("data:image/png;base64,", cardHtml);
         Assert.Contains("mcp-card-hero", cardHtml);
     }
+
+    [Fact]
+    public void ContainPng_letterboxes_to_box_aspect()
+    {
+        // 2×1 wide PNG → 50×50 box should stay 50×50 and keep content centered (not stretch).
+        var wide = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEElEQVR42mP8z8BQz0AEYBxVSF+FAP0qB/3yq1h5AAAAAElFTkSuQmCC");
+        var boxed = ImagePixels.ContainPng(wide, 50, 50);
+        Assert.NotNull(boxed);
+        Assert.True(boxed.Length > 32);
+        var size = ImagePixels.Read(boxed);
+        Assert.Equal(50, size.Width);
+        Assert.Equal(50, size.Height);
+    }
+
+    [Fact]
+    public void Pptx_grid_does_not_dump_image_url_as_cell_text()
+    {
+        var plm = "https://plmpentest.example.com/PLM_DEMO/image/300";
+        var png = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+        var doc = FormDocument.FromTable(
+            "Styles",
+            new[] { "Sketch", "Name" },
+            new[]
+            {
+                new List<FormCell>
+                {
+                    new FormCell { Text = plm, IsImage = true, ImageBytes = png },
+                    new FormCell { Text = "Shoe" }
+                }
+            });
+        var bytes = PptxForm.Write(doc);
+        Assert.NotNull(bytes);
+        Assert.True(bytes.Length > 100);
+        var back = PptxForm.Read(bytes);
+        var texts = back.Sections.SelectMany(s => s.Tables).SelectMany(t => t.Rows)
+            .SelectMany(r => r).Select(c => c.Text ?? "");
+        Assert.DoesNotContain(texts, t => t.Contains("plmpentest", StringComparison.OrdinalIgnoreCase)
+            || t.Contains("/image/300", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(texts, t => t == "Shoe");
+    }
 }

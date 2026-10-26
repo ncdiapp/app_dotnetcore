@@ -592,21 +592,60 @@ class GenericAgentService {
         return data?.Object ?? 0;
     }
 
-    async DownloadAgentFile(skillKey: string, sessionKey: string | null | undefined, relativePath: string, fileScope?: string): Promise<void> {
-        const res = await fetch(this.downloadAgentFileUrl(skillKey, sessionKey, relativePath, fileScope), {
-            headers: getHeaders(),
-        });
+    /**
+     * Fetch AgentOutput bytes with CurrentUserSessionId (not iframe/navigation — those omit the header → 401).
+     */
+    async FetchAgentFileBlob(
+        skillKey: string,
+        sessionKey: string | null | undefined,
+        relativePath: string,
+        fileScope?: string,
+    ): Promise<{ blob: Blob; fileName: string }> {
+        const url = this.downloadAgentFileUrl(skillKey, sessionKey, relativePath, fileScope);
+        // GET must not send Content-Type: application/json from getHeaders().
+        const headers = new Headers(getHeaders());
+        headers.delete('Content-Type');
+        const res = await fetch(url, { headers, credentials: 'include' });
         if (!res.ok) throw new Error(`Download failed (${res.status})`);
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
         const blob = await res.blob();
-        const name = relativePath.split(/[/\\]/).pop() || 'agent-file';
-        const objectUrl = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = objectUrl;
-        a.download = name;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        // Error pages are JSON; real files are octet-stream (or typed). Reject JSON error bodies.
+        if (ct.includes('application/json')) {
+            throw new Error('Download failed (server returned an error page).');
+        }
+        if (blob.size < 32) {
+            throw new Error('Download failed (empty file).');
+        }
+        const fileName = relativePath.split(/[/\\]/).pop() || 'agent-file';
+        return { blob, fileName };
+    }
+
+    /**
+     * Fetch with session header → &lt;a download&gt; (all Export formats + Tool Activity).
+     * Force application/octet-stream so Chrome does not inline-preview PDF/HTML instead of saving.
+     */
+    async DownloadAgentFile(
+        skillKey: string,
+        sessionKey: string | null | undefined,
+        relativePath: string,
+        fileScope?: string,
+    ): Promise<void> {
+        const { blob, fileName } = await this.FetchAgentFileBlob(skillKey, sessionKey, relativePath, fileScope);
+        // Same path for pdf/html/docx/… — octet-stream + download=filename triggers Save, not a tab.
+        const saveBlob = new Blob([await blob.arrayBuffer()], { type: 'application/octet-stream' });
+        const objectUrl = URL.createObjectURL(saveBlob);
+        try {
+            const a = document.createElement('a');
+            a.href = objectUrl;
+            a.download = fileName || 'agent-file';
+            a.rel = 'noopener';
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        } finally {
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 8000);
+        }
     }
 
     /** Read AgentOutput text (e.g. none-interactive render twin HTML for Print). */
@@ -639,9 +678,13 @@ class GenericAgentService {
         /** Result rows JSON — required after chat reopen when server dataset cache is empty. */
         recordsJson?: string;
     }): Promise<{ path?: string; error?: string }> {
+        // Headers is not a plain object — `{ ...getHeaders() }` drops CurrentUserSessionId → 401/500.
+        const headers = new Headers(getHeaders());
+        headers.set('Content-Type', 'application/json');
         const res = await fetch(`${BASE}/ExportResult`, {
             method: 'POST',
-            headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+            headers,
+            credentials: 'include',
             body: JSON.stringify({
                 SkillKey: args.skillKey,
                 SessionKey: args.sessionKey,
@@ -656,7 +699,19 @@ class GenericAgentService {
                 RecordsJson: args.recordsJson || '',
             }),
         });
-        if (!res.ok) return { error: `Export failed (${res.status})` };
+        if (!res.ok) {
+            let detail = `Export failed (${res.status})`;
+            try {
+                const errBody = await res.json();
+                const m = errBody?.message || errBody?.Message;
+                if (typeof m === 'string' && m.trim()) {
+                    detail = /unauthorized/i.test(m)
+                        ? 'Session expired — sign in again, then retry Print/Export.'
+                        : m.trim();
+                }
+            } catch { /* ignore */ }
+            return { error: detail };
+        }
         const data = await res.json();
         const obj = data?.Object;
         if (obj?.Path) return { path: String(obj.Path) };
