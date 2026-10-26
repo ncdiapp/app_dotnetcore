@@ -2,8 +2,10 @@ import React, { useMemo, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
 import { useTheme } from '../../redux/hooks/useTheme';
+import { fetchAuthenticatedImageBlobUrl } from '../../webapi/fileEndpoints';
 import { genericAgentSvc, type DataRenderEvent } from '../../webapi/genericAgentSvc';
 import { parseRows } from './dataRender/adapters';
+import { toAppResourcePath } from './dataRender/imageValue';
 import { parseJsonSafe } from './dataRender/types';
 
 export type PolishedFilterField = {
@@ -216,14 +218,124 @@ function slimExportSpecJson(raw: unknown, layout: string): string | undefined {
     }
 }
 
-/** Resolve when system print dialog is invoked (or images timed out). Caller keeps BusyLoader until then. */
-function printHtmlInHiddenIframe(html: string): Promise<void> {
+/** Relative /api or app paths in ExportResult HTML resolve against the SPA origin. */
+function withPrintBaseHref(html: string): string {
+    const base = `<base href="${window.location.origin}${window.location.pathname.replace(/[^/]*$/, '')}">`;
+    if (/<base\s/i.test(html)) return html;
+    if (/<head[\s>]/i.test(html))
+        return html.replace(/<head([^>]*)>/i, `<head$1>${base}`);
+    if (/<html[\s>]/i.test(html))
+        return html.replace(/<html([^>]*)>/i, `<html$1><head>${base}</head>`);
+    return `<!DOCTYPE html><html><head><meta charset="utf-8">${base}</head><body>${html}</body></html>`;
+}
+
+const APP_IMG_SRC = /\/api\/(?:resources|files)\//i;
+const PLM_IMAGE_PATH = /\/image\/\d+(?:\/|\?|$)/i;
+
+/**
+ * ExportResult .html skips CardImageLoader (payload size) and leaves &lt;img src=url onerror=clear&gt;.
+ * Drop onerror/lazy so we can blob-hydrate before print() — same cookies/session as Result.
+ */
+function prepareExportHtmlForPrint(html: string): string {
+    return html
+        .replace(/\s+onerror\s*=\s*"[^"]*"/gi, '')
+        .replace(/\s+onerror\s*=\s*'[^']*'/gi, '')
+        .replace(/\s+loading\s*=\s*(["'])lazy\1/gi, '');
+}
+
+function needsPrintImageHydrate(src: string): boolean {
+    const s = (src || '').trim().replace(/&amp;/g, '&');
+    if (!s || s.startsWith('data:') || s.startsWith('blob:')) return false;
+    return APP_IMG_SRC.test(s) || /^\d+$/.test(s) || /^https?:\/\//i.test(s) || PLM_IMAGE_PATH.test(s);
+}
+
+function absolutePrintImageUrl(src: string): string {
+    const s = (src || '').trim().replace(/&amp;/g, '&');
+    if (/^https?:\/\//i.test(s)) return s;
+    try {
+        return new URL(s.startsWith('/') ? s : `/${s}`, window.location.origin).href;
+    } catch {
+        return s;
+    }
+}
+
+function waitForImgSettle(img: HTMLImageElement, ms = 12000): Promise<void> {
+    return new Promise(resolve => {
+        let done = false;
+        const finish = () => {
+            if (done) return;
+            done = true;
+            resolve();
+        };
+        if (img.complete && img.naturalWidth > 0) {
+            finish();
+            return;
+        }
+        img.addEventListener('load', finish, { once: true });
+        img.addEventListener('error', finish, { once: true });
+        setTimeout(finish, ms);
+    });
+}
+
+async function blobUrlFromExternalImage(src: string): Promise<string | null> {
+    const url = absolutePrintImageUrl(src);
+    try {
+        const res = await fetch(url, { credentials: 'include', mode: 'cors' });
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        if (!blob || blob.size < 8) return null;
+        const type = (blob.type || '').toLowerCase();
+        if (type && !type.startsWith('image/') && !type.includes('octet-stream')) return null;
+        return URL.createObjectURL(blob);
+    } catch {
+        return null;
+    }
+}
+
+/** Session-header for /api; cookie fetch for PLM https — then wait until decoded. */
+async function hydrateExportPrintImages(doc: Document): Promise<void> {
+    const imgs = Array.from(doc.querySelectorAll('img')).filter(img =>
+        needsPrintImageHydrate(img.getAttribute('src') || ''));
+    if (imgs.length === 0) return;
+
+    const concurrency = 8;
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(concurrency, imgs.length) }, async () => {
+        while (next < imgs.length) {
+            const img = imgs[next++];
+            img.onerror = null;
+            img.removeAttribute('onerror');
+            img.removeAttribute('loading');
+            img.style.display = '';
+            const raw = (img.getAttribute('src') || '').trim().replace(/&amp;/g, '&');
+            if (!needsPrintImageHydrate(raw)) continue;
+            try {
+                let blobUrl: string | null = null;
+                if (APP_IMG_SRC.test(raw) || /^\d+$/.test(raw))
+                    blobUrl = await fetchAuthenticatedImageBlobUrl(toAppResourcePath(raw));
+                else
+                    blobUrl = await blobUrlFromExternalImage(raw);
+                if (blobUrl) {
+                    img.src = blobUrl;
+                } else if (!/^https?:\/\//i.test(raw)) {
+                    img.src = absolutePrintImageUrl(raw);
+                }
+                await waitForImgSettle(img);
+            } catch { /* leave src */ }
+        }
+    }));
+}
+
+/** ExportResult HTML → base href → hydrate remote imgs → print(). */
+async function printHtmlInHiddenIframe(html: string): Promise<void> {
     const prev = document.getElementById('agent-result-print-frame');
     if (prev) prev.remove();
     const iframe = document.createElement('iframe');
     iframe.id = 'agent-result-print-frame';
     iframe.setAttribute('aria-hidden', 'true');
-    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;';
+    // Non-zero size: 0×0 iframes often never decode remote images before print().
+    iframe.style.cssText =
+        'position:fixed;left:-10000px;top:0;width:1024px;height:1400px;border:0;opacity:0;pointer-events:none;';
     document.body.appendChild(iframe);
     const doc = iframe.contentDocument || iframe.contentWindow?.document;
     if (!doc) {
@@ -231,25 +343,12 @@ function printHtmlInHiddenIframe(html: string): Promise<void> {
         throw new Error('Print frame unavailable.');
     }
     doc.open();
-    doc.write(html);
+    doc.write(withPrintBaseHref(prepareExportHtmlForPrint(html)));
     doc.close();
 
-    const waitImages = (): Promise<void> => {
-        const imgs = Array.from(doc.images || []);
-        if (imgs.length === 0) return Promise.resolve();
-        const all = Promise.all(imgs.map(img => {
-            if (img.complete) return Promise.resolve();
-            return new Promise<void>(resolve => {
-                img.onload = () => resolve();
-                img.onerror = () => resolve();
-            });
-        })).then(() => undefined);
-        // Don't block BusyLoader forever if a remote image hangs.
-        const timeout = new Promise<void>(resolve => { setTimeout(resolve, 15000); });
-        return Promise.race([all, timeout]);
-    };
+    await hydrateExportPrintImages(doc);
 
-    return waitImages().then(() => new Promise<void>((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
         setTimeout(() => {
             try {
                 iframe.contentWindow?.focus();
@@ -261,7 +360,7 @@ function printHtmlInHiddenIframe(html: string): Promise<void> {
                 setTimeout(() => { try { iframe.remove(); } catch { /* ignore */ } }, 1000);
             }
         }, 80);
-    }));
+    });
 }
 
 interface Props {
@@ -400,14 +499,14 @@ export const ResultChrome: React.FC<Props> = ({
         () => slimExportSpecJson(event.SpecJson || event.MetaJson, exportLayout),
         [event.SpecJson, event.MetaJson, exportLayout],
     );
-    // Unfiltered → rely on server session dataset (omit MBs of RecordsJson). Filtered → send subset.
-    // KPI/dashboard always send rows after reopen (analyze cache often empty).
+    // Unfiltered → server session analyze cache (no MBs of RecordsJson). Filtered → send subset.
+    // Reopen with empty cache: first call may fail → retry once with DataJson (see runExport/onPrint).
     const filtersActive = filteredRows.length !== allRows.length;
     const exportRecordsJson = useMemo(() => {
-        if (!filtersActive && !isDashExport) return undefined;
+        if (!filtersActive) return undefined;
         if (filteredRows.length > 0) return JSON.stringify(filteredRows);
         return undefined;
-    }, [filtersActive, isDashExport, filteredRows]);
+    }, [filtersActive, filteredRows]);
     // Fallback when session cache is gone (chat reopen): full DataJson once.
     const exportRecordsFallback = useMemo(() => {
         if (typeof event.DataJson === 'string' && event.DataJson.trim()) return event.DataJson.trim();
@@ -418,6 +517,7 @@ export const ResultChrome: React.FC<Props> = ({
         return undefined;
     }, [event.DataJson, filteredRows]);
 
+    /** Same data as Result — prefer session cache; only POST rows when filtered or cache miss retry. */
     const buildExportArgs = (format: string, withRecords: boolean) => ({
         skillKey,
         sessionKey: sessionKey!,
@@ -448,10 +548,9 @@ export const ResultChrome: React.FC<Props> = ({
         // Same global BusyLoader as Print (GENERATE → download, or error).
         dispatch(setIsBusy());
         try {
-            // KPI/dashboard: always include rows (session analyze cache often empty after reopen).
-            let res = await genericAgentSvc.ExportResult(buildExportArgs(format, filtersActive || isDashExport));
-            // Session analyze cache empty after reopen → retry with rows once (SpecJson stays slim).
-            if (!res?.path && !filtersActive && !isDashExport && exportRecordsFallback) {
+            // Prefer analyze cache (no re-POST of 500 rows). Retry with DataJson only if cache miss.
+            let res = await genericAgentSvc.ExportResult(buildExportArgs(format, filtersActive));
+            if (!res?.path && !filtersActive && exportRecordsFallback) {
                 res = await genericAgentSvc.ExportResult(buildExportArgs(format, true));
             }
             if (res?.path) {
@@ -482,8 +581,9 @@ export const ResultChrome: React.FC<Props> = ({
         // Global BusyLoader from click → GENERATE + iframe → print dialog (or error).
         dispatch(setIsBusy());
         try {
-            let res = await genericAgentSvc.ExportResult(buildExportArgs('html', filtersActive || isDashExport));
-            if (!res?.path && !filtersActive && !isDashExport && exportRecordsFallback) {
+            // Print HTML via ExportResult (session analyze cache — no re-query). Images inlined server-side.
+            let res = await genericAgentSvc.ExportResult(buildExportArgs('html', filtersActive));
+            if (!res?.path && !filtersActive && exportRecordsFallback) {
                 res = await genericAgentSvc.ExportResult(buildExportArgs('html', true));
             }
             if (!res?.path) {
