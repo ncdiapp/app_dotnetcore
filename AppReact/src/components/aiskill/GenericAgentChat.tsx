@@ -61,25 +61,35 @@ const normalizeStoredRenderUi = (uiRaw: string, layoutRaw: string): string => {
     return ui || 'grid';
 };
 
+/** Persisted chat may deserialize SpecJson/DataJson as objects — keep string for Result chrome / Export. */
+const coerceJsonField = (v: unknown): string | null => {
+    if (v == null) return null;
+    if (typeof v === 'string') return v;
+    if (typeof v === 'object') {
+        try { return JSON.stringify(v); } catch { return null; }
+    }
+    return String(v);
+};
+
 const parseStoredDataRenders = (m: StoredChatMessage): DataRenderEvent[] | undefined => {
     const raw = m.dataRenders ?? m.DataRenders;
     if (!Array.isArray(raw) || raw.length === 0) return undefined;
     return raw.map((dr: any) => {
         const layout = String(dr?.Layout ?? dr?.layout ?? '');
         const ui = normalizeStoredRenderUi(String(dr?.Ui ?? dr?.ui ?? ''), layout);
-        const specJson = dr?.SpecJson ?? dr?.specJson ?? null;
-        const metaJson = dr?.MetaJson ?? dr?.metaJson
+        const specJson = coerceJsonField(dr?.SpecJson ?? dr?.specJson ?? null);
+        const metaJson = coerceJsonField(dr?.MetaJson ?? dr?.metaJson)
             ?? ((ui === 'card' || ui === 'page') && specJson ? specJson : null);
         return {
             RenderId: String(dr?.RenderId ?? dr?.renderId ?? ''),
             Ui: ui,
             Title: dr?.Title ?? dr?.title ?? null,
-            DataJson: dr?.DataJson ?? dr?.dataJson ?? null,
-            ColumnsJson: dr?.ColumnsJson ?? dr?.columnsJson ?? null,
-            ChartConfigJson: dr?.ChartConfigJson ?? dr?.chartConfigJson ?? null,
-            ActionsJson: dr?.ActionsJson ?? dr?.actionsJson ?? null,
+            DataJson: coerceJsonField(dr?.DataJson ?? dr?.dataJson ?? null),
+            ColumnsJson: coerceJsonField(dr?.ColumnsJson ?? dr?.columnsJson ?? null),
+            ChartConfigJson: coerceJsonField(dr?.ChartConfigJson ?? dr?.chartConfigJson ?? null),
+            ActionsJson: coerceJsonField(dr?.ActionsJson ?? dr?.actionsJson ?? null),
             MetaJson: metaJson,
-            BlocksJson: dr?.BlocksJson ?? dr?.blocksJson ?? null,
+            BlocksJson: coerceJsonField(dr?.BlocksJson ?? dr?.blocksJson ?? null),
             RowCount: dr?.RowCount ?? dr?.rowCount,
             Truncated: !!(dr?.Truncated ?? dr?.truncated),
             Timestamp: dr?.Timestamp ?? dr?.timestamp,

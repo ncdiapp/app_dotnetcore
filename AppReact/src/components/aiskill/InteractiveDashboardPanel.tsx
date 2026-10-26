@@ -343,7 +343,7 @@ const InteractiveDashboardPanel: React.FC<Props> = ({ event, disabled, onAction 
     }, [filteredRows, polishedColumns]);
 
     const btn = `px-2 py-0.5 text-xs rounded-[4px] border ${theme.button_default}`;
-    const title = event.Title || spec.title || 'Dashboard';
+    // Title + Print/Export live in ResultChrome (same as page/cards Result).
     const sectionCount =
         (kpiItems.length > 0 ? 1 : 0) + charts.length + 1; /* grid always */
     const useCollapse = sectionCount >= 2;
@@ -388,10 +388,9 @@ const InteractiveDashboardPanel: React.FC<Props> = ({ event, disabled, onAction 
 
     return (
         <div className={`w-full h-full overflow-auto p-2 ${theme.mainContentSection}`}>
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-                <h2 className={`text-base font-semibold m-0 ${theme.label}`}>{title}</h2>
-                {filterField && (
-                    <label className={`text-xs ml-auto flex items-center gap-1 ${theme.label}`}>
+            {filterField && (
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <label className={`text-xs flex items-center gap-1 ${theme.label}`}>
                         Filter {filterField}:
                         <select
                             className={`text-xs border rounded px-1 py-0.5 ${theme.inputBox}`}
@@ -405,8 +404,8 @@ const InteractiveDashboardPanel: React.FC<Props> = ({ event, disabled, onAction 
                             ))}
                         </select>
                     </label>
-                )}
-            </div>
+                </div>
+            )}
 
             {kpiItems.length > 0 && (
                 <DashboardSection title="KPIs" collapse={useCollapse}>
@@ -489,7 +488,11 @@ export function isInteractiveDashboard(event: DataRenderEvent | null | undefined
     const mode = (event.Mode || '').toLowerCase();
     if (mode !== 'interactive') return false;
     // chart-only → TemplateContent iframe; kpi/dashboard → React + TemplateContent control LAYOUTs.
+    // Persisted/reload may only have Ui=kpi_dashboard when Layout was omitted.
     const layout = (event.Layout || '').toLowerCase();
-    if (layout !== 'kpi' && layout !== 'dashboard') return false;
+    const ui = (event.Ui || '').toLowerCase();
+    const isDash = layout === 'kpi' || layout === 'dashboard'
+        || ui === 'kpi_dashboard' || ui === 'kpi' || ui === 'dashboard';
+    if (!isDash) return false;
     return !!(event.DataJson && event.SpecJson);
 }

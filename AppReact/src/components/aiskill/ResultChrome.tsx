@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from 'react';
+import { useDispatch } from 'react-redux';
+import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { genericAgentSvc, type DataRenderEvent } from '../../webapi/genericAgentSvc';
 import { parseRows } from './dataRender/adapters';
@@ -89,6 +91,8 @@ function parseSpecBlob(event: DataRenderEvent | null | undefined): {
     cardsPerRow: number;
     cardRows: number;
     pageGrid: string | null;
+    /** SpecJson root title (kpi/dashboard often set this when polishedSpec.title is empty). */
+    specTitle: string | null;
 } {
     const raw = event?.SpecJson || event?.MetaJson || null;
     const obj = parseJsonSafe<Record<string, unknown>>(raw, {});
@@ -98,6 +102,8 @@ function parseSpecBlob(event: DataRenderEvent | null | undefined): {
     const filterOptionsRaw = (obj.filterOptions || obj.FilterOptions || {}) as Record<string, string[]>;
     const filterOptions = filterOptionsRaw && typeof filterOptionsRaw === 'object' ? filterOptionsRaw : {};
     const htmlPath = event?.HtmlPath || (obj.htmlPath as string) || null;
+    const specTitleRaw = obj.title ?? obj.Title;
+    const specTitle = typeof specTitleRaw === 'string' && specTitleRaw.trim() ? specTitleRaw.trim() : null;
     const hintCpr = polished?.layoutHints?.cardsPerRow;
     const hintCr = polished?.layoutHints?.cardRows;
     const rawCpr = typeof obj.cardsPerRow === 'number' ? obj.cardsPerRow
@@ -124,6 +130,7 @@ function parseSpecBlob(event: DataRenderEvent | null | undefined): {
         cardsPerRow,
         cardRows,
         pageGrid,
+        specTitle,
     };
 }
 
@@ -148,11 +155,37 @@ function applyFilters(
     return out;
 }
 
-/** Export/Print must not re-POST Result SpecJson.cardsHtml (can be MBs for large catalogs). */
-function slimExportSpecJson(raw: string | null | undefined, layout: string): string | undefined {
-    if (!raw?.trim()) return undefined;
+/** Accept string or already-parsed SpecJson (persisted chats sometimes deserialize as object). */
+function asSpecObject(raw: unknown): Record<string, unknown> | null {
+    if (raw == null) return null;
+    if (typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
+    if (typeof raw !== 'string' || !raw.trim()) return null;
     try {
-        const obj = JSON.parse(raw) as Record<string, unknown>;
+        const parsed = JSON.parse(raw) as unknown;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+            return parsed as Record<string, unknown>;
+        // Double-encoded JSON string
+        if (typeof parsed === 'string' && parsed.trim()) {
+            const again = JSON.parse(parsed) as unknown;
+            if (again && typeof again === 'object' && !Array.isArray(again))
+                return again as Record<string, unknown>;
+        }
+    } catch { /* ignore */ }
+    return null;
+}
+
+function hasDashboardStructure(obj: Record<string, unknown>): boolean {
+    return obj.kpis != null || obj.Kpis != null
+        || obj.chart != null || obj.Chart != null
+        || obj.charts != null || obj.Charts != null
+        || obj.blocks != null || obj.Blocks != null;
+}
+
+/** Export/Print must not re-POST Result SpecJson.cardsHtml (can be MBs for large catalogs). */
+function slimExportSpecJson(raw: unknown, layout: string): string | undefined {
+    const obj = asSpecObject(raw);
+    if (!obj) return undefined;
+    try {
         const polished = obj.polishedSpec ?? obj.PolishedSpec;
         const slim: Record<string, unknown> = {};
         if (polished) slim.polishedSpec = polished;
@@ -167,7 +200,8 @@ function slimExportSpecJson(raw: string | null | undefined, layout: string): str
         if (typeof cr === 'number' && cr > 0) slim.cardRows = cr;
         if (typeof pg === 'string' && pg.trim()) slim.pageGrid = pg.trim();
         // Dashboard / KPI / chart need structural spec (not painted HTML).
-        if (layout === 'kpi' || layout === 'dashboard' || layout === 'chart') {
+        // Keep keys whenever present — Layout may be wrong after chat reopen.
+        if (layout === 'kpi' || layout === 'dashboard' || layout === 'chart' || hasDashboardStructure(obj)) {
             if (obj.kpis != null || obj.Kpis != null) slim.kpis = obj.kpis ?? obj.Kpis;
             if (obj.chart != null || obj.Chart != null) slim.chart = obj.chart ?? obj.Chart;
             if (obj.charts != null || obj.Charts != null) slim.charts = obj.charts ?? obj.Charts;
@@ -182,7 +216,8 @@ function slimExportSpecJson(raw: string | null | undefined, layout: string): str
     }
 }
 
-function printHtmlInHiddenIframe(html: string): void {
+/** Resolve when system print dialog is invoked (or images timed out). Caller keeps BusyLoader until then. */
+function printHtmlInHiddenIframe(html: string): Promise<void> {
     const prev = document.getElementById('agent-result-print-frame');
     if (prev) prev.remove();
     const iframe = document.createElement('iframe');
@@ -198,26 +233,35 @@ function printHtmlInHiddenIframe(html: string): void {
     doc.open();
     doc.write(html);
     doc.close();
-    const runPrint = () => {
-        try {
-            iframe.contentWindow?.focus();
-            iframe.contentWindow?.print();
-        } finally {
-            setTimeout(() => { try { iframe.remove(); } catch { /* ignore */ } }, 1000);
-        }
-    };
-    // Wait for embedded/remote images before the system print dialog (data-URIs settle quickly).
-    const imgs = Array.from(doc.images || []);
-    const ready = imgs.length === 0
-        ? Promise.resolve()
-        : Promise.all(imgs.map(img => {
+
+    const waitImages = (): Promise<void> => {
+        const imgs = Array.from(doc.images || []);
+        if (imgs.length === 0) return Promise.resolve();
+        const all = Promise.all(imgs.map(img => {
             if (img.complete) return Promise.resolve();
             return new Promise<void>(resolve => {
                 img.onload = () => resolve();
                 img.onerror = () => resolve();
             });
-        }));
-    void ready.then(() => setTimeout(runPrint, 80));
+        })).then(() => undefined);
+        // Don't block BusyLoader forever if a remote image hangs.
+        const timeout = new Promise<void>(resolve => { setTimeout(resolve, 15000); });
+        return Promise.race([all, timeout]);
+    };
+
+    return waitImages().then(() => new Promise<void>((resolve, reject) => {
+        setTimeout(() => {
+            try {
+                iframe.contentWindow?.focus();
+                iframe.contentWindow?.print();
+                resolve();
+            } catch (e) {
+                reject(e instanceof Error ? e : new Error('Print failed.'));
+            } finally {
+                setTimeout(() => { try { iframe.remove(); } catch { /* ignore */ } }, 1000);
+            }
+        }, 80);
+    }));
 }
 
 interface Props {
@@ -247,8 +291,9 @@ export const ResultChrome: React.FC<Props> = ({
     onCloseFullscreen,
     children,
 }) => {
+    const dispatch = useDispatch();
     const { theme } = useTheme();
-    const { polished, filterOptions, cardsPerRow, cardRows, pageGrid } = useMemo(
+    const { polished, filterOptions, cardsPerRow, cardRows, pageGrid, specTitle } = useMemo(
         () => parseSpecBlob(event),
         [event]
     );
@@ -313,7 +358,7 @@ export const ResultChrome: React.FC<Props> = ({
         };
     }, [event, filteredRows, allRows.length]);
 
-    const title = polished?.title || event.Title || 'Result';
+    const title = polished?.title || event.Title || specTitle || 'Result';
     const total = allRows.length > 0 ? allRows.length : (event.RowCount || 0);
     const shown = allRows.length > 0 ? filteredRows.length : total;
 
@@ -333,9 +378,22 @@ export const ResultChrome: React.FC<Props> = ({
     };
 
     // Preserve page / kpi / dashboard / table / cards for ExportResult (never coerce kpi→cards).
-    const exportLayout = layoutNorm === 'card' ? 'cards'
-        : layoutNorm === 'kpi_dashboard' ? 'kpi'
-        : layoutNorm;
+    // After reopen, Layout may be blank while SpecJson still has kpis/charts — infer export layout.
+    const exportLayout = useMemo(() => {
+        let layout = layoutNorm === 'card' ? 'cards'
+            : layoutNorm === 'kpi_dashboard' ? 'kpi'
+            : layoutNorm;
+        const obj = asSpecObject(event.SpecJson || event.MetaJson);
+        if (obj && hasDashboardStructure(obj)
+            && layout !== 'kpi' && layout !== 'dashboard' && layout !== 'chart') {
+            if (obj.blocks != null || obj.Blocks != null) layout = 'dashboard';
+            else if (obj.kpis != null || obj.Kpis != null) layout = 'kpi';
+            else layout = 'chart';
+        }
+        return layout;
+    }, [layoutNorm, event.SpecJson, event.MetaJson]);
+
+    const isDashExport = exportLayout === 'kpi' || exportLayout === 'dashboard' || exportLayout === 'chart';
 
     // Slim SpecJson: polished bindings only — never re-POST cardsHtml (large catalogs).
     const exportSpecJson = useMemo(
@@ -343,15 +401,19 @@ export const ResultChrome: React.FC<Props> = ({
         [event.SpecJson, event.MetaJson, exportLayout],
     );
     // Unfiltered → rely on server session dataset (omit MBs of RecordsJson). Filtered → send subset.
+    // KPI/dashboard always send rows after reopen (analyze cache often empty).
     const filtersActive = filteredRows.length !== allRows.length;
     const exportRecordsJson = useMemo(() => {
-        if (!filtersActive) return undefined;
+        if (!filtersActive && !isDashExport) return undefined;
         if (filteredRows.length > 0) return JSON.stringify(filteredRows);
         return undefined;
-    }, [filtersActive, filteredRows]);
+    }, [filtersActive, isDashExport, filteredRows]);
     // Fallback when session cache is gone (chat reopen): full DataJson once.
     const exportRecordsFallback = useMemo(() => {
-        if (event.DataJson?.trim()) return event.DataJson.trim();
+        if (typeof event.DataJson === 'string' && event.DataJson.trim()) return event.DataJson.trim();
+        if (event.DataJson && typeof event.DataJson === 'object') {
+            try { return JSON.stringify(event.DataJson); } catch { /* ignore */ }
+        }
         if (filteredRows.length > 0) return JSON.stringify(filteredRows);
         return undefined;
     }, [event.DataJson, filteredRows]);
@@ -376,13 +438,20 @@ export const ResultChrome: React.FC<Props> = ({
             setMsg('Session not ready — reopen this chat or run the search again.');
             return;
         }
+        if (isDashExport && !exportSpecJson) {
+            setMsg('Print/Export needs KPI/dashboard SpecJson. Re-run the render, then try again.');
+            return;
+        }
         setBusy(format);
         setMsg(null);
         setExportOpen(false);
+        // Same global BusyLoader as Print (GENERATE → download, or error).
+        dispatch(setIsBusy());
         try {
-            let res = await genericAgentSvc.ExportResult(buildExportArgs(format, filtersActive));
+            // KPI/dashboard: always include rows (session analyze cache often empty after reopen).
+            let res = await genericAgentSvc.ExportResult(buildExportArgs(format, filtersActive || isDashExport));
             // Session analyze cache empty after reopen → retry with rows once (SpecJson stays slim).
-            if (!res?.path && !filtersActive && exportRecordsFallback) {
+            if (!res?.path && !filtersActive && !isDashExport && exportRecordsFallback) {
                 res = await genericAgentSvc.ExportResult(buildExportArgs(format, true));
             }
             if (res?.path) {
@@ -395,6 +464,7 @@ export const ResultChrome: React.FC<Props> = ({
             setMsg(e instanceof Error ? e.message : 'Export failed.');
         } finally {
             setBusy(null);
+            dispatch(setIsNotBusy());
         }
     };
 
@@ -403,11 +473,17 @@ export const ResultChrome: React.FC<Props> = ({
             setMsg('Session not ready — reopen this chat or run the search again.');
             return;
         }
+        if (isDashExport && !exportSpecJson) {
+            setMsg('Print/Export needs KPI/dashboard SpecJson. Re-run the render, then try again.');
+            return;
+        }
         setBusy('print');
         setMsg(null);
+        // Global BusyLoader from click → GENERATE + iframe → print dialog (or error).
+        dispatch(setIsBusy());
         try {
-            let res = await genericAgentSvc.ExportResult(buildExportArgs('html', filtersActive));
-            if (!res?.path && !filtersActive && exportRecordsFallback) {
+            let res = await genericAgentSvc.ExportResult(buildExportArgs('html', filtersActive || isDashExport));
+            if (!res?.path && !filtersActive && !isDashExport && exportRecordsFallback) {
                 res = await genericAgentSvc.ExportResult(buildExportArgs('html', true));
             }
             if (!res?.path) {
@@ -419,7 +495,7 @@ export const ResultChrome: React.FC<Props> = ({
                 setMsg('Print HTML empty.');
                 return;
             }
-            printHtmlInHiddenIframe(html);
+            await printHtmlInHiddenIframe(html);
         } catch (e: unknown) {
             const raw = e instanceof Error ? e.message : 'Print failed.';
             setMsg(/failed to fetch/i.test(raw)
@@ -427,10 +503,25 @@ export const ResultChrome: React.FC<Props> = ({
                 : raw);
         } finally {
             setBusy(null);
+            dispatch(setIsNotBusy());
         }
     };
 
-    const showChrome = !!(polished || allRows.length > 0 || event.HtmlPath || event.SpecJson);
+    // Always show Filter/Print/Export for Result hosts (incl. kpi/dashboard/chart), not only polished cards/table.
+    const showChrome = !!(
+        polished
+        || allRows.length > 0
+        || event.HtmlPath
+        || event.Html
+        || event.SpecJson
+        || layoutNorm === 'kpi'
+        || layoutNorm === 'dashboard'
+        || layoutNorm === 'chart'
+        || layoutNorm === 'kpi_dashboard'
+        || layout === 'kpi'
+        || layout === 'dashboard'
+        || layout === 'chart'
+    );
 
     if (!showChrome) {
         return <>{children(event, polished)}</>;

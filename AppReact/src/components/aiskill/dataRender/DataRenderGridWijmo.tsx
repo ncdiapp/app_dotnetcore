@@ -9,7 +9,7 @@ import './agent-result-grid.css';
 import { FormattedResultCell, normalizeCellFormat } from './cellFormat';
 import { DataRenderImage } from './DataRenderImage';
 import { formatDateValue } from './dateValue';
-import { cellImageKind, unwrapQuoted } from './imageValue';
+import { cellImageKind, isImageColumnName, unwrapQuoted } from './imageValue';
 
 const MIN_COL_WIDTH = 150;
 
@@ -66,15 +66,22 @@ const DataRenderGridWijmoInner: React.FC<Props> = ({ colDefs, rowData, title, me
         () => visibleCols.map(c => c.field),
         [visibleCols],
     );
-    // Typed columns come only from AI polish dataType/format — no field-name / sample heuristics.
+    // Prefer AI polish format=image; fall back for old chats / missing polish (Sketch URL → thumbnail).
     const imageFields = useMemo(() => {
         const fields = new Set<string>();
         for (const col of visibleCols) {
-            if (normalizeCellFormat(col.dataType) === 'image')
+            if (normalizeCellFormat(col.dataType) === 'image') {
                 fields.add(col.field);
+                continue;
+            }
+            // Old Result / reopen: polish format often missing — detect like AG Grid + print (field name + URL).
+            if (isImageColumnName(col.field)
+                && (rowData ?? []).some(row => cellImageKind(row?.[col.field], col.field) != null)) {
+                fields.add(col.field);
+            }
         }
         return fields;
-    }, [visibleCols]);
+    }, [visibleCols, rowData]);
 
     const formatFields = useMemo(() => {
         const map = new Map<string, string>();

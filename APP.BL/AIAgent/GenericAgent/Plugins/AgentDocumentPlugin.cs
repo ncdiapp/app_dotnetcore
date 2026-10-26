@@ -170,13 +170,37 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                             AgentUiPathConfirmBL.ContextKey + "', option kpi_dashboard).");
                     if (extension == ".csv")
                         throw new InvalidOperationException("layout=" + mode + " supports html, pdf, docx, pptx, xlsx. Use layout=table for csv.");
-                    if (!UiRenderSpec.TryParse(specJson, out var spec, out var specErr))
-                        throw new InvalidOperationException(specErr);
-                    var valErr = spec.ValidateForLayout(mode);
-                    if (!string.IsNullOrEmpty(valErr))
-                        throw new InvalidOperationException(valErr);
 
                     var rows = LoadDashboardRows(context, content, sourcePath, datasetName, records, rowLimit);
+                    UiRenderSpec spec;
+                    if (!UiRenderSpec.TryParse(specJson, out spec, out var specErr))
+                    {
+                        // Chat reopen / client omitted SpecJson: synthesize from rows so Print still works.
+                        spec = SynthesizeDashboardSpec(mode, rows, null);
+                        var synErr = spec.ValidateForLayout(mode);
+                        if (!string.IsNullOrEmpty(synErr))
+                            throw new InvalidOperationException(specErr ?? synErr);
+                    }
+                    else
+                    {
+                        var valErr = spec.ValidateForLayout(mode);
+                        if (!string.IsNullOrEmpty(valErr))
+                        {
+                            var synthesized = SynthesizeDashboardSpec(mode, rows, spec.Title);
+                            if (spec.Kpis != null && spec.Kpis.Count > 0)
+                                synthesized.Kpis = spec.Kpis;
+                            if (spec.Chart != null)
+                                synthesized.Chart = spec.Chart;
+                            if (spec.Charts != null && spec.Charts.Count > 0)
+                                synthesized.Charts = spec.Charts;
+                            if (spec.Blocks != null && spec.Blocks.Count > 0)
+                                synthesized.Blocks = spec.Blocks;
+                            var synErr = synthesized.ValidateForLayout(mode);
+                            if (!string.IsNullOrEmpty(synErr))
+                                throw new InvalidOperationException(valErr);
+                            spec = synthesized;
+                        }
+                    }
                     var dashHtml = UiTemplateMerge.MergeDashboard(mode, rows, spec, spec.Title, forExport: true);
                     var raster = await ChartRasterize.EmbedChartPngsAsync(dashHtml, ct).ConfigureAwait(false);
                     dashHtml = raster.Html;
@@ -252,7 +276,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     return Saved(context, path, cardWritten.Bytes, sheet.CardCount, sheet.CacheLimitReached, sheet.MissingImages, cardWritten.Engine);
                 }
 
-                var doc = LoadDocument(context, content, sourcePath, datasetName);
+                var doc = LoadDocument(context, content, sourcePath, datasetName, records);
                 doc = ApplyPolishColumns(context, datasetName, doc, specJson);
                 // PDF/DOCX need data-URIs; browser .html Print can load URLs.
                 if (extension != ".html")
@@ -436,9 +460,89 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 if (!cols.Exists(c => string.Equals(c, name, StringComparison.OrdinalIgnoreCase)))
                     cols.Insert(0, name);
             }
+            var tableColCount = doc.FirstGridColumnCount();
+            var matched = CountMatchingColumns(doc, cols);
+            // Stale polish field names after reopen often match only Sketch → print shows image-only.
+            // Keep the full grid when almost nothing matched (except forced image columns).
+            if (tableColCount > 2 && matched > 0 && matched <= ImageColumnNames(doc).Count()
+                && matched < Math.Min(cols.Count, tableColCount) / 2)
+            {
+                doc.ApplyColumnPolish(polish.Bindings.Columns);
+                return doc;
+            }
             var projected = doc.ProjectColumns(cols);
             projected.ApplyColumnPolish(polish.Bindings.Columns);
             return projected;
+        }
+
+        private static int CountMatchingColumns(FormDocument doc, IList<string> keepColumns)
+        {
+            if (doc == null || keepColumns == null || keepColumns.Count == 0) return 0;
+            var table = FormDocumentFirstColumns(doc);
+            if (table == null) return 0;
+            var n = 0;
+            foreach (var name in keepColumns)
+            {
+                if (table.Exists(c => string.Equals(c, name, StringComparison.OrdinalIgnoreCase)))
+                    n++;
+            }
+            return n;
+        }
+
+        private static List<string> FormDocumentFirstColumns(FormDocument doc)
+        {
+            if (doc?.Sections == null) return null;
+            foreach (var sec in doc.Sections)
+            {
+                if (sec?.Tables == null) continue;
+                foreach (var t in sec.Tables)
+                {
+                    if (t?.Columns != null && t.Columns.Count > 0)
+                        return t.Columns;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>When SpecJson was dropped (reopen), build a minimal kpi/chart/dashboard spec from rows.</summary>
+        private static UiRenderSpec SynthesizeDashboardSpec(string mode, JArray rows, string title)
+        {
+            var spec = new UiRenderSpec
+            {
+                Title = string.IsNullOrWhiteSpace(title) ? "Result" : title.Trim()
+            };
+            mode = (mode ?? "").ToLowerInvariant();
+            if (mode == "kpi" || mode == "dashboard")
+            {
+                spec.Kpis.Add(new UiKpiSpec { Label = "Rows", Field = "", Op = "count" });
+            }
+            var charts = UiDashboardHtml.ResolveCharts(spec, rows, allowAuto: true);
+            if (charts != null && charts.Count > 0)
+            {
+                spec.Charts = charts;
+                spec.Chart = charts[0];
+            }
+            else if (mode == "chart")
+            {
+                // Still need one chart — pick first non-image string-ish field as x.
+                var x = FirstChartableField(rows);
+                if (!string.IsNullOrEmpty(x))
+                    spec.Chart = new UiChartSpec { Type = "bar", XField = x, Title = x };
+            }
+            return spec;
+        }
+
+        private static string FirstChartableField(JArray rows)
+        {
+            if (rows == null || rows.Count == 0 || rows[0] is not JObject first) return null;
+            foreach (var p in first.Properties())
+            {
+                var name = p.Name ?? "";
+                if (CardSheet.IsImageFieldName(name)) continue;
+                if (string.IsNullOrWhiteSpace(name)) continue;
+                return name;
+            }
+            return null;
         }
 
         private static IEnumerable<string> ImageColumnNames(FormDocument doc)
@@ -619,12 +723,30 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             });
         }
 
-        private static FormDocument LoadDocument(AgentToolContext context, string content, string sourcePath, string datasetName)
+        private static FormDocument LoadDocument(
+            AgentToolContext context, string content, string sourcePath, string datasetName, string records = null)
         {
+            // Result chrome Print/Export after reopen: prefer explicit rows over session cache.
+            if (!string.IsNullOrWhiteSpace(records))
+            {
+                var fromRecords = CardSheet.ReadRecords(records);
+                if (fromRecords != null && fromRecords.Count > 0)
+                {
+                    var title = !string.IsNullOrWhiteSpace(datasetName) ? datasetName.Trim() : "Result";
+                    return TableFromRows(title, fromRecords);
+                }
+            }
             if (!string.IsNullOrWhiteSpace(datasetName))
             {
-                var rows = CacheRows(context, datasetName, out _);
-                return TableFromRows(datasetName.Trim(), rows);
+                try
+                {
+                    var rows = CacheRows(context, datasetName, out _);
+                    return TableFromRows(datasetName.Trim(), rows);
+                }
+                catch (InvalidOperationException) when (!string.IsNullOrWhiteSpace(content))
+                {
+                    // dataset cache gone — fall through to content
+                }
             }
             var loaded = Load(context, content, sourcePath);
             return ExpandFlatTable(context, loaded);
@@ -761,12 +883,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 {
                     var cell = obj?[name];
                     var text = cell == null || cell.Type == JTokenType.Null ? "" : cell.ToString();
+                    var isImage = CardSheet.IsImageValue(text, name);
                     line.Add(new FormCell
                     {
                         Text = text,
-                        IsNumber = cell != null && (cell.Type == JTokenType.Integer || cell.Type == JTokenType.Float),
-                        // Image field = column name means image AND value is URL.
-                        IsImage = CardSheet.IsImageValue(text, name)
+                        IsNumber = !isImage && cell != null
+                            && (cell.Type == JTokenType.Integer || cell.Type == JTokenType.Float),
+                        IsImage = isImage
                     });
                 }
                 data.Add(line);
