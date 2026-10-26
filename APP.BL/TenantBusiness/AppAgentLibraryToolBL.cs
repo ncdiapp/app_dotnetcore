@@ -163,6 +163,22 @@ ORDER BY t.SortOrder, t.LibraryToolId",
 
         private static int UpsertCore(DatabaseSchemaMrg.DatabaseFixture fixture, AppAgentLibraryToolDto dto)
         {
+            // Tool-metadata edits often omit TemplateContent; never wipe stored templates with null.
+            if (dto.Id > 0 && (dto.TemplateContent == null || dto.TemplateMetaJson == null))
+            {
+                var existing = fixture.RetriveDataTable(
+                    "SELECT TemplateContent, TemplateMetaJson FROM dbo.AppAgentLibraryTool WHERE LibraryToolId=@Id",
+                    new List<DbParameter> { P(fixture, "@Id", dto.Id) });
+                if (existing != null && existing.Rows.Count > 0)
+                {
+                    var row = existing.Rows[0];
+                    if (dto.TemplateContent == null)
+                        dto = dto with { TemplateContent = Col(row, "TemplateContent") };
+                    if (dto.TemplateMetaJson == null)
+                        dto = dto with { TemplateMetaJson = Col(row, "TemplateMetaJson") };
+                }
+            }
+
             if (dto.Id > 0)
             {
                 fixture.ExecuteNonQueryResult(

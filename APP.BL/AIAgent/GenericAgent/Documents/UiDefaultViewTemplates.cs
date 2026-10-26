@@ -6,6 +6,23 @@ namespace App.BL.AIAgent.GenericAgent.Documents
     /// </summary>
     public static class UiDefaultViewTemplates
     {
+        /// <summary>Platform code default HTML for a TemplateContent layout key (editor Reset).</summary>
+        public static string GetPlatformDefault(string layout, bool interactive)
+        {
+            var key = (layout ?? "").Trim().ToLowerInvariant();
+            return key switch
+            {
+                "form" => FormDefault,
+                "table" => interactive ? TableInteractive : TableNoneInteractive,
+                "cards" => CardsNoneInteractive,
+                "page" => UiTemplateMerge.CodeDefaultMarker,
+                "kpi" => interactive ? KpiInteractive : KpiDashboardStub,
+                "chart" => interactive ? ChartInteractive : ChartStub,
+                "dashboard" => KpiDashboardStub,
+                _ => ""
+            };
+        }
+
         public const string FormDefault = @"<!DOCTYPE html>
 <html>
 <head>
