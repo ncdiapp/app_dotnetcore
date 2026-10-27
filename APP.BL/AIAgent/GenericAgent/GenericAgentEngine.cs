@@ -55,15 +55,6 @@ namespace App.BL.AIAgent.GenericAgent
         /// <summary>Capability marker tool in library data-analyze. Presence (subscribed, not excluded) enables followups inject.</summary>
         private const string DataAnalyzeToolName = "data_analyze";
         private const string PromptHintToolType = "PromptHint";
-        private sealed class UniversalSpecialistSuggestion
-        {
-            public string SkillKey { get; set; }
-            public string Name { get; set; }
-            public string Description { get; set; }
-            public string Reason { get; set; }
-            public int Score { get; set; }
-        }
-
         private const string UniversalBasePrompt = @"
 
 ## Universal Agent
@@ -71,7 +62,8 @@ You are Universal Agent, the built-in general work agent for this application.
 Understand the user's goal, use the most relevant loaded skills, and call tools whenever tools can do the work.
 Skills are reusable operating instructions for this chat run. Follow them when relevant, but do not claim a skill was used unless it was actually loaded.
 Use library tools directly when they match the task. Ask the user concise questions when required inputs are missing.
-If one configured Specialist Agent is clearly better for the next step, propose a hand-off and explain why. Do not silently jump to a Specialist.";
+When one configured Specialist Agent is clearly better for the next step, call propose_specialist_handoff with that agent's skillKey and a short reason.
+Do not call call_agent. Nothing switches until the user confirms the hand-off card. Do not claim the chat was switched.";
         /// <summary>
         /// Platform hard rule — always appended to Instructions. Not stored in AppAgentSkillSet;
         /// admins cannot turn it off. Prefer tools over model-invented data/UI/files.
@@ -231,23 +223,6 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
 
                 if (isUniversal)
                 {
-                    var specialistSuggestion = FindUniversalSpecialistSuggestion(dsId, userMessage, chatHistory);
-                    if (specialistSuggestion != null)
-                    {
-                        await Safe(callbacks?.OnStep, new AgentStepEvent
-                        {
-                            Type = "specialist_suggestion",
-                            Description = $"Specialist available: {specialistSuggestion.Name}",
-                            Details = JsonSerializer.Serialize(specialistSuggestion),
-                            IsSuccess = true
-                        }).ConfigureAwait(false);
-
-                        systemPrompt = (systemPrompt ?? "") + "\n\n" +
-                            "## Specialist suggestion already shown\n" +
-                            $"A UI suggestion card has been shown for {specialistSuggestion.Name} ({specialistSuggestion.SkillKey}). " +
-                            "Continue helping in Universal Agent unless the user chooses to switch.";
-                    }
-
                     var skillPrompt = await BuildUniversalSkillPromptAsync(
                         dsId, userMessage, chatHistory, kernel, callbacks, ct).ConfigureAwait(false);
                     if (!string.IsNullOrWhiteSpace(skillPrompt))
@@ -263,6 +238,13 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     ? (dsId > 0 ? TbToolBL.GetAllActiveLibraryTools(dsId) : TbToolBL.GetAllActiveLibraryTools())
                     : (dsId > 0 ? TbToolBL.GetBySkillKeyWithLibraries(skillKey, dsId) : TbToolBL.GetBySkillKeyWithLibraries(skillKey));
                 toolRows = toolRows ?? new List<TbToolDto>();
+                if (isUniversal)
+                {
+                    // call_agent would invoke a Specialist without the confirmed hand-off chat.
+                    toolRows = toolRows
+                        .Where(r => r != null && !string.Equals(r.ToolName, "call_agent", StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                }
                 if (HasNamedTool(toolRows, DataAnalyzeToolName))
                 {
                     if (systemPrompt.IndexOf("## Analysis path (platform hard rule", StringComparison.OrdinalIgnoreCase) < 0)
@@ -285,6 +267,14 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     && !KernelHasFunction(kernel, "ask_user"))
                 {
                     kernel.Plugins.AddFromFunctions("hitl", new[] { CreateAskUserKernelFunction(context) });
+                }
+
+                if (isUniversal && !KernelHasFunction(kernel, "propose_specialist_handoff"))
+                {
+                    kernel.Plugins.AddFromFunctions("universal", new[]
+                    {
+                        CreateHandoffProposalKernelFunction(dsId, callbacks)
+                    });
                 }
 
                 // Connect MCP servers (agent-owned + subscribed library MCP servers)
@@ -316,6 +306,8 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     try
                     {
                         var excludedMcp = App.BL.TenantBusiness.AppAgentToolExclusionBL.ExcludedNamesForLibrary(exclusions, srv.SkillKey);
+                        if (isUniversal)
+                            excludedMcp.Add("call_agent");
                         var (client, plugin) = await CreateMcpPluginAsync(srv, skillSet.MaxToolResultChars, excludedMcp, context, ct).ConfigureAwait(false);
                         mcpClients.Add(client);
                         kernel.Plugins.Add(plugin);
@@ -459,10 +451,10 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 IsActive: true,
                 SortOrder: 0,
                 Version: 1,
-                MaxHistoryTokens: 24000,
-                SummarizeThreshold: 18000,
-                MaxToolResultChars: DefaultMaxToolResultChars,
-                RecentWindowSize: 12,
+                MaxHistoryTokens: 80000,
+                SummarizeThreshold: 60000,
+                MaxToolResultChars: 4000,
+                RecentWindowSize: 10,
                 MaxIterations: 40,
                 ExecutionMode: "Interactive",
                 AgentUi: 1,
@@ -559,9 +551,9 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 sb.AppendLine("These configured Specialist Agents can be better entry points for focused workflows:");
                 foreach (var row in rows) sb.AppendLine(row);
                 sb.AppendLine();
-                sb.AppendLine("When the user's next step is clearly better handled by one Specialist Agent, recommend switching explicitly.");
-                sb.AppendLine("Use this format: \"I recommend switching to <Specialist Agent Name> (<skillKey>) because <short reason>.\"");
-                sb.AppendLine("Do not claim the chat was switched automatically unless a handoff tool or UI action actually performs the switch.");
+                sb.AppendLine("When the next step is clearly better handled by exactly one Specialist, call propose_specialist_handoff.");
+                sb.AppendLine("Pass that agent's skillKey as targetSkillKey and a short reason. Do not call call_agent.");
+                sb.AppendLine("The user must confirm before any Specialist chat opens. Do not claim the chat was switched.");
                 return sb.ToString();
             }
             catch (Exception ex)
@@ -569,101 +561,6 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 SwallowLog.Write(ex, "Universal specialist catalog load failed");
                 return "";
             }
-        }
-
-        private static UniversalSpecialistSuggestion FindUniversalSpecialistSuggestion(
-            int dataSourceId,
-            string userMessage,
-            List<JObject> chatHistory)
-        {
-            if (dataSourceId <= 0 || string.IsNullOrWhiteSpace(userMessage)) return null;
-            try
-            {
-                var agents = dataSourceId > 0 ? TbSkillBL.GetAll(dataSourceId) : TbSkillBL.GetAll();
-                var hay = NormalizeSpecialistText(userMessage + "\n" + BuildRecentPlainChat(chatHistory, 2));
-                var scored = (agents ?? new List<TbSkillSetDto>())
-                    .Where(a => a != null
-                        && a.IsActive
-                        && !UniversalAgentConstants.IsUniversalAgentKey(a.SkillKey))
-                    .Select(a => new
-                    {
-                        Agent = a,
-                        Score = ScoreSpecialistMatch(hay, a),
-                    })
-                    .Where(x => x.Score >= 3)
-                    .OrderByDescending(x => x.Score)
-                    .ThenBy(x => x.Agent.DisplayName ?? x.Agent.SkillKey)
-                    .FirstOrDefault();
-
-                if (scored == null) return null;
-                var name = string.IsNullOrWhiteSpace(scored.Agent.DisplayName)
-                    ? scored.Agent.SkillKey
-                    : scored.Agent.DisplayName.Trim();
-                return new UniversalSpecialistSuggestion
-                {
-                    SkillKey = scored.Agent.SkillKey,
-                    Name = name,
-                    Description = scored.Agent.Description,
-                    Reason = $"This request matches {name}'s focused workflow.",
-                    Score = scored.Score
-                };
-            }
-            catch (Exception ex)
-            {
-                SwallowLog.Write(ex, "Universal specialist suggestion failed");
-                return null;
-            }
-        }
-
-        private static int ScoreSpecialistMatch(string hay, TbSkillSetDto agent)
-        {
-            if (string.IsNullOrWhiteSpace(hay) || agent == null) return 0;
-            var key = NormalizeSpecialistText(agent.SkillKey);
-            var name = NormalizeSpecialistText(agent.DisplayName);
-            var desc = NormalizeSpecialistText(agent.Description);
-            var score = 0;
-
-            if (!string.IsNullOrWhiteSpace(key) && hay.Contains(key)) score += 8;
-            if (!string.IsNullOrWhiteSpace(name) && hay.Contains(name)) score += 8;
-
-            foreach (var token in SpecialistTokens((agent.SkillKey ?? "") + " " + (agent.DisplayName ?? "")))
-            {
-                if (hay.Contains(token)) score += token.Length <= 3 ? 2 : 3;
-            }
-            foreach (var token in SpecialistTokens(agent.Description ?? ""))
-            {
-                if (hay.Contains(token)) score += 1;
-            }
-
-            if (hay.Contains("database") && (key.Contains("db") || name.Contains("db") || desc.Contains("database") || desc.Contains("sql")))
-                score += 3;
-            if (hay.Contains("sql") && (key.Contains("sql") || desc.Contains("sql") || desc.Contains("database")))
-                score += 3;
-
-            return score;
-        }
-
-        private static IEnumerable<string> SpecialistTokens(string text)
-        {
-            var stop = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "agent", "chat", "the", "and", "for", "with", "from", "this", "that",
-                "generic", "universal", "assistant", "skill", "workflow", "task", "tasks",
-                "data", "user", "app", "application"
-            };
-            foreach (Match m in Regex.Matches(NormalizeSpecialistText(text), @"[a-z0-9_]{2,}"))
-            {
-                var token = m.Value;
-                if (!stop.Contains(token)) yield return token;
-            }
-        }
-
-        private static string NormalizeSpecialistText(string text)
-        {
-            var s = (text ?? "").ToLowerInvariant();
-            s = Regex.Replace(s, @"\bdb\b", "database");
-            s = Regex.Replace(s, @"[^a-z0-9_]+", " ");
-            return Regex.Replace(s, @"\s+", " ").Trim();
         }
 
         private static async Task<HashSet<int>> SelectUniversalSkillIdsAsync(
@@ -688,8 +585,9 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     "\n\nRecent chat:\n" + BuildRecentPlainChat(chatHistory, 6) +
                     "\n\nCurrent user message:\n" + (userMessage ?? ""));
                 var result = await chat.GetChatMessageContentAsync(prompt, cancellationToken: ct).ConfigureAwait(false);
-                var ids = ParseSkillIds(result?.Content, catalog);
-                return ids.Count > 0 ? ids : Fallback();
+                if (TryParseSkillSelection(result?.Content, catalog, out var ids))
+                    return ids;
+                return new HashSet<int>();
             }
             catch (Exception ex)
             {
@@ -698,18 +596,38 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
             }
         }
 
-        private static HashSet<int> ParseSkillIds(string text, List<AppAISkillDto> catalog)
+        /// <summary>
+        /// True when the model returned a skillIds JSON object, including an empty array.
+        /// Keyword fallback is only for a failed model call, not for an explicit empty selection.
+        /// </summary>
+        private static bool TryParseSkillSelection(string text, List<AppAISkillDto> catalog, out HashSet<int> ids)
         {
-            var allowed = new HashSet<int>(catalog.Select(s => s.SkillId));
-            var result = new HashSet<int>();
-            if (string.IsNullOrWhiteSpace(text)) return result;
-            foreach (Match m in Regex.Matches(text, @"\d+"))
+            ids = new HashSet<int>();
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            var raw = text.Trim();
+            var fence = Regex.Match(raw, @"```(?:json)?\s*([\s\S]*?)```", RegexOptions.IgnoreCase);
+            if (fence.Success) raw = fence.Groups[1].Value.Trim();
+            var start = raw.IndexOf('{');
+            var end = raw.LastIndexOf('}');
+            if (start < 0 || end <= start) return false;
+            try
             {
-                if (int.TryParse(m.Value, out var id) && allowed.Contains(id))
-                    result.Add(id);
-                if (result.Count >= UniversalAgentConstants.MaxSelectedSkills) break;
+                var obj = JObject.Parse(raw.Substring(start, end - start + 1));
+                var arr = obj["skillIds"] as JArray ?? obj["SkillIds"] as JArray;
+                if (arr == null) return true;
+                var allowed = new HashSet<int>(catalog.Select(s => s.SkillId));
+                foreach (var token in arr)
+                {
+                    if (ids.Count >= UniversalAgentConstants.MaxSelectedSkills) break;
+                    if (int.TryParse(token?.ToString(), out var id) && allowed.Contains(id))
+                        ids.Add(id);
+                }
+                return true;
             }
-            return result;
+            catch
+            {
+                return false;
+            }
         }
 
         private static HashSet<int> SelectUniversalSkillIdsByKeyword(
@@ -763,6 +681,84 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
             if (token.Type == JTokenType.Object)
                 return token["text"]?.ToString() ?? token["content"]?.ToString() ?? token.ToString(Newtonsoft.Json.Formatting.None);
             return token.ToString();
+        }
+
+        public static async Task<string> CompleteOnceAsync(
+            AppClientIdentity? identity,
+            string systemPrompt,
+            string userPrompt,
+            CancellationToken ct)
+        {
+            var kernel = BuildKernel(identity);
+            var chat = kernel.GetRequiredService<IChatCompletionService>();
+            var history = new ChatHistory();
+            if (!string.IsNullOrWhiteSpace(systemPrompt))
+                history.AddSystemMessage(systemPrompt);
+            history.AddUserMessage(userPrompt ?? "");
+            var result = await chat.GetChatMessageContentAsync(history, cancellationToken: ct).ConfigureAwait(false);
+            return result?.Content ?? "";
+        }
+
+        private static KernelFunction CreateHandoffProposalKernelFunction(int dataSourceId, GenericAgentCallbacks callbacks)
+        {
+            var parameters = new List<KernelParameterMetadata>
+            {
+                new("targetSkillKey")
+                {
+                    Description = "SkillKey of the one active Specialist Agent to propose. Not the display name unless it matches exactly.",
+                    IsRequired = true,
+                    ParameterType = typeof(string)
+                },
+                new("reason")
+                {
+                    Description = "One or two sentences explaining why this Specialist is the better next step.",
+                    IsRequired = true,
+                    ParameterType = typeof(string)
+                }
+            };
+
+            return KernelFunctionFactory.CreateFromMethod(
+                async (KernelArguments args, CancellationToken ct) =>
+                {
+                    ct.ThrowIfCancellationRequested();
+                    string Arg(string name) =>
+                        args.TryGetValue(name, out var v) && v != null ? v.ToString() : "";
+
+                    var target = (Arg("targetSkillKey") ?? "").Trim();
+                    var reason = (Arg("reason") ?? "").Trim();
+                    var agent = UniversalAgentWorkflowBL.FindActiveSpecialist(dataSourceId, target);
+                    if (agent == null)
+                        return "Handoff was not shown. targetSkillKey is not an active Specialist. Use a skillKey from Available Specialist Agents.";
+
+                    var name = string.IsNullOrWhiteSpace(agent.DisplayName) ? agent.SkillKey : agent.DisplayName.Trim();
+                    if (string.IsNullOrWhiteSpace(reason))
+                        reason = name + " is a better fit for the next step.";
+
+                    var payload = new JObject
+                    {
+                        ["targetSkillKey"] = agent.SkillKey,
+                        ["name"] = name,
+                        ["reason"] = reason.Length > 500 ? reason.Substring(0, 500) : reason,
+                        ["description"] = agent.Description ?? ""
+                    };
+
+                    if (callbacks?.OnStep != null)
+                    {
+                        await callbacks.OnStep(new AgentStepEvent
+                        {
+                            Type = "handoff_proposal",
+                            Description = "Handoff proposed: " + name,
+                            Details = payload.ToString(Newtonsoft.Json.Formatting.None),
+                            IsSuccess = true
+                        }).ConfigureAwait(false);
+                    }
+
+                    return "Shown a handoff card for " + name + " (" + agent.SkillKey + "). "
+                        + "The user has not confirmed. Stay in Universal Agent and do not claim the chat was switched.";
+                },
+                functionName: "propose_specialist_handoff",
+                description: "Propose moving this task to one Specialist Agent. Shows a confirmation card. Does not open or continue a Specialist chat.",
+                parameters: parameters);
         }
 
         private static Kernel BuildKernel(AppClientIdentity? identity)

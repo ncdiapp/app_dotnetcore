@@ -95,6 +95,35 @@ namespace App.BL.AppMgr.AiSkill
             return skill;
         }
 
+        /// <summary>
+        /// Returns <paramref name="name"/>, or <paramref name="name"/> + " (2)" when that name is taken.
+        /// AppAISkill.Name is unique and NVARCHAR(200).
+        /// </summary>
+        public static string ResolveUniqueSkillName(int dataSourceRegisterId, string name)
+        {
+            var baseName = (name ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(baseName)) baseName = "Saved skill";
+            if (baseName.Length > 190) baseName = baseName.Substring(0, 190).TrimEnd();
+
+            var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var skill in GetAllSkills(dataSourceRegisterId))
+            {
+                if (!string.IsNullOrWhiteSpace(skill?.Name))
+                    existing.Add(skill.Name.Trim());
+            }
+
+            if (!existing.Contains(baseName)) return baseName;
+            for (var i = 2; i < 1000; i++)
+            {
+                var suffix = " (" + i + ")";
+                var room = 200 - suffix.Length;
+                var stem = baseName.Length <= room ? baseName : baseName.Substring(0, room).TrimEnd();
+                var candidate = stem + suffix;
+                if (!existing.Contains(candidate)) return candidate;
+            }
+            return baseName;
+        }
+
         public static int CreateSkill(int dataSourceRegisterId, AppAISkillDto dto)
         {
             var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceRegisterId);

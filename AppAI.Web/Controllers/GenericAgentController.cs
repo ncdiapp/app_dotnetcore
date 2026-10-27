@@ -134,6 +134,7 @@ public class GenericAgentController : SecureBaseController
         // Accumulate tool steps for this run so they can be persisted with the chat session.
         var persistedToolSteps = new List<JObject>();
         var persistedDataRenders = new List<JObject>();
+        var handoffProposals = new List<JObject>();
         var tokenBuf = new System.Text.StringBuilder();
 
         var callbacks = new GenericAgentCallbacks
@@ -141,6 +142,18 @@ public class GenericAgentController : SecureBaseController
             OnStep = step =>
             {
                 GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "step", Step = step });
+                if (step != null && string.Equals(step.Type, "handoff_proposal", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var proposal = JObject.Parse(step.Details ?? "{}");
+                        var key = proposal.Value<string>("targetSkillKey");
+                        if (!string.IsNullOrWhiteSpace(key)
+                            && !handoffProposals.Any(x => string.Equals(x.Value<string>("targetSkillKey"), key, StringComparison.OrdinalIgnoreCase)))
+                            handoffProposals.Add(proposal);
+                    }
+                    catch { /* proposal card must not fail the run */ }
+                }
                 if (step != null && !string.IsNullOrWhiteSpace(step.ToolName))
                 {
                     if (string.Equals(step.Type, "tool_call", StringComparison.OrdinalIgnoreCase))
@@ -186,6 +199,12 @@ public class GenericAgentController : SecureBaseController
                     SessionBL.PersistTurnDone(
                         request.SkillKey, agentUserId, agentDsId, chatSessionKey,
                         request.UserMessage, isSessionStart, done ?? "", persistedToolSteps, persistedDataRenders);
+                    if (handoffProposals.Count > 0)
+                    {
+                        SessionBL.MergeLastAssistant(
+                            chatSessionKey, request.SkillKey, agentUserId, agentDsId,
+                            message => message["handoffProposals"] = new JArray(handoffProposals));
+                    }
                     SessionBL.TryAutoTitle(chatSessionKey, request.SkillKey, agentUserId, request.UserMessage);
                     if (agentCompanyId > 0 && !string.IsNullOrWhiteSpace(chatSessionKey))
                     {
@@ -1399,12 +1418,158 @@ public class GenericAgentController : SecureBaseController
             ? SkillSetBL.GetAll(ai.DataSourceId)
             : SkillSetBL.GetAll();
 
-        result.Object = agents.Select(a => new ActiveAgentDto
+        result.Object = agents
+            .Where(a => a != null && !UniversalAgentConstants.IsUniversalAgentKey(a.SkillKey))
+            .Select(a => new ActiveAgentDto
         {
             SkillKey  = a.SkillKey,
             AgentName = string.IsNullOrWhiteSpace(a.DisplayName) ? a.SkillKey : a.DisplayName
         }).ToList();
         return result;
+    }
+
+    [HttpPost]
+    public async Task<OperationCallResult<UniversalSkillDraft>> DraftUniversalSkill(
+        [FromBody] UniversalChatRefRequest request,
+        CancellationToken ct)
+    {
+        var result = new OperationCallResult<UniversalSkillDraft>();
+        if (!TryRequireUniversalChat(request?.SkillKey, request?.SessionKey, out var ai, out var error))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "DraftUniversalSkill",
+                ValidationItemType.Error, error));
+            return result;
+        }
+        try
+        {
+            result.Object = await UniversalAgentWorkflowBL.DraftSkillAsync(ai, request.SessionKey.Trim(), ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "DraftUniversalSkill",
+                ValidationItemType.Error, ex.Message));
+        }
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<UniversalSkillSaveResult> SaveUniversalSkill(
+        [FromBody] UniversalSkillSaveRequest request)
+    {
+        var result = new OperationCallResult<UniversalSkillSaveResult>();
+        if (!TryRequireUniversalChat(request?.SkillKey, request?.SessionKey, out var ai, out var error))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "SaveUniversalSkill",
+                ValidationItemType.Error, error));
+            return result;
+        }
+        if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.SkillContent))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "SaveUniversalSkill",
+                ValidationItemType.Error, "Name and skill instructions are required."));
+            return result;
+        }
+        try
+        {
+            result.Object = UniversalAgentWorkflowBL.SaveSkill(
+                ai,
+                request.SessionKey.Trim(),
+                request.Name,
+                request.Description,
+                request.SkillContent);
+        }
+        catch (Exception ex)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "SaveUniversalSkill",
+                ValidationItemType.Error, ex.Message));
+        }
+        return result;
+    }
+
+    [HttpPost]
+    public async Task<OperationCallResult<UniversalHandoffResult>> CreateSpecialistHandoff(
+        [FromBody] UniversalHandoffRequest request,
+        CancellationToken ct)
+    {
+        var result = new OperationCallResult<UniversalHandoffResult>();
+        if (!TryRequireUniversalChat(request?.SkillKey, request?.SessionKey, out var ai, out var error))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "CreateSpecialistHandoff",
+                ValidationItemType.Error, error));
+            return result;
+        }
+        if (string.IsNullOrWhiteSpace(request.TargetSkillKey))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "CreateSpecialistHandoff",
+                ValidationItemType.Error, "Target Specialist is required."));
+            return result;
+        }
+        try
+        {
+            result.Object = await UniversalAgentWorkflowBL.CreateHandoffAsync(
+                ai,
+                request.SessionKey.Trim(),
+                request.TargetSkillKey,
+                request.Reason,
+                ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "CreateSpecialistHandoff",
+                ValidationItemType.Error, ex.Message));
+        }
+        return result;
+    }
+
+    private bool TryRequireUniversalChat(
+        string skillKey,
+        string sessionKey,
+        out AppClientIdentity ai,
+        out string error)
+    {
+        ai = default;
+        error = "";
+        var identity = ServerContext.Instance.CurrnetClientIdentity;
+        if (identity is not AppClientIdentity current || current.UserId == null)
+        {
+            error = "User identity required.";
+            return false;
+        }
+        ai = current;
+        if (!UniversalAgentConstants.IsUniversalAgentKey(skillKey))
+        {
+            error = "This action is only available on Universal Agent.";
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(sessionKey))
+        {
+            error = "Chat session is required.";
+            return false;
+        }
+        var userId = Convert.ToInt32(current.UserId);
+        var dsId = current.DataSourceId > 0
+            ? current.DataSourceId
+            : (App.BL.AppMgr.AiSkill.AppAISkillBL.GetDefaultDataSourceId() ?? 0);
+        if (dsId <= 0)
+        {
+            error = "Data source is not available.";
+            return false;
+        }
+        if (SessionBL.LoadBySessionKey(sessionKey.Trim(), skillKey.Trim(), userId, dsId) == null)
+        {
+            error = "Universal chat was not found.";
+            return false;
+        }
+        return true;
     }
 }
 
@@ -1412,4 +1577,27 @@ public class ActiveAgentDto
 {
     public string SkillKey  { get; set; }
     public string AgentName { get; set; }
+}
+
+public class UniversalChatRefRequest
+{
+    public string SkillKey { get; set; }
+    public string SessionKey { get; set; }
+}
+
+public class UniversalSkillSaveRequest
+{
+    public string SkillKey { get; set; }
+    public string SessionKey { get; set; }
+    public string Name { get; set; }
+    public string Description { get; set; }
+    public string SkillContent { get; set; }
+}
+
+public class UniversalHandoffRequest
+{
+    public string SkillKey { get; set; }
+    public string SessionKey { get; set; }
+    public string TargetSkillKey { get; set; }
+    public string Reason { get; set; }
 }

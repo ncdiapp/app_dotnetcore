@@ -5,6 +5,7 @@ import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { isMasterSysAdminFromContext } from '../../helper/adminPermissionHelper';
 import { genericAgentSvc } from '../../webapi/genericAgentSvc';
+import { UNIVERSAL_AGENT_KEY } from '../aiskill/universalAgent';
 
 // GlobalGuid constants for routing (matching AngularJS implementation)
 const ESiteConfigurationRootMenuGuid = '706026CA-27FE-4A7D-B0BF-03DC2966DB74';
@@ -30,7 +31,9 @@ const Sidebar: React.FC = () => {
 
   useEffect(() => {
     genericAgentSvc.GetActiveAgents().then(agents => {
-      setActiveAgentItems(agents.map(a => ({
+      setActiveAgentItems(agents
+        .filter(a => (a.SkillKey || '').trim().toLowerCase() !== UNIVERSAL_AGENT_KEY)
+        .map(a => ({
         Id: `ai-agent-dynamic-${a.SkillKey}`,
         Name: a.AgentName,
         RouteCode: `/agent-chat?skillKey=${encodeURIComponent(a.SkillKey)}`,

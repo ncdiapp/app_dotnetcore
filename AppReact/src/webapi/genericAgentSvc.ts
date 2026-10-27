@@ -37,6 +37,30 @@ export interface GenericAgentSavedSkill {
     SavedAt?: string;
 }
 
+export interface UniversalSkillDraft {
+    Name: string;
+    Description: string;
+    SkillContent: string;
+}
+
+export interface UniversalSkillSaveResult {
+    SkillId: number;
+    Name: string;
+}
+
+export interface UniversalHandoffResult {
+    TargetSkillKey: string;
+    TargetSessionKey: string;
+    TargetName: string;
+    Summary: string;
+}
+
+function firstValidationMessage(data: { ValidationResult?: { Items?: Array<{ Message?: string }> } } | null): string {
+    const items = data?.ValidationResult?.Items;
+    if (!Array.isArray(items)) return '';
+    return items.map(i => (i?.Message || '').trim()).find(Boolean) || '';
+}
+
 export function genericAgentChatTitle(item?: { Title?: string | null } | null): string {
     const text = (item?.Title || '').trim();
     return text || 'New Chat';
@@ -488,6 +512,70 @@ class GenericAgentService {
         if (!res.ok) throw new Error('Failed to save chat skill link');
         const data = await res.json();
         return !!data?.Object;
+    }
+
+    async DraftUniversalSkill(skillKey: string, sessionKey: string): Promise<UniversalSkillDraft> {
+        const res = await fetch(`${BASE}/DraftUniversalSkill`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ SkillKey: skillKey || '', SessionKey: sessionKey || '' }),
+        });
+        const data = await res.json().catch(() => null);
+        const draft = data?.Object as UniversalSkillDraft | undefined;
+        if (!res.ok || !draft?.SkillContent) {
+            throw new Error(firstValidationMessage(data) || 'Could not draft a skill from this chat.');
+        }
+        return draft;
+    }
+
+    async SaveUniversalSkill(
+        skillKey: string,
+        sessionKey: string,
+        name: string,
+        description: string,
+        skillContent: string,
+    ): Promise<UniversalSkillSaveResult> {
+        const res = await fetch(`${BASE}/SaveUniversalSkill`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({
+                SkillKey: skillKey || '',
+                SessionKey: sessionKey || '',
+                Name: name || '',
+                Description: description || '',
+                SkillContent: skillContent || '',
+            }),
+        });
+        const data = await res.json().catch(() => null);
+        const saved = data?.Object as UniversalSkillSaveResult | undefined;
+        if (!res.ok || !saved?.SkillId) {
+            throw new Error(firstValidationMessage(data) || 'Could not save skill.');
+        }
+        return saved;
+    }
+
+    async CreateSpecialistHandoff(
+        skillKey: string,
+        sessionKey: string,
+        targetSkillKey: string,
+        reason: string,
+    ): Promise<UniversalHandoffResult> {
+        const res = await fetch(`${BASE}/CreateSpecialistHandoff`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({
+                SkillKey: skillKey || '',
+                SessionKey: sessionKey || '',
+                TargetSkillKey: targetSkillKey || '',
+                Reason: reason || '',
+            }),
+        });
+        const data = await res.json().catch(() => null);
+        const created = data?.Object as UniversalHandoffResult | undefined;
+        if (!res.ok || !created?.TargetSessionKey) {
+            throw new Error(firstValidationMessage(data) || 'Could not hand off to the Specialist.');
+        }
+        return created;
     }
 
     fileScopeQuery(skillKey: string, sessionKey: string | null | undefined, path?: string, fileScope?: string): URLSearchParams {

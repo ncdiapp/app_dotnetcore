@@ -10,6 +10,8 @@ interface Props {
   showChatListButton?: boolean;
   onOpenChatList?: () => void;
   onConversationChanged?: () => void;
+  autoRunPendingUser?: boolean;
+  onAutoRunStarted?: () => void;
 }
 
 /** Always Generic Chat. Extra panels come from subscribed tool libraries (see agentUiModules). */
@@ -21,6 +23,8 @@ const AgentUiChatHost: React.FC<Props> = ({
   showChatListButton,
   onOpenChatList,
   onConversationChanged,
+  autoRunPendingUser,
+  onAutoRunStarted,
 }) => (
   <GenericAgentChat
     skillKey={skillKey}
@@ -30,6 +34,8 @@ const AgentUiChatHost: React.FC<Props> = ({
     showChatListButton={showChatListButton}
     onOpenChatList={onOpenChatList}
     onConversationChanged={onConversationChanged}
+    autoRunPendingUser={autoRunPendingUser}
+    onAutoRunStarted={onAutoRunStarted}
   />
 );
 

@@ -533,6 +533,45 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
                 SaveSession(skillKey, userId, dataSourceId, cleaned, sessionKey);
         }
 
+        public static void AppendMessage(
+            string sessionKey,
+            string skillKey,
+            int userId,
+            int dataSourceId,
+            JObject message)
+        {
+            if (message == null || string.IsNullOrWhiteSpace(sessionKey)) return;
+            var detail = LoadBySessionKey(sessionKey, skillKey, userId, dataSourceId);
+            var list = detail?.Messages != null
+                ? new List<JObject>(detail.Messages)
+                : new List<JObject>();
+            list.Add(message);
+            SaveSession(skillKey, userId, dataSourceId, list, sessionKey);
+        }
+
+        public static void MergeLastAssistant(
+            string sessionKey,
+            string skillKey,
+            int userId,
+            int dataSourceId,
+            Action<JObject> merge)
+        {
+            if (merge == null || string.IsNullOrWhiteSpace(sessionKey)) return;
+            var detail = LoadBySessionKey(sessionKey, skillKey, userId, dataSourceId);
+            var list = detail?.Messages;
+            if (list == null || list.Count == 0) return;
+            for (var i = list.Count - 1; i >= 0; i--)
+            {
+                var message = list[i];
+                if (message == null) continue;
+                if (!string.Equals(message.Value<string>("role"), "assistant", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                merge(message);
+                SaveSession(skillKey, userId, dataSourceId, list, sessionKey);
+                return;
+            }
+        }
+
         public static void SaveSession(
             string skillKey,
             int userId,
