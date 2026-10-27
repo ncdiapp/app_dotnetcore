@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using App.BL.AIAgent.GenericAgent.Documents;
 using APP.Framework.Plugin;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -23,7 +24,12 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
             "propose_plan", "call_agent", "write_shared_context", "read_shared_context"
         };
 
-        public static string MaybeCacheAndRewrite(AgentToolContext context, string toolType, string toolName, string result)
+        public static string MaybeCacheAndRewrite(
+            AgentToolContext context,
+            string toolType,
+            string toolName,
+            string result,
+            IReadOnlyDictionary<string, string> toolArgs = null)
         {
             try
             {
@@ -41,8 +47,17 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                 if (context == null || string.IsNullOrWhiteSpace(context.ChatSessionKey))
                     return TruncateRowsForLlm(result, rows);
 
-                // Tools path: cache full extract (BuildDataset applies MaxCachedRows).
-                var ds = AgentDataAnalyzeCacheBL.Put(context.ChatSessionKey, toolName ?? toolType ?? "tool", rows);
+                var displayLimit = AgentDisplayRowLimitBL.ResolveForCache(
+                    context.ChatSessionKey,
+                    toolName ?? toolType ?? "tool",
+                    toolArgs,
+                    result);
+
+                var ds = AgentDataAnalyzeCacheBL.Put(
+                    context.ChatSessionKey,
+                    toolName ?? toolType ?? "tool",
+                    rows,
+                    displayLimit);
 
                 // LLM path: ≤20 rows → annotate and keep rows; >20 → envelope + sample only.
                 if (ds.Rows.Count <= AgentDataAnalyzeCacheBL.LlmPreviewMaxRows)
@@ -75,6 +90,10 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
         public static string BuildLlmEnvelope(AgentCachedDataset ds, string sourceTool, JArray sourceRows)
         {
             var sample = TakeSample(sourceRows, AgentDataAnalyzeCacheBL.LlmPreviewMaxRows);
+            var displayLimit = ds.DisplayRowLimit;
+            var displayRows = displayLimit is > 0
+                ? Math.Min(ds.Rows.Count, displayLimit.Value)
+                : ds.Rows.Count;
             return JsonConvert.SerializeObject(new
             {
                 ok = true,
@@ -84,6 +103,8 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                 source_tool = sourceTool,
                 rows = ds.Rows.Count,
                 totalRows = ds.Rows.Count,
+                display_row_limit = displayLimit,
+                display_rows = displayRows,
                 truncated_for_llm = true,
                 llm_preview_rows = sample.Count,
                 sample_rows = sample,
@@ -131,12 +152,15 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
 
         private static string BuildNextHint(AgentCachedDataset ds)
         {
+            var displayNote = ds.DisplayRowLimit is > 0
+                ? $" Render limit={ds.DisplayRowLimit.Value} (render_interactive limit={ds.DisplayRowLimit.Value}; tell user {Math.Min(ds.Rows.Count, ds.DisplayRowLimit.Value)} rows shown)."
+                : "";
             return
-                $"Dataset cached as '{ds.Name}' ({ds.Rows.Count} rows — full data for tools; LLM only sees up to {AgentDataAnalyzeCacheBL.LlmPreviewMaxRows} sample rows). " +
+                $"Dataset cached as '{ds.Name}' ({ds.Rows.Count} rows — full data for tools; LLM only sees up to {AgentDataAnalyzeCacheBL.LlmPreviewMaxRows} sample rows).{displayNote} " +
                 "MUST for analysis-like asks (group-by / ranges / multi-part metrics): ask_user contextKey=confirm_kpi_dashboard FIRST (bias kpi_dashboard). " +
                 "After kpi_dashboard: data_analyze (count|distribution|group_by) on raw caches for each user dimension, then render_interactive layout=dashboard. " +
                 "If SQL already GROUP BY'd with TotalCount|Count, skip redundant summary — render with chart.yField=measure. " +
-                "Do NOT answer with FinalResponse tables alone. Full grid: render_interactive dataset_name='" + ds.Name + "' without limit. " +
+                "Do NOT answer with FinalResponse tables alone. Grid: render_interactive dataset_name='" + ds.Name + "' with limit matching display_row_limit when set. " +
                 "fetch_display: render table|cards only, no data_analyze.";
         }
 

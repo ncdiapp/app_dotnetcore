@@ -73,7 +73,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             _ = ct;
             if (!TryResolveDs(dataSourceId, context, out var ds, out var err))
                 return Task.FromResult(err);
-            return Task.FromResult(StoredProcedureExecuteBL.ExecuteJson(ds, procedureName, schema, argsJson));
+            return Task.FromResult(StoredProcedureExecuteBL.ExecuteJson(ds, procedureName, schema, argsJson, context));
         }
 
         /// <summary>Optional DS for register search/list/detail (null = all published registers).</summary>

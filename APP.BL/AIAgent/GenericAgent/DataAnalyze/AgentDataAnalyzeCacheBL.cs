@@ -36,20 +36,22 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
         private static readonly ConcurrentDictionary<string, CardRenderSnapshot> CardRenders
             = new(StringComparer.OrdinalIgnoreCase);
 
-        public static AgentCachedDataset Put(string chatSessionKey, string sourceTool, JArray rows)
+        public static AgentCachedDataset Put(string chatSessionKey, string sourceTool, JArray rows, int? displayRowLimit = null)
         {
             if (string.IsNullOrWhiteSpace(chatSessionKey))
                 throw new ArgumentException("ChatSessionKey is required for data analyze cache.", nameof(chatSessionKey));
 
             var name = NextDatasetName(chatSessionKey, sourceTool);
-            var ds = BuildDataset(name, rows, sourceTool ?? "");
+            var ds = BuildDataset(name, rows, sourceTool ?? "", displayRowLimit);
             var bag = Sessions.GetOrAdd(chatSessionKey.Trim(), _ => new ConcurrentDictionary<string, AgentCachedDataset>(StringComparer.OrdinalIgnoreCase));
             bag[name] = ds;
+            if (displayRowLimit is > 0)
+                Documents.AgentDisplayRowLimitBL.SetDatasetDisplayLimit(chatSessionKey, name, displayRowLimit);
             AgentAiPolishCacheBL.InvalidateDataset(chatSessionKey, name);
             return ds;
         }
 
-        public static AgentCachedDataset PutNamed(string chatSessionKey, string datasetName, JArray rows, string sourceTool = "")
+        public static AgentCachedDataset PutNamed(string chatSessionKey, string datasetName, JArray rows, string sourceTool = "", int? displayRowLimit = null)
         {
             if (string.IsNullOrWhiteSpace(chatSessionKey))
                 throw new ArgumentException("ChatSessionKey is required for data analyze cache.", nameof(chatSessionKey));
@@ -57,11 +59,22 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                 throw new ArgumentException("datasetName is required.", nameof(datasetName));
 
             var name = SanitizeName(datasetName);
-            var ds = BuildDataset(name, rows, sourceTool ?? "");
+            var ds = BuildDataset(name, rows, sourceTool ?? "", displayRowLimit);
             var bag = Sessions.GetOrAdd(chatSessionKey.Trim(), _ => new ConcurrentDictionary<string, AgentCachedDataset>(StringComparer.OrdinalIgnoreCase));
             bag[name] = ds;
+            if (displayRowLimit is > 0)
+                Documents.AgentDisplayRowLimitBL.SetDatasetDisplayLimit(chatSessionKey, name, displayRowLimit);
             AgentAiPolishCacheBL.InvalidateDataset(chatSessionKey, name);
             return ds;
+        }
+
+        public static int? GetDisplayRowLimit(string chatSessionKey, string datasetName)
+        {
+            var ds = Get(chatSessionKey, datasetName);
+            if (ds?.DisplayRowLimit is > 0) return ds.DisplayRowLimit;
+            if (Documents.AgentDisplayRowLimitBL.TryGetDatasetDisplayLimit(chatSessionKey, datasetName, out var n))
+                return n;
+            return null;
         }
 
         public static AgentCachedDataset Get(string chatSessionKey, string datasetName)
@@ -330,10 +343,10 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
             return string.IsNullOrEmpty(s) ? "dataset" : s;
         }
 
-        public static AgentCachedDataset BuildDataset(string name, JArray dataArray, string sourceTool)
+        public static AgentCachedDataset BuildDataset(string name, JArray dataArray, string sourceTool, int? displayRowLimit = null)
         {
             if (dataArray == null || dataArray.Count == 0)
-                return new AgentCachedDataset { Name = name, CachedAt = DateTime.UtcNow, SourceTool = sourceTool };
+                return new AgentCachedDataset { Name = name, CachedAt = DateTime.UtcNow, SourceTool = sourceTool, DisplayRowLimit = displayRowLimit };
 
             var take = Math.Min(dataArray.Count, MaxCachedRows);
             var headerList = new List<string>();
@@ -405,6 +418,7 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                 Name = name,
                 CachedAt = DateTime.UtcNow,
                 SourceTool = sourceTool,
+                DisplayRowLimit = displayRowLimit,
                 Columns = columns,
                 Rows = rows,
                 NumericColumns = numericLists

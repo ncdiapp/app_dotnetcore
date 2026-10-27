@@ -74,7 +74,7 @@ Do not call call_agent. Nothing switches until the user confirms the hand-off ca
 For ANY task, if a registered or built-in tool can do the work, you MUST call that tool. Never do the work only inside the model when a tool exists.
 This applies to every capability that has a tool, including but not limited to:
 - Fetch / query data (SQL, API, search)
-- Large/unbounded row fetches → execute_sql (platform COUNTs first; ≤200 rows auto-shows all; larger → ask_user confirm_row_limit with count-based options). Never invent TOP yourself.
+- Large/unbounded row fetches → execute_sql (COUNT first; ≤250 rows auto-shows all unless user asked for N or SQL has hard TOP N; larger → confirm_row_limit). When user wants N rows: TOP N / SP args / render_interactive limit=N; FinalResponse must match display_rows/RowCount.
 - Aggregations and analysis (GROUP BY, SUM, count, distribution, ranges, breakdowns) → ask_user(confirm_kpi_dashboard) then data_analyze and/or SQL — never FinalResponse-only tables
 - Result UI (KPI, chart, dashboard, grid) → render_interactive / render_none_interactive
 - Card/table field selection → prepare_ui_render_polish (templates + ≤10 sample rows) then cache_ui_render_polish with AiPolishedRenderSpec (structure only). Never merge Result rows into HTML in the model; GENERATE binds all N rows.
@@ -94,9 +94,12 @@ Treat as analysis-like ONLY when the user asks to analyze / group by / break dow
 Do NOT treat plain ""show / display / grid view / card view"" as analysis — no ask_user KPI gate for those.
 
 ### Large data / row limit (Interactive — always)
-For detail SELECT (with or without TOP): call execute_sql — the platform COUNTs the full set first and may ask the user (confirm_row_limit). Do NOT invent TOP yourself.
-- If counted rows ≤ 250: platform fetches all — do not ask.
-- If larger: platform asks TOP 100 / TOP 1000 (when useful) / All N, then fetches.
+For detail SELECT: execute_sql COUNTs first; may ask confirm_row_limit.
+- User asked for N (e.g. 10 latest): TOP N, SP args (top/limit), render_interactive limit=N.
+- Hard TOP N honored when total ≤ 250; else turn intent caps fetch/render.
+- If counted rows ≤ 250 and no specific N: may fetch all without ask.
+- If larger: TOP N (from user intent when set) / TOP 100 / TOP 1000 / All N.
+- Stored procedures: pass row-limit args when the register supports them.
 - Scalar COUNT(*) / GROUP BY skip this gate.
 
 ### Show grid + card on ONE Result page (not analysis)
@@ -165,6 +168,10 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 // Session fallback when tool dispatch loses AsyncLocal (row-limit ask_user).
                 boundChatKey = resolvedChatKey;
                 AgentHitlBridge.BindSession(boundChatKey, callbacks);
+                if (!string.IsNullOrWhiteSpace(resolvedChatKey))
+                    Documents.AgentDisplayRowLimitBL.SetTurnRowIntent(
+                        resolvedChatKey,
+                        Documents.AgentDisplayRowLimitBL.TryParseFromUserMessage(userMessage));
                 var context   = new AgentToolContext
                 {
                     ConnectionString = identity.HasValue ? identity.Value.CurrentUserDbConnectionString ?? "" : "",
@@ -823,7 +830,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                         .ToDictionary(kv => kv.Key, kv => kv.Value?.ToString() ?? "");
                     var result = await AppAgentToolEngine.Dispatch(toolType, toolConfig, strArgs, context, ct, instancePool, row.ToolName)
                                                          .ConfigureAwait(false);
-                    result = DataAnalyze.AgentDataAnalyzeHook.MaybeCacheAndRewrite(context, toolType, row.ToolName, result);
+                    result = DataAnalyze.AgentDataAnalyzeHook.MaybeCacheAndRewrite(context, toolType, row.ToolName, result, strArgs);
                     return CapResult(result, cap);
                 },
                 functionName: SanitizeName(row.ToolName),

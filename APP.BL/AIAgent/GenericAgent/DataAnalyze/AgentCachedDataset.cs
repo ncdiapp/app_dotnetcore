@@ -18,6 +18,7 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
         public string Name { get; set; } = "";
         public DateTime CachedAt { get; set; } = DateTime.UtcNow;
         public string SourceTool { get; set; } = "";
+        public int? DisplayRowLimit { get; set; }
         public List<AgentColumnDefinition> Columns { get; set; } = new();
         public List<string[]> Rows { get; set; } = new();
         public Dictionary<int, double?[]> NumericColumns { get; set; } = new();

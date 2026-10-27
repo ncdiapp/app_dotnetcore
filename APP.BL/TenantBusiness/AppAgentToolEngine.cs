@@ -61,7 +61,7 @@ namespace App.BL.TenantBusiness
             }).ConfigureAwait(false);
 
             return App.BL.AIAgent.GenericAgent.DataAnalyze.AgentDataAnalyzeHook
-                .MaybeCacheAndRewrite(context, toolType, toolName, raw);
+                .MaybeCacheAndRewrite(context, toolType, toolName, raw, args);
         }
     }
 }

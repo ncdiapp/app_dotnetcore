@@ -24,8 +24,9 @@ namespace App.BL.AppBuilderAgent.Plugins
         // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("execute_sql",
             "Execute a SQL SELECT query. Only SELECT is allowed. Optional dataSourceId targets a registered DataSource; omit for session default. "
-            + "For unbounded detail SELECTs the platform COUNTs first: ≤250 rows → fetch all; larger → ask_user confirm_row_limit with count-based options. "
-            + "Do not invent TOP yourself. Scalar COUNT(*) / GROUP BY may omit TOP. "
+            + "For unbounded detail SELECTs the platform COUNTs first: ≤250 rows → fetch all unless user asked for N or SQL has hard TOP N; larger → ask_user confirm_row_limit. "
+            + "When the user wants N rows, use SELECT TOP N or rely on platform turn intent; pass render_interactive limit=N. "
+            + "Scalar COUNT(*) / GROUP BY may omit TOP. "
             + "Platform caches tools up to MaxCachedRows; LLM only sees ~20 sample rows.")]
         public string ExecuteSql(
             [AgentParam("A SQL SELECT statement. Must start with SELECT.", isRequired: true)] string sql,
@@ -65,6 +66,7 @@ namespace App.BL.AppBuilderAgent.Plugins
                 bool forceTop;
                 long? countedRows = null;
                 string gatePath = "unknown";
+                int? displayRowLimit = null;
 
                 // Strip soft preview TOP before fetch when we will apply platform cap / user choice.
                 var sqlToRun = sql;
@@ -72,6 +74,7 @@ namespace App.BL.AppBuilderAgent.Plugins
                 if (hasChoice)
                 {
                     rowCap = chosenMax;
+                    displayRowLimit = rowCap;
                     forceTop = true;
                     sqlToRun = AgentRowLimitConfirmBL.StripTopOrLimit(sql);
                     gatePath = "hasChoice";
@@ -114,15 +117,30 @@ namespace App.BL.AppBuilderAgent.Plugins
 
                     if (AgentRowLimitConfirmBL.ShouldAutoShowAll(totalCount))
                     {
-                        rowCap = AgentDataAnalyzeCacheBL.MaxCachedRows;
-                        forceTop = true; // ensure missing TOP gets a safety cap
+                        if (AgentRowLimitConfirmBL.TryGetHardTopRowLimit(sql, out var hardTop))
+                        {
+                            rowCap = (int)Math.Min(hardTop, totalCount);
+                            displayRowLimit = rowCap;
+                            gatePath = "autoShowHardTop";
+                        }
+                        else if (AgentDisplayRowLimitBL.TryGetTurnRowIntent(sessionKey, out var turnN))
+                        {
+                            rowCap = (int)Math.Min(turnN, totalCount);
+                            displayRowLimit = rowCap;
+                            gatePath = "autoShowTurnIntent";
+                        }
+                        else
+                        {
+                            rowCap = AgentDataAnalyzeCacheBL.MaxCachedRows;
+                            gatePath = "autoShowAll";
+                        }
+                        forceTop = true;
                         sqlToRun = AgentRowLimitConfirmBL.StripTopOrLimit(sql);
-                        gatePath = "autoShowAll";
                     }
                     else if (deterministic)
                     {
-                        // No UI ask — cap at 1000 for deterministic runs.
                         rowCap = 1000;
+                        displayRowLimit = 1000;
                         forceTop = true;
                         sqlToRun = AgentRowLimitConfirmBL.StripTopOrLimit(sql);
                         gatePath = "deterministicCap1000";
@@ -145,7 +163,7 @@ namespace App.BL.AppBuilderAgent.Plugins
                                 contextKey = AgentRowLimitConfirmBL.ContextKey,
                                 counted_rows = totalCount,
                                 prompt = AgentRowLimitConfirmBL.AskUserPrompt(totalCount),
-                                optionsJson = AgentRowLimitConfirmBL.AskUserOptionsJson(totalCount),
+                                optionsJson = AgentRowLimitConfirmBL.AskUserOptionsJson(totalCount, sessionKey),
                                 Error = AgentRowLimitConfirmBL.SoftFailMessage(totalCount)
                             });
                         }
@@ -162,6 +180,7 @@ namespace App.BL.AppBuilderAgent.Plugins
                             });
                         }
                         rowCap = AgentRowLimitConfirmBL.MaxRowsForOption(chosen);
+                        displayRowLimit = rowCap;
                         forceTop = true;
                         sqlToRun = AgentRowLimitConfirmBL.StripTopOrLimit(sql);
                         hasChoice = true;
@@ -170,10 +189,19 @@ namespace App.BL.AppBuilderAgent.Plugins
                 }
                 else
                 {
-                    // Honor model's explicit custom TOP; aggregates / GROUP BY skip the gate.
-                    rowCap = AgentDataAnalyzeCacheBL.MaxCachedRows;
-                    forceTop = false;
-                    gatePath = "skipGate";
+                    if (AgentRowLimitConfirmBL.TryGetHardTopRowLimit(sql, out var hardTop))
+                    {
+                        rowCap = hardTop;
+                        displayRowLimit = hardTop;
+                        forceTop = false;
+                        gatePath = "skipGateHardTop";
+                    }
+                    else
+                    {
+                        rowCap = AgentDataAnalyzeCacheBL.MaxCachedRows;
+                        forceTop = false;
+                        gatePath = "skipGate";
+                    }
                 }
 
                 log.Info(
@@ -206,6 +234,10 @@ namespace App.BL.AppBuilderAgent.Plugins
                     "[RowLimit] done path={0} returnedRows={1} rowCap={2} session={3}",
                     gatePath, returned.Count, rowCap, sessionKey ?? "(null)");
 
+                displayRowLimit = AgentDisplayRowLimitBL.Coalesce(
+                    displayRowLimit,
+                    AgentDisplayRowLimitBL.TryGetTurnRowIntent(sessionKey, out var turnCap) ? turnCap : null);
+
                 return JsonConvert.SerializeObject(new
                 {
                     result.IsSuccess,
@@ -218,6 +250,7 @@ namespace App.BL.AppBuilderAgent.Plugins
                     row_limit_confirmed = hasChoice,
                     row_limit_cap = rowCap,
                     row_limit_path = gatePath,
+                    display_row_limit = displayRowLimit,
                     Rows = returned
                 }, Formatting.Indented);
             }
@@ -337,7 +370,7 @@ namespace App.BL.AppBuilderAgent.Plugins
                 return false;
             }
 
-            var options = AgentRowLimitConfirmBL.BuildOptions(totalCount)
+            var options = AgentRowLimitConfirmBL.BuildOptions(totalCount, sessionKey)
                 .Select(o => new LookupItemDto { Id = o.Id, Display = o.Label })
                 .ToList();
             var askEvent = new AgentAskUserEvent

@@ -129,6 +129,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
                 layout = UiTemplateMerge.NormalizeLayout(layout);
                 var renderId = Guid.NewGuid().ToString("N");
+                var resolvedDisplayLimit = ResolveDisplayLimit(context, datasetName, limit);
                 FormDocument formDoc = null;
                 CardSheet cardSheet = null;
                 JArray dashRows = null;
@@ -167,7 +168,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 {
                     // Show-only: grid + cards on ONE Result page. No KPI ask_user gate.
                     var views = ParsePageViews(specJson);
-                    dashRows = LoadRows(context, datasetName, content, limit: null, out resolvedDataset, out truncated, out rowCount);
+                    dashRows = LoadRows(context, datasetName, content, resolvedDisplayLimit, out resolvedDataset, out truncated, out rowCount);
                     if (views.Contains("cards"))
                     {
                         polish = ResolvePolish(context, resolvedDataset, "cards", title, dashRows, aiPolishedRenderSpec, selectAllColumns, promptHash);
@@ -179,17 +180,17 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     }
                     if (views.Contains("table"))
                     {
-                        formDoc = LoadFormOrTable(context, "table", datasetName, content, title, null, out _, out _, out _);
+                        formDoc = LoadFormOrTable(context, "table", datasetName, content, title, resolvedDisplayLimit, out _, out _, out _);
                         if (!string.IsNullOrWhiteSpace(title) && formDoc != null) formDoc.Title = title.Trim();
                     }
                 }
                 else if (layout == "cards")
                 {
                     // Interactive cards: React + TemplateContent LAYOUT (cardsHtml); ignore small limit=.
-                    var effLimit = interactive ? null : limit;
+                    var effLimit = Documents.AgentDisplayRowLimitBL.Coalesce(resolvedDisplayLimit, limit);
                     if (interactive)
                     {
-                        dashRows = LoadRows(context, datasetName, content, null, out resolvedDataset, out truncated, out rowCount);
+                        dashRows = LoadRows(context, datasetName, content, effLimit, out resolvedDataset, out truncated, out rowCount);
                         polish = ResolvePolish(context, resolvedDataset, layout, title, dashRows, aiPolishedRenderSpec, selectAllColumns, promptHash);
                         // 0,0 → SuggestPrintGrid when tool/polish omitted page grid (avoid 1×N print strips).
                         cardSheet = CardSheet.FromRows(
@@ -206,11 +207,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
                 else
                 {
-                    var effLimit = interactive && layout == "table" ? null : limit;
+                    var effLimit = interactive && layout == "table" ? resolvedDisplayLimit : limit;
                     if (interactive && layout == "table")
                     {
-                        dashRows = LoadRows(context, datasetName, content, null, out resolvedDataset, out truncated, out rowCount);
-                        formDoc = LoadFormOrTable(context, layout, datasetName, content, title, null, out _, out _, out _);
+                        dashRows = LoadRows(context, datasetName, content, effLimit, out resolvedDataset, out truncated, out rowCount);
+                        formDoc = LoadFormOrTable(context, layout, datasetName, content, title, effLimit, out _, out _, out _);
                     }
                     else
                     {
@@ -539,6 +540,17 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
         }
 
+        private static int? ResolveDisplayLimit(AgentToolContext context, string datasetName, int? limitParam)
+        {
+            int? fromDataset = null;
+            if (context != null && !string.IsNullOrWhiteSpace(context.ChatSessionKey) && !string.IsNullOrWhiteSpace(datasetName))
+                fromDataset = AgentDataAnalyzeCacheBL.GetDisplayRowLimit(context.ChatSessionKey, datasetName.Trim());
+            int? fromTurn = null;
+            if (context != null && Documents.AgentDisplayRowLimitBL.TryGetTurnRowIntent(context.ChatSessionKey, out var turn))
+                fromTurn = turn;
+            return Documents.AgentDisplayRowLimitBL.Coalesce(limitParam, fromDataset, fromTurn);
+        }
+
         private static JArray LoadRows(
             AgentToolContext context,
             string datasetName,
@@ -557,6 +569,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 && AgentDataAnalyzeCacheBL.TryExportDataJson(context.ChatSessionKey, datasetName.Trim(), out var dataJson, out _, out var rows))
             {
                 resolvedDataset = AgentDataAnalyzeCacheBL.SanitizeName(datasetName);
+                limit = Documents.AgentDisplayRowLimitBL.Coalesce(
+                    limit,
+                    AgentDataAnalyzeCacheBL.GetDisplayRowLimit(context.ChatSessionKey, resolvedDataset));
                 arr = JArray.Parse(dataJson);
                 rowCount = rows;
             }
@@ -619,6 +634,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 && AgentDataAnalyzeCacheBL.TryExportDataJson(context.ChatSessionKey, datasetName.Trim(), out var dataJson, out var colsJson, out var rows))
             {
                 resolvedDataset = AgentDataAnalyzeCacheBL.SanitizeName(datasetName);
+                limit = Documents.AgentDisplayRowLimitBL.Coalesce(
+                    limit,
+                    AgentDataAnalyzeCacheBL.GetDisplayRowLimit(context.ChatSessionKey, resolvedDataset));
                 var arr = JArray.Parse(dataJson);
                 if (limit.HasValue && limit.Value > 0 && arr.Count > limit.Value)
                 {

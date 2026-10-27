@@ -4,6 +4,8 @@ using System.Data;
 using System.Data.Common;
 using System.Linq;
 using App.BL;
+using App.BL.AIAgent.GenericAgent.Documents;
+using APP.Framework.Plugin;
 using DatabaseSchemaMrg;
 using DatabaseSchemaMrg.DataSchema;
 using Newtonsoft.Json;
@@ -16,13 +18,14 @@ namespace App.BL.AIAgent.GenericAgent.StoredProcedure
     /// </summary>
     public static class StoredProcedureExecuteBL
     {
-        public const int MaxReturnRows = 100;
+        public static int MaxReturnRows => AgentPlatformLimits.StoredProcedureMaxReturnRows;
 
         public static string ExecuteJson(
             int dataSourceId,
             string procedureName,
             string schema = null,
-            string argsJson = null)
+            string argsJson = null,
+            AgentToolContext context = null)
         {
             try
             {
@@ -85,8 +88,16 @@ namespace App.BL.AIAgent.GenericAgent.StoredProcedure
                 var table = fixture.RetriveStorProcDataTable(fullName, dbParams);
                 var columns = table.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToList();
                 var rows = new List<Dictionary<string, object>>();
-                var truncated = table.Rows.Count > MaxReturnRows;
-                var take = Math.Min(table.Rows.Count, MaxReturnRows);
+                var platformCap = MaxReturnRows;
+                var displayLimit = AgentDisplayRowLimitBL.ResolveForToolExecution(
+                    context?.ChatSessionKey,
+                    null,
+                    argsJson);
+                var effectiveCap = platformCap;
+                if (displayLimit is > 0)
+                    effectiveCap = Math.Min(effectiveCap, displayLimit.Value);
+                var truncated = table.Rows.Count > effectiveCap;
+                var take = Math.Min(table.Rows.Count, effectiveCap);
                 for (int i = 0; i < take; i++)
                 {
                     var row = table.Rows[i];
@@ -115,6 +126,9 @@ namespace App.BL.AIAgent.GenericAgent.StoredProcedure
                     procedure = StoredProcedureCatalogBL.FormatFull(sch, name),
                     columnNames = columns,
                     rowCount = table.Rows.Count,
+                    returnedRows = rows.Count,
+                    platform_row_cap = platformCap,
+                    display_row_limit = displayLimit,
                     truncated,
                     rows,
                     outputParameters = outputs.Count > 0 ? outputs : null

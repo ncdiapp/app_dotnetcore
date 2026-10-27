@@ -79,7 +79,13 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 
         public static int MaxRowsForOption(string optionId)
         {
-            return NormalizeOption(optionId) switch
+            var n = NormalizeOption(optionId);
+            if (n == null) return 0;
+            if (n.StartsWith("top_", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(n.Substring(4), NumberStyles.Integer, CultureInfo.InvariantCulture, out var custom)
+                && custom > 0)
+                return custom;
+            return n switch
             {
                 OptionAll => AgentDataAnalyzeCacheBL.MaxCachedRows,
                 OptionTop100 => 100,
@@ -202,9 +208,18 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         /// <summary>True when total is small enough to show all without asking.</summary>
         public static bool ShouldAutoShowAll(long totalRows) => totalRows >= 0 && totalRows <= AutoShowMaxRows;
 
-        public static List<(string Id, string Label)> BuildOptions(long totalRows)
+        public static List<(string Id, string Label)> BuildOptions(long totalRows, string chatSessionKey = null)
         {
             var opts = new List<(string, string)>();
+            if (!string.IsNullOrWhiteSpace(chatSessionKey)
+                && AgentDisplayRowLimitBL.TryGetTurnRowIntent(chatSessionKey, out var turnN)
+                && turnN > 0
+                && turnN < totalRows
+                && turnN != 100
+                && turnN != 1000)
+            {
+                opts.Add(("top_" + turnN.ToString(CultureInfo.InvariantCulture), "TOP " + turnN.ToString(CultureInfo.InvariantCulture)));
+            }
             if (totalRows > 100)
                 opts.Add((OptionTop100, "TOP 100"));
             if (totalRows >= Top1000MinTotal)
@@ -216,12 +231,30 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return opts;
         }
 
-        public static string AskUserOptionsJson(long totalRows)
+        public static string AskUserOptionsJson(long totalRows, string chatSessionKey = null)
         {
-            var arr = BuildOptions(totalRows)
+            var arr = BuildOptions(totalRows, chatSessionKey)
                 .Select(o => new { id = o.Id, label = o.Label })
                 .ToList();
             return JsonConvert.SerializeObject(arr);
+        }
+
+        public static bool TryGetHardTopRowLimit(string sql, out int limit)
+        {
+            limit = 0;
+            if (!HasHardCustomTopOrLimit(sql)) return false;
+            var m = Regex.Match(sql ?? "", @"\bTOP\s*\(?\s*(\d+)\s*\)?", RegexOptions.IgnoreCase);
+            if (m.Success
+                && int.TryParse(m.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out limit)
+                && limit > 0)
+                return true;
+            m = Regex.Match(sql ?? "", @"\bLIMIT\s+(\d+)\b", RegexOptions.IgnoreCase);
+            if (m.Success
+                && int.TryParse(m.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out limit)
+                && limit > 0)
+                return true;
+            limit = 0;
+            return false;
         }
 
         public static string AskUserPrompt(long totalRows) =>
@@ -261,6 +294,10 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 return OptionTop100;
             if (t is "top_1000" or "top1000" or "1000" or "top_1000_rows")
                 return OptionTop1000;
+            if (t.StartsWith("top_", StringComparison.Ordinal)
+                && int.TryParse(t.Substring(4), NumberStyles.Integer, CultureInfo.InvariantCulture, out var customTop)
+                && customTop > 0)
+                return "top_" + customTop.ToString(CultureInfo.InvariantCulture);
             if (t.Contains("all") && (t.Contains("row") || t.Contains("data") || t.Contains("show")))
                 return OptionAll;
             if (t.Contains("1000"))

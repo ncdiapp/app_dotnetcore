@@ -716,6 +716,7 @@ ELSE
                 {
                     AgentSchemaCacheBL.ClearSession(sessionKey.Trim());
                     Documents.AgentRowLimitConfirmBL.Clear(sessionKey.Trim());
+                    Documents.AgentDisplayRowLimitBL.ClearSession(sessionKey.Trim());
                 }
                 return n > 0;
             }
@@ -746,6 +747,7 @@ ELSE
                 {
                     AgentSchemaCacheBL.ClearSession(sessionKey.Trim());
                     Documents.AgentRowLimitConfirmBL.Clear(sessionKey.Trim());
+                    Documents.AgentDisplayRowLimitBL.ClearSession(sessionKey.Trim());
                 }
                 return n > 0;
             }
