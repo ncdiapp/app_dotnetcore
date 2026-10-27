@@ -66,6 +66,40 @@ namespace App.BL.TenantBusiness
             return GetBySkillKeyWithLibraries(skillKey, fixture);
         }
 
+        public static List<AppAgentToolRegisterDto> GetAllActiveLibraryTools()
+        {
+            var fixture = GetFixture();
+            if (fixture == null) return new List<AppAgentToolRegisterDto>();
+            return GetAllActiveLibraryTools(fixture);
+        }
+
+        public static List<AppAgentToolRegisterDto> GetAllActiveLibraryTools(int dataSourceId)
+        {
+            var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
+            if (fixture == null) return new List<AppAgentToolRegisterDto>();
+            return GetAllActiveLibraryTools(fixture);
+        }
+
+        private static List<AppAgentToolRegisterDto> GetAllActiveLibraryTools(DatabaseSchemaMrg.DatabaseFixture fixture)
+        {
+            var dt = fixture.RetriveDataTable(@"
+SELECT t.LibraryToolId AS ToolRegisterId, t.LibraryKey AS SkillKey, t.ToolName, t.ToolDescription,
+       t.ParameterSchemaJson, t.ToolType, t.ToolConfig, t.IsActive
+FROM dbo.AppAgentLibraryTool t
+INNER JOIN dbo.AppAgentToolLibrary l ON t.LibraryKey=l.LibraryKey
+WHERE t.IsActive=1 AND l.IsActive=1
+ORDER BY l.LibraryKey, t.SortOrder, t.LibraryToolId",
+                new List<DbParameter>());
+
+            var rows = MapAll(dt);
+            var seen = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var result = new List<AppAgentToolRegisterDto>();
+            foreach (var r in rows)
+                if (seen.Add(r.ToolName))
+                    result.Add(r);
+            return result;
+        }
+
         private static List<AppAgentToolRegisterDto> GetBySkillKeyWithLibraries(string skillKey, DatabaseSchemaMrg.DatabaseFixture fixture)
         {
             var dt = fixture.RetriveDataTable(@"

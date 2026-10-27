@@ -56,8 +56,6 @@ namespace App.BL.AIAgent.GenericAgent
                 var file = GenericAgentFileBL.ReadText(sessionKey, path, companyId);
                 if (file == null || string.IsNullOrWhiteSpace(file.Content))
                     throw new InvalidOperationException("SQL file is empty or missing.");
-                if (file.Truncated)
-                    throw new InvalidOperationException("SQL file exceeds the 20 MB AgentOutput limit.");
 
                 var targetId = ResolveTargetDataSourceId(dataSourceId);
                 var targetFixture = App.BL.AppCacheManagerBL.GetOneDatabaseFixture(targetId);

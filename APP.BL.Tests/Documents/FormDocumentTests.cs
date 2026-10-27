@@ -1,8 +1,12 @@
 using System;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
 using System.Text;
 using App.BL.AIAgent.GenericAgent.Documents;
 using App.BL.AIAgent.GenericAgent.Plugins;
 using GemBox.Document;
+using Newtonsoft.Json.Linq;
 
 namespace APP.BL.Tests.Documents;
 
@@ -123,7 +127,8 @@ public class FormDocumentTests
     {
         var bytes = PptxForm.Write(FormDocument.Parse(Sample));
         var back = PptxForm.Read(bytes);
-        Assert.Equal("Sales Order", back.Title);
+        // Title lives on the first data slide (no orphan title-only slide); may include " (1/n)".
+        Assert.StartsWith("Sales Order", back.Title);
         Assert.Contains(back.Sections, s => s.Tables.Any(t => t.Rows.Any(r => r.Any(c => c.Text == "Widget"))));
     }
 
@@ -136,5 +141,68 @@ public class FormDocumentTests
         Assert.Equal("output/hello_world.docx", AgentDocumentPlugin.PlaceInOutputFolder("hello_world.docx"));
         Assert.Equal("output/hello_world.docx", AgentDocumentPlugin.PlaceInOutputFolder("output/hello_world.docx"));
         Assert.Equal("reports/hello_world.docx", AgentDocumentPlugin.PlaceInOutputFolder("reports/hello_world.docx"));
+    }
+
+    [Fact]
+    public void Cards_wrap_html_by_cards_per_row_and_keep_images()
+    {
+        var rows = JArray.Parse("[{\"Name\":\"Widget\",\"Photo\":\"https://cdn.test/a.png\",\"Division_186\":\"DoD;01\"},{\"Name\":\"Bolt\",\"Photo\":\"n/a\"}]");
+        var sheet = CardSheet.FromRows("Items", rows, 9, 0);
+        Assert.Equal(6, sheet.CardsPerRow);
+        Assert.Equal(3, sheet.CardRows);
+        // Heuristic polish: Photo is primaryImage when URL is displayable; "n/a" stays blank (no broken img).
+        Assert.Contains(sheet.Cards[0], f => f.IsImage && f.Label == "Photo");
+        Assert.DoesNotContain(sheet.Cards[1], f => f.IsImage);
+        sheet.CardsPerRow = 2;
+        var html = HtmlForm.WriteCards(sheet);
+        Assert.Contains("data-doc=\"cards\"", html);
+        Assert.Contains("<img ", html);
+        Assert.Contains("min-height:120px", html);
+        Assert.Contains("Widget", html);
+        Assert.DoesNotContain("display:none", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Card_picture_bytes_are_embedded_in_office_files()
+    {
+        var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+        var sheet = CardSheet.FromRows("Item", JArray.Parse("[{\"Photo\":\"12\",\"Name\":\"Widget\"}]"), 1, 1);
+        sheet.Cards[0][0].ImageBytes = png;
+        var html = HtmlForm.WriteCards(sheet);
+        Assert.Contains("data:image/png;base64,", html);
+        var wrapped = CardSheet.FromRows("Item", JArray.Parse("[{\"Note\":\"line1\\nline2\\tmore\"}]"), 1, 1);
+        Assert.True(WordForm.WriteCardPdf(wrapped).Length > 100);
+        Assert.Contains("media", ZipNames(WordForm.WriteCardDocx(sheet)));
+        Assert.True(WordForm.WriteCardPdf(sheet).Length > 100);
+        Assert.Contains("media", ZipNames(ExcelForm.WriteCards(sheet)));
+        var pptx = PptxForm.WriteCards(sheet);
+        using (var ms = new MemoryStream(pptx))
+        using (var zip = new ZipArchive(ms, ZipArchiveMode.Read))
+        {
+            var slide = zip.GetEntry("ppt/slides/slide1.xml");
+            using var reader = new StreamReader(slide!.Open());
+            var xml = reader.ReadToEnd();
+            var picAt = xml.IndexOf("<p:pic", StringComparison.Ordinal);
+            Assert.True(picAt > 0);
+            var picY = OffY(xml, picAt);
+            var textAt = xml.IndexOf("name=\"Text Box\"", picAt, StringComparison.Ordinal);
+            Assert.True(textAt > picAt);
+            Assert.True(picY < OffY(xml, textAt));
+        }
+    }
+
+    private static long OffY(string xml, int from)
+    {
+        var off = xml.IndexOf("<a:off ", from, StringComparison.Ordinal);
+        var y = xml.IndexOf("y=\"", off, StringComparison.Ordinal) + 3;
+        var end = xml.IndexOf('"', y);
+        return long.Parse(xml.Substring(y, end - y));
+    }
+
+    private static string ZipNames(byte[] zip)
+    {
+        using var ms = new MemoryStream(zip);
+        using var archive = new ZipArchive(ms, ZipArchiveMode.Read);
+        return string.Join("\n", archive.Entries.Select(e => e.FullName));
     }
 }

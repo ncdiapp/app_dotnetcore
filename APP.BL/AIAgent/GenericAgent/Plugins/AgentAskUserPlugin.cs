@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.Framework.Plugin;
+using App.BL.AIAgent.GenericAgent.Documents;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -110,7 +111,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 ContextKey = string.IsNullOrWhiteSpace(contextKey) ? null : contextKey.Trim()
             };
 
-            var onAsk = AgentHitlBridge.Current?.OnAskUser;
+            var onAsk = AgentHitlBridge.Resolve(context?.ChatSessionKey)?.OnAskUser;
             if (onAsk == null)
             {
                 return JsonConvert.SerializeObject(new
@@ -152,14 +153,57 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
             }
 
+            var kpiDashConfirmed = false;
+            var fetchDisplayOnly = false;
+            if (!response.Cancelled
+                && context != null
+                && IsKpiDashboardConfirmKey(askEvent.ContextKey))
+            {
+                if (AgentUiPathConfirmBL.LooksLikeKpiDashboardChoice(response.SelectedIds, response.FreeText))
+                {
+                    AgentUiPathConfirmBL.MarkKpiDashboard(context.ChatSessionKey);
+                    kpiDashConfirmed = true;
+                }
+                else if (AgentUiPathConfirmBL.LooksLikeFetchDisplayChoice(response.SelectedIds, response.FreeText))
+                {
+                    AgentUiPathConfirmBL.MarkFetchDisplay(context.ChatSessionKey);
+                    fetchDisplayOnly = true;
+                }
+            }
+
+            var rowLimitConfirmed = false;
+            string rowLimitChoice = null;
+            if (!response.Cancelled
+                && context != null
+                && AgentRowLimitConfirmBL.IsRowLimitConfirmKey(askEvent.ContextKey)
+                && AgentRowLimitConfirmBL.LooksLikeChoice(response.SelectedIds, response.FreeText, out var rowOpt))
+            {
+                AgentRowLimitConfirmBL.Mark(context.ChatSessionKey, rowOpt);
+                rowLimitConfirmed = true;
+                rowLimitChoice = rowOpt;
+            }
+
             return JsonConvert.SerializeObject(new
             {
                 ok = !response.Cancelled,
                 cancelled = response.Cancelled,
                 answers = response.Answers ?? new Dictionary<string, string>(),
                 selectedIds = response.SelectedIds ?? new List<string>(),
-                freeText = response.FreeText ?? ""
+                freeText = response.FreeText ?? "",
+                kpi_dashboard_confirmed = kpiDashConfirmed,
+                fetch_display_only = fetchDisplayOnly,
+                row_limit_confirmed = rowLimitConfirmed,
+                row_limit_choice = rowLimitChoice
             });
+        }
+
+        private static bool IsKpiDashboardConfirmKey(string contextKey)
+        {
+            if (string.IsNullOrWhiteSpace(contextKey)) return false;
+            var k = contextKey.Trim();
+            return k.Equals(AgentUiPathConfirmBL.ContextKey, StringComparison.OrdinalIgnoreCase)
+                   || k.IndexOf("kpi_dashboard", StringComparison.OrdinalIgnoreCase) >= 0
+                   || k.IndexOf("confirm_kpi", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         /// <summary>

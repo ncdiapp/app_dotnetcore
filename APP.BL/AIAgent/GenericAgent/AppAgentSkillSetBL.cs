@@ -74,34 +74,37 @@ namespace App.BL.AIAgent.GenericAgent
                         AppAgentSkillSetHistoryBL.Insert(dataSourceId, dto.SkillKey, currentPrompt);
                 }
 
-                var hasFirstTurn = HasAllowAgentFirstTurnColumn(fixture);
-                string sql = hasFirstTurn
-                    ? @"
+                var hasFirstTurn = HasColumn(fixture, "AllowAgentFirstTurn");
+                var hasThink     = HasColumn(fixture, "EnableThinkMode");
+                var updateExtra  = "";
+                var insertCols   = "";
+                var insertVals   = "";
+                if (hasFirstTurn)
+                {
+                    updateExtra += ", AllowAgentFirstTurn=@AllowAgentFirstTurn";
+                    insertCols  += ",AllowAgentFirstTurn";
+                    insertVals  += ",@AllowAgentFirstTurn";
+                }
+                if (hasThink)
+                {
+                    updateExtra += ", EnableThinkMode=@EnableThinkMode";
+                    insertCols  += ",EnableThinkMode";
+                    insertVals  += ",@EnableThinkMode";
+                }
+
+                var sql = $@"
 IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = @SkillKey)
     UPDATE dbo.AppAgentSkillSet SET
         DisplayName=@DisplayName, Description=@Description, SystemPrompt=@SystemPrompt,
         CapabilityFlags=@CapabilityFlags, IsActive=@IsActive, SortOrder=@SortOrder,
         Version=@Version, MaxHistoryTokens=@MaxHistoryTokens, SummarizeThreshold=@SummarizeThreshold,
         MaxToolResultChars=@MaxToolResultChars, RecentWindowSize=@RecentWindowSize,
-        MaxIterations=@MaxIterations, ExecutionMode=@ExecutionMode, AgentUi=@AgentUi,
-        AllowAgentFirstTurn=@AllowAgentFirstTurn
+        MaxIterations=@MaxIterations, ExecutionMode=@ExecutionMode, AgentUi=@AgentUi{updateExtra}
     WHERE SkillKey = @SkillKey
 ELSE
-    INSERT INTO dbo.AppAgentSkillSet (SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations,ExecutionMode,AgentUi,AllowAgentFirstTurn)
-    VALUES (@SkillKey,@DisplayName,@Description,@SystemPrompt,@CapabilityFlags,@IsActive,@SortOrder,@Version,@MaxHistoryTokens,@SummarizeThreshold,@MaxToolResultChars,@RecentWindowSize,@MaxIterations,@ExecutionMode,@AgentUi,@AllowAgentFirstTurn)"
-                    : @"
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = @SkillKey)
-    UPDATE dbo.AppAgentSkillSet SET
-        DisplayName=@DisplayName, Description=@Description, SystemPrompt=@SystemPrompt,
-        CapabilityFlags=@CapabilityFlags, IsActive=@IsActive, SortOrder=@SortOrder,
-        Version=@Version, MaxHistoryTokens=@MaxHistoryTokens, SummarizeThreshold=@SummarizeThreshold,
-        MaxToolResultChars=@MaxToolResultChars, RecentWindowSize=@RecentWindowSize,
-        MaxIterations=@MaxIterations, ExecutionMode=@ExecutionMode, AgentUi=@AgentUi
-    WHERE SkillKey = @SkillKey
-ELSE
-    INSERT INTO dbo.AppAgentSkillSet (SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations,ExecutionMode,AgentUi)
-    VALUES (@SkillKey,@DisplayName,@Description,@SystemPrompt,@CapabilityFlags,@IsActive,@SortOrder,@Version,@MaxHistoryTokens,@SummarizeThreshold,@MaxToolResultChars,@RecentWindowSize,@MaxIterations,@ExecutionMode,@AgentUi)";
-                fixture.ExecuteNonQueryResult(sql, BuildParams(fixture, dto, hasFirstTurn));
+    INSERT INTO dbo.AppAgentSkillSet (SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations,ExecutionMode,AgentUi{insertCols})
+    VALUES (@SkillKey,@DisplayName,@Description,@SystemPrompt,@CapabilityFlags,@IsActive,@SortOrder,@Version,@MaxHistoryTokens,@SummarizeThreshold,@MaxToolResultChars,@RecentWindowSize,@MaxIterations,@ExecutionMode,@AgentUi{insertVals})";
+                fixture.ExecuteNonQueryResult(sql, BuildParams(fixture, dto, hasFirstTurn, hasThink));
                 return true;
             }
             catch (Exception ex) { Log.Error(ex, nameof(UpsertSkillSet)); return false; }
@@ -173,15 +176,22 @@ ELSE
             catch (Exception ex) { return ("ERR: " + ex.Message, -1); }
         }
 
-        private static string SelectCols(DatabaseFixture fixture) =>
-            HasAllowAgentFirstTurnColumn(fixture) ? SelectColsBase + ",AllowAgentFirstTurn" : SelectColsBase;
-
-        private static bool HasAllowAgentFirstTurnColumn(DatabaseFixture fixture)
+        private static string SelectCols(DatabaseFixture fixture)
         {
+            var cols = SelectColsBase;
+            if (HasColumn(fixture, "AllowAgentFirstTurn")) cols += ",AllowAgentFirstTurn";
+            if (HasColumn(fixture, "EnableThinkMode")) cols += ",EnableThinkMode";
+            return cols;
+        }
+
+        private static bool HasColumn(DatabaseFixture fixture, string columnName)
+        {
+            if (columnName != "AllowAgentFirstTurn" && columnName != "EnableThinkMode")
+                return false;
             try
             {
                 var dt = fixture.RetriveDataTable(
-                    "SELECT 1 AS x FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.AppAgentSkillSet') AND name = N'AllowAgentFirstTurn'",
+                    $"SELECT 1 AS x FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.AppAgentSkillSet') AND name = N'{columnName}'",
                     new List<DbParameter>());
                 return dt != null && dt.Rows.Count > 0;
             }
@@ -206,6 +216,7 @@ ELSE
             ExecutionMode      = ColStr(row, "ExecutionMode", "Interactive"),
             AgentUi            = ColInt(row, "AgentUi", 1),
             AllowAgentFirstTurn = ColBool(row, "AllowAgentFirstTurn", false),
+            EnableThinkMode     = ColBool(row, "EnableThinkMode", false),
             ChildCount = 0,
             UsedByCount = 0,
         };
@@ -267,7 +278,11 @@ ELSE
             return p;
         }
 
-        private static List<DbParameter> BuildParams(DatabaseFixture fixture, AppAgentSkillSetDto dto, bool includeAllowAgentFirstTurn)
+        private static List<DbParameter> BuildParams(
+            DatabaseFixture fixture,
+            AppAgentSkillSetDto dto,
+            bool includeAllowAgentFirstTurn,
+            bool includeEnableThinkMode)
         {
             var p = new List<DbParameter>();
             void Add(string n, object v) { var x = fixture.CreateParameter(n); x.Value = v ?? DBNull.Value; p.Add(x); }
@@ -288,6 +303,8 @@ ELSE
             Add("@AgentUi",            dto.AgentUi > 0 ? dto.AgentUi : 1);
             if (includeAllowAgentFirstTurn)
                 Add("@AllowAgentFirstTurn", dto.AllowAgentFirstTurn);
+            if (includeEnableThinkMode)
+                Add("@EnableThinkMode", dto.EnableThinkMode);
             return p;
         }
     }

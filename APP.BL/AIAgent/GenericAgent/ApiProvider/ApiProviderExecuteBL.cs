@@ -110,7 +110,7 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
                     confirmed = isWrite ? true : (bool?)null,
                     truncated = wasTruncated,
                     response = responseJson ?? truncated,
-                    next = "Present the response to the user. Use data_render if tabular."
+                    next = "Present the response to the user. Use render_none_interactive if tabular."
                 }, Formatting.Indented);
             }
             catch (Exception ex)
@@ -232,7 +232,7 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
 
         /// <summary>
         /// Large API tables must not be sliced into an invalid JSON string for the model.
-        /// Cache every row on the chat session and return a short envelope so data_render
+        /// Cache every row on the chat session and return a short envelope so render_none_interactive
         /// can load the full set via dataset_name (grid cap is AgentDataRenderPlugin).
         /// </summary>
         private static bool TryCacheTabularResponse(
@@ -250,34 +250,15 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
                 return false;
 
             var tooWideForPrompt = responseText.Length > MaxResponseChars;
-            if (rows.Count < AgentDataAnalyzeCacheBL.AutoEnvelopeMinRows && !tooWideForPrompt)
+            // Tools get full cache; LLM only sees envelope when over preview cap (or huge payload).
+            if (rows.Count <= AgentDataAnalyzeCacheBL.LlmPreviewMaxRows && !tooWideForPrompt)
                 return false;
 
             var ds = AgentDataAnalyzeCacheBL.Put(context.ChatSessionKey, actionCode, rows);
-            var preview = new JArray();
-            var previewCount = Math.Min(3, rows.Count);
-            for (int i = 0; i < previewCount; i++)
-                preview.Add(rows[i]);
-
-            var cachedCount = ds.Rows?.Count ?? 0;
-            var overCacheCap = rows.Count > AgentDataAnalyzeCacheBL.MaxCachedRows;
-            envelopeJson = JsonConvert.SerializeObject(new
-            {
-                ok = true,
-                actionCode,
-                dataset_cached = true,
-                dataset_name = ds.Name,
-                cache_scope = "chat_session",
-                rows = cachedCount,
-                totalRows = rows.Count,
-                truncated = overCacheCap,
-                columns = ds.Columns?.Select(c => c.Name).ToArray(),
-                preview,
-                next =
-                    $"API returned {rows.Count} rows. Call data_render ONCE with ui=grid and dataset_name='{ds.Name}'. " +
-                    "Do not pass dataJson or a column subset — dataset_name loads every cached row and column. " +
-                    $"Tell the user the total is {rows.Count}, not the preview length."
-            }, Formatting.Indented);
+            var env = JObject.Parse(AgentDataAnalyzeHook.BuildLlmEnvelope(ds, actionCode, rows));
+            env["actionCode"] = actionCode;
+            env["next"] = env["next_hint"];
+            envelopeJson = env.ToString(Formatting.Indented);
             return true;
         }
 

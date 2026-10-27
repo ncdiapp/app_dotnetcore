@@ -30,6 +30,8 @@ using TbToolBL  = App.BL.TenantBusiness.AppAgentToolRegisterBL;
 using TbMcpBL   = App.BL.TenantBusiness.AppAgentMcpServerBL;
 using TbToolDto = App.BL.TenantBusiness.AppAgentToolRegisterDto;
 using TbMcpDto  = App.BL.TenantBusiness.AppAgentMcpServerDto;
+using TbSkillSetDto = App.BL.AIAgent.AiSkill.AppAgentSkillSetDto;
+using SkillLib  = App.BL.AppMgr.AiSkill.AppAISkillBL;
 
 namespace App.BL.AIAgent.GenericAgent
 {
@@ -48,16 +50,78 @@ namespace App.BL.AIAgent.GenericAgent
     {
         private static readonly HttpClient McpHttpClient = McpConnectionHelper.CreateHttpClient();
         private const int DefaultMaxToolResultChars = 32000;
-        private const int McpToolCallTimeoutSeconds  = 30;
+        /// <summary>Large PLM list tools (hundreds of wide rows) often exceed 30s; fail-closed cancel looked like “empty/partial” tool results.</summary>
+        private const int McpToolCallTimeoutSeconds  = 180;
 
         /// <summary>Capability marker tool in library data-analyze. Presence (subscribed, not excluded) enables followups inject.</summary>
         private const string DataAnalyzeToolName = "data_analyze";
         private const string PromptHintToolType = "PromptHint";
+        private const string UniversalBasePrompt = @"
+
+## Universal Agent
+You are Universal Agent, the built-in general work agent for this application.
+Understand the user's goal, use the most relevant loaded skills, and call tools whenever tools can do the work.
+Skills are reusable operating instructions for this chat run. Follow them when relevant, but do not claim a skill was used unless it was actually loaded.
+Use library tools directly when they match the task. Ask the user concise questions when required inputs are missing.
+When one configured Specialist Agent is clearly better for the next step, call propose_specialist_handoff with that agent's skillKey and a short reason.
+Do not call call_agent. Nothing switches until the user confirms the hand-off card. Do not claim the chat was switched.";
+        /// <summary>
+        /// Platform hard rule — always appended to Instructions. Not stored in AppAgentSkillSet;
+        /// admins cannot turn it off. Prefer tools over model-invented data/UI/files.
+        /// </summary>
+        private const string ToolsPreferHardRule = @"
+
+## Tools Prefer (platform hard rule — cannot be disabled)
+For ANY task, if a registered or built-in tool can do the work, you MUST call that tool. Never do the work only inside the model when a tool exists.
+This applies to every capability that has a tool, including but not limited to:
+- Fetch / query data (SQL, API, search)
+- Large/unbounded row fetches → execute_sql (platform COUNTs first; ≤200 rows auto-shows all; larger → ask_user confirm_row_limit with count-based options). Never invent TOP yourself.
+- Aggregations and analysis (GROUP BY, SUM, count, distribution, ranges, breakdowns) → ask_user(confirm_kpi_dashboard) then data_analyze and/or SQL — never FinalResponse-only tables
+- Result UI (KPI, chart, dashboard, grid) → render_interactive / render_none_interactive
+- Card/table field selection → prepare_ui_render_polish (templates + ≤10 sample rows) then cache_ui_render_polish with AiPolishedRenderSpec (structure only). Never merge Result rows into HTML in the model; GENERATE binds all N rows.
+- Exports and documents (CSV, Excel, Word, PDF, PPTX) → export_* / document tools
+- Any other subscribed or built-in tool that matches the user intent
+FinalResponse may briefly explain outcomes and point to Result / files. It must NOT invent numeric tables, HTML dashboards, or file contents that a tool should produce.
+If several tools could work, choose the most specific and call it. If no suitable tool is available, say that clearly — do not fake the output.";
+
+        /// <summary>
+        /// Injected when data_analyze is subscribed. Biases multi-part analysis asks toward
+        /// ask_user(KPI) + data_analyze + render — not LLM-only markdown tables.
+        /// </summary>
+        private const string AnalysisPathHardRule = @"
+
+## Analysis path (platform hard rule — when data_analyze is available)
+Treat as analysis-like ONLY when the user asks to analyze / group by / break down / distribution / ranges / buckets / KPI / metrics / how many / count by / multi-part insight lists.
+Do NOT treat plain ""show / display / grid view / card view"" as analysis — no ask_user KPI gate for those.
+
+### Large data / row limit (Interactive — always)
+For detail SELECT (with or without TOP): call execute_sql — the platform COUNTs the full set first and may ask the user (confirm_row_limit). Do NOT invent TOP yourself.
+- If counted rows ≤ 250: platform fetches all — do not ask.
+- If larger: platform asks TOP 100 / TOP 1000 (when useful) / All N, then fetches.
+- Scalar COUNT(*) / GROUP BY skip this gate.
+
+### Show grid + card on ONE Result page (not analysis)
+When the user asks to show both grid and card (or table + cards) without analysis:
+- Call render_interactive ONCE with layout=page, dataset_name, and specJson including views + sectionTitles.
+- sectionTitles (required when stacking): short, user-facing labels derived from the user's question — NOT literal ""Grid""/""Cards""/""Table"". Example: {""views"":[""table"",""cards""],""cardsPerRow"":3,""sectionTitles"":{""table"":""Body parts — table"",""cards"":""Body parts — cards""}}.
+- Result shows BOTH views stacked on one page (collapse/expand sections). There is NO view toggle or view selector — do not claim one in FinalResponse.
+- Do NOT emit three separate Results (dashboard + grid + card).
+- Do NOT call ask_user(confirm_kpi_dashboard) just for multi-view show.
+- Prefer render_interactive; for row volume use confirm_row_limit (above), not a silent full fetch.
+
+### Analysis-like asks (Interactive mode)
+1. Call ask_user FIRST — contextKey=confirm_kpi_dashboard, mode=single_choice (kpi_dashboard vs fetch_display). Bias kpi_dashboard.
+2. After kpi_dashboard: cache rows → data_analyze → render_interactive layout=dashboard (one Result).
+3. After fetch_display: fetch + render_interactive table and/or layout=page — no data_analyze.
+4. Forbidden: FinalResponse-only numeric tables when data_analyze/render tools exist.
+If kpi_dashboard already confirmed this chat, do not re-ask.";
+
         private const string FollowupsPromptHint = @"
 
 ## Follow-up suggestions (soft chips)
-After a useful analysis / data_analyze / data_render / KPI answer, if there are natural next questions (deeper breakdown, related metric, drill-down), end your FinalResponse with a fenced code block whose language tag is followups, containing a JSON array of 2–3 short, specific questions (under ~12 words each). Example: [""Break this down by region"",""Which styles have negative margin?""].
-Skip the block for yes/no or clearly finished answers. Chips are non-blocking suggestions (not ask_user). Prefer data_analyze on cached datasets for aggregations (do not re-fetch large tables). Do NOT put chart/dashboard/visualize render requests in chips — use data_render for visuals. Keep ask_user for required Gate/confirmations only.";
+Only after this turn used data_analyze (or a confirmed KPI/dashboard analysis path). Never after show/search/fetch_display/render-only answers.
+When allowed: if there are natural next questions, end your FinalResponse with a fenced code block whose language tag is followups, containing a JSON array of 2–3 short, specific questions (under ~12 words each). Example: [""Break this down by region"",""Which styles have negative margin?""].
+Skip the block for yes/no, finished answers, or any turn that did not call data_analyze. Chips are non-blocking suggestions for the *user* to click (not ask_user). Do not call data_analyze (or any tool) because of chips — only if the user later asks. Do NOT put chart/dashboard/visualize render requests in chips — use render_none_interactive when the user asks for visuals. Keep ask_user for required Gate/confirmations only.";
 
         public static async Task RunAsync(
             string                skillKey,
@@ -74,26 +138,34 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
             log.Info($"[Agent] START skill={skillKey}");
             var previousHitl = AgentHitlBridge.Current;
             AgentHitlBridge.Current = callbacks;
+            string boundChatKey = null;
             try
             {
                 var dsId = identity.HasValue ? identity.Value.DataSourceId : 0;
+                var isUniversal = UniversalAgentConstants.IsUniversalAgentKey(skillKey);
 
-                var skillSet = dsId > 0
-                    ? TbSkillBL.GetByKey(skillKey, dsId)
-                    : TbSkillBL.GetByKey(skillKey);
+                var skillSet = isUniversal
+                    ? BuildUniversalSkillSet()
+                    : (dsId > 0
+                        ? TbSkillBL.GetByKey(skillKey, dsId)
+                        : TbSkillBL.GetByKey(skillKey));
                 if (skillSet == null)
                 {
                     await Safe(callbacks?.OnError, $"Skill key not found: {skillKey}").ConfigureAwait(false);
                     return;
                 }
 
-                var systemPrompt = skillSet.SystemPrompt ?? "";
+                // Hard rule: always inject (not editable via SkillSet UI / migrations).
+                var systemPrompt = (skillSet.SystemPrompt ?? "") + ToolsPreferHardRule;
 
                 var userId    = identity.HasValue && identity.Value.UserId != null                      ? Convert.ToInt32(identity.Value.UserId)                      : 0;
                 var companyId = identity.HasValue && identity.Value.CurrentWorkingCompanyId != null     ? Convert.ToInt32(identity.Value.CurrentWorkingCompanyId)      : 0;
                 var resolvedChatKey = string.IsNullOrWhiteSpace(chatSessionKey)
                     ? (userId > 0 ? AppGenericAgentSessionBL.MakeFixedKey(skillKey, userId) : "")
                     : chatSessionKey.Trim();
+                // Session fallback when tool dispatch loses AsyncLocal (row-limit ask_user).
+                boundChatKey = resolvedChatKey;
+                AgentHitlBridge.BindSession(boundChatKey, callbacks);
                 var context   = new AgentToolContext
                 {
                     ConnectionString = identity.HasValue ? identity.Value.CurrentUserDbConnectionString ?? "" : "",
@@ -143,19 +215,43 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
                 // alive across multiple tool calls within the same agent run.
                 var instancePool = new Dictionary<string, object>(StringComparer.Ordinal);
 
+                var enableThinkMode = skillSet.EnableThinkMode;
+
                 // Build SK kernel from tenant Application Settings default provider
+<<<<<<< HEAD
                 var kernel = KernelFactory.Build(identity);
                 kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks));
+=======
+                var kernel = BuildKernel(identity);
+                kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks, enableThinkMode));
+>>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
                 kernel.AutoFunctionInvocationFilters.Add(new GenericAgentPruneFilter(skillSet.MaxIterations, skillSet.MaxHistoryTokens));
+
+                if (isUniversal)
+                {
+                    var skillPrompt = await BuildUniversalSkillPromptAsync(
+                        dsId, userMessage, chatHistory, kernel, callbacks, ct).ConfigureAwait(false);
+                    if (!string.IsNullOrWhiteSpace(skillPrompt))
+                        systemPrompt = (systemPrompt ?? "") + "\n\n" + skillPrompt;
+                    var specialistPrompt = BuildUniversalSpecialistPrompt(dsId);
+                    if (!string.IsNullOrWhiteSpace(specialistPrompt))
+                        systemPrompt = (systemPrompt ?? "") + "\n\n" + specialistPrompt;
+                }
 
                 // Wrap AppAgentToolRegister rows as KernelFunctions (agent-owned + subscribed library tools).
                 // PromptHint rows gate prompt inject only — not registered as callable KernelFunctions.
-                var toolRows = (dsId > 0 ? TbToolBL.GetBySkillKeyWithLibraries(skillKey, dsId) : TbToolBL.GetBySkillKeyWithLibraries(skillKey)) ?? new List<TbToolDto>();
-                if (HasNamedTool(toolRows, DataAnalyzeToolName)
-                    && systemPrompt.IndexOf("Follow-up suggestions (soft chips)", StringComparison.OrdinalIgnoreCase) < 0)
+                var toolRows = isUniversal
+                    ? (dsId > 0 ? TbToolBL.GetAllActiveLibraryTools(dsId) : TbToolBL.GetAllActiveLibraryTools())
+                    : (dsId > 0 ? TbToolBL.GetBySkillKeyWithLibraries(skillKey, dsId) : TbToolBL.GetBySkillKeyWithLibraries(skillKey));
+                toolRows = toolRows ?? new List<TbToolDto>();
+                if (isUniversal)
                 {
-                    systemPrompt += FollowupsPromptHint;
+                    // call_agent would invoke a Specialist without the confirmed hand-off chat.
+                    toolRows = toolRows
+                        .Where(r => r != null && !string.Equals(r.ToolName, "call_agent", StringComparison.OrdinalIgnoreCase))
+                        .ToList();
                 }
+<<<<<<< HEAD
                 // Layer 2/3 memory: saved facts and similar past conversations. On for agents with the InjectMemory
                 // flag, or that subscribe to the platform-memory library (the no-code switch in the library tab).
                 if (identity.HasValue && userId > 0
@@ -170,6 +266,20 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
                     catch (Exception swallowed) { SwallowLog.Write(swallowed, "memory inject must not fail the run"); }
                 }
                 var callableTools = toolRows.Where(r => !IsPromptHintTool(r)).ToList();
+=======
+                if (HasNamedTool(toolRows, DataAnalyzeToolName))
+                {
+                    if (systemPrompt.IndexOf("## Analysis path (platform hard rule", StringComparison.OrdinalIgnoreCase) < 0)
+                        systemPrompt += AnalysisPathHardRule;
+                    if (systemPrompt.IndexOf("Follow-up suggestions (soft chips)", StringComparison.OrdinalIgnoreCase) < 0)
+                        systemPrompt += FollowupsPromptHint;
+                }
+                // Skip BuiltIn stubs with empty TypeName/MethodName (UI default) — they surface as
+                // "BuiltIn type or method not found: ." and shadow real MCP tools with the same name.
+                var callableTools = toolRows
+                    .Where(r => !IsPromptHintTool(r) && !IsBrokenBuiltInTool(r))
+                    .ToList();
+>>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
                 if (callableTools.Count > 0)
                     kernel.Plugins.AddFromFunctions("tools",
                         callableTools.Select(r => WrapRegisteredTool(r, context, skillSet.MaxToolResultChars, instancePool)).ToArray());
@@ -182,10 +292,23 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
                     kernel.Plugins.AddFromFunctions("hitl", new[] { CreateAskUserKernelFunction(context) });
                 }
 
+                if (isUniversal && !KernelHasFunction(kernel, "propose_specialist_handoff"))
+                {
+                    kernel.Plugins.AddFromFunctions("universal", new[]
+                    {
+                        CreateHandoffProposalKernelFunction(dsId, callbacks)
+                    });
+                }
+
                 // Connect MCP servers (agent-owned + subscribed library MCP servers)
                 var mcpClients = new List<McpClient>();
-                var mcpServers = (dsId > 0 ? TbMcpBL.GetBySkillKeyWithLibraries(skillKey, dsId) : TbMcpBL.GetBySkillKeyWithLibraries(skillKey)) ?? new List<TbMcpDto>();
-                List<App.BL.TenantBusiness.AppAgentToolExclusionDto> exclusions;
+                var mcpServers = isUniversal
+                    ? (dsId > 0 ? TbMcpBL.GetAllActiveLibraryServers(dsId) : TbMcpBL.GetAllActiveLibraryServers())
+                    : (dsId > 0 ? TbMcpBL.GetBySkillKeyWithLibraries(skillKey, dsId) : TbMcpBL.GetBySkillKeyWithLibraries(skillKey));
+                mcpServers = mcpServers ?? new List<TbMcpDto>();
+                List<App.BL.TenantBusiness.AppAgentToolExclusionDto> exclusions = new List<App.BL.TenantBusiness.AppAgentToolExclusionDto>();
+                if (!isUniversal)
+                {
                 try
                 {
                     exclusions = dsId > 0
@@ -197,6 +320,7 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
                     log.Warn(ex, "Tool exclusions not loaded — using all tools");
                     exclusions = new List<App.BL.TenantBusiness.AppAgentToolExclusionDto>();
                 }
+                }
 
                 foreach (var srv in mcpServers)
                 {
@@ -205,6 +329,8 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
                     try
                     {
                         var excludedMcp = App.BL.TenantBusiness.AppAgentToolExclusionBL.ExcludedNamesForLibrary(exclusions, srv.SkillKey);
+                        if (isUniversal)
+                            excludedMcp.Add("call_agent");
                         var (client, plugin) = await CreateMcpPluginAsync(srv, skillSet.MaxToolResultChars, excludedMcp, context, ct).ConfigureAwait(false);
                         mcpClients.Add(client);
                         kernel.Plugins.Add(plugin);
@@ -239,14 +365,52 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
                         Arguments    = new KernelArguments(execSettings)
                     };
 
-                    await Safe(callbacks?.OnStep, new AgentStepEvent
+                    if (enableThinkMode)
                     {
-                        Type = "thinking", Description = "Analyzing your request…", IsSuccess = true
-                    }).ConfigureAwait(false);
+                        var opening = AgentThinkNarrator.Opening(userMessage);
+                        if (!string.IsNullOrWhiteSpace(opening))
+                        {
+                            await Safe(callbacks?.OnStep, new AgentStepEvent
+                            {
+                                Type = "thinking",
+                                Description = opening,
+                                IsSuccess = true
+                            }).ConfigureAwait(false);
+                        }
+                    }
 
                     var fullResponse = new StringBuilder();
                     var thread = new ChatHistoryAgentThread(history);
-                    await foreach (var chunk in agent.InvokeStreamingAsync(thread, cancellationToken: ct).ConfigureAwait(false))
+                    // Capture model prose that accompanies tool rounds as Think Mode (not the final answer).
+                    var invokeOptions = new AgentInvokeOptions
+                    {
+                        OnIntermediateMessage = async msg =>
+                        {
+                            if (!enableThinkMode || msg == null) return;
+                            var prose = (msg.Content ?? "").Trim();
+                            if (string.IsNullOrEmpty(prose)) return;
+                            var hasTool = false;
+                            if (msg.Items != null)
+                            {
+                                foreach (var item in msg.Items)
+                                {
+                                    if (item is FunctionCallContent)
+                                    {
+                                        hasTool = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!hasTool) return;
+                            await Safe(callbacks?.OnStep, new AgentStepEvent
+                            {
+                                Type = "thinking",
+                                Description = TruncateThink(prose, 2000),
+                                IsSuccess = true
+                            }).ConfigureAwait(false);
+                        }
+                    };
+                    await foreach (var chunk in agent.InvokeStreamingAsync(thread, invokeOptions, cancellationToken: ct).ConfigureAwait(false))
                     {
                         var text = chunk.Message.Content ?? "";
                         if (!string.IsNullOrEmpty(text))
@@ -299,11 +463,382 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
             }
             finally
             {
+                AgentHitlBridge.UnbindSession(boundChatKey);
                 AgentHitlBridge.Current = previousHitl;
             }
         }
 
         // ─────────────────────────────────────────────────────────────────────
+<<<<<<< HEAD
+=======
+        // Kernel builder
+        // ─────────────────────────────────────────────────────────────────────
+
+        private static TbSkillSetDto BuildUniversalSkillSet() =>
+            new TbSkillSetDto(
+                SkillKey: UniversalAgentConstants.SkillKey,
+                DisplayName: "Universal Agent",
+                Description: "Built-in general agent",
+                SystemPrompt: UniversalBasePrompt,
+                CapabilityFlags: 0,
+                IsActive: true,
+                SortOrder: 0,
+                Version: 1,
+                MaxHistoryTokens: 80000,
+                SummarizeThreshold: 60000,
+                MaxToolResultChars: 4000,
+                RecentWindowSize: 10,
+                MaxIterations: 40,
+                ExecutionMode: "Interactive",
+                AgentUi: 1,
+                AllowAgentFirstTurn: false,
+                EnableThinkMode: false);
+
+        private static async Task<string> BuildUniversalSkillPromptAsync(
+            int dataSourceId,
+            string userMessage,
+            List<JObject> chatHistory,
+            Kernel kernel,
+            GenericAgentCallbacks callbacks,
+            CancellationToken ct)
+        {
+            if (dataSourceId <= 0) return "";
+
+            List<AppAISkillDto> catalog;
+            try
+            {
+                catalog = SkillLib.GetActiveSkillCatalog(dataSourceId) ?? new List<AppAISkillDto>();
+            }
+            catch (Exception ex)
+            {
+                SwallowLog.Write(ex, "Universal skill catalog load failed");
+                return "";
+            }
+            if (catalog.Count == 0) return "";
+
+            var selectedIds = await SelectUniversalSkillIdsAsync(catalog, userMessage, chatHistory, kernel, ct).ConfigureAwait(false);
+            if (selectedIds.Count == 0) return "";
+
+            var selected = catalog
+                .Where(s => selectedIds.Contains(s.SkillId))
+                .Take(UniversalAgentConstants.MaxSelectedSkills)
+                .ToList();
+            if (selected.Count == 0) return "";
+
+            var sb = new StringBuilder();
+            var loaded = new List<AppAISkillDto>();
+            sb.AppendLine("## Loaded Skills");
+            sb.AppendLine("The following reusable skills were selected from the current Universal Agent context. Follow them when relevant.");
+            foreach (var skill in selected)
+            {
+                var content = "";
+                try
+                {
+                    content = SkillLib.GetComposedSkillPrompt(dataSourceId, skill.SkillId, skipUnderscoreRefs: true) ?? "";
+                }
+                catch (Exception ex)
+                {
+                    SwallowLog.Write(ex, "Universal skill compose failed");
+                }
+                if (string.IsNullOrWhiteSpace(content)) continue;
+
+                loaded.Add(skill);
+                sb.AppendLine();
+                sb.AppendLine($"### Skill: {skill.Name}");
+                if (!string.IsNullOrWhiteSpace(skill.Description))
+                    sb.AppendLine(skill.Description.Trim());
+                sb.AppendLine();
+                sb.AppendLine(content.Trim());
+            }
+
+            if (loaded.Count == 0) return "";
+
+            if (sb.Length > 0)
+            {
+                await Safe(callbacks?.OnStep, new AgentStepEvent
+                {
+                    Type = "thinking",
+                    ToolName = "skill_selection",
+                    Description = "Loaded skills: " + string.Join(", ", loaded.Select(s => s.Name)),
+                    Details = string.Join("\n", loaded.Select(s => $"{s.SkillId}: {s.Name}")),
+                    IsSuccess = true
+                }).ConfigureAwait(false);
+            }
+            return sb.ToString();
+        }
+
+        private static string BuildUniversalSpecialistPrompt(int dataSourceId)
+        {
+            try
+            {
+                var agents = dataSourceId > 0 ? TbSkillBL.GetAll(dataSourceId) : TbSkillBL.GetAll();
+                var rows = (agents ?? new List<TbSkillSetDto>())
+                    .Where(a => a != null && !UniversalAgentConstants.IsUniversalAgentKey(a.SkillKey))
+                    .Take(30)
+                    .Select(a => $"- {a.DisplayName ?? a.SkillKey} ({a.SkillKey}): {a.Description}")
+                    .ToList();
+                if (rows.Count == 0) return "";
+
+                var sb = new StringBuilder();
+                sb.AppendLine("## Available Specialist Agents");
+                sb.AppendLine("These configured Specialist Agents can be better entry points for focused workflows:");
+                foreach (var row in rows) sb.AppendLine(row);
+                sb.AppendLine();
+                sb.AppendLine("When the next step is clearly better handled by exactly one Specialist, call propose_specialist_handoff.");
+                sb.AppendLine("Pass that agent's skillKey as targetSkillKey and a short reason. Do not call call_agent.");
+                sb.AppendLine("The user must confirm before any Specialist chat opens. Do not claim the chat was switched.");
+                return sb.ToString();
+            }
+            catch (Exception ex)
+            {
+                SwallowLog.Write(ex, "Universal specialist catalog load failed");
+                return "";
+            }
+        }
+
+        private static async Task<HashSet<int>> SelectUniversalSkillIdsAsync(
+            List<AppAISkillDto> catalog,
+            string userMessage,
+            List<JObject> chatHistory,
+            Kernel kernel,
+            CancellationToken ct)
+        {
+            HashSet<int> Fallback() => SelectUniversalSkillIdsByKeyword(catalog, userMessage, chatHistory);
+            try
+            {
+                var chat = kernel.GetRequiredService<IChatCompletionService>();
+                var prompt = new ChatHistory();
+                prompt.AddSystemMessage(
+                    "Select up to 3 relevant skills for the user's current task. " +
+                    "Return only JSON like {\"skillIds\":[1,2]}. Return an empty array when no skill is relevant.");
+                var catalogText = string.Join("\n", catalog.Select(s =>
+                    $"- {s.SkillId}: {s.Name} - {s.Description}"));
+                prompt.AddUserMessage(
+                    "Skill catalog:\n" + catalogText +
+                    "\n\nRecent chat:\n" + BuildRecentPlainChat(chatHistory, 6) +
+                    "\n\nCurrent user message:\n" + (userMessage ?? ""));
+                var result = await chat.GetChatMessageContentAsync(prompt, cancellationToken: ct).ConfigureAwait(false);
+                if (TryParseSkillSelection(result?.Content, catalog, out var ids))
+                    return ids;
+                return new HashSet<int>();
+            }
+            catch (Exception ex)
+            {
+                SwallowLog.Write(ex, "Universal skill model selection failed");
+                return Fallback();
+            }
+        }
+
+        /// <summary>
+        /// True when the model returned a skillIds JSON object, including an empty array.
+        /// Keyword fallback is only for a failed model call, not for an explicit empty selection.
+        /// </summary>
+        private static bool TryParseSkillSelection(string text, List<AppAISkillDto> catalog, out HashSet<int> ids)
+        {
+            ids = new HashSet<int>();
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            var raw = text.Trim();
+            var fence = Regex.Match(raw, @"```(?:json)?\s*([\s\S]*?)```", RegexOptions.IgnoreCase);
+            if (fence.Success) raw = fence.Groups[1].Value.Trim();
+            var start = raw.IndexOf('{');
+            var end = raw.LastIndexOf('}');
+            if (start < 0 || end <= start) return false;
+            try
+            {
+                var obj = JObject.Parse(raw.Substring(start, end - start + 1));
+                var arr = obj["skillIds"] as JArray ?? obj["SkillIds"] as JArray;
+                if (arr == null) return true;
+                var allowed = new HashSet<int>(catalog.Select(s => s.SkillId));
+                foreach (var token in arr)
+                {
+                    if (ids.Count >= UniversalAgentConstants.MaxSelectedSkills) break;
+                    if (int.TryParse(token?.ToString(), out var id) && allowed.Contains(id))
+                        ids.Add(id);
+                }
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static HashSet<int> SelectUniversalSkillIdsByKeyword(
+            List<AppAISkillDto> catalog,
+            string userMessage,
+            List<JObject> chatHistory)
+        {
+            var hay = ((userMessage ?? "") + "\n" + BuildRecentPlainChat(chatHistory, 4)).ToLowerInvariant();
+            var scored = catalog
+                .Select(s => new
+                {
+                    Skill = s,
+                    Score = ScoreSkill(hay, ((s.Name ?? "") + " " + (s.Description ?? "")).ToLowerInvariant())
+                })
+                .Where(x => x.Score > 0)
+                .OrderByDescending(x => x.Score)
+                .ThenBy(x => x.Skill.Name)
+                .Take(UniversalAgentConstants.MaxSelectedSkills)
+                .Select(x => x.Skill.SkillId);
+            return new HashSet<int>(scored);
+        }
+
+        private static int ScoreSkill(string hay, string needleText)
+        {
+            if (string.IsNullOrWhiteSpace(hay) || string.IsNullOrWhiteSpace(needleText)) return 0;
+            var score = 0;
+            foreach (Match m in Regex.Matches(needleText, @"[a-zA-Z0-9_]{3,}"))
+            {
+                if (hay.Contains(m.Value.ToLowerInvariant()))
+                    score++;
+            }
+            return score;
+        }
+
+        private static string BuildRecentPlainChat(List<JObject> chatHistory, int take)
+        {
+            if (chatHistory == null || chatHistory.Count == 0) return "";
+            var rows = chatHistory
+                .Where(m => m != null)
+                .Skip(Math.Max(0, chatHistory.Count - Math.Max(1, take)))
+                .Select(m => $"{m.Value<string>("role")}: {ExtractContentText(m["content"])}");
+            return string.Join("\n", rows);
+        }
+
+        private static string ExtractContentText(JToken token)
+        {
+            if (token == null || token.Type == JTokenType.Null) return "";
+            if (token.Type == JTokenType.String) return token.ToString();
+            if (token.Type == JTokenType.Array)
+                return string.Join(" ", token.Select(ExtractContentText));
+            if (token.Type == JTokenType.Object)
+                return token["text"]?.ToString() ?? token["content"]?.ToString() ?? token.ToString(Newtonsoft.Json.Formatting.None);
+            return token.ToString();
+        }
+
+        public static async Task<string> CompleteOnceAsync(
+            AppClientIdentity? identity,
+            string systemPrompt,
+            string userPrompt,
+            CancellationToken ct)
+        {
+            var kernel = BuildKernel(identity);
+            var chat = kernel.GetRequiredService<IChatCompletionService>();
+            var history = new ChatHistory();
+            if (!string.IsNullOrWhiteSpace(systemPrompt))
+                history.AddSystemMessage(systemPrompt);
+            history.AddUserMessage(userPrompt ?? "");
+            var result = await chat.GetChatMessageContentAsync(history, cancellationToken: ct).ConfigureAwait(false);
+            return result?.Content ?? "";
+        }
+
+        private static KernelFunction CreateHandoffProposalKernelFunction(int dataSourceId, GenericAgentCallbacks callbacks)
+        {
+            var parameters = new List<KernelParameterMetadata>
+            {
+                new("targetSkillKey")
+                {
+                    Description = "SkillKey of the one active Specialist Agent to propose. Not the display name unless it matches exactly.",
+                    IsRequired = true,
+                    ParameterType = typeof(string)
+                },
+                new("reason")
+                {
+                    Description = "One or two sentences explaining why this Specialist is the better next step.",
+                    IsRequired = true,
+                    ParameterType = typeof(string)
+                }
+            };
+
+            return KernelFunctionFactory.CreateFromMethod(
+                async (KernelArguments args, CancellationToken ct) =>
+                {
+                    ct.ThrowIfCancellationRequested();
+                    string Arg(string name) =>
+                        args.TryGetValue(name, out var v) && v != null ? v.ToString() : "";
+
+                    var target = (Arg("targetSkillKey") ?? "").Trim();
+                    var reason = (Arg("reason") ?? "").Trim();
+                    var agent = UniversalAgentWorkflowBL.FindActiveSpecialist(dataSourceId, target);
+                    if (agent == null)
+                        return "Handoff was not shown. targetSkillKey is not an active Specialist. Use a skillKey from Available Specialist Agents.";
+
+                    var name = string.IsNullOrWhiteSpace(agent.DisplayName) ? agent.SkillKey : agent.DisplayName.Trim();
+                    if (string.IsNullOrWhiteSpace(reason))
+                        reason = name + " is a better fit for the next step.";
+
+                    var payload = new JObject
+                    {
+                        ["targetSkillKey"] = agent.SkillKey,
+                        ["name"] = name,
+                        ["reason"] = reason.Length > 500 ? reason.Substring(0, 500) : reason,
+                        ["description"] = agent.Description ?? ""
+                    };
+
+                    if (callbacks?.OnStep != null)
+                    {
+                        await callbacks.OnStep(new AgentStepEvent
+                        {
+                            Type = "handoff_proposal",
+                            Description = "Handoff proposed: " + name,
+                            Details = payload.ToString(Newtonsoft.Json.Formatting.None),
+                            IsSuccess = true
+                        }).ConfigureAwait(false);
+                    }
+
+                    return "Shown a handoff card for " + name + " (" + agent.SkillKey + "). "
+                        + "The user has not confirmed. Stay in Universal Agent and do not claim the chat was switched.";
+                },
+                functionName: "propose_specialist_handoff",
+                description: "Propose moving this task to one Specialist Agent. Shows a confirmation card. Does not open or continue a Specialist chat.",
+                parameters: parameters);
+        }
+
+        private static Kernel BuildKernel(AppClientIdentity? identity)
+        {
+            EmLLMProvider provider;
+            string        apiKey;
+            string        model;
+
+            if (identity.HasValue)
+            {
+                var providerStr = AIConfigSettingBL.GetProvider(identity.Value) ?? "";
+                provider = Enum.TryParse<EmLLMProvider>(providerStr, true, out var parsed) ? parsed : EmLLMProvider.Gemini;
+                apiKey   = AIConfigSettingBL.GetApiKey(identity.Value) ?? "";
+                model    = AIConfigSettingBL.GetModel(identity.Value)  ?? "";
+            }
+            else
+            {
+                provider = KernelProviderHelper.GetProvider();
+                apiKey   = KernelProviderHelper.GetApiKey() ?? "";
+                model    = KernelProviderHelper.GetModel()  ?? "";
+            }
+
+            var builder = Kernel.CreateBuilder();
+            switch (provider)
+            {
+                case EmLLMProvider.Anthropic:
+                    // No official SK connector package for Anthropic — use a custom wrapper.
+                    builder.Services.AddSingleton<IChatCompletionService>(new AnthropicChatCompletionService(model, apiKey));
+                    break;
+                case EmLLMProvider.Gemini:
+                    // Bound hang risk: default HttpClient timeout is 100s and can stall forever on
+                    // some streaming paths. Keep a hard ceiling; CancelRun still cancels via CT.
+                    var geminiHttp = new HttpClient(new GeminiRoleFixHandler())
+                    {
+                        Timeout = TimeSpan.FromMinutes(10)
+                    };
+                    builder.AddGoogleAIGeminiChatCompletion(model, apiKey, httpClient: geminiHttp);
+                    break;
+                default:
+                    builder.AddOpenAIChatCompletion(model, apiKey);
+                    break;
+            }
+            return builder.Build();
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+>>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
         // Registered tool wrapper (AppAgentToolEngine → KernelFunction)
         // ─────────────────────────────────────────────────────────────────────
 
@@ -427,6 +962,9 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
                 description:
                     "System built-in (auto-injected for Interactive agents — not a library/private tool). "
                     + "Ask the user a structured question and wait for their answer. "
+                    + "For large row fetches: call execute_sql first (platform COUNTs). If it returns need_ask_user, call ask_user with that prompt/optionsJson/contextKey=confirm_row_limit (include the counted row total). "
+                    + "For analysis-like asks (group-by / ranges / multi-part metrics): MUST call with contextKey=confirm_kpi_dashboard, mode=single_choice, "
+                    + "optionsJson=[{\"id\":\"kpi_dashboard\",\"label\":\"KPI / Dashboard — batch analysis\"},{\"id\":\"fetch_display\",\"label\":\"Only fetch and show the data I asked for\"}] BEFORE data_analyze or inventing tables. "
                     + "mode=text|single_choice|multi_choice. "
                     + "Choice UI (single_choice + optionsJson): "
                     + "ui=button_group (clickable buttons, default for menus), "
@@ -509,29 +1047,130 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
             return KernelFunctionFactory.CreateFromMethod(
                 async (KernelArguments args, CancellationToken ct) =>
                 {
-                    var mcpArgs = args
-                        .Where(kv => kv.Value != null)
-                        .ToDictionary(kv => kv.Key, kv => kv.Value!);
+                    // SK/Gemini often pass JsonElement / objects; gateway tools (queryParamsJson) need
+                    // real JSON strings, and typed MCP params need objects — normalize both.
+                    var mcpArgs = NormalizeMcpArgs(args);
 
                     using var callCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                     callCts.CancelAfter(TimeSpan.FromSeconds(McpToolCallTimeoutSeconds));
 
-                    var result = await client.CallToolAsync(
-                        toolName,
-                        (IReadOnlyDictionary<string, object?>)mcpArgs,
-                        cancellationToken: callCts.Token).ConfigureAwait(false);
+                    try
+                    {
+                        var result = await client.CallToolAsync(
+                            toolName,
+                            mcpArgs,
+                            cancellationToken: callCts.Token).ConfigureAwait(false);
 
-                    var text = string.Join("\n", result.Content
-                        .OfType<TextContentBlock>()
-                        .Select(c => c.Text ?? ""));
+                        var text = string.Join("\n", result.Content
+                            .OfType<TextContentBlock>()
+                            .Select(c => c.Text ?? ""));
 
-                    text = DataAnalyze.AgentDataAnalyzeHook.MaybeCacheAndRewrite(context, "MCP", toolName, text);
-                    return CapResult(text, cap);
+                        // Cache full payload before CapResult — char cap must never shrink dataset_cached rows.
+                        text = DataAnalyze.AgentDataAnalyzeHook.MaybeCacheAndRewrite(context, "MCP", toolName, text);
+                        return CapResult(text, cap);
+                    }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                        return JsonSerializer.Serialize(new
+                        {
+                            Error = $"MCP tool '{toolName}' timed out after {McpToolCallTimeoutSeconds}s. Retry or narrow filters."
+                        });
+                    }
                 },
                 functionName:    SanitizeName(toolName),
                 description:     description,
                 parameters:      parameters,
                 returnParameter: returnParameter);
+        }
+
+        /// <summary>
+        /// Convert SK KernelArguments into MCP JSON-RPC argument values.
+        /// JsonElement/JToken → CLR primitives or parsed JSON; keep objects for typed schemas;
+        /// string-named *Json params that arrive as objects are serialized to JSON text.
+        /// </summary>
+        private static IReadOnlyDictionary<string, object?> NormalizeMcpArgs(KernelArguments args)
+        {
+            var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            if (args == null) return dict;
+            foreach (var kv in args)
+            {
+                if (kv.Value == null) continue;
+                dict[kv.Key] = NormalizeMcpArgValue(kv.Key, kv.Value);
+            }
+            return dict;
+        }
+
+        private static object? NormalizeMcpArgValue(string name, object value)
+        {
+            var wantsJsonString = name != null
+                && (name.EndsWith("Json", StringComparison.OrdinalIgnoreCase)
+                    || name.EndsWith("_json", StringComparison.OrdinalIgnoreCase));
+
+            switch (value)
+            {
+                case string s:
+                    return s;
+                case JsonElement je:
+                    if (wantsJsonString)
+                        return je.ValueKind == JsonValueKind.String ? je.GetString() : je.GetRawText();
+                    return JsonElementToMcpValue(je);
+                case JToken jt:
+                    if (wantsJsonString)
+                        return jt.Type == JTokenType.String ? jt.ToString() : jt.ToString(Newtonsoft.Json.Formatting.None);
+                    if (jt.Type == JTokenType.String) return jt.ToString();
+                    if (jt.Type == JTokenType.Integer) return jt.Value<long>();
+                    if (jt.Type == JTokenType.Float) return jt.Value<double>();
+                    if (jt.Type == JTokenType.Boolean) return jt.Value<bool>();
+                    if (jt.Type == JTokenType.Null) return null;
+                    return JsonSerializer.Deserialize<object>(jt.ToString(Newtonsoft.Json.Formatting.None));
+                case bool or byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal:
+                    return value;
+                default:
+                    if (wantsJsonString)
+                    {
+                        try { return JsonSerializer.Serialize(value); }
+                        catch { return value.ToString(); }
+                    }
+                    return value;
+            }
+        }
+
+        private static object? JsonElementToMcpValue(JsonElement je)
+        {
+            switch (je.ValueKind)
+            {
+                case JsonValueKind.String: return je.GetString();
+                case JsonValueKind.Number:
+                    if (je.TryGetInt64(out var l)) return l;
+                    if (je.TryGetDouble(out var d)) return d;
+                    return je.GetRawText();
+                case JsonValueKind.True: return true;
+                case JsonValueKind.False: return false;
+                case JsonValueKind.Null:
+                case JsonValueKind.Undefined: return null;
+                default:
+                    // Object / Array — keep as parsed structure for typed MCP schemas.
+                    return JsonSerializer.Deserialize<object>(je.GetRawText());
+            }
+        }
+
+        private static bool IsBrokenBuiltInTool(TbToolDto row)
+        {
+            if (row == null) return true;
+            if (!string.Equals(row.ToolType, "BuiltIn", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(row.ToolType))
+                return false;
+            try
+            {
+                var obj = JObject.Parse(string.IsNullOrWhiteSpace(row.ToolConfig) ? "{}" : row.ToolConfig);
+                var typeName = (obj["TypeName"] ?? obj["typeName"])?.ToString()?.Trim();
+                var methodName = (obj["MethodName"] ?? obj["methodName"])?.ToString()?.Trim();
+                return string.IsNullOrEmpty(typeName) || string.IsNullOrEmpty(methodName);
+            }
+            catch
+            {
+                return true;
+            }
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -614,6 +1253,12 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
             if (trimmed.StartsWith("{") || trimmed.StartsWith("["))
                 return $"{{\"note\":\"Result truncated ({omitted} chars omitted)\",\"preview\":{Newtonsoft.Json.JsonConvert.ToString(preview)}}}";
             return preview + $"… [{omitted} chars truncated]";
+        }
+
+        private static string TruncateThink(string s, int max)
+        {
+            if (string.IsNullOrEmpty(s) || s.Length <= max) return s ?? "";
+            return s.Substring(0, max) + "…";
         }
 
         private static async Task Safe<T>(Func<T, Task>? callback, T arg)

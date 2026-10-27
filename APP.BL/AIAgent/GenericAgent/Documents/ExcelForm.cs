@@ -6,6 +6,8 @@ using System.Linq;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
+using A = DocumentFormat.OpenXml.Drawing;
+using Xdr = DocumentFormat.OpenXml.Drawing.Spreadsheet;
 
 namespace App.BL.AIAgent.GenericAgent.Documents
 {
@@ -40,6 +42,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 var ws = wb.AddNewPart<WorksheetPart>();
                 var data = new SheetData();
                 var merges = new MergeCells();
+                var pictures = new List<(int Column, uint Row, byte[] Bytes, long Cx, long Cy)>();
+                var imageColumns = new HashSet<int>();
                 uint row = 1;
 
                 if (!string.IsNullOrEmpty(doc.Title))
@@ -51,7 +55,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 }
                 row = WriteFields(data, row, doc.Fields);
                 foreach (var section in doc.Sections)
-                    row = WriteSection(data, merges, row, span, section);
+                    row = WriteSection(data, merges, row, span, section, pictures, imageColumns);
                 if (!string.IsNullOrEmpty(doc.Notes))
                 {
                     WriteBlank(data, row, span);
@@ -60,11 +64,13 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 }
 
                 var worksheet = new Worksheet();
-                worksheet.Append(BuildColumns(span));
+                worksheet.Append(BuildColumns(span, imageColumns));
                 worksheet.Append(data);
                 if (merges.ChildElements.Count > 0)
                     worksheet.Append(merges);
                 ws.Worksheet = worksheet;
+                if (pictures.Count > 0)
+                    AddCardPictures(ws, pictures);
                 ws.Worksheet.Save();
 
                 var sheets = wb.Workbook.AppendChild(new Sheets());
@@ -77,6 +83,130 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 wb.Workbook.Save();
             }
             return ms.ToArray();
+        }
+
+        /// <summary>One sheet. Each row of the sheet holds cardsPerRow cards. cardRows is ignored.</summary>
+        public static byte[] WriteCards(CardSheet sheet)
+        {
+            var perRow = CardSheet.ClampPerRow(sheet.CardsPerRow);
+            using var ms = new MemoryStream();
+            using (var workbook = SpreadsheetDocument.Create(ms, SpreadsheetDocumentType.Workbook, true))
+            {
+                var wb = workbook.AddWorkbookPart();
+                wb.Workbook = new Workbook();
+                var styles = wb.AddNewPart<WorkbookStylesPart>();
+                styles.Stylesheet = BuildStyles();
+                styles.Stylesheet.Save();
+
+                var ws = wb.AddNewPart<WorksheetPart>();
+                var data = new SheetData();
+                var pictures = new List<(int Column, uint Row, byte[] Bytes, long Cx, long Cy)>();
+                uint row = 1;
+                if (!string.IsNullOrEmpty(sheet.Title))
+                {
+                    var title = new Row { RowIndex = row };
+                    title.Append(Inline(1, row, sheet.Title, StyleTitle));
+                    ApplyHeight(title, ContentHeight(sheet.Title, 13, ColumnWidth(1) * perRow));
+                    data.Append(title);
+                    row++;
+                }
+                for (var i = 0; i < sheet.Cards.Count; i += perRow)
+                {
+                    var slice = new List<List<CardField>>();
+                    var fieldCount = 0;
+                    for (var c = 0; c < perRow && i + c < sheet.Cards.Count; c++)
+                    {
+                        slice.Add(sheet.Cards[i + c]);
+                        fieldCount = Math.Max(fieldCount, sheet.Cards[i + c].Count);
+                    }
+                    for (var f = 0; f < fieldCount; f++)
+                    {
+                        var xrow = new Row { RowIndex = row };
+                        double height = 0;
+                        for (var c = 0; c < slice.Count; c++)
+                        {
+                            var field = f < slice[c].Count ? slice[c][f] : new CardField();
+                            var hasPicture = field.ImageBytes != null && field.ImageBytes.Length > 0;
+                            var imageSlot = hasPicture || field.IsImage;
+                            var text = hasPicture || field.IsImage
+                                ? (field.Label ?? "")
+                                : (string.IsNullOrEmpty(field.Label) ? field.Value : field.Label + ": " + field.Value);
+                            xrow.Append(Inline(c + 1, row, text, field.IsImage ? StyleValue : StyleCell));
+                            if (hasPicture)
+                            {
+                                var box = ImagePixels.Fit(field.ImageBytes, 110, 98);
+                                pictures.Add((c + 1, row, field.ImageBytes, box.Width * 10000L, box.Height * 10000L));
+                                height = Math.Max(height, box.Height / 1.27d + 6);
+                            }
+                            else
+                                height = Math.Max(height, imageSlot ? 72 : ContentHeight(text, 10, ColumnWidth(c + 1)));
+                        }
+                        ApplyHeight(xrow, height);
+                        data.Append(xrow);
+                        row++;
+                    }
+                    WriteBlank(data, row, perRow);
+                    row++;
+                }
+
+                var worksheet = new Worksheet();
+                worksheet.Append(BuildColumns(Math.Max(perRow, 1)));
+                worksheet.Append(data);
+                ws.Worksheet = worksheet;
+                if (pictures.Count > 0)
+                    AddCardPictures(ws, pictures);
+                ws.Worksheet.Save();
+                var sheets = wb.Workbook.AppendChild(new Sheets());
+                sheets.Append(new Sheet { Id = wb.GetIdOfPart(ws), SheetId = 1, Name = "Cards" });
+                wb.Workbook.Save();
+            }
+            return ms.ToArray();
+        }
+
+        private static void AddCardPictures(WorksheetPart worksheetPart, List<(int Column, uint Row, byte[] Bytes, long Cx, long Cy)> pictures)
+        {
+            var drawings = worksheetPart.AddNewPart<DrawingsPart>();
+            var drawing = new Xdr.WorksheetDrawing();
+            uint index = 1;
+            foreach (var picture in pictures)
+            {
+                var part = drawings.AddImagePart(PickImagePart(picture.Bytes));
+                using (var stream = new MemoryStream(picture.Bytes))
+                    part.FeedData(stream);
+                var cx = picture.Cx > 0 ? picture.Cx : 800000;
+                var cy = picture.Cy > 0 ? picture.Cy : 800000;
+                var marker = new Xdr.FromMarker(
+                    new Xdr.ColumnId((picture.Column - 1).ToString(CultureInfo.InvariantCulture)),
+                    new Xdr.ColumnOffset("60000"),
+                    new Xdr.RowId((picture.Row - 1).ToString(CultureInfo.InvariantCulture)),
+                    new Xdr.RowOffset("40000"));
+                var extent = new Xdr.Extent { Cx = cx, Cy = cy };
+                var blip = new A.Blip { Embed = drawings.GetIdOfPart(part) };
+                var pic = new Xdr.Picture(
+                    new Xdr.NonVisualPictureProperties(
+                        new Xdr.NonVisualDrawingProperties { Id = index + 1, Name = "Card" + index.ToString(CultureInfo.InvariantCulture) },
+                        new Xdr.NonVisualPictureDrawingProperties(new A.PictureLocks { NoChangeAspect = true })),
+                    new Xdr.BlipFill(blip, new A.Stretch(new A.FillRectangle())),
+                    new Xdr.ShapeProperties(
+                        new A.Transform2D(new A.Offset { X = 0, Y = 0 }, new A.Extents { Cx = cx, Cy = cy }),
+                        new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle }));
+                drawing.Append(new Xdr.OneCellAnchor(marker, extent, pic, new Xdr.ClientData()));
+                index++;
+            }
+            drawings.WorksheetDrawing = drawing;
+            drawings.WorksheetDrawing.Save();
+            worksheetPart.Worksheet.Append(new Drawing { Id = worksheetPart.GetIdOfPart(drawings) });
+        }
+
+        private static PartTypeInfo PickImagePart(byte[] bytes)
+        {
+            if (bytes != null && bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xD8)
+                return ImagePartType.Jpeg;
+            if (bytes != null && bytes.Length >= 3 && bytes[0] == (byte)'G')
+                return ImagePartType.Gif;
+            if (bytes != null && bytes.Length >= 2 && bytes[0] == (byte)'B')
+                return ImagePartType.Bmp;
+            return ImagePartType.Png;
         }
 
         public static FormDocument ReadXls(byte[] bytes)
@@ -203,7 +333,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return current;
         }
 
-        private static uint WriteSection(SheetData data, MergeCells merges, uint row, int span, FormSection section)
+        private static uint WriteSection(SheetData data, MergeCells merges, uint row, int span, FormSection section, List<(int Column, uint Row, byte[] Bytes, long Cx, long Cy)> pictures, HashSet<int> imageColumns)
         {
             if (!string.IsNullOrEmpty(section.Title))
             {
@@ -221,17 +351,27 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     WriteMerged(data, merges, row, span, table.Title, StyleNested);
                     row++;
                 }
-                var header = table.Columns.Select(c => new FormCell { Text = c }).ToList();
-                WriteCells(data, row, header, StyleHeader, true);
+                var headerLabels = new List<string>();
+                for (var hi = 0; hi < table.Columns.Count; hi++)
+                {
+                    var label = table.DisplayHeaders != null && hi < table.DisplayHeaders.Count
+                                && !string.IsNullOrWhiteSpace(table.DisplayHeaders[hi])
+                        ? table.DisplayHeaders[hi]
+                        : table.Columns[hi];
+                    headerLabels.Add(label ?? "");
+                }
+                var header = headerLabels.Select(c => new FormCell { Text = c }).ToList();
+                WriteCells(data, row, header, StyleHeader, true, pictures, imageColumns);
                 row++;
                 foreach (var cells in table.Rows)
                 {
-                    WriteCells(data, row, cells, StyleCell, false);
+                    var exportCells = FormGridCellPolish.FormatExportRow(cells, table.Formats);
+                    WriteCells(data, row, exportCells, StyleCell, false, pictures, imageColumns);
                     row++;
                 }
             }
             foreach (var child in section.Sections)
-                row = WriteSection(data, merges, row, span, child);
+                row = WriteSection(data, merges, row, span, child, pictures, imageColumns);
             return row;
         }
 
@@ -262,7 +402,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return row;
         }
 
-        private static void WriteCells(SheetData data, uint row, List<FormCell> cells, uint headerStyle, bool header)
+        private static void WriteCells(SheetData data, uint row, List<FormCell> cells, uint headerStyle, bool header, List<(int Column, uint Row, byte[] Bytes, long Cx, long Cy)> pictures, HashSet<int> imageColumns)
         {
             var xrow = new Row { RowIndex = row };
             double height = 0;
@@ -270,8 +410,18 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             {
                 var cell = cells[i] ?? new FormCell();
                 var style = header ? headerStyle : (cell.IsNumber ? StyleNumber : StyleCell);
-                xrow.Append(Inline(i + 1, row, cell.Text, style));
-                height = Math.Max(height, ContentHeight(cell.Text, FontPt(style), ColumnWidth(i + 1)));
+                var picture = !header && cell.ImageBytes != null && cell.ImageBytes.Length > 0;
+                var text = picture ? "" : cell.Text;
+                xrow.Append(Inline(i + 1, row, text, style));
+                if (picture)
+                {
+                    var box = ImagePixels.Fit(cell.ImageBytes, 110, 98);
+                    pictures.Add((i + 1, row, cell.ImageBytes, box.Width * 10000L, box.Height * 10000L));
+                    imageColumns.Add(i + 1);
+                    height = Math.Max(height, box.Height / 1.27d + 6);
+                }
+                else
+                    height = Math.Max(height, ContentHeight(text, FontPt(style), ColumnWidth(i + 1, imageColumns.Contains(i + 1))));
             }
             ApplyHeight(xrow, height);
             data.Append(xrow);
@@ -359,9 +509,15 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return 10;
         }
 
+        private static double ColumnWidth(int col, bool image)
+        {
+            if (image) return 18;
+            return col % 2 == 1 ? 22 : 28;
+        }
+
         private static double ColumnWidth(int col)
         {
-            return col % 2 == 1 ? 22 : 28;
+            return ColumnWidth(col, false);
         }
 
         /// <summary>Points. Counts wrapped lines from column width so the row is tall enough for the font.</summary>
@@ -393,14 +549,20 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 
         private static Columns BuildColumns(int span)
         {
+            return BuildColumns(span, null);
+        }
+
+        private static Columns BuildColumns(int span, HashSet<int> imageColumns)
+        {
             var columns = new Columns();
             for (var i = 1; i <= span; i++)
             {
+                var image = imageColumns != null && imageColumns.Contains(i);
                 columns.Append(new Column
                 {
                     Min = (uint)i,
                     Max = (uint)i,
-                    Width = i % 2 == 1 ? 22 : 28,
+                    Width = image ? 18 : (i % 2 == 1 ? 22 : 28),
                     CustomWidth = true
                 });
             }

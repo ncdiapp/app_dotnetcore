@@ -13,10 +13,12 @@ namespace App.BL.AIAgent.GenericAgent
         private static readonly NLog.Logger Log = NLog.LogManager.GetCurrentClassLogger();
 
         private readonly GenericAgentCallbacks _callbacks;
+        private readonly bool _enableThinkMode;
 
-        public AgentStepFilter(GenericAgentCallbacks callbacks)
+        public AgentStepFilter(GenericAgentCallbacks callbacks, bool enableThinkMode = false)
         {
             _callbacks = callbacks;
+            _enableThinkMode = enableThinkMode;
         }
 
         public async Task OnFunctionInvocationAsync(FunctionInvocationContext ctx, Func<FunctionInvocationContext, Task> next)
@@ -31,10 +33,20 @@ namespace App.BL.AIAgent.GenericAgent
             if (isCallAgent && !string.IsNullOrWhiteSpace(targetSkillKey))
                 toolLabel = "call_agent → " + targetSkillKey.Trim();
 
-            // For call_agent, keep targetSkillKey first so truncation never drops the agent id.
-            var details = isCallAgent
+            var callDetails = isCallAgent
                 ? BuildCallAgentArgsPreview(ctx.Arguments, targetSkillKey)
-                : Truncate(SafeSerialize(ctx.Arguments), 2000);
+                : ToolIoFormatter.FormatToolCallDetails(toolName, ctx.Arguments);
+
+            if (_enableThinkMode)
+            {
+                await Fire(_callbacks?.OnStep, new AgentStepEvent
+                {
+                    Type        = "thinking",
+                    Description = AgentThinkNarrator.IntentBeforeTool(toolName, ctx.Arguments, toolLabel),
+                    Details     = ToolIoFormatter.FormatThinkDetail(toolName, ctx.Arguments, null, true, afterTool: false),
+                    IsSuccess   = true
+                });
+            }
 
             await Fire(_callbacks?.OnStep, new AgentStepEvent
             {
@@ -42,7 +54,7 @@ namespace App.BL.AIAgent.GenericAgent
                 ToolName    = toolName,
                 Description = toolLabel,
                 IsSuccess   = true,
-                Details     = details
+                Details     = callDetails
             });
 
             var sw = Stopwatch.StartNew();
@@ -65,17 +77,34 @@ namespace App.BL.AIAgent.GenericAgent
                 var resultText = ok ? TryGetResult(ctx) : null;
                 if (ok && (resultText == null || resultText == "null"))
                     resultText = "{\"ok\":true}";
+
+                // execute_sql etc. often return { IsSuccess:false } without throwing
+                var effectiveOk = ok && !AgentThinkNarrator.IsSoftFailure(resultText);
+
+                if (_enableThinkMode)
+                {
+                    await Fire(_callbacks?.OnStep, new AgentStepEvent
+                    {
+                        Type        = "thinking",
+                        Description = AgentThinkNarrator.OutcomeAfterTool(toolName, ctx.Arguments, resultText, effectiveOk),
+                        Details     = ToolIoFormatter.FormatThinkDetail(toolName, ctx.Arguments, resultText, effectiveOk, afterTool: true),
+                        IsSuccess   = effectiveOk
+                    });
+                }
+
                 await Fire(_callbacks?.OnStep, new AgentStepEvent
                 {
                     Type        = "tool_result",
                     ToolName    = toolName,
-                    Description = ok
+                    Description = effectiveOk
                         ? (isCallAgent && !string.IsNullOrWhiteSpace(targetSkillKey)
                             ? $"call_agent → {targetSkillKey.Trim()} — done ({sw.ElapsedMilliseconds}ms)"
                             : $"{toolName} — done ({sw.ElapsedMilliseconds}ms)")
                         : toolName + " failed",
-                    IsSuccess   = ok,
-                    Details     = Truncate(resultText, 4000)
+                    IsSuccess   = effectiveOk,
+                    Details     = isCallAgent
+                        ? Truncate(resultText, 4000)
+                        : ToolIoFormatter.FormatToolResultDetails(toolName, ctx.Arguments, resultText, effectiveOk)
                 });
             }
         }
@@ -88,7 +117,7 @@ namespace App.BL.AIAgent.GenericAgent
             var message = GetArgString(args, "message", "Message");
             if (!string.IsNullOrEmpty(message))
                 jo["message"] = message.Length > 400 ? message.Substring(0, 400) + "…" : message;
-            return jo.ToString(Formatting.None);
+            return "## Input\n```json\n" + jo.ToString(Formatting.Indented) + "\n```";
         }
 
         private static string? GetArgString(KernelArguments? args, params string[] names)
@@ -102,7 +131,6 @@ namespace App.BL.AIAgent.GenericAgent
                     if (!string.IsNullOrWhiteSpace(s)) return s;
                 }
             }
-            // Case-insensitive fallback
             foreach (var kv in args)
             {
                 foreach (var name in names)
@@ -130,12 +158,6 @@ namespace App.BL.AIAgent.GenericAgent
                 return JsonConvert.SerializeObject(obj, Formatting.Indented);
             }
             catch (Exception swallowed) { SwallowLog.Write(swallowed); return null; }
-        }
-
-        private static string SafeSerialize(object? obj)
-        {
-            try { return JsonConvert.SerializeObject(obj); }
-            catch (Exception swallowed) { SwallowLog.Write(swallowed); return ""; }
         }
 
         private static async Task Fire(Func<AgentStepEvent, Task>? cb, AgentStepEvent e)

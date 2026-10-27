@@ -18,7 +18,11 @@ namespace App.BL.AIAgent.GenericAgent
     {
         public const string FolderName = "AgentOutput";
         public const string StarterFolderName = "AgentStarter";
-        public const long MaxFileBytes = 20L * 1024 * 1024;
+        /// <summary>
+        /// Legacy constant kept for callers that still reference it. Tool-written AgentOutput
+        /// (render HTML, exports, cache spill) is not size-capped — only LLM-facing previews are.
+        /// </summary>
+        public const long MaxFileBytes = long.MaxValue;
         public const string WorkingConfigFileName = "dwTabImportConfig.json";
 
         public static string EnsureRoot(string sessionKey, int companyId, string skillKey = null)
@@ -73,13 +77,11 @@ namespace App.BL.AIAgent.GenericAgent
         public static GenericAgentFileContentDto ReadDefaultSourceText(string skillKey, string relativePath, int companyId)
         {
             var bytes = ReadDefaultSourceBytes(skillKey, relativePath, companyId);
-            var truncated = bytes.Length > MaxFileBytes;
-            var take = truncated ? (int)Math.Min(MaxFileBytes, bytes.Length) : bytes.Length;
             return new GenericAgentFileContentDto
             {
                 RelativePath = relativePath,
-                Content = DecodeText(bytes, take),
-                Truncated = truncated
+                Content = DecodeText(bytes, bytes.Length),
+                Truncated = false
             };
         }
 
@@ -98,8 +100,6 @@ namespace App.BL.AIAgent.GenericAgent
             EnsureStarterRoot(skillKey, companyId);
             var full = ResolveStarter(skillKey, relativePath, companyId);
             Directory.CreateDirectory(Path.GetDirectoryName(full) ?? full);
-            if (bytes != null && bytes.Length > MaxFileBytes)
-                throw new InvalidOperationException("File exceeds size limit (20 MB).");
             File.WriteAllBytes(full, bytes ?? Array.Empty<byte>());
             return ToRelative(ResolveStarter(skillKey, null, companyId), full).Replace('\\', '/');
         }
@@ -164,13 +164,11 @@ namespace App.BL.AIAgent.GenericAgent
         public static GenericAgentFileContentDto ReadText(string sessionKey, string relativePath, int companyId, string skillKey = null)
         {
             var bytes = ReadBytes(sessionKey, relativePath, companyId, skillKey);
-            var truncated = bytes.Length > MaxFileBytes;
-            var take = truncated ? (int)Math.Min(MaxFileBytes, bytes.Length) : bytes.Length;
             return new GenericAgentFileContentDto
             {
                 RelativePath = relativePath,
-                Content = DecodeText(bytes, take),
-                Truncated = truncated
+                Content = DecodeText(bytes, bytes.Length),
+                Truncated = false
             };
         }
 
@@ -195,8 +193,7 @@ namespace App.BL.AIAgent.GenericAgent
             EnsureRoot(sessionKey, companyId);
             var full = Resolve(sessionKey, relativePath, companyId);
             Directory.CreateDirectory(Path.GetDirectoryName(full) ?? full);
-            if (bytes != null && bytes.Length > MaxFileBytes)
-                throw new InvalidOperationException("File exceeds size limit (20 MB).");
+            // No size cap — tools may write large render HTML / exports. LLM context is capped elsewhere.
             File.WriteAllBytes(full, bytes ?? Array.Empty<byte>());
             return ToRelative(Resolve(sessionKey, null, companyId), full).Replace('\\', '/');
         }

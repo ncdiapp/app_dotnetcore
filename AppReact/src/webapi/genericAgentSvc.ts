@@ -29,6 +29,38 @@ export interface GenericAgentChatSummary {
     IsFixedTestSession: boolean;
 }
 
+export interface GenericAgentSavedSkill {
+    SkillKey?: string;
+    SessionKey?: string;
+    SkillId: number;
+    SkillName?: string | null;
+    SavedAt?: string;
+}
+
+export interface UniversalSkillDraft {
+    Name: string;
+    Description: string;
+    SkillContent: string;
+}
+
+export interface UniversalSkillSaveResult {
+    SkillId: number;
+    Name: string;
+}
+
+export interface UniversalHandoffResult {
+    TargetSkillKey: string;
+    TargetSessionKey: string;
+    TargetName: string;
+    Summary: string;
+}
+
+function firstValidationMessage(data: { ValidationResult?: { Items?: Array<{ Message?: string }> } } | null): string {
+    const items = data?.ValidationResult?.Items;
+    if (!Array.isArray(items)) return '';
+    return items.map(i => (i?.Message || '').trim()).find(Boolean) || '';
+}
+
 export function genericAgentChatTitle(item?: { Title?: string | null } | null): string {
     const text = (item?.Title || '').trim();
     return text || 'New Chat';
@@ -70,7 +102,7 @@ export interface AskUserEvent {
     ContextKey?: string;
 }
 
-/** Non-blocking data_render panel (grid | card | chart | kpi_dashboard). */
+/** Non-blocking Result panel (legacy data_render fields + ui_render HTML). */
 export interface DataRenderEvent {
     RenderId: string;
     Ui: string;
@@ -84,6 +116,115 @@ export interface DataRenderEvent {
     RowCount?: number;
     Truncated?: boolean;
     Timestamp?: string;
+    /** ui_render: NoneInteractive | Interactive */
+    Mode?: string | null;
+    /** ui_render: form | table | cards */
+    Layout?: string | null;
+    /** C#-merged HTML for Result iframe */
+    Html?: string | null;
+    /** Session-relative path when HTML was spilled to disk */
+    HtmlPath?: string | null;
+    /** Interactive Wijmo page URL (legacy CDN iframe). Prefer DataJson+SpecJson. */
+    HtmlUrl?: string | null;
+    /** Interactive dashboard spec (kpis/chart) for React Wijmo host */
+    SpecJson?: string | null;
+}
+
+export interface UiRenderEvent {
+    RenderId: string;
+    Mode?: string | null;
+    Layout?: string | null;
+    Title?: string | null;
+    Html?: string | null;
+    HtmlPath?: string | null;
+    HtmlUrl?: string | null;
+    DataJson?: string | null;
+    SpecJson?: string | null;
+    /** AI polish column defs (field/header/dataType). */
+    ColumnsJson?: string | null;
+    ActionsJson?: string | null;
+    RowCount?: number;
+    Truncated?: boolean;
+    Timestamp?: string;
+}
+
+export function uiRenderToDataRender(evt: UiRenderEvent): DataRenderEvent {
+    const layout = (evt.Layout || '').toLowerCase();
+    // SpecJson for cards/page carries { cardsPerRow } — adapters read cardsPerRow from MetaJson.
+    const metaJson = (layout === 'cards' || layout === 'page') && evt.SpecJson ? evt.SpecJson : undefined;
+    const ui = layout === 'cards' ? 'card'
+        : layout === 'form' ? 'form'
+        : layout === 'page' ? 'page'
+        : layout === 'dashboard' || layout === 'kpi' || layout === 'chart' ? 'kpi_dashboard'
+        : 'grid';
+    return {
+        RenderId: evt.RenderId,
+        Ui: ui,
+        Title: evt.Title,
+        RowCount: evt.RowCount,
+        Truncated: evt.Truncated,
+        ActionsJson: evt.ActionsJson,
+        Timestamp: evt.Timestamp,
+        Mode: evt.Mode,
+        Layout: evt.Layout,
+        Html: evt.Html,
+        HtmlPath: evt.HtmlPath,
+        HtmlUrl: evt.HtmlUrl,
+        DataJson: evt.DataJson,
+        SpecJson: evt.SpecJson,
+        ColumnsJson: evt.ColumnsJson ?? (evt as { columnsJson?: string }).columnsJson ?? null,
+        MetaJson: metaJson,
+    };
+}
+
+/** Interactive table/cards → React (app Wijmo grid / TemplateContent cards LAYOUT). HtmlPath = export twin. */
+export function isInteractiveTabular(event: DataRenderEvent | null | undefined): boolean {
+    if (!event) return false;
+    if (!/^interactive$/i.test(String(event.Mode || ''))) return false;
+    if (!event.DataJson) return false;
+    const layout = String(event.Layout || '').toLowerCase();
+    const ui = String(event.Ui || '').toLowerCase();
+    return layout === 'table' || layout === 'cards' || ui === 'grid' || ui === 'card';
+}
+
+/** Interactive page → React stack (Wijmo grid + TemplateContent cards). HtmlPath = export twin. */
+export function isInteractivePage(event: DataRenderEvent | null | undefined): boolean {
+    if (!event) return false;
+    if (!/^interactive$/i.test(String(event.Mode || ''))) return false;
+    if (!event.DataJson) return false;
+    const layout = String(event.Layout || '').toLowerCase();
+    const ui = String(event.Ui || '').toLowerCase();
+    return layout === 'page' || ui === 'page';
+}
+
+export function parsePageViews(specJson?: string | null): {
+    views: Array<'table' | 'cards'>;
+    cardsPerRow: number;
+    title?: string;
+    sectionTitles?: { table?: string; cards?: string; grid?: string; card?: string };
+} {
+    try {
+        const o = specJson
+            ? JSON.parse(specJson) as {
+                views?: string[];
+                Views?: string[];
+                cardsPerRow?: number;
+                title?: string;
+                sectionTitles?: { table?: string; cards?: string; grid?: string; card?: string };
+                SectionTitles?: { table?: string; cards?: string; grid?: string; card?: string };
+            }
+            : {};
+        const raw = o.views ?? o.Views ?? ['table', 'cards'];
+        const views = (Array.isArray(raw) ? raw : [])
+            .map(v => String(v || '').toLowerCase())
+            .map(v => (v === 'grid' || v === 'table' ? 'table' : v === 'card' || v === 'cards' ? 'cards' : null))
+            .filter((v): v is 'table' | 'cards' => v != null);
+        const cardsPerRow = typeof o.cardsPerRow === 'number' && o.cardsPerRow > 0 ? Math.min(6, o.cardsPerRow) : 3;
+        const sectionTitles = o.sectionTitles ?? o.SectionTitles;
+        return { views: views.length ? views : ['table', 'cards'], cardsPerRow, title: o.title, sectionTitles };
+    } catch {
+        return { views: ['table', 'cards'], cardsPerRow: 3 };
+    }
 }
 
 export interface ConfirmAskUserDto {
@@ -144,10 +285,11 @@ export interface GenericAgentChatUiSnapshot {
 
 export interface GenericAgentEventHandlers {
     onToken: (text: string) => void;
-    onStep: (step: { Type: string; ToolName?: string; Description: string; IsSuccess: boolean }) => void;
+    onStep: (step: { Type: string; ToolName?: string; Description: string; Details?: string; IsSuccess: boolean }) => void;
     onPlan: (plan: { PlanSummary: string }) => void;
     onAskUser?: (ask: AskUserEvent) => void;
     onDataRender?: (evt: DataRenderEvent) => void;
+    onUiRender?: (evt: UiRenderEvent) => void;
     onDone: (done: { FinalResponse: string }) => void;
     onError: (message: string) => void;
     /** In-memory run gone (web recycle). History is still in the DB — do not treat as a hard error. */
@@ -271,6 +413,7 @@ class GenericAgentService {
     async LoadChat(skillKey: string, sessionKey: string): Promise<{
         SessionKey: string;
         Title?: string | null;
+        SavedSkill?: GenericAgentSavedSkill | null;
         Messages: Array<{
             role: string;
             content: string;
@@ -354,6 +497,87 @@ class GenericAgentService {
         return !!data?.Object;
     }
 
+    async SetSavedSkill(skillKey: string, sessionKey: string, skillId: number, skillName: string): Promise<boolean> {
+        const res = await fetch(`${BASE}/SetSavedSkill`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({
+                SkillKey: skillKey || '',
+                SessionKey: sessionKey || '',
+                SkillId: skillId,
+                SkillName: skillName || '',
+                SavedAt: new Date().toISOString(),
+            }),
+        });
+        if (!res.ok) throw new Error('Failed to save chat skill link');
+        const data = await res.json();
+        return !!data?.Object;
+    }
+
+    async DraftUniversalSkill(skillKey: string, sessionKey: string): Promise<UniversalSkillDraft> {
+        const res = await fetch(`${BASE}/DraftUniversalSkill`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ SkillKey: skillKey || '', SessionKey: sessionKey || '' }),
+        });
+        const data = await res.json().catch(() => null);
+        const draft = data?.Object as UniversalSkillDraft | undefined;
+        if (!res.ok || !draft?.SkillContent) {
+            throw new Error(firstValidationMessage(data) || 'Could not draft a skill from this chat.');
+        }
+        return draft;
+    }
+
+    async SaveUniversalSkill(
+        skillKey: string,
+        sessionKey: string,
+        name: string,
+        description: string,
+        skillContent: string,
+    ): Promise<UniversalSkillSaveResult> {
+        const res = await fetch(`${BASE}/SaveUniversalSkill`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({
+                SkillKey: skillKey || '',
+                SessionKey: sessionKey || '',
+                Name: name || '',
+                Description: description || '',
+                SkillContent: skillContent || '',
+            }),
+        });
+        const data = await res.json().catch(() => null);
+        const saved = data?.Object as UniversalSkillSaveResult | undefined;
+        if (!res.ok || !saved?.SkillId) {
+            throw new Error(firstValidationMessage(data) || 'Could not save skill.');
+        }
+        return saved;
+    }
+
+    async CreateSpecialistHandoff(
+        skillKey: string,
+        sessionKey: string,
+        targetSkillKey: string,
+        reason: string,
+    ): Promise<UniversalHandoffResult> {
+        const res = await fetch(`${BASE}/CreateSpecialistHandoff`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({
+                SkillKey: skillKey || '',
+                SessionKey: sessionKey || '',
+                TargetSkillKey: targetSkillKey || '',
+                Reason: reason || '',
+            }),
+        });
+        const data = await res.json().catch(() => null);
+        const created = data?.Object as UniversalHandoffResult | undefined;
+        if (!res.ok || !created?.TargetSessionKey) {
+            throw new Error(firstValidationMessage(data) || 'Could not hand off to the Specialist.');
+        }
+        return created;
+    }
+
     fileScopeQuery(skillKey: string, sessionKey: string | null | undefined, path?: string, fileScope?: string): URLSearchParams {
         const q = new URLSearchParams({
             skillKey: skillKey || '',
@@ -378,6 +602,31 @@ class GenericAgentService {
         if (!res.ok) return null;
         const data = await res.json();
         return data?.Object ?? null;
+    }
+
+    /** Mint short-lived token URL for Result iframe (Wijmo license / filter popups). */
+    async IssueAgentUiHtmlToken(
+        html: string,
+        renderId?: string | null,
+        sessionKey?: string | null,
+    ): Promise<{ Token: string; HtmlUrl: string } | null> {
+        const res = await fetch(`${BASE}/IssueAgentUiHtmlToken`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({
+                Html: html,
+                RenderId: renderId || '',
+                SessionKey: sessionKey || '',
+            }),
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        const obj = data?.Object ?? data?.object;
+        if (!obj) return null;
+        return {
+            Token: String(obj.Token ?? obj.token ?? ''),
+            HtmlUrl: String(obj.HtmlUrl ?? obj.htmlUrl ?? ''),
+        };
     }
 
     async WriteAgentFile(skillKey: string, sessionKey: string | null | undefined, relativePath: string, content: string, fileScope?: string): Promise<void> {
@@ -457,21 +706,131 @@ class GenericAgentService {
         return data?.Object ?? 0;
     }
 
-    async DownloadAgentFile(skillKey: string, sessionKey: string | null | undefined, relativePath: string, fileScope?: string): Promise<void> {
-        const res = await fetch(this.downloadAgentFileUrl(skillKey, sessionKey, relativePath, fileScope), {
+    /**
+     * Fetch AgentOutput bytes with CurrentUserSessionId (not iframe/navigation — those omit the header → 401).
+     */
+    async FetchAgentFileBlob(
+        skillKey: string,
+        sessionKey: string | null | undefined,
+        relativePath: string,
+        fileScope?: string,
+    ): Promise<{ blob: Blob; fileName: string }> {
+        const url = this.downloadAgentFileUrl(skillKey, sessionKey, relativePath, fileScope);
+        // GET must not send Content-Type: application/json from getHeaders().
+        const headers = new Headers(getHeaders());
+        headers.delete('Content-Type');
+        const res = await fetch(url, { headers, credentials: 'include' });
+        if (!res.ok) throw new Error(`Download failed (${res.status})`);
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        const blob = await res.blob();
+        // Error pages are JSON; real files are octet-stream (or typed). Reject JSON error bodies.
+        if (ct.includes('application/json')) {
+            throw new Error('Download failed (server returned an error page).');
+        }
+        if (blob.size < 32) {
+            throw new Error('Download failed (empty file).');
+        }
+        const fileName = relativePath.split(/[/\\]/).pop() || 'agent-file';
+        return { blob, fileName };
+    }
+
+    /**
+     * Fetch with session header → &lt;a download&gt; (all Export formats + Tool Activity).
+     * Force application/octet-stream so Chrome does not inline-preview PDF/HTML instead of saving.
+     */
+    async DownloadAgentFile(
+        skillKey: string,
+        sessionKey: string | null | undefined,
+        relativePath: string,
+        fileScope?: string,
+    ): Promise<void> {
+        const { blob, fileName } = await this.FetchAgentFileBlob(skillKey, sessionKey, relativePath, fileScope);
+        // Same path for pdf/html/docx/… — octet-stream + download=filename triggers Save, not a tab.
+        const saveBlob = new Blob([await blob.arrayBuffer()], { type: 'application/octet-stream' });
+        const objectUrl = URL.createObjectURL(saveBlob);
+        try {
+            const a = document.createElement('a');
+            a.href = objectUrl;
+            a.download = fileName || 'agent-file';
+            a.rel = 'noopener';
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        } finally {
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 8000);
+        }
+    }
+
+    /** Read AgentOutput text (e.g. none-interactive render twin HTML for Print). */
+    async ReadAgentFileText(skillKey: string, sessionKey: string | null | undefined, relativePath: string): Promise<string> {
+        const res = await fetch(this.downloadAgentFileUrl(skillKey, sessionKey, relativePath), {
             headers: getHeaders(),
         });
-        if (!res.ok) throw new Error(`Download failed (${res.status})`);
-        const blob = await res.blob();
-        const name = relativePath.split(/[/\\]/).pop() || 'agent-file';
-        const objectUrl = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = objectUrl;
-        a.download = name;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        if (!res.ok) throw new Error(`Read failed (${res.status})`);
+        return await res.text();
+    }
+
+    /**
+     * Result chrome Export / Print-as-PDF — server GENERATE via AgentDocumentPlugin (session polish when present).
+     */
+    async ExportResult(args: {
+        skillKey: string;
+        sessionKey: string;
+        format: string;
+        layout?: string;
+        title?: string;
+        datasetName?: string;
+        /** Columns per page (e.g. 2 for 2×2). */
+        cardsPerRow?: number;
+        /** Rows per page (e.g. 2 for 2×2). */
+        cardRows?: number;
+        /** Optional "2x2" / "4x4"; overrides when parseable. */
+        pageGrid?: string;
+        /** Required for kpi/chart/dashboard export (from Result SpecJson). */
+        specJson?: string;
+        /** Result rows JSON — required after chat reopen when server dataset cache is empty. */
+        recordsJson?: string;
+    }): Promise<{ path?: string; error?: string }> {
+        // Headers is not a plain object — `{ ...getHeaders() }` drops CurrentUserSessionId → 401/500.
+        const headers = new Headers(getHeaders());
+        headers.set('Content-Type', 'application/json');
+        const res = await fetch(`${BASE}/ExportResult`, {
+            method: 'POST',
+            headers,
+            credentials: 'include',
+            body: JSON.stringify({
+                SkillKey: args.skillKey,
+                SessionKey: args.sessionKey,
+                Format: args.format,
+                Layout: args.layout || 'cards',
+                Title: args.title || '',
+                DatasetName: args.datasetName || '',
+                CardsPerRow: args.cardsPerRow && args.cardsPerRow > 0 ? args.cardsPerRow : 0,
+                CardRows: args.cardRows && args.cardRows > 0 ? args.cardRows : 0,
+                PageGrid: args.pageGrid || '',
+                SpecJson: args.specJson || '',
+                RecordsJson: args.recordsJson || '',
+            }),
+        });
+        if (!res.ok) {
+            let detail = `Export failed (${res.status})`;
+            try {
+                const errBody = await res.json();
+                const m = errBody?.message || errBody?.Message;
+                if (typeof m === 'string' && m.trim()) {
+                    detail = /unauthorized/i.test(m)
+                        ? 'Session expired — sign in again, then retry Print/Export.'
+                        : m.trim();
+                }
+            } catch { /* ignore */ }
+            return { error: detail };
+        }
+        const data = await res.json();
+        const obj = data?.Object;
+        if (obj?.Path) return { path: String(obj.Path) };
+        const err = data?.ValidationResult?.Items?.[0]?.Message || obj?.Error || 'Export failed.';
+        return { error: String(err) };
     }
 
     async GetActiveAgents(): Promise<Array<{ SkillKey: string; AgentName: string }>> {
@@ -547,6 +906,7 @@ class GenericAgentService {
                         Plan?: unknown;
                         AskUser?: AskUserEvent;
                         DataRender?: DataRenderEvent;
+                        UiRender?: UiRenderEvent;
                         Done?: { FinalResponse: string };
                         Error?: string;
                     }[];
@@ -565,6 +925,10 @@ class GenericAgentService {
                     if (evt.EventType === 'plan' && evt.Plan) h.onPlan(evt.Plan as never);
                     if (evt.EventType === 'ask_user' && evt.AskUser) h.onAskUser?.(evt.AskUser);
                     if (evt.EventType === 'data_render' && evt.DataRender) h.onDataRender?.(evt.DataRender);
+                    if (evt.EventType === 'ui_render' && evt.UiRender) {
+                        if (h.onUiRender) h.onUiRender(evt.UiRender);
+                        else h.onDataRender?.(uiRenderToDataRender(evt.UiRender));
+                    }
                     if (evt.EventType === 'done') {
                         this.stopPolling();
                         h.onDone(evt.Done ?? { FinalResponse: '' });

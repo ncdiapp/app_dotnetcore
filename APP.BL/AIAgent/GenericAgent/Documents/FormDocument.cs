@@ -83,6 +83,120 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         }
 
         /// <summary>
+        /// Keep only named grid columns (AI polish bindings.columns). Order follows <paramref name="keepColumns"/>.
+        /// </summary>
+        public FormDocument ProjectColumns(IList<string> keepColumns)
+        {
+            if (keepColumns == null || keepColumns.Count == 0) return this;
+            FormTable table = null;
+            foreach (var sec in Sections)
+            {
+                if (sec?.Tables == null) continue;
+                foreach (var t in sec.Tables)
+                {
+                    if (t != null) { table = t; break; }
+                }
+                if (table != null) break;
+            }
+            if (table?.Columns == null || table.Columns.Count == 0) return this;
+
+            var indexes = new List<int>();
+            foreach (var name in keepColumns)
+            {
+                for (var i = 0; i < table.Columns.Count; i++)
+                {
+                    if (string.Equals(table.Columns[i], name, StringComparison.OrdinalIgnoreCase)
+                        && !indexes.Contains(i))
+                    {
+                        indexes.Add(i);
+                        break;
+                    }
+                }
+            }
+            if (indexes.Count == 0 || indexes.Count == table.Columns.Count) return this;
+
+            var newCols = indexes.Select(i => table.Columns[i]).ToList();
+            List<string> newHeaders = null;
+            List<string> newFormats = null;
+            if (table.DisplayHeaders != null && table.DisplayHeaders.Count == table.Columns.Count)
+                newHeaders = indexes.Select(i => table.DisplayHeaders[i]).ToList();
+            if (table.Formats != null && table.Formats.Count == table.Columns.Count)
+                newFormats = indexes.Select(i => table.Formats[i]).ToList();
+            var newRows = new List<List<FormCell>>();
+            if (table.Rows != null)
+            {
+                foreach (var row in table.Rows)
+                {
+                    var cells = new List<FormCell>();
+                    foreach (var i in indexes)
+                        cells.Add(i < (row?.Count ?? 0) ? row[i] : new FormCell());
+                    newRows.Add(cells);
+                }
+            }
+            var projected = FromTable(Title, newCols, newRows);
+            var dest = FirstGridTable(projected);
+            if (dest != null)
+            {
+                dest.DisplayHeaders = newHeaders;
+                dest.Formats = newFormats;
+            }
+            return projected;
+        }
+
+        /// <summary>
+        /// Apply LLM short headers + cell formats onto the first grid (field keys stay in Columns).
+        /// </summary>
+        public void ApplyColumnPolish(IList<AiPolishColumnBinding> polishColumns)
+        {
+            if (polishColumns == null || polishColumns.Count == 0) return;
+            var table = FirstGridTable(this);
+            if (table?.Columns == null || table.Columns.Count == 0) return;
+
+            var headers = new List<string>(table.Columns.Count);
+            var formats = new List<string>(table.Columns.Count);
+            for (var i = 0; i < table.Columns.Count; i++)
+            {
+                var field = table.Columns[i];
+                var hit = polishColumns.FirstOrDefault(c =>
+                    c != null && string.Equals(c.Field, field, StringComparison.OrdinalIgnoreCase));
+                headers.Add(!string.IsNullOrWhiteSpace(hit?.Header) ? hit.Header.Trim() : field);
+                formats.Add(AiPolishedRenderSpec.NormalizeColumnFormat(hit?.Format));
+            }
+            table.DisplayHeaders = headers;
+            table.Formats = formats;
+        }
+
+        private static FormTable FirstGridTable(FormDocument doc)
+        {
+            if (doc?.Sections == null) return null;
+            foreach (var sec in doc.Sections)
+            {
+                if (sec?.Tables == null) continue;
+                foreach (var t in sec.Tables)
+                {
+                    if (t?.Columns != null && t.Columns.Count > 0)
+                        return t;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>Column count of the first grid table, or 0.</summary>
+        public int FirstGridColumnCount()
+        {
+            foreach (var sec in Sections)
+            {
+                if (sec?.Tables == null) continue;
+                foreach (var t in sec.Tables)
+                {
+                    if (t?.Columns != null && t.Columns.Count > 0)
+                        return t.Columns.Count;
+                }
+            }
+            return 0;
+        }
+
+        /// <summary>
         /// Copy with each grid limited to <paramref name="maxRows"/> data rows.
         /// </summary>
         public FormDocument Preview(int maxRows, out int previewRowCount, out bool truncated)
@@ -173,12 +287,15 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 if (rowToken is JArray cells)
                 {
                     for (var i = 0; i < columns.Count; i++)
-                        row.Add(i < cells.Count ? CellOf(cells[i]) : new FormCell());
+                    {
+                        var colName = i < columns.Count ? columns[i] : null;
+                        row.Add(i < cells.Count ? CellOf(cells[i], colName) : new FormCell());
+                    }
                 }
                 else if (rowToken is JObject map)
                 {
                     foreach (var col in columns)
-                        row.Add(CellOf(map[col]));
+                        row.Add(CellOf(map[col], col));
                 }
                 else
                 {
@@ -195,10 +312,11 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             if (token is not JArray arr) return list;
             foreach (var item in arr.OfType<JObject>())
             {
-                var cell = CellOf(item["value"]);
+                var label = StringOf(item["label"]);
+                var cell = CellOf(item["value"], label);
                 list.Add(new FormField
                 {
-                    Label = StringOf(item["label"]),
+                    Label = label,
                     Value = cell.Text,
                     IsNumber = cell.IsNumber
                 });
@@ -206,25 +324,40 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return list;
         }
 
-        private static FormCell CellOf(JToken token)
+        private static FormCell CellOf(JToken token, string columnName = null)
         {
             if (token == null || token.Type == JTokenType.Null || token.Type == JTokenType.Undefined)
                 return new FormCell();
             if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
             {
+                var numText = ((JValue)token).ToString(CultureInfo.InvariantCulture);
                 return new FormCell
                 {
-                    Text = ((JValue)token).ToString(CultureInfo.InvariantCulture),
-                    IsNumber = true
+                    Text = numText,
+                    IsNumber = !CardSheet.IsImageValue(numText, columnName),
+                    IsImage = CardSheet.IsImageValue(numText, columnName)
                 };
             }
             if (token.Type == JTokenType.Boolean)
                 return new FormCell { Text = token.Value<bool>() ? "true" : "false" };
             if (token.Type == JTokenType.Date)
                 return new FormCell { Text = token.Value<DateTime>().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) };
-            if (token.Type == JTokenType.Object || token.Type == JTokenType.Array)
+            if (token.Type == JTokenType.Object)
+            {
+                var o = (JObject)token;
+                var url = o["url"]?.ToString() ?? o["Url"]?.ToString();
+                if (!string.IsNullOrWhiteSpace(url))
+                    return new FormCell { Text = url, IsImage = true };
+                var fileId = o["fileId"]?.ToString() ?? o["FileId"]?.ToString();
+                if (!string.IsNullOrWhiteSpace(fileId))
+                    return new FormCell { Text = fileId, IsImage = true };
                 return new FormCell { Text = token.ToString(Newtonsoft.Json.Formatting.None) };
-            return new FormCell { Text = token.ToString() };
+            }
+            if (token.Type == JTokenType.Array)
+                return new FormCell { Text = token.ToString(Newtonsoft.Json.Formatting.None) };
+            var text = token.ToString();
+            // Column/field name + URL (or known app/file/extension URL) → image cell for print/export.
+            return new FormCell { Text = text, IsImage = CardSheet.IsImageValue(text, columnName) };
         }
 
         private static string StringOf(JToken token)
@@ -277,6 +410,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 {
                     Title = table.Title,
                     Columns = table.Columns.ToList(),
+                    DisplayHeaders = table.DisplayHeaders?.ToList(),
+                    Formats = table.Formats?.ToList(),
                     Rows = table.Rows.Take(take).Select(r => r.ToList()).ToList()
                 });
             }
@@ -289,7 +424,12 @@ namespace App.BL.AIAgent.GenericAgent.Documents
     public sealed class FormTable
     {
         public string Title { get; set; } = "";
+        /// <summary>Field / binding keys (stable).</summary>
         public List<string> Columns { get; set; } = new List<string>();
+        /// <summary>Optional LLM short headers parallel to Columns; null → use Columns.</summary>
+        public List<string> DisplayHeaders { get; set; }
+        /// <summary>Optional cell formats parallel to Columns (delta|percent|date|…).</summary>
+        public List<string> Formats { get; set; }
         public List<List<FormCell>> Rows { get; set; } = new List<List<FormCell>>();
     }
 
@@ -304,5 +444,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
     {
         public string Text { get; set; } = "";
         public bool IsNumber { get; set; }
+        /// <summary>When true (or Text looks like an image URL), HTML grid writes an img tag.</summary>
+        public bool IsImage { get; set; }
+        public byte[] ImageBytes { get; set; }
     }
 }

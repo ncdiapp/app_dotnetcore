@@ -1,0 +1,293 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using Newtonsoft.Json.Linq;
+using Scriban;
+using Scriban.Runtime;
+
+namespace App.BL.AIAgent.GenericAgent.Documents
+{
+    /// <summary>
+    /// Safe Scriban merge for TemplateContent Views (MVC-style).
+    /// String fields are HTML-encoded before bind.
+    /// </summary>
+    public static class UiTemplateScriban
+    {
+        public static string Render(string templateText, object model)
+        {
+            if (string.IsNullOrWhiteSpace(templateText))
+                return "";
+            var template = Template.Parse(templateText);
+            if (template.HasErrors)
+            {
+                var err = string.Join("; ", template.Messages.Select(m => m.Message));
+                throw new InvalidOperationException("Template parse error: " + err);
+            }
+
+            var scriptObject = new ScriptObject();
+            if (model != null)
+                scriptObject.Import(model, renamer: member => member.Name);
+
+            var context = new TemplateContext
+            {
+                MemberRenamer = member => member.Name,
+                EnableRelaxedMemberAccess = true,
+                StrictVariables = false
+            };
+            context.PushGlobal(scriptObject);
+            return template.Render(context) ?? "";
+        }
+
+        public static object ModelFromForm(FormDocument doc)
+        {
+            doc ??= new FormDocument();
+            FormTable table = null;
+            if (doc.Sections != null)
+            {
+                foreach (var sec in doc.Sections)
+                {
+                    if (sec?.Tables == null) continue;
+                    foreach (var t in sec.Tables)
+                    {
+                        if (t != null) { table = t; break; }
+                    }
+                    if (table != null) break;
+                }
+            }
+
+            var fieldKeys = table?.Columns ?? new List<string>();
+            // LLM short headers when present (parity with Interactive Result / HtmlForm).
+            var displayColumns = new List<string>();
+            for (var hi = 0; hi < fieldKeys.Count; hi++)
+            {
+                var field = fieldKeys[hi];
+                var header = table.DisplayHeaders != null && hi < table.DisplayHeaders.Count
+                             && !string.IsNullOrWhiteSpace(table.DisplayHeaders[hi])
+                    ? table.DisplayHeaders[hi]
+                    : field;
+                displayColumns.Add(header ?? "");
+            }
+
+            var rows = new List<object>();
+            if (table?.Rows != null)
+            {
+                foreach (var row in table.Rows)
+                {
+                    var cells = new List<object>();
+                    if (row != null)
+                    {
+                        for (var i = 0; i < fieldKeys.Count; i++)
+                        {
+                            var c = i < row.Count ? row[i] : null;
+                            var colName = fieldKeys[i];
+                            var format = table.Formats != null && i < table.Formats.Count
+                                ? AiPolishedRenderSpec.NormalizeColumnFormat(table.Formats[i])
+                                : null;
+                            var raw = c?.Text ?? "";
+                            string imageSrc = null;
+                            if (c?.ImageBytes != null && c.ImageBytes.Length > 0)
+                                imageSrc = "data:" + ImageMime(c.ImageBytes) + ";base64,"
+                                           + Convert.ToBase64String(c.ImageBytes);
+                            else if (string.Equals(format, "image", StringComparison.OrdinalIgnoreCase)
+                                     && CardSheet.IsUrlValue(raw))
+                                imageSrc = raw.Trim().Trim('"', '\'');
+                            else if (CardSheet.IsRenderableImage(raw, colName, c?.IsImage == true)
+                                     || (c?.IsImage == true && CardSheet.IsUrlValue(raw)))
+                                imageSrc = raw.Trim().Trim('"', '\'');
+                            var isImage = !string.IsNullOrEmpty(imageSrc);
+                            var plain = isImage
+                                ? ""
+                                : FormGridCellPolish.FormatPlainText(raw, format);
+                            var html = isImage ? null : FormGridCellPolish.FormatHtml(raw, format);
+                            cells.Add(new
+                            {
+                                text = Enc(plain),
+                                // Trusted platform HTML for delta/percent colors (not from user/LLM strings).
+                                html = html ?? "",
+                                format = format ?? "",
+                                is_image = isImage,
+                                image_src = EncAttr(imageSrc),
+                                is_number = !isImage && (c?.IsNumber == true
+                                    || format is "delta" or "percent" or "number" or "currency")
+                            });
+                        }
+                    }
+                    rows.Add(cells);
+                }
+            }
+            return new
+            {
+                title = Enc(doc.Title),
+                columns = displayColumns.Select(Enc).ToList(),
+                rows
+            };
+        }
+
+        public static object ModelFromCards(CardSheet sheet)
+        {
+            sheet ??= new CardSheet();
+            var cards = new List<object>();
+            if (sheet.Cards != null)
+            {
+                foreach (var cardFields in sheet.Cards)
+                {
+                    var fields = new List<object>();
+                    string cardTitle = "";
+                    if (cardFields != null)
+                    {
+                        foreach (var f in cardFields)
+                        {
+                            if (string.IsNullOrEmpty(cardTitle) && !string.IsNullOrWhiteSpace(f?.Label))
+                                cardTitle = f.Label;
+                            // Image = role/flag + field name means Image + value is URL (PLM /image/300 OK).
+                            string imageSrc = null;
+                            if (f?.ImageBytes != null && f.ImageBytes.Length > 0)
+                                imageSrc = "data:" + ImageMime(f.ImageBytes) + ";base64,"
+                                           + Convert.ToBase64String(f.ImageBytes);
+                            else if (f != null && (CardSheet.IsRenderableImage(f.Value, f.Label, f.IsImage)
+                                     || (string.Equals(f.Role, "primaryImage", StringComparison.OrdinalIgnoreCase)
+                                         && CardSheet.IsUrlValue(f.Value))))
+                                imageSrc = (f.Value ?? "").Trim().Trim('"', '\'');
+                            var isImage = !string.IsNullOrEmpty(imageSrc);
+                            var display = isImage ? (f?.Value ?? "") : CardSheet.FormatDisplayValue(f?.Value);
+                            // Skip empty text fields — status/color would paint a lone colored dot.
+                            if (!isImage && !CardSheet.HasMeaningfulDisplayValue(display))
+                                continue;
+                            var displayRole = f?.Role;
+                            if (!isImage && CardSheet.LooksLikeDateValue(f?.Value)
+                                && (string.Equals(displayRole, "statusPill", StringComparison.OrdinalIgnoreCase)
+                                    || string.Equals(displayRole, "status", StringComparison.OrdinalIgnoreCase)))
+                                displayRole = "meta";
+                            var showLabel = f?.ShowLabel == true && !isImage;
+                            var displayLabel = showLabel
+                                ? CardSheet.ShortenFieldLabel(
+                                    !string.IsNullOrWhiteSpace(f.DisplayLabel) ? f.DisplayLabel : f.Label)
+                                : "";
+                            var compact = !isImage && (f?.Compact == true
+                                || CardSheet.LooksCompactDisplay(displayLabel, display, showLabel));
+                            fields.Add(new
+                            {
+                                label = Enc(f?.Label),
+                                value = Enc(display),
+                                is_image = isImage,
+                                image_src = EncAttr(imageSrc),
+                                role = Enc(string.IsNullOrWhiteSpace(displayRole) ? "body" : displayRole),
+                                typography_hint = Enc(f?.TypographyHint ?? ""),
+                                show_label = showLabel,
+                                display_label = Enc(displayLabel),
+                                compact = compact
+                            });
+                            if (string.Equals(f?.Role, "title", StringComparison.OrdinalIgnoreCase)
+                                && !string.IsNullOrWhiteSpace(f?.Value))
+                                cardTitle = f.Value;
+                            else if (string.Equals(f?.Role, "idLink", StringComparison.OrdinalIgnoreCase)
+                                     && string.IsNullOrEmpty(cardTitle)
+                                     && !string.IsNullOrWhiteSpace(f?.Value))
+                                cardTitle = f.Value;
+                        }
+                        // Prefer first non-image field value as title when roles did not set one
+                        if (string.IsNullOrEmpty(cardTitle) && cardFields.Count > 0)
+                        {
+                            var firstText = cardFields.FirstOrDefault(x => x != null && !x.IsImage && !string.IsNullOrWhiteSpace(x.Value));
+                            if (firstText != null) cardTitle = firstText.Value;
+                        }
+                    }
+                    cards.Add(new
+                    {
+                        title = Enc(cardTitle),
+                        fields
+                    });
+                }
+            }
+            return new
+            {
+                title = Enc(sheet.Title),
+                cards_per_row = sheet.CardsPerRow > 0 ? sheet.CardsPerRow : 3,
+                cards
+            };
+        }
+
+        public static object ModelFromRows(string title, JArray rows)
+        {
+            rows ??= new JArray();
+            var columns = new List<string>();
+            if (rows.Count > 0 && rows[0] is JObject first)
+                columns.AddRange(first.Properties().Select(p => p.Name));
+
+            var rowModels = new List<object>();
+            foreach (var token in rows)
+            {
+                if (token is not JObject obj) continue;
+                var cells = columns.Select(col =>
+                {
+                    var v = obj[col];
+                    var raw = v == null || v.Type == JTokenType.Null ? "" : v.ToString();
+                    string imageSrc = null;
+                    if (CardSheet.IsRenderableImage(raw, col, false))
+                        imageSrc = raw.Trim().Trim('"', '\'');
+                    var isImage = !string.IsNullOrEmpty(imageSrc);
+                    return new
+                    {
+                        text = Enc(isImage ? "" : CardSheet.FormatDisplayValue(raw)),
+                        is_image = isImage,
+                        image_src = EncAttr(imageSrc),
+                        is_number = !isImage && v != null
+                                    && (v.Type == JTokenType.Integer || v.Type == JTokenType.Float)
+                    };
+                }).Cast<object>().ToList();
+                rowModels.Add(cells);
+            }
+
+            return new
+            {
+                title = Enc(title),
+                columns = columns.Select(Enc).ToList(),
+                rows = rowModels,
+                rows_json = rows.ToString(Newtonsoft.Json.Formatting.None)
+            };
+        }
+
+        public static object ModelFromKpis(string title, JArray rows, IEnumerable<UiKpiSpec> kpis)
+        {
+            rows ??= new JArray();
+            var items = new List<object>();
+            if (kpis != null)
+            {
+                foreach (var k in kpis.Take(UiRenderSpec.MaxKpis))
+                {
+                    if (k == null) continue;
+                    var label = string.IsNullOrWhiteSpace(k.Label) ? (k.Field ?? "") : k.Label;
+                    items.Add(new
+                    {
+                        label = Enc(label),
+                        value = Enc(UiDashboardHtml.ComputeKpi(rows, k.Field, k.Op)),
+                        field = Enc(k.Field ?? ""),
+                        op = Enc(k.Op ?? "")
+                    });
+                }
+            }
+            return new
+            {
+                title = Enc(title),
+                items
+            };
+        }
+
+        private static string Enc(string s) => WebUtility.HtmlEncode(s ?? "");
+
+        private static string EncAttr(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            return WebUtility.HtmlEncode(s);
+        }
+
+        private static string ImageMime(byte[] bytes)
+        {
+            if (bytes != null && bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xD8) return "image/jpeg";
+            if (bytes != null && bytes.Length >= 4 && bytes[0] == 0x89 && bytes[1] == 0x50) return "image/png";
+            if (bytes != null && bytes.Length >= 3 && bytes[0] == (byte)'G' && bytes[1] == (byte)'I') return "image/gif";
+            return "application/octet-stream";
+        }
+    }
+}

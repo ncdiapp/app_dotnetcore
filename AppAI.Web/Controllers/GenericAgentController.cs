@@ -16,6 +16,7 @@ using APP.Framework.Validation;
 using AppAI.Web.Controllers.Base;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using SessionBL = App.BL.AIAgent.GenericAgent.AppGenericAgentSessionBL;
@@ -134,6 +135,7 @@ public class GenericAgentController : SecureBaseController
         // Accumulate tool steps for this run so they can be persisted with the chat session.
         var persistedToolSteps = new List<JObject>();
         var persistedDataRenders = new List<JObject>();
+        var handoffProposals = new List<JObject>();
         var tokenBuf = new System.Text.StringBuilder();
 
         var callbacks = new GenericAgentCallbacks
@@ -141,6 +143,18 @@ public class GenericAgentController : SecureBaseController
             OnStep = step =>
             {
                 GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "step", Step = step });
+                if (step != null && string.Equals(step.Type, "handoff_proposal", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var proposal = JObject.Parse(step.Details ?? "{}");
+                        var key = proposal.Value<string>("targetSkillKey");
+                        if (!string.IsNullOrWhiteSpace(key)
+                            && !handoffProposals.Any(x => string.Equals(x.Value<string>("targetSkillKey"), key, StringComparison.OrdinalIgnoreCase)))
+                            handoffProposals.Add(proposal);
+                    }
+                    catch { /* proposal card must not fail the run */ }
+                }
                 if (step != null && !string.IsNullOrWhiteSpace(step.ToolName))
                 {
                     if (string.Equals(step.Type, "tool_call", StringComparison.OrdinalIgnoreCase))
@@ -186,6 +200,12 @@ public class GenericAgentController : SecureBaseController
                     SessionBL.PersistTurnDone(
                         request.SkillKey, agentUserId, agentDsId, chatSessionKey,
                         request.UserMessage, isSessionStart, done ?? "", persistedToolSteps, persistedDataRenders);
+                    if (handoffProposals.Count > 0)
+                    {
+                        SessionBL.MergeLastAssistant(
+                            chatSessionKey, request.SkillKey, agentUserId, agentDsId,
+                            message => message["handoffProposals"] = new JArray(handoffProposals));
+                    }
                     SessionBL.TryAutoTitle(chatSessionKey, request.SkillKey, agentUserId, request.UserMessage);
                     if (agentCompanyId > 0 && !string.IsNullOrWhiteSpace(chatSessionKey))
                     {
@@ -242,6 +262,52 @@ public class GenericAgentController : SecureBaseController
                 if (dataRenderEvent != null)
                 {
                     try { persistedDataRenders.Add(JObject.FromObject(dataRenderEvent)); }
+                    catch { /* keep run going even if snapshot serialize fails */ }
+                }
+                return Task.CompletedTask;
+            },
+
+            OnUiRender = uiRenderEvent =>
+            {
+                GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto
+                {
+                    EventType = "ui_render",
+                    UiRender = uiRenderEvent
+                });
+                if (uiRenderEvent != null)
+                {
+                    try
+                    {
+                        // Persist chip + reload fields. Ui must match DataRenderPanel keys (card not cards).
+                        var layout = (uiRenderEvent.Layout ?? "").Trim().ToLowerInvariant();
+                        var ui = layout switch
+                        {
+                            "cards" => "card",
+                            "form" => "form",
+                            "page" => "page",
+                            "kpi" or "dashboard" => "kpi_dashboard",
+                            "chart" => "chart",
+                            _ => string.IsNullOrEmpty(layout) ? "grid" : layout
+                        };
+                        persistedDataRenders.Add(JObject.FromObject(new
+                        {
+                            uiRenderEvent.RenderId,
+                            Ui = ui,
+                            uiRenderEvent.Title,
+                            uiRenderEvent.RowCount,
+                            uiRenderEvent.Truncated,
+                            uiRenderEvent.Mode,
+                            uiRenderEvent.Layout,
+                            Html = uiRenderEvent.Html,
+                            HtmlPath = uiRenderEvent.HtmlPath,
+                            HtmlUrl = uiRenderEvent.HtmlUrl,
+                            DataJson = uiRenderEvent.DataJson,
+                            SpecJson = uiRenderEvent.SpecJson,
+                            MetaJson = (layout == "cards" || layout == "page") ? uiRenderEvent.SpecJson : null,
+                            uiRenderEvent.ActionsJson,
+                            uiRenderEvent.Timestamp
+                        }));
+                    }
                     catch { /* keep run going even if snapshot serialize fails */ }
                 }
                 return Task.CompletedTask;
@@ -590,8 +656,8 @@ public class GenericAgentController : SecureBaseController
             SessionKey = key,
             SkillKey   = skillKey,
             Title      = null,
-            // DB insert uses GETUTCDATE(); return client-local for sidebar display.
-            UpdatedAt  = SessionBL.ToClientDateTime(DateTime.UtcNow),
+            // DB insert uses GETUTCDATE(); return UTC so the React chat list shows browser local time.
+            UpdatedAt  = DateTime.UtcNow,
             IsFixedTestSession = false
         };
         return result;
@@ -663,6 +729,39 @@ public class GenericAgentController : SecureBaseController
     }
 
     // ── Agent Files APIs ──────────────────────────────────────────────────────
+
+    [HttpPost]
+    public OperationCallResult<bool> SetSavedSkill([FromBody] GenericAgentSavedSkillDto request)
+    {
+        var result = new OperationCallResult<bool>();
+        var identity = ServerContext.Instance.CurrnetClientIdentity;
+        if (identity is not AppClientIdentity ai || ai.UserId == null)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "SetSavedSkill_NoUser",
+                ValidationItemType.Error, "User identity required."));
+            return result;
+        }
+        if (request == null
+            || string.IsNullOrWhiteSpace(request.SkillKey)
+            || string.IsNullOrWhiteSpace(request.SessionKey)
+            || request.SkillId <= 0)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "SetSavedSkill_BadRequest",
+                ValidationItemType.Error, "SkillKey, SessionKey, and SkillId are required."));
+            return result;
+        }
+
+        request.SavedAt = request.SavedAt == default ? DateTime.UtcNow : request.SavedAt;
+        result.Object = SessionBL.SetSavedSkill(
+            request.SessionKey,
+            request.SkillKey,
+            Convert.ToInt32(ai.UserId),
+            ai.DataSourceId,
+            request);
+        return result;
+    }
 
     private bool TryFilesIdentity(out AppClientIdentity ai, out int companyId, out OperationCallResult<object> err)
     {
@@ -788,6 +887,100 @@ public class GenericAgentController : SecureBaseController
                 typeof(GenericAgentController), "Files_Read",
                 ValidationItemType.Error, ex.Message));
         }
+        return result;
+    }
+
+    /// <summary>
+    /// Serves interactive Result HTML (Wijmo CDN page) for iframe src.
+    /// Prefer token URL so the document origin is the API host (Wijmo license + filter popups).
+    /// </summary>
+    [HttpGet]
+    public IActionResult AgentUiInteractiveHtml(
+        [FromQuery] string skillKey,
+        [FromQuery] string sessionKey,
+        [FromQuery] string path,
+        [FromQuery] string token = null)
+    {
+        // Optional token path (print-like): reusable within TTL
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            var tokenSvc = HttpContext.RequestServices.GetService<AppAI.Web.Services.AgentUiRenderTokenService>();
+            if (tokenSvc != null && tokenSvc.TryGet(token, out var payload) && !string.IsNullOrEmpty(payload?.Html))
+                return Content(payload.Html, "text/html; charset=utf-8");
+            return NotFound("Interactive render token expired or invalid.");
+        }
+
+        if (!TryFilesIdentity(out var ai, out var companyId, out var err))
+            return Unauthorized(err?.ValidationResult?.Items?.FirstOrDefault()?.Message ?? "Unauthorized");
+
+        var boxed = new OperationCallResult<object>();
+        if (!AuthorizeAgentFiles(skillKey, sessionKey, null, Convert.ToInt32(ai.UserId), boxed))
+            return Forbid();
+
+        try
+        {
+            var file = GenericAgentFileBL.ReadText(sessionKey, path, companyId);
+            if (file == null || string.IsNullOrEmpty(file.Content))
+                return NotFound("Interactive HTML not found.");
+            return Content(file.Content, "text/html; charset=utf-8");
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    public class IssueAgentUiHtmlTokenRequest
+    {
+        public string Html { get; set; }
+        public string RenderId { get; set; }
+        public string SessionKey { get; set; }
+    }
+
+    /// <summary>
+    /// Mint a short-lived token for Result iframe src= (avoids about:srcdoc / blob license issues).
+    /// </summary>
+    [HttpPost]
+    public OperationCallResult<object> IssueAgentUiHtmlToken([FromBody] IssueAgentUiHtmlTokenRequest body)
+    {
+        var result = new OperationCallResult<object>();
+        if (!TryFilesIdentity(out var ai, out var companyId, out var err))
+        {
+            result.ValidationResult = err.ValidationResult;
+            return result;
+        }
+        if (body == null || string.IsNullOrWhiteSpace(body.Html))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "IssueAgentUiHtmlToken",
+                ValidationItemType.Error, "Html is required."));
+            return result;
+        }
+        var tokenSvc = HttpContext.RequestServices.GetService<AppAI.Web.Services.AgentUiRenderTokenService>();
+        if (tokenSvc == null)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "IssueAgentUiHtmlToken",
+                ValidationItemType.Error, "Token service unavailable."));
+            return result;
+        }
+        var token = tokenSvc.Issue(new AppAI.Web.Services.AgentUiRenderTokenPayload
+        {
+            Html = body.Html,
+            RenderId = body.RenderId,
+            SessionKey = body.SessionKey,
+            CompanyId = companyId,
+            UserId = Convert.ToInt32(ai.UserId)
+        });
+        var url = Url.Action(nameof(AgentUiInteractiveHtml), "GenericAgent", new { token })
+                  ?? $"/webapi/GenericAgent/AgentUiInteractiveHtml?token={Uri.EscapeDataString(token)}";
+        // Absolute for iframe when SPA is on another port
+        if (url.StartsWith("/"))
+        {
+            var req = HttpContext.Request;
+            url = $"{req.Scheme}://{req.Host}{url}";
+        }
+        result.Object = new { Token = token, HtmlUrl = url };
         return result;
     }
 
@@ -1022,6 +1215,147 @@ public class GenericAgentController : SecureBaseController
         return result;
     }
 
+    /// <summary>
+    /// Result panel Export / Print-as-PDF. Uses session AI polish + AgentDocumentPlugin GENERATE.
+    /// </summary>
+    [HttpPost]
+    public async Task<OperationCallResult<GenericAgentExportResultDto>> ExportResult(
+        [FromBody] GenericAgentExportResultRequestDto body)
+    {
+        var result = new OperationCallResult<GenericAgentExportResultDto>();
+        if (!TryFilesIdentity(out var ai, out var companyId, out var err))
+        {
+            result.ValidationResult = err.ValidationResult;
+            return result;
+        }
+        var boxed = new OperationCallResult<object>();
+        if (!AssertChatOwned(body?.SkillKey, body?.SessionKey, Convert.ToInt32(ai.UserId), boxed))
+        {
+            result.ValidationResult = boxed.ValidationResult;
+            return result;
+        }
+
+        var format = (body.Format ?? "pdf").Trim().ToLowerInvariant().TrimStart('.');
+        var ext = format switch
+        {
+            "pdf" => ".pdf",
+            "docx" or "word" => ".docx",
+            "pptx" or "ppt" => ".pptx",
+            "html" or "htm" => ".html",
+            "xlsx" or "excel" => ".xlsx",
+            "csv" => ".csv",
+            _ => ".pdf"
+        };
+        var layout = string.IsNullOrWhiteSpace(body.Layout) ? "cards" : body.Layout.Trim().ToLowerInvariant();
+        if (layout == "card") layout = "cards";
+        if (layout == "kpi_dashboard") layout = "kpi";
+
+        var dataset = body.DatasetName?.Trim();
+        // SpecJson from Result chrome often carries dataset_name when body omits it.
+        if (string.IsNullOrWhiteSpace(dataset) && !string.IsNullOrWhiteSpace(body.SpecJson))
+        {
+            try
+            {
+                var root = JObject.Parse(body.SpecJson);
+                dataset = (root["dataset_name"] ?? root["datasetName"] ?? root["DatasetName"])?.ToString()?.Trim();
+            }
+            catch { /* ignore */ }
+        }
+        if (string.IsNullOrWhiteSpace(dataset))
+            dataset = App.BL.AIAgent.GenericAgent.DataAnalyze.AgentDataAnalyzeCacheBL
+                .Latest(body.SessionKey.Trim())?.Name;
+
+        var context = new APP.Framework.Plugin.AgentToolContext
+        {
+            ConnectionString = ai.CurrentUserDbConnectionString ?? "",
+            DatabaseName = ai.CurrentUserDataBaseName ?? "",
+            SessionId = Guid.NewGuid().ToString("N"),
+            UserSessionId = ai.SessionId?.ToString() ?? "",
+            SkillKey = body.SkillKey?.Trim() ?? "",
+            UserId = Convert.ToInt32(ai.UserId),
+            CompanyId = companyId,
+            ChatSessionKey = body.SessionKey.Trim(),
+            LoginUserType = ai.CurrentLoginUserType,
+            // Result chrome export after a confirmed render — skip ask_user gate for kpi/dashboard.
+            IsDeterministic = true
+        };
+
+        try
+        {
+            var plugin = new App.BL.AIAgent.GenericAgent.Plugins.AgentDocumentPlugin();
+            var path = "output/result_export";
+            var ct = HttpContext?.RequestAborted ?? CancellationToken.None;
+            var cpr = body.CardsPerRow > 0 ? body.CardsPerRow : 0;
+            var cr = body.CardRows > 0 ? body.CardRows : 0;
+            var pageGrid = string.IsNullOrWhiteSpace(body.PageGrid) ? null : body.PageGrid.Trim();
+            // Prefer pageGrid when set (e.g. "2x2"); else cardsPerRow/cardRows from Result chrome / render.
+            if (string.IsNullOrEmpty(pageGrid) && cpr > 0 && cr > 0)
+                pageGrid = cpr + "x" + cr;
+            var specJson = string.IsNullOrWhiteSpace(body.SpecJson) ? null : body.SpecJson.Trim();
+            // Drop painted HTML from SpecJson if a fat client still sent cardsHtml/kpiHtml.
+            specJson = StripHeavyUiFromExportSpecJson(specJson);
+            // Restored Result carries DataJson; session analyze cache is empty after reopen.
+            var recordsJson = string.IsNullOrWhiteSpace(body.RecordsJson) ? null : body.RecordsJson.Trim();
+            // Prefer chrome/polish title, else SpecJson, else dataset name (not the placeholder "Result").
+            var title = App.BL.AIAgent.GenericAgent.Plugins.AgentDocumentPlugin
+                .ResolveExportTitle(body.Title, dataset, specJson);
+            string json = ext switch
+            {
+                ".pdf" => await plugin.ExportPdf(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson, title).ConfigureAwait(false),
+                ".docx" => await plugin.ExportDocx(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson, title).ConfigureAwait(false),
+                ".pptx" => await plugin.ExportPptx(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson, title).ConfigureAwait(false),
+                ".html" => await plugin.ExportHtml(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson, title).ConfigureAwait(false),
+                ".xlsx" => await plugin.ExportExcel(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson, title).ConfigureAwait(false),
+                ".csv" => await plugin.ExportCsv(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson, title).ConfigureAwait(false),
+                _ => await plugin.ExportPdf(context, ct, path, null, null, dataset, layout, recordsJson, false, cpr, cr, 0, pageGrid, 0, specJson, title).ConfigureAwait(false)
+            };
+
+            var obj = JObject.Parse(json);
+            if (obj["ok"]?.Value<bool>() == true && obj["relativePath"] != null)
+            {
+                result.Object = new GenericAgentExportResultDto { Path = obj["relativePath"].ToString() };
+            }
+            else
+            {
+                result.Object = new GenericAgentExportResultDto
+                {
+                    Error = obj["error"]?.ToString() ?? obj["message"]?.ToString() ?? "Export failed."
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "ExportResult",
+                ValidationItemType.Error, ex.Message));
+            result.Object = new GenericAgentExportResultDto { Error = ex.Message };
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Result SpecJson often embeds full cardsHtml/kpiHtml. Export only needs polishedSpec + grid hints.
+    /// </summary>
+    private static string StripHeavyUiFromExportSpecJson(string specJson)
+    {
+        if (string.IsNullOrWhiteSpace(specJson)) return specJson;
+        try
+        {
+            var obj = JObject.Parse(specJson);
+            foreach (var key in new[]
+                     {
+                         "cardsHtml", "CardsHtml", "kpiHtml", "KpiHtml",
+                         "chartHostHtml", "ChartHostHtml", "gridHostHtml", "GridHostHtml"
+                     })
+                obj.Remove(key);
+            return obj.ToString(Newtonsoft.Json.Formatting.None);
+        }
+        catch
+        {
+            return specJson;
+        }
+    }
+
     [HttpGet]
     public IActionResult DownloadAgentFile(
         [FromQuery] string skillKey, [FromQuery] string sessionKey, [FromQuery] string path,
@@ -1090,12 +1424,158 @@ public class GenericAgentController : SecureBaseController
             ? SkillSetBL.GetAll(ai.DataSourceId)
             : SkillSetBL.GetAll();
 
-        result.Object = agents.Select(a => new ActiveAgentDto
+        result.Object = agents
+            .Where(a => a != null && !UniversalAgentConstants.IsUniversalAgentKey(a.SkillKey))
+            .Select(a => new ActiveAgentDto
         {
             SkillKey  = a.SkillKey,
             AgentName = string.IsNullOrWhiteSpace(a.DisplayName) ? a.SkillKey : a.DisplayName
         }).ToList();
         return result;
+    }
+
+    [HttpPost]
+    public async Task<OperationCallResult<UniversalSkillDraft>> DraftUniversalSkill(
+        [FromBody] UniversalChatRefRequest request,
+        CancellationToken ct)
+    {
+        var result = new OperationCallResult<UniversalSkillDraft>();
+        if (!TryRequireUniversalChat(request?.SkillKey, request?.SessionKey, out var ai, out var error))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "DraftUniversalSkill",
+                ValidationItemType.Error, error));
+            return result;
+        }
+        try
+        {
+            result.Object = await UniversalAgentWorkflowBL.DraftSkillAsync(ai, request.SessionKey.Trim(), ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "DraftUniversalSkill",
+                ValidationItemType.Error, ex.Message));
+        }
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<UniversalSkillSaveResult> SaveUniversalSkill(
+        [FromBody] UniversalSkillSaveRequest request)
+    {
+        var result = new OperationCallResult<UniversalSkillSaveResult>();
+        if (!TryRequireUniversalChat(request?.SkillKey, request?.SessionKey, out var ai, out var error))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "SaveUniversalSkill",
+                ValidationItemType.Error, error));
+            return result;
+        }
+        if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.SkillContent))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "SaveUniversalSkill",
+                ValidationItemType.Error, "Name and skill instructions are required."));
+            return result;
+        }
+        try
+        {
+            result.Object = UniversalAgentWorkflowBL.SaveSkill(
+                ai,
+                request.SessionKey.Trim(),
+                request.Name,
+                request.Description,
+                request.SkillContent);
+        }
+        catch (Exception ex)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "SaveUniversalSkill",
+                ValidationItemType.Error, ex.Message));
+        }
+        return result;
+    }
+
+    [HttpPost]
+    public async Task<OperationCallResult<UniversalHandoffResult>> CreateSpecialistHandoff(
+        [FromBody] UniversalHandoffRequest request,
+        CancellationToken ct)
+    {
+        var result = new OperationCallResult<UniversalHandoffResult>();
+        if (!TryRequireUniversalChat(request?.SkillKey, request?.SessionKey, out var ai, out var error))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "CreateSpecialistHandoff",
+                ValidationItemType.Error, error));
+            return result;
+        }
+        if (string.IsNullOrWhiteSpace(request.TargetSkillKey))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "CreateSpecialistHandoff",
+                ValidationItemType.Error, "Target Specialist is required."));
+            return result;
+        }
+        try
+        {
+            result.Object = await UniversalAgentWorkflowBL.CreateHandoffAsync(
+                ai,
+                request.SessionKey.Trim(),
+                request.TargetSkillKey,
+                request.Reason,
+                ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "CreateSpecialistHandoff",
+                ValidationItemType.Error, ex.Message));
+        }
+        return result;
+    }
+
+    private bool TryRequireUniversalChat(
+        string skillKey,
+        string sessionKey,
+        out AppClientIdentity ai,
+        out string error)
+    {
+        ai = default;
+        error = "";
+        var identity = ServerContext.Instance.CurrnetClientIdentity;
+        if (identity is not AppClientIdentity current || current.UserId == null)
+        {
+            error = "User identity required.";
+            return false;
+        }
+        ai = current;
+        if (!UniversalAgentConstants.IsUniversalAgentKey(skillKey))
+        {
+            error = "This action is only available on Universal Agent.";
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(sessionKey))
+        {
+            error = "Chat session is required.";
+            return false;
+        }
+        var userId = Convert.ToInt32(current.UserId);
+        var dsId = current.DataSourceId > 0
+            ? current.DataSourceId
+            : (App.BL.AppMgr.AiSkill.AppAISkillBL.GetDefaultDataSourceId() ?? 0);
+        if (dsId <= 0)
+        {
+            error = "Data source is not available.";
+            return false;
+        }
+        if (SessionBL.LoadBySessionKey(sessionKey.Trim(), skillKey.Trim(), userId, dsId) == null)
+        {
+            error = "Universal chat was not found.";
+            return false;
+        }
+        return true;
     }
 }
 
@@ -1103,4 +1583,27 @@ public class ActiveAgentDto
 {
     public string SkillKey  { get; set; }
     public string AgentName { get; set; }
+}
+
+public class UniversalChatRefRequest
+{
+    public string SkillKey { get; set; }
+    public string SessionKey { get; set; }
+}
+
+public class UniversalSkillSaveRequest
+{
+    public string SkillKey { get; set; }
+    public string SessionKey { get; set; }
+    public string Name { get; set; }
+    public string Description { get; set; }
+    public string SkillContent { get; set; }
+}
+
+public class UniversalHandoffRequest
+{
+    public string SkillKey { get; set; }
+    public string SessionKey { get; set; }
+    public string TargetSkillKey { get; set; }
+    public string Reason { get; set; }
 }

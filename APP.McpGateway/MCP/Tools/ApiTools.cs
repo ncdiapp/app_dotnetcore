@@ -152,7 +152,7 @@ public class ApiTools
                 cache_scope    = isGlobal ? "global" : "session",
                 rows           = dataset.Rows.Count,
                 columns        = dataset.Columns.Select(c => c.Name).ToArray(),
-                analysis_hint  = $"Dataset cached. Use data_analyze tool with dataset_name='{dataset.Name}' to analyze."
+                next_hint      = $"Dataset cached as '{dataset.Name}'. If user asked to analyze/breakdown/group by: call data_analyze with this dataset_name. If show/export only: render/export with limit — do not call data_analyze for display-only. KPI/chart/dashboard Result layout needs ask_user confirm first."
             };
             return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
         }
@@ -170,7 +170,12 @@ public class ApiTools
         try
         {
             var dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
-            return dict?.ToDictionary(kv => kv.Key, kv => kv.Value.ToString());
+            // JsonElement.ToString() on String includes quotes in some runtimes — use GetString/GetRawText.
+            return dict?.ToDictionary(
+                kv => kv.Key,
+                kv => kv.Value.ValueKind == JsonValueKind.String
+                    ? (kv.Value.GetString() ?? "")
+                    : kv.Value.GetRawText());
         }
         catch (Exception ex)
         {

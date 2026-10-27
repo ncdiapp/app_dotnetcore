@@ -65,7 +65,9 @@ public class AgentSkillSetController : SecureBaseController
     public OperationCallResult<List<AppAgentSkillSetDto>> GetAllSkillSets()
     {
         var result = new OperationCallResult<List<AppAgentSkillSetDto>>();
-        result.Object = AppAgentSkillSetBL.GetAllSkillSets(GetDsId());
+        result.Object = AppAgentSkillSetBL.GetAllSkillSets(GetDsId())
+            .Where(a => a != null && !UniversalAgentConstants.IsUniversalAgentKey(a.SkillKey))
+            .ToList();
         return result;
     }
 
@@ -78,6 +80,14 @@ public class AgentSkillSetController : SecureBaseController
             result.ValidationResult.Items.Add(new ValidationItem(
                 typeof(AgentSkillSetController),
                 "SkillKey_Required", ValidationItemType.Error, "SkillKey is required."));
+            return result;
+        }
+        if (UniversalAgentConstants.IsUniversalAgentKey(dto.SkillKey))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController),
+                "SkillKey_Reserved", ValidationItemType.Error,
+                "Universal Agent is built in and is not managed here."));
             return result;
         }
         result.Object = AppAgentSkillSetBL.UpsertSkillSet(GetDsId(), dto);
@@ -437,6 +447,16 @@ public class AgentSkillSetController : SecureBaseController
     {
         var result = new OperationCallResult<bool>();
         result.Object = LibToolBL.Delete(GetDsId(), id);
+        return result;
+    }
+
+    /// <summary>Platform default TemplateContent body for a layout key (Interactive / none-interactive).</summary>
+    [HttpGet]
+    public OperationCallResult<string> GetUiTemplateDefault(string layout, bool interactive = false)
+    {
+        var result = new OperationCallResult<string>();
+        result.Object = App.BL.AIAgent.GenericAgent.Documents.UiDefaultViewTemplates
+            .GetPlatformDefault(layout ?? "", interactive) ?? "";
         return result;
     }
 

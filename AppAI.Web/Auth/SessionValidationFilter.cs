@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using App.BL;
 using APP.Framework;
 using Microsoft.AspNetCore.Mvc;
@@ -17,6 +19,11 @@ public class SessionValidationFilter : IActionFilter
     {
         var request = context.HttpContext.Request;
 
+        // Result iframe loads AgentUiInteractiveHtml?token=… without session headers.
+        // Token TTL gate is enforced inside the action — skip session filter here.
+        if (IsTokenGatedAgentUiHtml(context))
+            return;
+
         // A blank CurrentUserSessionId header must not replace a session already present on the cookie.
         var headerSessionId = request.Headers[ServerContext.CurrentUserSessionIdToken].FirstOrDefault();
         var sessionId = string.IsNullOrWhiteSpace(headerSessionId)
@@ -34,4 +41,15 @@ public class SessionValidationFilter : IActionFilter
     }
 
     public void OnActionExecuted(ActionExecutedContext context) { }
+
+    private static bool IsTokenGatedAgentUiHtml(ActionExecutingContext context)
+    {
+        if (context.ActionDescriptor?.RouteValues == null) return false;
+        if (!context.ActionDescriptor.RouteValues.TryGetValue("action", out var action))
+            return false;
+        if (!string.Equals(action, "AgentUiInteractiveHtml", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var token = context.HttpContext.Request.Query["token"].FirstOrDefault();
+        return !string.IsNullOrWhiteSpace(token);
+    }
 }

@@ -41,6 +41,24 @@ namespace App.BL.AppMgr.AiSkill
             return list;
         }
 
+        public static List<AppAISkillDto> GetActiveSkillCatalog(int dataSourceRegisterId)
+        {
+            var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceRegisterId);
+            var sql = @"SELECT SkillId, Name, Description, IsActive, CreatedDate, UpdatedDate
+                        FROM AppAISkill
+                        WHERE IsActive = 1
+                        ORDER BY Name";
+
+            var dt = fixture.RetriveDataTable(sql, new List<DbParameter>());
+            var list = new List<AppAISkillDto>();
+            if (dt == null) return list;
+
+            foreach (DataRow row in dt.Rows)
+                list.Add(MapSkillRow(row, includeContent: false));
+
+            return list;
+        }
+
         public static AppAISkillDto GetSkillByName(int dataSourceRegisterId, string name)
         {
             var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceRegisterId);
@@ -75,6 +93,35 @@ namespace App.BL.AppMgr.AiSkill
             var skill = MapSkillRow(dt.Rows[0], includeContent: true);
             skill.References = GetRefsBySkillId(dataSourceRegisterId, skillId);
             return skill;
+        }
+
+        /// <summary>
+        /// Returns <paramref name="name"/>, or <paramref name="name"/> + " (2)" when that name is taken.
+        /// AppAISkill.Name is unique and NVARCHAR(200).
+        /// </summary>
+        public static string ResolveUniqueSkillName(int dataSourceRegisterId, string name)
+        {
+            var baseName = (name ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(baseName)) baseName = "Saved skill";
+            if (baseName.Length > 190) baseName = baseName.Substring(0, 190).TrimEnd();
+
+            var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var skill in GetAllSkills(dataSourceRegisterId))
+            {
+                if (!string.IsNullOrWhiteSpace(skill?.Name))
+                    existing.Add(skill.Name.Trim());
+            }
+
+            if (!existing.Contains(baseName)) return baseName;
+            for (var i = 2; i < 1000; i++)
+            {
+                var suffix = " (" + i + ")";
+                var room = 200 - suffix.Length;
+                var stem = baseName.Length <= room ? baseName : baseName.Substring(0, room).TrimEnd();
+                var candidate = stem + suffix;
+                if (!existing.Contains(candidate)) return candidate;
+            }
+            return baseName;
         }
 
         public static int CreateSkill(int dataSourceRegisterId, AppAISkillDto dto)
@@ -216,6 +263,9 @@ namespace App.BL.AppMgr.AiSkill
         /// Used by AI agents to load a skill's full system prompt.
         /// </summary>
         public static string GetComposedSkillPrompt(int dataSourceRegisterId, int skillId)
+            => GetComposedSkillPrompt(dataSourceRegisterId, skillId, skipUnderscoreRefs: false);
+
+        public static string GetComposedSkillPrompt(int dataSourceRegisterId, int skillId, bool skipUnderscoreRefs)
         {
             var skill = GetSkillById(dataSourceRegisterId, skillId);
             if (skill == null) return null;
@@ -225,6 +275,8 @@ namespace App.BL.AppMgr.AiSkill
 
             foreach (var r in skill.References)
             {
+                if (skipUnderscoreRefs && (r.FileName ?? "").TrimStart().StartsWith("_"))
+                    continue;
                 if (!string.IsNullOrWhiteSpace(r.FileContent))
                 {
                     sb.AppendLine();

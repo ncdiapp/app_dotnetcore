@@ -26,6 +26,106 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 
         public static byte[] WritePdf(FormDocument doc) => Save(doc, SaveOptions.PdfDefault);
 
+        public static byte[] WriteCardDocx(CardSheet sheet) => SaveCards(sheet, SaveOptions.DocxDefault);
+
+        public static byte[] WriteCardPdf(CardSheet sheet) => SaveCards(sheet, SaveOptions.PdfDefault);
+
+        private static byte[] SaveCards(CardSheet sheet, SaveOptions options)
+        {
+            var model = new DocumentModel();
+            AddStyles(model);
+            var section = new Section(model);
+            model.Sections.Add(section);
+            if (!string.IsNullOrEmpty(sheet.Title))
+                section.Blocks.Add(Paragraph(model, sheet.Title, StyleTitle, HorizontalAlignment.Center));
+            var perRow = CardSheet.ClampPerRow(sheet.CardsPerRow);
+            var pageRows = CardSheet.ClampPageRows(sheet.CardRows);
+            var pageSize = pageRows * perRow;
+            var pages = Math.Max(1, (int)Math.Ceiling(sheet.Cards.Count / (double)pageSize));
+            if (sheet.Cards.Count == 0) pages = 1;
+            var pictures = new List<MemoryStream>();
+            try
+            {
+                for (var p = 0; p < pages; p++)
+                {
+                    if (p > 0)
+                        section.Blocks.Add(new Paragraph(model, new SpecialCharacter(model, SpecialCharacterType.PageBreak)));
+                    section.Blocks.Add(CardPage(model, sheet, p * pageSize, pageRows, perRow, pictures));
+                }
+                using var ms = new MemoryStream();
+                model.Save(ms, options);
+                return ms.ToArray();
+            }
+            finally
+            {
+                foreach (var picture in pictures)
+                    picture.Dispose();
+            }
+        }
+
+        private static Table CardPage(DocumentModel model, CardSheet sheet, int start, int pageRows, int perRow, List<MemoryStream> pictures)
+        {
+            var table = new Table(model);
+            table.TableFormat.PreferredWidth = new TableWidth(100, TableWidthUnit.Percentage);
+            for (var r = 0; r < pageRows; r++)
+            {
+                var row = new TableRow(model);
+                for (var c = 0; c < perRow; c++)
+                {
+                    var index = start + r * perRow + c;
+                    var cell = new TableCell(model);
+                    cell.CellFormat.Borders.SetBorders(MultipleBorderTypes.Outside, BorderStyle.Single, Rgb(0xdddddd), 0.5);
+                    cell.CellFormat.PreferredWidth = new TableWidth(100d / perRow, TableWidthUnit.Percentage);
+                    if (index < sheet.Cards.Count)
+                    {
+                        foreach (var field in sheet.Cards[index])
+                        {
+                            cell.Blocks.Add(Paragraph(model, field.Label ?? "", StyleLabel, HorizontalAlignment.Left));
+                            if (field.IsImage || (field.ImageBytes != null && field.ImageBytes.Length > 0))
+                                cell.Blocks.Add(ImageSlot(model, field, pictures));
+                            else
+                                cell.Blocks.Add(Paragraph(model, field.Value ?? "", StyleValue, HorizontalAlignment.Left));
+                        }
+                    }
+                    else
+                    {
+                        cell.Blocks.Add(Paragraph(model, "", StyleValue, HorizontalAlignment.Left));
+                    }
+                    row.Cells.Add(cell);
+                }
+                table.Rows.Add(row);
+            }
+            return table;
+        }
+
+        private static Table ImageSlot(DocumentModel model, CardField field, List<MemoryStream> pictures)
+        {
+            var table = new Table(model);
+            table.TableFormat.PreferredWidth = new TableWidth(100, TableWidthUnit.Percentage);
+            var row = new TableRow(model);
+            row.RowFormat.Height = new TableRowHeight(96, TableRowHeightRule.Exact);
+            var slot = new TableCell(model);
+            slot.CellFormat.BackgroundColor = Rgb(0xf3f4f6);
+            slot.CellFormat.VerticalAlignment = VerticalAlignment.Center;
+            if (field.ImageBytes != null && field.ImageBytes.Length > 0)
+            {
+                var image = new MemoryStream(field.ImageBytes);
+                pictures.Add(image);
+                var picture = new Picture(model, image);
+                picture.Layout = new InlineLayout(new Size(120, 80));
+                var paragraph = new Paragraph(model, picture);
+                paragraph.ParagraphFormat.Alignment = HorizontalAlignment.Center;
+                slot.Blocks.Add(paragraph);
+            }
+            else
+            {
+                slot.Blocks.Add(Paragraph(model, "\u2014", StyleValue, HorizontalAlignment.Center));
+            }
+            row.Cells.Add(slot);
+            table.Rows.Add(row);
+            return table;
+        }
+
         public static FormDocument ReadDocx(byte[] bytes)
         {
             using var ms = new MemoryStream(bytes ?? Array.Empty<byte>());
@@ -195,10 +295,19 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 
         private static Paragraph Paragraph(DocumentModel model, string text, string style, HorizontalAlignment align)
         {
-            var run = new Run(model, text ?? "");
-            var paragraph = new Paragraph(model, run);
+            var paragraph = new Paragraph(model);
             paragraph.ParagraphFormat.Style = (ParagraphStyle)model.Styles[style];
             paragraph.ParagraphFormat.Alignment = align;
+            var normalized = (text ?? "").Replace("\r\n", "\n").Replace('\r', '\n').Replace('\t', ' ');
+            var lines = normalized.Split('\n');
+            for (var i = 0; i < lines.Length; i++)
+            {
+                if (i > 0)
+                    paragraph.Inlines.Add(new SpecialCharacter(model, SpecialCharacterType.LineBreak));
+                paragraph.Inlines.Add(new Run(model, lines[i]));
+            }
+            if (paragraph.Inlines.Count == 0)
+                paragraph.Inlines.Add(new Run(model, ""));
             return paragraph;
         }
 

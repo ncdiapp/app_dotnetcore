@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FlexGrid, FlexGridColumn } from '@mescius/wijmo.react.grid';
+import { FlexGrid, FlexGridCellTemplate, FlexGridColumn } from '@mescius/wijmo.react.grid';
 import { CollectionView } from '@mescius/wijmo';
 import { useDispatch } from 'react-redux';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
@@ -9,6 +9,13 @@ import {
 import { Theme } from '../../redux/features/ui/theme/types';
 import { endpoints } from '../../webapi/endpoints';
 import { getHeaders } from '../../helper/apiServiceHelper';
+import UiTemplateContentEditor, { isUiTemplateEditable } from './UiTemplateContentEditor';
+
+/** Library tool rows may carry TemplateContent (not on agent register DTO). */
+type ToolRow = AppAgentToolRegisterDto & {
+    TemplateContent?: string | null;
+    TemplateMetaJson?: string | null;
+};
 
 interface Props {
     selectedSkillKey: string | null;
@@ -39,14 +46,15 @@ interface TableInfo { name: string; schema: string; }
 
 const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHeader = false, mode = 'agent', pathPrefix }) => {
     const dispatch = useDispatch();
-    const [toolsCV] = useState(() => new CollectionView<AppAgentToolRegisterDto>([]));
+    const [toolsCV] = useState(() => new CollectionView<ToolRow>([]));
     const suppressSelectRef = useRef(false);
-    const [selected, setSelected] = useState<AppAgentToolRegisterDto | null>(null);
-    const [editItem, setEditItem] = useState<AppAgentToolRegisterDto>(emptyTool(''));
+    const [selected, setSelected] = useState<ToolRow | null>(null);
+    const [editItem, setEditItem] = useState<ToolRow>(emptyTool(''));
     const [showModal, setShowModal] = useState(false);
     const [isDirty, setIsDirty] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [confirmDelete, setConfirmDelete] = useState(false);
+    const [templateEditorTool, setTemplateEditorTool] = useState<string | null>(null);
 
     // BuiltIn picker
     const [builtInTools, setBuiltInTools] = useState<LibraryToolPreviewDto[]>([]);
@@ -65,7 +73,7 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
             const res = mode === 'library'
                 ? await agentSkillSetSvc.GetLibraryTools(skillKey)
                 : await agentSkillSetSvc.GetToolsBySkillKey(skillKey);
-            let rows = (res.Object ?? []) as AppAgentToolRegisterDto[];
+            let rows = (res.Object ?? []) as ToolRow[];
             // ask_user is auto-injected at runtime for Interactive agents — drop private register copies.
             if (mode === 'agent') {
                 const askUserRows = rows.filter(t => (t.ToolName || '').toLowerCase() === 'ask_user');
@@ -75,8 +83,8 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
                 }
                 // Collapse accidental SkillKey+ToolName duplicates (keep lowest Id).
                 const seen = new Set<string>();
-                const deduped: AppAgentToolRegisterDto[] = [];
-                const extras: AppAgentToolRegisterDto[] = [];
+                const deduped: ToolRow[] = [];
+                const extras: ToolRow[] = [];
                 for (const t of [...rows].sort((a, b) => (a.Id || 0) - (b.Id || 0))) {
                     const key = (t.ToolName || '').toLowerCase();
                     if (!key || seen.has(key)) { extras.push(t); continue; }
@@ -129,7 +137,7 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
         if (editItem.ToolType === 'SqlQuery' && schemaOpen) loadSchema();
     }, [editItem.ToolType, schemaOpen]);
 
-    const openModal = (tool: AppAgentToolRegisterDto) => {
+    const openModal = (tool: ToolRow) => {
         setEditItem({ ...tool });
         setIsDirty(false);
         setSchemaOpen(false);
@@ -138,7 +146,12 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
         setShowModal(true);
     };
 
-    const onGridSelectionChanged = (s: { control?: { selection?: { row?: number }; rows?: { dataItem: AppAgentToolRegisterDto }[] }; selection?: { row?: number }; rows?: { dataItem: AppAgentToolRegisterDto }[] }) => {
+    const openTemplateEditor = (toolName: string) => {
+        setShowModal(false);
+        setTemplateEditorTool(toolName);
+    };
+
+    const onGridSelectionChanged = (s: { control?: { selection?: { row?: number }; rows?: { dataItem: ToolRow }[] }; selection?: { row?: number }; rows?: { dataItem: ToolRow }[] }) => {
         const flex = s?.control ?? s;
         const row = flex.selection?.row;
         if (row == null || row < 0) return;
@@ -149,7 +162,7 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
         if (!suppressSelectRef.current) openModal(item);
     };
 
-    const update = (field: keyof AppAgentToolRegisterDto, value: unknown) => {
+    const update = (field: keyof ToolRow, value: unknown) => {
         setEditItem(prev => ({ ...prev, [field]: value }));
         setIsDirty(true);
     };
@@ -165,6 +178,9 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
                     ParameterSchemaJson: '', ToolType: editItem.ToolType,
                     ToolConfig: editItem.ToolConfig, IsActive: editItem.IsActive,
                     SortOrder: editItem.SortOrder ?? 0,
+                    // Preserve TemplateContent when editing tool metadata only.
+                    TemplateContent: editItem.TemplateContent ?? null,
+                    TemplateMetaJson: editItem.TemplateMetaJson ?? null,
                 };
                 await agentSkillSetSvc.UpsertLibraryTool(payload);
             } else {
@@ -177,6 +193,9 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
         finally { dispatch(setIsNotBusy()); }
     };
+
+    const canEditTemplates = mode === 'library' && isUiTemplateEditable(selectedSkillKey, selected?.ToolName);
+    const editItemCanEditTemplates = mode === 'library' && isUiTemplateEditable(selectedSkillKey, editItem.ToolName);
 
     const handleDelete = async () => {
         if (!selected) return;
@@ -244,6 +263,11 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
                         <button className={btn} onClick={() => openModal(selected)}>
                             <i className="fa-solid fa-pencil mr-1" />Edit
                         </button>
+                        {canEditTemplates && (
+                            <button className={btn} onClick={() => openTemplateEditor(selected.ToolName)}>
+                                <i className="fa-solid fa-code mr-1" />Edit templates
+                            </button>
+                        )}
                         <button className={btn} onClick={() => setConfirmDelete(true)}>
                             <i className="fa-solid fa-trash" />
                         </button>
@@ -253,6 +277,33 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
                     <FlexGrid className="w-full h-full" itemsSource={toolsCV} isReadOnly headersVisibility="Column" selectionChanged={onGridSelectionChanged}>
                         <FlexGridColumn header="Tool Name" binding="ToolName" width="*" />
                         <FlexGridColumn header="Type" binding="ToolType" width={100} />
+                        {mode === 'library' && (
+                            <FlexGridColumn header="" binding="" width={120} allowSorting={false}>
+                                <FlexGridCellTemplate
+                                    cellType="Cell"
+                                    template={(cell: { item?: ToolRow }) => {
+                                        const item = cell.item;
+                                        if (!item || !isUiTemplateEditable(selectedSkillKey, item.ToolName)) return null;
+                                        return (
+                                            <button
+                                                type="button"
+                                                className={`${btnSm} w-full`}
+                                                title="Edit TemplateContent"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    suppressSelectRef.current = true;
+                                                    setSelected(item);
+                                                    openTemplateEditor(item.ToolName);
+                                                    setTimeout(() => { suppressSelectRef.current = false; }, 150);
+                                                }}
+                                            >
+                                                <i className="fa-solid fa-code mr-1" />Templates
+                                            </button>
+                                        );
+                                    }}
+                                />
+                            </FlexGridColumn>
+                        )}
                         <FlexGridColumn header="" binding="" width="*" />
                     </FlexGrid>
                 </div>
@@ -391,6 +442,22 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
                                 <label className={lbl}>Active</label>
                                 <input type="checkbox" checked={editItem.IsActive} onChange={e => update('IsActive', e.target.checked)} />
                             </div>
+
+                            {editItemCanEditTemplates && (
+                                <div className={`border rounded p-3 flex items-center gap-2 ${theme.mainContentSection}`}>
+                                    <div className="flex flex-col flex-auto w-32 gap-0.5">
+                                        <div className={`text-xs font-semibold ${theme.title}`}>
+                                            <i className="fa-solid fa-code mr-1" />TemplateContent
+                                        </div>
+                                        <div className={`text-xs ${theme.label}`}>
+                                            Edit Interactive / none-interactive layout HTML (table, cards, kpi, …) as code.
+                                        </div>
+                                    </div>
+                                    <button type="button" className={btn} onClick={() => openTemplateEditor(editItem.ToolName)}>
+                                        Edit templates
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
                         <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-200 shrink-0">
@@ -400,6 +467,16 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
                         </div>
                     </div>
                 </div>
+            )}
+
+            {templateEditorTool && selectedSkillKey && mode === 'library' && (
+                <UiTemplateContentEditor
+                    libraryKey={selectedSkillKey}
+                    initialToolName={templateEditorTool}
+                    pathPrefix={pathPrefix}
+                    onClose={() => setTemplateEditorTool(null)}
+                    onSaved={() => { if (selectedSkillKey) void load(selectedSkillKey); }}
+                />
             )}
 
             {/* Delete confirmation */}

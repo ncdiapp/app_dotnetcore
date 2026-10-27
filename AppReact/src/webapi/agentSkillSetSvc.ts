@@ -20,6 +20,8 @@ export interface AppAgentSkillSetDto {
     AgentUi:            number;
     /** When true + Interactive: empty chat fires hidden [session_start]. UI: "Agent Starts Chat First". */
     AllowAgentFirstTurn?: boolean;
+    /** When true: emit Reasoning-loop (Think) steps. Default false (token cost). */
+    EnableThinkMode?:   boolean;
     /** Child-Agents under this agent (Orchestrator when > 0). */
     ChildCount?:        number;
     /** Orchestrators that list this agent as a Child-Agent. */
@@ -108,6 +110,9 @@ export interface AppAgentLibraryToolDto {
     ToolConfig:         string;
     IsActive:           boolean;
     SortOrder:          number;
+    /** JSON map layout→HTML (platform-ui-render render_* tools). */
+    TemplateContent?:   string | null;
+    TemplateMetaJson?:  string | null;
 }
 
 export interface LibraryToolPreviewDto {
@@ -425,6 +430,16 @@ class AgentSkillSetService {
             method: 'DELETE', headers: getHeaders(),
         });
         if (!res.ok) throw new Error(`DeleteLibraryTool failed (${res.status})`);
+        return res.json();
+    }
+
+    /** Platform code-default HTML for a TemplateContent layout key. */
+    async GetUiTemplateDefault(layout: string, interactive: boolean): Promise<OperationResult<string>> {
+        const res = await fetch(
+            `${BASE}/GetUiTemplateDefault?layout=${encodeURIComponent(layout || '')}&interactive=${interactive ? 'true' : 'false'}`,
+            { headers: getHeaders() },
+        );
+        if (!res.ok) throw new Error(`GetUiTemplateDefault failed (${res.status})`);
         return res.json();
     }
 

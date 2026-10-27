@@ -9,13 +9,16 @@ import AgentUiChatHost from './AgentUiChatHost';
 
 interface Props {
     skillKey: string;
+    routeBasePath?: string;
+    includeSkillQuery?: boolean;
 }
 
-const AgentChatManagement: React.FC<Props> = ({ skillKey }) => {
+const AgentChatManagement: React.FC<Props> = ({ skillKey, routeBasePath = '/agent-chat', includeSkillQuery = true }) => {
     const { theme, t } = useTheme();
     const dispatch = useDispatch();
     const [searchParams, setSearchParams] = useSearchParams();
     const chatFromUrl = searchParams.get('chat');
+    const handoffRun = searchParams.get('handoffRun') === '1';
     const [chats, setChats] = useState<GenericAgentChatSummary[]>([]);
     const [selectedKey, setSelectedKey] = useState<string | null>(chatFromUrl);
     const [creating, setCreating] = useState(false);
@@ -25,15 +28,19 @@ const AgentChatManagement: React.FC<Props> = ({ skillKey }) => {
         const next = new URLSearchParams(searchParams);
         if (sessionKey) next.set('chat', sessionKey);
         else next.delete('chat');
-        if (!next.get('skillKey')) next.set('skillKey', skillKey);
+        if (includeSkillQuery) {
+            if (!next.get('skillKey')) next.set('skillKey', skillKey);
+        } else {
+            next.delete('skillKey');
+        }
         next.delete('agentUi');
         setSearchParams(next, { replace: true });
         const tab = getCurrentActiveTab();
         if (tab?.tabKey) {
             const qs = next.toString();
-            dispatch(updateTabPath({ tabKey: tab.tabKey, path: qs ? `/agent-chat?${qs}` : '/agent-chat' }));
+            dispatch(updateTabPath({ tabKey: tab.tabKey, path: qs ? `${routeBasePath}?${qs}` : routeBasePath }));
         }
-    }, [dispatch, searchParams, setSearchParams, skillKey]);
+    }, [dispatch, includeSkillQuery, routeBasePath, searchParams, setSearchParams, skillKey]);
 
     const refreshList = useCallback(async (preferKey?: string | null) => {
         const list = await genericAgentSvc.ListChats(skillKey);
@@ -49,6 +56,18 @@ const AgentChatManagement: React.FC<Props> = ({ skillKey }) => {
         setSelectedKey(nextKey);
         applyChatQuery(nextKey);
     }, [applyChatQuery, chatFromUrl, skillKey]);
+
+    const clearHandoffRun = useCallback(() => {
+        const next = new URLSearchParams(searchParams);
+        if (next.get('handoffRun') !== '1') return;
+        next.delete('handoffRun');
+        setSearchParams(next, { replace: true });
+        const tab = getCurrentActiveTab();
+        if (tab?.tabKey) {
+            const qs = next.toString();
+            dispatch(updateTabPath({ tabKey: tab.tabKey, path: qs ? `${routeBasePath}?${qs}` : routeBasePath }));
+        }
+    }, [dispatch, routeBasePath, searchParams, setSearchParams]);
 
     useEffect(() => {
         void refreshList(chatFromUrl);
@@ -212,6 +231,8 @@ const AgentChatManagement: React.FC<Props> = ({ skillKey }) => {
                             else setListCollapsed(false);
                         }}
                         onConversationChanged={() => { void refreshList(selectedKey); }}
+                        autoRunPendingUser={handoffRun}
+                        onAutoRunStarted={clearHandoffRun}
                     />
                 ) : (
                     <div className={`w-full h-full flex items-center justify-center text-sm rounded-[8px] border shadow-sm ${t('border_mainContentSection')} ${theme.mainContentSection} ${theme.label}`}>

@@ -15,7 +15,9 @@ namespace App.BL.TenantBusiness
         string ToolType,
         string ToolConfig,
         bool   IsActive,
-        int    SortOrder);
+        int    SortOrder,
+        string TemplateContent = null,
+        string TemplateMetaJson = null);
 
     public static class AppAgentLibraryToolBL
     {
@@ -43,12 +45,33 @@ namespace App.BL.TenantBusiness
         {
             var dt = fixture.RetriveDataTable(
                 @"SELECT LibraryToolId, LibraryKey, ToolName, ToolDescription, ParameterSchemaJson,
-                         ToolType, ToolConfig, IsActive, SortOrder
+                         ToolType, ToolConfig, IsActive, SortOrder, TemplateContent, TemplateMetaJson
                   FROM dbo.AppAgentLibraryTool
                   WHERE LibraryKey=@LibraryKey
                   ORDER BY SortOrder, LibraryToolId",
                 new List<DbParameter> { P(fixture, "@LibraryKey", libraryKey.Trim()) });
             return MapAll(dt);
+        }
+
+        /// <summary>Load one library tool by name (for UI template merge).</summary>
+        public static AppAgentLibraryToolDto GetByLibraryAndToolName(string libraryKey, string toolName)
+        {
+            if (string.IsNullOrWhiteSpace(libraryKey) || string.IsNullOrWhiteSpace(toolName))
+                return null;
+            var fixture = GetFixture();
+            if (fixture == null) return null;
+            var dt = fixture.RetriveDataTable(
+                @"SELECT LibraryToolId, LibraryKey, ToolName, ToolDescription, ParameterSchemaJson,
+                         ToolType, ToolConfig, IsActive, SortOrder, TemplateContent, TemplateMetaJson
+                  FROM dbo.AppAgentLibraryTool
+                  WHERE LibraryKey=@LibraryKey AND ToolName=@ToolName",
+                new List<DbParameter>
+                {
+                    P(fixture, "@LibraryKey", libraryKey.Trim()),
+                    P(fixture, "@ToolName", toolName.Trim())
+                });
+            if (dt == null || dt.Rows.Count == 0) return null;
+            return Map(dt.Rows[0]);
         }
 
         // Used by the runtime engine — returns all active tools from subscribed libraries
@@ -72,7 +95,7 @@ namespace App.BL.TenantBusiness
         {
             var dt = fixture.RetriveDataTable(@"
 SELECT t.LibraryToolId, t.LibraryKey, t.ToolName, t.ToolDescription, t.ParameterSchemaJson,
-       t.ToolType, t.ToolConfig, t.IsActive, t.SortOrder
+       t.ToolType, t.ToolConfig, t.IsActive, t.SortOrder, t.TemplateContent, t.TemplateMetaJson
 FROM dbo.AppAgentLibraryTool t
 INNER JOIN dbo.AppAgentLibrarySubscription s ON t.LibraryKey = s.LibraryKey
 WHERE s.SkillKey=@SkillKey AND t.IsActive=1
@@ -140,22 +163,39 @@ ORDER BY t.SortOrder, t.LibraryToolId",
 
         private static int UpsertCore(DatabaseSchemaMrg.DatabaseFixture fixture, AppAgentLibraryToolDto dto)
         {
+            // Tool-metadata edits often omit TemplateContent; never wipe stored templates with null.
+            if (dto.Id > 0 && (dto.TemplateContent == null || dto.TemplateMetaJson == null))
+            {
+                var existing = fixture.RetriveDataTable(
+                    "SELECT TemplateContent, TemplateMetaJson FROM dbo.AppAgentLibraryTool WHERE LibraryToolId=@Id",
+                    new List<DbParameter> { P(fixture, "@Id", dto.Id) });
+                if (existing != null && existing.Rows.Count > 0)
+                {
+                    var row = existing.Rows[0];
+                    if (dto.TemplateContent == null)
+                        dto = dto with { TemplateContent = Col(row, "TemplateContent") };
+                    if (dto.TemplateMetaJson == null)
+                        dto = dto with { TemplateMetaJson = Col(row, "TemplateMetaJson") };
+                }
+            }
+
             if (dto.Id > 0)
             {
                 fixture.ExecuteNonQueryResult(
                     @"UPDATE dbo.AppAgentLibraryTool SET
                         LibraryKey=@LibraryKey, ToolName=@ToolName, ToolDescription=@Description,
                         ParameterSchemaJson=@ParameterSchemaJson, ToolType=@ToolType,
-                        ToolConfig=@ToolConfig, IsActive=@IsActive, SortOrder=@SortOrder
+                        ToolConfig=@ToolConfig, IsActive=@IsActive, SortOrder=@SortOrder,
+                        TemplateContent=@TemplateContent, TemplateMetaJson=@TemplateMetaJson
                       WHERE LibraryToolId=@Id",
                     UpsertParams(fixture, dto));
                 return dto.Id;
             }
             var dt = fixture.RetriveDataTable(
                 @"INSERT INTO dbo.AppAgentLibraryTool
-                    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+                    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder, TemplateContent, TemplateMetaJson)
                   OUTPUT INSERTED.LibraryToolId
-                  VALUES (@LibraryKey, @ToolName, @Description, @ParameterSchemaJson, @ToolType, @ToolConfig, @IsActive, @SortOrder)",
+                  VALUES (@LibraryKey, @ToolName, @Description, @ParameterSchemaJson, @ToolType, @ToolConfig, @IsActive, @SortOrder, @TemplateContent, @TemplateMetaJson)",
                 UpsertParams(fixture, dto));
             if (dt != null && dt.Rows.Count > 0)
                 return Convert.ToInt32(dt.Rows[0][0]);
@@ -215,7 +255,16 @@ ORDER BY t.SortOrder, t.LibraryToolId",
                 ToolType:            row["ToolType"]            as string ?? "BuiltIn",
                 ToolConfig:          row["ToolConfig"]          as string ?? "",
                 IsActive:            row["IsActive"]            != DBNull.Value && Convert.ToBoolean(row["IsActive"]),
-                SortOrder:           row["SortOrder"]           != DBNull.Value ? Convert.ToInt32(row["SortOrder"]) : 0);
+                SortOrder:           row["SortOrder"]           != DBNull.Value ? Convert.ToInt32(row["SortOrder"]) : 0,
+                TemplateContent:     Col(row, "TemplateContent"),
+                TemplateMetaJson:    Col(row, "TemplateMetaJson"));
+
+        private static string Col(DataRow row, string name)
+        {
+            if (row?.Table == null || !row.Table.Columns.Contains(name) || row[name] == DBNull.Value)
+                return null;
+            return row[name] as string;
+        }
 
         private static List<DbParameter> UpsertParams(DatabaseSchemaMrg.DatabaseFixture f, AppAgentLibraryToolDto d) =>
             new List<DbParameter>
@@ -228,7 +277,9 @@ ORDER BY t.SortOrder, t.LibraryToolId",
                 P(f, "@ToolType",            d.ToolType ?? "BuiltIn"),
                 P(f, "@ToolConfig",          (object)d.ToolConfig          ?? DBNull.Value),
                 P(f, "@IsActive",            d.IsActive),
-                P(f, "@SortOrder",           d.SortOrder)
+                P(f, "@SortOrder",           d.SortOrder),
+                P(f, "@TemplateContent",     (object)d.TemplateContent     ?? DBNull.Value),
+                P(f, "@TemplateMetaJson",    (object)d.TemplateMetaJson    ?? DBNull.Value)
             };
 
         // ─────────────────────────────────────────────────────────────────────

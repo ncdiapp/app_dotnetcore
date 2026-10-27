@@ -1,0 +1,756 @@
+# Agent UI render and document export
+
+**Canonical design, test standard, and implementation summary.**  
+Date: 2026-10-22 (Tailwind + export fidelity clarified). Supersedes the former drafts `AI-Agent-Document-Export-Tools-V1.md`, `…-V2.md`, and `…-V3.md` (those files are removed). Chat chrome (header, composer, chips, motion) stays in [`AI-Agent-Chat-UI.md`](AI-Agent-Chat-UI.md); that file defers Result hosting to this document.
+
+> **Partial supersession (2026-10-22):** AI polish of TemplateContent, field/column/filter selection, Result React chrome (Filter / Print / Export), Chat visual targets vs MCP Client, and the rule that the LLM must never bind Result data into pages are specified in [`AI-Agent-Result-And-Doc-Export-UI-Layout-Redesign.md`](AI-Agent-Result-And-Doc-Export-UI-Layout-Redesign.md). That doc **partially supersedes** Goal #3 and the “Model must not paste template bodies” row below: TemplateContent **may** enter a dedicated polish step (≤10 sample rows); the LLM still must **not** combine templates with Result rows to build pages. **This file remains canonical** for Scriban merge, Playwright PDF, OpenXML Word, PPT shots, cache/row limits, and `export_*` engines.
+
+This document covers both:
+
+1. **UI render** — Agent Chat Result panel shows C#-merged HTML in an **iframe** (`render_none_interactive`) or React hosts + TemplateContent control LAYOUTs (`render_interactive`).
+2. **Document export / read** — **Same** `render_none_interactive` TemplateContent merge drives HTML / PDF / Word / PowerPoint; Excel and CSV use a fixed style table.
+
+The model does **not** send HTML, fonts, or colors, and does **not** write the Result page. C# fills templates from the session cache.
+
+---
+
+## Summary
+
+| Concern | Decision |
+|---------|----------|
+| Who builds the page / file body | **C#** Scriban merge from `AppAgentLibraryTool.TemplateContent` |
+| Result host | **iframe** (`srcDoc` / blob); CSS/JS isolated from the main app |
+| Templates store | `TemplateContent` + `TemplateMetaJson` on **render** library tool rows (MCP-like `content`, program-filled) |
+| Export templates | **Shared** with `render_none_interactive` — not on each `export_*` tool |
+| Tool names | `render_none_interactive`, `render_interactive` — **never** use `static` |
+| Modes | `NoneInteractive` \| `Interactive` |
+| Layouts (shipped) | `form`, `table`, `cards` |
+| Layouts (next) | `kpi`, `chart`, `dashboard` — MCP-like look in Result |
+| Result CSS/JS | **Allowed inside the iframe** (Tailwind utilities via **vendored / prebuilt** `agent-ui` CSS). Isolated from the host app. **No** runtime CDN (`cdn.tailwindcss.com`). |
+| Export charts | When needed, **rasterize chart(s) to PNG** and embed in DOC/PDF/PPT (and HTML export as `<img>`). Not required for Excel/CSV. |
+| PDF | Playwright on **same merged HTML**; `/agent-ui/*.css` **inlined** before print (must not depend on SPA origin at export time) |
+| Word | **Editable** body: consume **same merged HTML** as DOM/`data-role` → native Open XML (text, tables, real inline images). **Not** full-page screenshots. Layout **approximate** vs Tailwind Result/PDF — not pixel-identical |
+| PowerPoint | Same merged HTML → Playwright panel/page capture → slides (visual deck). Chart images as pictures where applicable |
+| Excel / CSV | Fixed style table; ignore HTML templates; charts become numbers/tables only |
+| Legacy | `data_render` alias one release, then delete |
+
+```
+dataset_name / form tree
+        │
+        ▼
+ AgentDataAnalyzeCacheBL
+        │
+        ▼
+ Template: render_none_interactive | render_interactive
+   .TemplateContent[layout]
+        │
+        ▼
+ C# merge (Scriban + encode + safety)
+        │
+        ├──► SSE ui_render → Result iframe (CSS via /agent-ui or inline)
+        ├──► export_pdf  → inline agent-ui CSS → Playwright
+        ├──► export_docx → same HTML structure → editable OpenXML (data-role)
+        └──► export_pptx → same HTML → Playwright shots → slides
+              (always none-interactive TemplateContent for that layout)
+```
+
+---
+
+## Goals
+
+1. Analysis view → render tool (`dataset_name`, `layout`, …) → C# merge → Result iframe.
+2. Export → `export_*` with same cache + `layout` → **same none-interactive merge** → file matches Result as far as each engine allows.
+3. Model never receives or emits large HTML/CSS/JS as **render/export tool args** for painting pages. **Exception (redesign):** a dedicated AI polish step may read library TemplateContent plus ≤10 sample rows and return polished TemplateContent + field structure for GENERATE tools — see [`AI-Agent-Result-And-Doc-Export-UI-Layout-Redesign.md`](AI-Agent-Result-And-Doc-Export-UI-Layout-Redesign.md). The model must still never bind full Result data into HTML.
+4. Merged HTML can stand alone later (download / open outside the app).
+
+### AI vs program
+
+| Actor | May do | Must not do |
+|-------|--------|-------------|
+| Model | `dataset_name`, `layout`, `title`, `limit`, `cardsPerRow`, `cardRows`, `actionsJson`, export paths; **polish step:** edit TemplateContent + emit field/column structure (session cache only) | Paste ad-hoc page HTML as tool args; combine TemplateContent with Result rows to build pages; write polished templates to the library (v1) |
+| C# | Load template (session polish or library), bind cache, encode, sanitize, emit HTML / files | Ask the model to fill row cells into the page |
+| React host | iframe, sandbox, postMessage, chips; **Result chrome:** Filter / Print / Export per redesign doc | Wijmo/AG Grid/Recharts inside none-interactive iframe body as the primary card path |
+
+### Naming rule (mandatory)
+
+Do **not** use `static` in tool names, mode enums, or user-facing copy. Use **none-interactive** / `NoneInteractive` and **interactive** / `Interactive`.
+
+---
+
+## Limits
+
+| What | Cap |
+|------|-----|
+| Session cache (`AgentDataAnalyzeCacheBL`) | 50000 data rows |
+| Render / export | 50000 data rows |
+| Columns | 50 |
+| Rows returned to the model on read | 500 |
+| Section depth drawn | 3 |
+| PDF text returned to the model | ~12000 characters |
+| One file | 20 MB |
+| Inline HTML on SSE (suggested) | 512 KB; above → session file + `htmlPath` (no practical file-size cap for tool writes) |
+| Result grid pane | `max-height: min(80vh, 800px); overflow: auto` |
+| Result cards pane | No max-height (page scrolls) |
+| Stacked controls (page / multi-block) | Platform collapse/expand chrome — **not** in TemplateContent |
+
+Over 50000 data rows: error, no file, no Result HTML. Cache keeps first 50000 and marks truncated. Restart drops process memory cache. Tool-written AgentOutput (render HTML spill, exports) is **not** limited to 20 MB — only LLM-facing previews stay small.
+
+**Row-limit ask (Interactive agents):** Unbounded detail `SELECT` (no `TOP`/`LIMIT`): platform runs `COUNT` first. Thresholds (platform constants in `AgentRowLimitConfirmBL`):
+
+| Counted rows | Behavior |
+|--------------|----------|
+| ≤ **250** (`AutoShowMaxRows`) | Auto-fetch all — no `ask_user` |
+| **251–1199** | Ask: **TOP 100** + **All N** (no TOP 1000 — it would be ≈ all) |
+| ≥ **1200** (`Top1000MinTotal`) | Ask: **TOP 100** + **TOP 1000** + **All N** (All capped at MaxCachedRows) |
+
+Prompt always states the counted total. Options are built from that count. Platform must not rewrite the model’s explicit `TOP 100/500/1000` up to MaxCachedRows on its own.
+
+Playwright needs Chromium installed. LibreOffice (`DocumentExport:SofficePath`) for docx paths. Each `soffice` call uses its own temp profile; cleaned up on success or failure.
+
+---
+
+## Input, files, and cache
+
+The model sends a form tree, `dataset_name`, or `sourcePath`. Prefer `dataset_name` so the file and Result get full cached rows, not a truncated paste.
+
+Files: `FileRepository/Company_{id}/AgentOutput/{session}/`. Bare name → `output/` with `_yyyyMMdd_HHmmss` before extension. Reject `..`.
+
+`dataset_name` loads `AgentDataAnalyzeCacheBL` for this chat; wins over `content`. Tool does not re-run the query.
+
+`layout`: `form` (default for form trees), `table`, or `cards`. `cardsPerRow` 1–6 (default 1). `cardRows` default 3 (PDF/Word/PPT page grid). CSV is one flat row per record. Excel ignores `cardRows`.
+
+### Form tree (layout `form`)
+
+```json
+{
+  "title": "Sales Order",
+  "fields": [
+    { "label": "Order No", "value": "SO-1" },
+    { "label": "Customer", "value": "Acme" }
+  ],
+  "sections": [
+    {
+      "title": "Lines",
+      "tables": [
+        { "columns": ["Item", "Qty", "Amount"], "rows": [["Widget", 2, 20]] }
+      ]
+    }
+  ],
+  "notes": "Ship this week."
+}
+```
+
+`rows` may be objects. If `columns` is omitted, use the first object's keys. Cells: string, number, bool, ISO-8601 date, or null. Nesting: depth 1 title, depth 2 section, deeper as depth 3.
+
+Export may pass `path` plus exactly one of `content` or `sourcePath` (`.json`, `.csv`, `.xlsx`, `.html` already in session).
+
+### Row choice (every export / render that binds tabular data)
+
+- `dataset_name` → full cache.
+- `content` / `records` that look like a flat table or card list, match one cached dataset on key values, and have fewer rows → replace with that dataset’s full rows (at least half of passed keys hit).
+- Two matching datasets and no `dataset_name` → error, no file / no panel.
+- Multi-section form that is not a single table → written as given.
+- Remembered Result / card panel is a display slice; does not override a larger matching cache. Explicit `limit` applies after cache choice.
+- `rowCount` = rows written or shown.
+
+### Preview
+
+`preview` true on export: return merged HTML (ideally with agent-ui CSS inlined like PDF), do not write the office file. That HTML is what `export_pdf` prints. Word uses the same HTML as editable OpenXML structure (not preview pixels); PPT uses captures of that HTML.
+
+`export_html` / email body: tables and inline styles only — no `<style>` block, no flex/grid/float. Preview and Playwright PDF may add `PrintCss` on the same body; `PrintCss` is not part of the email body.
+
+---
+
+## Templates on the library tool row
+
+```sql
+ALTER TABLE dbo.AppAgentLibraryTool ADD
+  TemplateContent   NVARCHAR(MAX) NULL,
+  TemplateMetaJson  NVARCHAR(MAX) NULL;
+```
+
+| Column | Use |
+|--------|-----|
+| `TemplateContent` | JSON map layout → Scriban HTML. Keys: `form`, `table`, `cards`. Only on render tools. |
+| `TemplateMetaJson` | `{ "mode": "NoneInteractive" \| "Interactive", "printCss": "...", "sampleJson": "..." }` |
+| `ToolConfig` | BuiltIn dispatch only (`TypeName`, `MethodName`). No HTML. |
+| `ParameterSchemaJson` | LLM args only. No template bodies. |
+
+```json
+{
+  "form": "<!DOCTYPE html>… {{ title }} …",
+  "table": "<!DOCTYPE html>…",
+  "cards": "<!DOCTYPE html>…"
+}
+```
+
+Rules:
+
+- `render_none_interactive` and `render_interactive` must have `TemplateContent` after seed.
+- Every `export_*` / `read_*` / `convert_*` row: both columns **NULL**.
+- Runtime prefers DB; empty DB → code default for that layout (deploy safety).
+- Tenant may edit the two columns (company customization) via **Tool Template Editor** (see section below).
+- Missing layout key → `{ ok: false, error }` — no file, no panel.
+
+### Code defaults vs DB `TemplateContent` (locked)
+
+| Source | What it is | When used |
+|--------|------------|-----------|
+| **Code default** (`HtmlForm` / `UiDashboardHtml` / page compose, `{{code_default}}`) | Built-in C# HTML for a layout | Seed / empty DB key / Reset |
+| **DB `TemplateContent[layout]`** | Edited Scriban HTML on the **library tool row** | Overrides code default for that tool + layout |
+| **React Result host** | iframe + postMessage (`UiRenderFrame`) | Displays **merged** HTML; does not interpret Scriban |
+
+**Feasibility (decided):** Interactive `table` / `cards` / `page` **do** use TemplateContent — **feasible and adopted**.
+
+Correct pipeline (do **not** run Scriban inside React):
+
+```
+DataJson / FormDocument / CardSheet  (server cache)
+        │
+        ▼
+ UiTemplateMerge  ← TemplateContent from the matching tool row
+   render_none_interactive.*  OR  render_interactive.*
+        │
+        ▼
+ Merged HTML (+ WrapInteractive for interactive)
+        │
+        ▼
+ SSE ui_render → React UiRenderFrame (iframe)
+```
+
+**Interactive Result hosts (React page chrome + TemplateContent control LAYOUTs):**
+
+| Layout | React host | TemplateContent role (`render_interactive`) |
+|--------|------------|-----------------------------------------------|
+| `table` | `DataRenderPanel` (Wijmo grid) | Export twin; optional `#gridHost` shell |
+| `cards` | `TemplateControlLayout` (`cardsHtml`) | Control LAYOUT (Scriban HTML/CSS) |
+| `page` | `InteractivePagePanel` | Cards LAYOUT; table = React Wijmo; collapse in React |
+| `kpi` / `dashboard` | `InteractiveDashboardPanel` | Per-control LAYOUT: `kpi` → `kpiHtml`, `chart` → `chartHostHtml` (`#chartHost`), `table` → `gridHostHtml` (`#gridHost`). React stacks/filter/Wijmo only — not pure React KPI/card UI. |
+
+**None-interactive** (and Interactive **`chart`-only**) stay TemplateContent → `UiRenderFrame` iframe. Do **not** vendor Wijmo UMD under `public/agent-ui/wijmo`. Keep `public/agent-ui/agent-cards.css` / `agent-kpi.css` (evolve toward `agent-ui.css`) for control LAYOUTs.
+
+**Two tool rows = two separate TemplateContent stores:**
+
+| Tool | Result | Export |
+|------|--------|--------|
+| `render_none_interactive` | iframe ← that row’s TemplateContent | **Same merge** — PDF/Word/PPT all start from this HTML |
+| `render_interactive` | React hosts above; control LAYOUTs from this row | Export twin uses **none-interactive** templates |
+
+Editing Interactive `cards` does **not** change None-Interactive `cards` (independent rows). Template Editor should expose both tools; optional “Copy to other mode” later.
+
+`layout=page`: React stacks table + cards; LLM `specJson.sectionTitles` label collapse sections (not literal “Grid”/“Cards”).
+
+### None-interactive TemplateContent ↔ export fidelity (adopted 2026-10-22)
+
+**Rule:** Changing `render_none_interactive.TemplateContent[layout]` changes none-interactive **Result** and **export** together. There is one Scriban merge; targets differ only in how they consume the HTML.
+
+| Target | Consumes | Promise |
+|--------|----------|---------|
+| Result | Merged HTML + `/agent-ui` CSS (or inline) | Full Tailwind look (classes from vendored pack) |
+| PDF | **Same HTML** + **inlined** agent-ui CSS → Playwright | Visual match to Result (browser paint) |
+| Word | **Same HTML** parsed by `data-role` / structure → **editable** Open XML | Same text, cards, tables, real `<img>` parts; layout **approximate** — **not** pixel-identical to Tailwind |
+| PPT | Same HTML → Playwright captures → slides | Visual deck (screenshot OK) |
+| Excel / CSV | Data only | Ignore TemplateContent visuals |
+
+**Rejected:** Word body as full-page PNG/screenshots (not an editable document).
+
+**Authoring contract**
+
+- **`data-role`** (`title`, `label`, `value`, `card`, `grid`, `image`, …) = contract for Word (and read_html / round-trip). Required on meaningful nodes.
+- **Tailwind utility classes** (from vendored `agent-ui` / `agent-cards.css` pack only) = contract for Result + PDF.
+- Exotic utilities that Word mapper does not whitelist affect Result/PDF only; document the whitelist as it grows.
+- Prefer card/table chrome that stays expressible as simple blocks/tables so Word mapping stays predictable.
+- Images: Scriban model exposes `is_image` / `image_src` (data-URI after `CardImageLoader`); templates render `<img>`, not raw URL text only.
+
+**Do not** primary-path bypass TemplateContent for cards PDF/Word (e.g. `WriteFittedCards` / `OpenXmlWordForm.WriteCards(sheet)` ignoring merge) except hard fallback when Scriban/parse fails.
+
+### Scriban / safety
+
+- Data only: title, fields, sections, columns, rows, cards, meta, image flags/srcs.
+- No `include`, no arbitrary method calls. Values HTML-encoded.
+- Keep `data-role` markers: `title`, `label`, `value`, `grid`, `card`, `image`, section roles (read_html, Word OpenXML map, PPT).
+- **NoneInteractive:** no interactive handlers from **data**; chart scripts may run only if the layout is chart/dashboard and the template ships them (or use server-rendered SVG/PNG for none-interactive). Prefer static SVG/PNG for print fidelity.
+- **Interactive:** scripts from **shipped template / vendored bundles** only; still reject `javascript:` in data-bound attrs.
+- **CSS (adopted):** Result **may** use Tailwind utilities via **prebuilt** `AppReact/public/agent-ui/*.css` (and/or `wwwroot/agent-ui/`). Host app CSS/JS must not leak in. **No** `cdn.tailwindcss.com` / jsDelivr at runtime. **Export PDF:** inline those stylesheets into the HTML before Playwright (Playwright must not rely on `localhost:3000/agent-ui/...`).
+
+### Style table (built-in default)
+
+Font Arial. Inline on `data-role` nodes so PowerPoint can copy them.
+
+| Level | Size | Weight | Align | Color | Extra |
+|-------|------|--------|-------|-------|-------|
+| Document title | 18pt | bold | center | `#1a1a1a` | blank row after |
+| Section | 13pt | bold | left | `#1a1a1a` on `#f0f2f4` | blank row before |
+| Nested section | 12pt | bold | left | `#1a1a1a` | blank row before |
+| Field label | 10pt | bold | left | `#555555` | |
+| Field value | 10pt | normal | left | `#1a1a1a` | |
+| Table header | 10pt | bold | left | `#ffffff` on `#3d4f5f` | repeat on PDF pages |
+| Table cell | 10pt | normal | left | `#1a1a1a`, border `#dddddd` | numbers right |
+| Notes | 10pt | normal | left | `#333333` | blank row before |
+
+Excel title: 13pt bold, centered. Excel/CSV do not read HTML templates. Field rows: two label/value pairs per row.
+
+---
+
+## Layouts: table, cards, images
+
+| Layout | Data | Page |
+|--------|------|------|
+| `form` | Form tree above | One document |
+| `table` | Columns + rows | One grid; header repeats on page break where format supports it |
+| `cards` | One record per card | `cardsPerRow`; PDF/Word/PPT also `cardRows` |
+
+### Cards
+
+| Format | Parameters | Placement |
+|--------|------------|-----------|
+| HTML / Result | `cardsPerRow` | Flowing grid; no page size |
+| Excel | `cardsPerRow` | Sheet rows; no page size |
+| PDF, Word | `cardRows`, `cardsPerRow` | Page = `cardRows × cardsPerRow` |
+| PowerPoint | `cardRows`, `cardsPerRow` | One slide = one page |
+| CSV | — | One flat row per record |
+
+Image fields: `fileId`, app image URL, or `http(s)` image URL. Model does not send bytes. HTML/PDF/Word/Result: data-URI `<img>` when bytes load. Excel: anchored picture. PPT: picture on card. Failures listed in `missingImages`; file/panel still produced.
+
+### Charts / KPI / dashboard
+
+**Shipped today:** `form` / `table` / `cards` only. Legacy `data_render` `chart` / `kpi_dashboard` still map to `table` / `cards` with `mappedFrom`.
+
+**Adopted for the next slice** (MCP-like Result look):
+
+| layout | Result iframe | Export |
+|--------|---------------|--------|
+| `kpi` | KPI card row(s), Tailwind-styled | Same numbers as form/table fields; no chart image |
+| `chart` | One primary chart (+ optional small table) | Chart → **PNG** embedded; table as today |
+| `dashboard` | KPIs + 1–N charts + optional grid | Each chart → PNG; grids/tables as today |
+
+**Export chart images (adopted):** C# may render chart HTML (or SVG) to PNG (Playwright screenshot of a chart fragment, or equivalent) and inject `data-URI` / file images into the merged HTML before LibreOffice / Playwright PDF / ShapeCrawler. Failures go to `missingImages`; the file is still written. Cap charts per document (suggest ≤9, same as old dashboard chart block cap).
+
+**Still not AI-written HTML:** model / `data_analyze` pass `dataset_name` + small **spec**; C# fills templates and draws only.
+
+### Next slice — locked decisions (2026-10-20)
+
+| # | Topic | Decision |
+|---|--------|----------|
+| 1 | Spec | **Model or `data_analyze` passes a small spec** (`kpiFields`, `xField`, `yField`, `chartType`, dashboard `blocks`). Render does not invent the chart meaning. Optional weak inference only if spec is omitted and columns are obvious — never required for success. |
+| 2 | Aggregation | **`data_analyze` (or prior tool) writes a shaped cached dataset** (already aggregated / top-N). **`render_*` only paints** that dataset + spec. No heavy group-by inside render. |
+| 3 | Assets | Vendor **prebuilt `agent-ui.css`** (Tailwind compiled or hand CSS) + **Chart.js** (or equiv) under `wwwroot/agent-ui/`. Iframe loads local URLs or inlined critical CSS. **No runtime CDN.** Goal: iframe looks MCP-like. |
+| 4 | Dual path | **One template family**, bind flag `forExport` / mode: Result interactive = live chart script; export / none-interactive print = **PNG (or static SVG) placeholders** filled by C# before write. |
+| 5 | Rasterize | Reuse **Playwright** (same stack as `export_pdf`) to screenshot chart fragments → PNG → embed. Cap ≤9 charts/doc; timeout; failures → `missingImages`, file still written. Limit concurrency so chart jobs do not starve PDF. |
+
+### Spec shape (next slice)
+
+Passed as tool arg `specJson` (string) and/or stored on the cached dataset meta. Illustrative:
+
+```json
+{
+  "title": "Sales overview",
+  "kpis": [
+    { "label": "Total Sales", "field": "Amount", "op": "sum" },
+    { "label": "Orders", "field": "OrderId", "op": "count" }
+  ],
+  "chart": {
+    "type": "bar",
+    "xField": "Region",
+    "yField": "Amount",
+    "title": "By region"
+  },
+  "blocks": [
+    { "type": "kpi" },
+    { "type": "chart", "chartType": "bar", "xField": "Month", "yField": "Amount" },
+    { "type": "table", "limit": 20 }
+  ]
+}
+```
+
+For `layout=kpi` use `kpis` only. For `layout=chart` use `chart` (+ optional table from same dataset). For `layout=dashboard` use `blocks` (≤12 KPI items, ≤9 charts, ≤3 tables — align old dashboard caps).
+
+**Pipeline:** query/SP → cache raw → `data_analyze` writes e.g. `dataset_name=sales_by_region` + optional spec on meta → `render_none_interactive` / `render_interactive` with `layout=chart|kpi|dashboard` + `dataset_name` + `specJson`.
+
+### Implementation order (next build)
+
+1. Spec DTO + `specJson` on render tools; validate and ack errors naming missing fields.  
+2. `wwwroot/agent-ui/` assets + seed TemplateContent keys `kpi` / `chart` / `dashboard`.  
+3. Result merge (interactive Chart.js in iframe).  
+4. Export path: `forExport` → Playwright chart PNG → inject → existing HTML/PDF/DOCX/PPTX writers.  
+5. Alias: `ui=chart`→`layout=chart`, `kpi_dashboard`→`layout=dashboard`; prompt/hook updates.  
+6. Fixture tests: one Sales-style analyze→render→export with at least one embedded chart image.
+
+**Still out of next slice:** pixel-identical Result vs Word; Excel chart objects; Wijmo in iframe; runtime CDN; template visual editor.
+
+---
+
+## Library: `platform-ui-render`
+
+Rename from `data-ui-render` (update subscriptions / exclusions in the same migration).
+
+| Tool | Method | Mode | Template |
+|------|--------|------|----------|
+| `render_none_interactive` | `AgentUiRenderPlugin.RenderNoneInteractive` | `NoneInteractive` | this row |
+| `render_interactive` | `AgentUiRenderPlugin.RenderInteractive` | `Interactive` | this row |
+| `data_render` | alias → NoneInteractive (or Interactive if `actionsJson`) | — | one release, then delete |
+
+Shared params: `layout`, `dataset_name`, `title`, `limit`, `cardsPerRow`, `cardRows`, `content`, **`specJson`** (required for reliable `kpi`/`chart`/`dashboard`; optional elsewhere). Interactive adds `actionsJson` (`{ Id, Label }[]`).
+
+Ack to model: `{ ok, mode, layout, title, rowCount, truncated }`. Full HTML on SSE (`ui_render`), not in tool text.
+
+---
+
+## Library: `platform-document-export`
+
+| | |
+|--|--|
+| LibraryKey | `platform-document-export` |
+| Class | `App.BL.AIAgent.GenericAgent.Plugins.AgentDocumentPlugin` |
+| Subscribe | Not automatic. Any one enabled tool opens the Files tab. |
+
+| Tool | Role |
+|------|------|
+| `export_html` / `read_html` | Merged none-interactive HTML. Email: no `<style>`. Read via `data-role`. |
+| `export_csv` / `read_csv` | UTF-8 BOM, RFC 4180. No template. |
+| `export_excel` / `read_excel` | Fixed style table. `.xls` read via GemBox. No template. |
+| `export_docx` / `read_docx` | Write: merged HTML → **editable OpenXML** via `data-role` map (primary). LibreOffice HTML→docx only as fallback / legacy table paths. Read: LibreOffice→HTML→`data-role`. |
+| `export_pdf` | Inline agent-ui CSS on merged HTML → Playwright. |
+| `convert_docx_to_pdf` | LibreOffice on existing session `.docx` only (no re-merge). |
+| `read_pdf` | PdfPig plain text. |
+| `export_pptx` / `read_pptx` | Write: merged HTML → Playwright captures → ShapeCrawler slides (primary for TemplateContent layouts). Read: ShapeCrawler. |
+
+HTML/PDF/DOCX/PPTX merge loads **`render_none_interactive.TemplateContent[layout]`**. Export tool rows keep template columns NULL.
+
+Export returns `{ ok, relativePath, rowCount, bytes, engine, template }`. `engine`: `playwright` \| `openxml` \| `libreoffice` \| `shapecrawler`. Read returns tree, data rows previewed to 500. Failures: `{ ok: false, error }`. Tool result never includes file body.
+
+### PDF and Word
+
+- `export_pdf` → prepare export HTML (inline `/agent-ui` CSS, card images as data-URI) → `AppReportPdfService.RenderHtmlToPdfAsync`. A4, portrait, 15mm, backgrounds on.
+- `export_docx` → **same merged HTML**, walk `data-role` / structure → native Word (editable runs, tables, DrawingML images). **Do not** embed full-page screenshots as the document body. Optional style whitelist maps a subset of Tailwind classes; unmapped utilities affect Result/PDF only.
+- LibreOffice HTML→docx: fallback when OpenXML map fails, or for simple table HTML that already converts well — **not** the strategy for Tailwind card grids.
+- `convert_docx_to_pdf` → existing `.docx` only; not a data export path.
+- `read_docx` → LibreOffice to HTML → `HtmlForm.Read` / `data-role`.
+- `read_pdf` → PdfPig, capped at `DocumentStyles.PdfTextCap`.
+
+GemBox is **not** an export write engine (package may remain for `.xls` read and other features). Do not add Aspose as the default path unless a later product decision funds commercial HTML→DOCX for closer CSS in editable Word.
+
+### PowerPoint
+
+Primary for TemplateContent layouts: Playwright on inlined merged HTML → one slide per panel/page capture (same idea as dashboard chart/grid shots). ShapeCrawler assembles the deck. Legacy `PptxForm.WriteCards(sheet)` (rebuild from data, ignore HTML) is fallback only. Do not add Aspose.Slides / Syncfusion / Spire.
+
+### Print vs Result
+
+| Scenario | Behavior |
+|----------|----------|
+| Result = `render_none_interactive` | Export same `layout` → **identical merge body**; PDF inlines CSS; Word maps structure; PPT screenshots |
+| Result = `render_interactive` | Export still uses **none-interactive** template for that `layout` |
+| Do not | Store separate print-only templates on `export_*` tools; do not use Word screenshot bodies |
+
+---
+
+## Result iframe (Chat)
+
+1. SSE **`ui_render`**: `{ html | htmlPath, mode, title, layout, rowCount, truncated, renderId }`. Persist on the assistant message.
+2. Chip opens Result iframe; one open at a time; width via `agentRenderPanelPct`.
+3. Sandbox: none-interactive **without** `allow-scripts`; interactive `allow-scripts allow-same-origin`. Prefer `srcDoc`.
+4. Interactive postMessage:
+
+```json
+{ "type": "agent_ui_action", "renderId": "…", "actionId": "…", "selection": { } }
+```
+
+Host validates source → user turn with prefix **`[ui_render_action]`** (legacy `[data_render_action]` accepted during compatibility, then removed).
+
+5. Eight-row rule for small none-interactive previews in transcript (see Chat-UI); large → chips only. No Wijmo remount.
+6. No Tailwind CDN; no host theme leakage into iframe. MCP Client: copy ArtifactPanel layout/motion only — not AI-written artifact HTML.
+
+---
+
+## Compatibility
+
+1. Ship both render tools + seeded templates.
+2. Keep `data_render` alias one release; update prompts/hooks to `render_none_interactive` / `render_interactive`. Alias map: `grid`→`table`, `card`→`cards`, `chart`→`chart`, `kpi`→`kpi`, `kpi_dashboard`→`dashboard` (+ `mappedFrom`).
+3. Old messages without HTML: chip “Re-run to view in Result” (no Wijmo fallback required after cutover).
+4. Next release: delete `data_render`, `AgentDataRenderPlugin` surface, React `dataRender/*` renderers.
+
+---
+
+## Implementation checklist
+
+### A. Docs
+
+- [x] This canonical document
+- [x] `AI-Agent-Chat-UI.md` points here for Result iframe
+- [x] Remove former V1 / V2 / V3 draft files
+
+### B. Database
+
+- [x] `TemplateContent`, `TemplateMetaJson` on `AppAgentLibraryTool` (`V059`)
+- [x] Rename `data-ui-render` → `platform-ui-render`
+- [x] Seed `render_none_interactive`, `render_interactive` (schema, ToolConfig, TemplateContent form/table/cards/kpi/chart/dashboard + specJson, TemplateMetaJson)
+- [x] `data_render` alias one release
+- [x] BL/DTO read-write new columns (admin editor optional phase 2)
+
+### C. Merge engine
+
+- [x] Loader: `render_none_interactive` → TemplateContent JSON → layout (`UiTemplateMerge`; `{{code_default}}` → `HtmlForm`)
+- [x] HTML merge + `data-role` via `HtmlForm` (custom Scriban bodies later when TemplateContent is not code_default)
+- [x] None-interactive sanitizer; interactive keeps template scripts + postMessage bridge
+- [x] Wire `AgentDocumentPlugin` HTML/PDF/DOCX/PPTX to this loader (code fallback if DB empty)
+- [ ] Unit tests: markers, no script in none-interactive, layout miss, **render body === export_html body** for same fixture
+
+### D. Render plugin + SSE
+
+- [x] `AgentUiRenderPlugin.RenderNoneInteractive` / `RenderInteractive`
+- [x] `data_render` alias
+- [x] SSE `ui_render`; persist html / htmlPath
+- [x] Large HTML → `AgentOutput/{session}/render/{renderId}.html`
+
+### E. React Result host
+
+- [x] iframe `srcDoc` + sandbox by mode (`UiRenderFrame.tsx`)
+- [x] postMessage → `[ui_render_action]`
+- [x] Chips bind `ui_render`; HTML uses iframe (legacy DataJson still uses `DataRenderPanel`)
+
+### F. Prompts / hooks
+
+- [x] Replace “call data_render” with render tools; prefer `dataset_name`
+
+### G. Out of this build (shipped slice)
+
+- Template visual editor, company copy/Restore table
+- `kpi` / `chart` / `dashboard` **code** (decisions locked; implement as next build §H)
+- Pixel-identical interactive Result vs Word
+- ~~Wijmo inside iframe~~ (adopted for interactive table/page code_default); runtime Tailwind/Chart CDN
+- SQL inside tools; pivot; logos; screenshot of chat widgets; changing `file_write`
+
+### H. Next build (kpi / chart / dashboard) — checklist
+
+- [x] Lock decisions (spec from model/analyze; shaped dataset; vendored assets; forExport; Playwright PNG)
+- [x] Spec DTO + `specJson` on render tools (`UiRenderSpec`, `AgentUiRenderPlugin`)
+- [x] Vendor `wwwroot/agent-ui/agent-ui.css` (inline `AgentUiCss` for srcDoc; C# SVG charts — no Chart.js CDN)
+- [x] Seed `TemplateContent` keys `kpi`, `chart`, `dashboard` (`V059`, `{{code_default}}` → `UiDashboardHtml`)
+- [x] Result merge (SVG charts in iframe via `UiDashboardHtml`)
+- [x] Export: `forExport` → `ChartRasterize` Playwright PNG → embed; `missingImages` on failure
+- [x] Alias + prompt updates (`chart` → chart, `kpi_dashboard` → dashboard; hooks/V059)
+- [x] Unit tests: `UiDashboardHtmlTests` (KPI/chart/dashboard + alias). Full Playwright rasterize fixture optional in CI.
+
+---
+
+## Code map
+
+| Piece | Location |
+|-------|----------|
+| Render plugin | `APP.BL/.../Plugins/AgentUiRenderPlugin.cs` (new) |
+| Document export | `APP.BL/.../Plugins/AgentDocumentPlugin.cs` |
+| Documents | `APP.BL/.../Documents/` (`HtmlForm`, `FormDocument`, `UiTemplateMerge`, `UiRenderSpec`, `UiDashboardHtml`, `ChartRasterize`, `PptxForm`, …) |
+| Agent UI CSS | `AppAI.Web/wwwroot/agent-ui/agent-ui.css` (srcDoc uses inline `AgentUiCss`) |
+| Cache | `APP.BL/.../DataAnalyze/AgentDataAnalyzeCacheBL.cs` |
+| Files | `APP.BL/.../GenericAgentFileBL.cs` |
+| Library tools | `APP.BL/TenantBusiness/AppAgentLibraryToolBL.cs` |
+| SSE | `AppAI.Web/Controllers/GenericAgentController.cs` |
+| Chat | `AppReact/src/components/aiskill/GenericAgentChat.tsx` |
+| Result iframe | `AppReact/src/components/aiskill/` (e.g. `UiRenderFrame.tsx`) |
+| Migrations | `AppAI.Web/Migrations/V0xx__…_xhu.sql` |
+
+```
+JSON or dataset_name → cache row rules → FormDocument / CardSheet
+  ├─ render_none_interactive.TemplateContent[layout] → merged HTML
+  │    ├─ SSE ui_render → iframe (+ /agent-ui CSS)
+  │    ├─ export_html     merged HTML (email: constrained styles)
+  │    ├─ export_pdf      inline agent-ui CSS → Playwright
+  │    ├─ export_docx     HTML data-role → editable OpenXML (primary)
+  │    └─ export_pptx     HTML → Playwright shots → ShapeCrawler
+  ├─ convert_docx_to_pdf  soffice docx → pdf
+  ├─ read_docx / read_pdf / read_html
+  ├─ ExcelForm / CsvForm  (fixed style; no HTML template)
+  └─ render_interactive   React hosts + Interactive TemplateContent LAYOUTs
+```
+
+Do not add ClosedXML, EPPlus, NPOI, QuestPDF, iText, Aspose, Pico.css as the default stack. Do not rewrite the report engine. Do not remove GemBox packages used elsewhere. Do not ship Word-as-screenshots as the primary cards/table export.
+
+| Format | Write | Read |
+|--------|-------|------|
+| HTML | Merged template; email constrained | AngleSharp `data-role` |
+| CSV | Our code | Our code |
+| Excel `.xlsx` | Open XML fixed style | Open XML |
+| Excel `.xls` | — | GemBox.Spreadsheet |
+| Word | OpenXML from merged HTML `data-role` (editable); LibreOffice fallback | LibreOffice→HTML→`data-role` |
+| PDF from data | Playwright (inlined CSS) | PdfPig |
+| PDF from Word | LibreOffice convert | PdfPig |
+| PowerPoint | Playwright HTML capture + ShapeCrawler | ShapeCrawler |
+
+---
+
+## Test standard (checks)
+
+Use these as acceptance criteria for the build and regressions.
+
+### Templates and merge
+
+- [ ] Seeded `form` / `table` / `cards` on `render_none_interactive` produce `data-role` markers and V1 style table look (18pt centered title, two fields per row, section above grid).
+- [ ] Same fixture + `layout=table`: `render_none_interactive` HTML body **equals** `export_html` body (before export CSS inline / PrintCss).
+- [ ] Same fixture + `layout=cards`: TemplateContent edit (e.g. title class / card border) changes Result and PDF together; Word shows same text/cards editable (layout may differ).
+- [ ] Cards export PDF does not show raw `{{ for … }}`; Word is not a single full-page image.
+- [ ] Missing layout key → error, no side effects.
+- [ ] `TemplateContent` never appears in tool definitions sent to the model.
+- [ ] Export tool rows have NULL template columns.
+
+### None-interactive / interactive
+
+- [ ] None-interactive iframe: script injected via data cannot run.
+- [ ] Interactive: button click → one host user message with `actionId` + selection.
+- [ ] Export from an interactive Result still uses none-interactive template (no buttons/scripts in Word/PDF).
+
+### Cache and limits
+
+- [ ] Short `content` matching one cache writes/shows every cached row; `rowCount` matches.
+- [ ] Two matching datasets, no `dataset_name` → error, no file/panel.
+- [ ] 50001 data rows → error, no partial file, no panel HTML.
+- [ ] `../` rejected; tool result has no file body.
+
+### Engines
+
+- [ ] Email HTML: no `<style>` / flex / grid / float. Preview/PDF may include PrintCss.
+- [ ] Unit tests assert merged HTML markers without launching Chromium.
+- [ ] LibreOffice tests skip when `soffice` missing; when present, docx round-trips via `read_docx`.
+- [ ] `convert_docx_to_pdf` does not call Playwright.
+- [ ] `read_pdf` uses PdfPig on a small fixture.
+- [ ] Existing GemBox **write** tests are not the export path.
+
+### Chat / compatibility
+
+- [ ] `ui_render` opens Result iframe; chip restore works after reload (panel closed on reload is OK per Chat-UI).
+- [ ] `data_render` alias still works during the compatibility release.
+- [ ] Agent with no document-export tools does not see those tools or the Files tab.
+
+### Committed defaults (override only by explicit decision)
+
+1. SSE event name: `ui_render`.
+2. Chart/KPI/dashboard next build: **fully locked** — spec from model/`data_analyze`; analyze shapes dataset; render paints only; vendored iframe assets; dual `forExport` path; Playwright chart→PNG. See “Next slice — locked decisions”.
+3. HTML > 512 KB → session file + `htmlPath`.
+4. Library rename `data-ui-render` → `platform-ui-render` in the same migration.
+5. Interactive host action prefix: `[ui_render_action]` (replaces legacy `[data_render_action]` at cutover).
+6. Tool Template Editor is a **planned product surface** (see section below) — until shipped, SQL seed + direct DB edit remain the only write paths.
+7. No runtime CDN for Tailwind/Chart.js — vendor or precompile into `wwwroot/agent-ui/` / `PrintCss`.
+
+---
+
+## Tool Template Editor (product design)
+
+**Status:** designed for implementation; not shipped yet.  
+**Goal:** Let platform/tenant admins safely edit `AppAgentLibraryTool.TemplateContent` / `TemplateMetaJson` for render tools (`render_none_interactive`, `render_interactive`) without raw SQL — with validation, preview, save, and reset-to-default.
+
+Scope is a **code-oriented Template Editor** (Monaco / structured JSON), not a drag-and-drop form builder (Message Template Layout Editor is a different product).
+
+### Runtime status (related)
+
+| Item | Status |
+|------|--------|
+| Interactive `table` / `cards` / `page` / `chart` Result | **TemplateContent → iframe** (`UiRenderFrame`); LAYOUT in DB |
+| Wijmo license / filter in iframe | Inject SPA `license.js` key + mount **blob:** (SPA origin); **no** API token URL; **no** sandbox |
+| Interactive `kpi` / `dashboard` Result | React + DataJson (temporary) |
+| TemplateContent | Real LAYOUT HTML in DB (`UiTemplateContentMaterialize`) |
+| Seed keys | `form\|table\|cards\|kpi\|chart\|dashboard`; `{{code_default}}` = platform default View (like MVC default) |
+| Custom body data bind | **Scriban** (`title`, `columns`, `rows`, `cards`, …) via `UiTemplateScriban` |
+
+### Prerequisite (P0) before Editor ships
+
+When `TemplateContent[layout]` is not `{{code_default}}`, `UiTemplateMerge` must bind the same model HtmlForm uses (`title`, `columns`, `rows` / `cards`, `meta`, …) via a **safe** template engine (Scriban or equivalent): HTML-encode values, no `include`, no arbitrary methods. Preview/validate/save must use this path. Until P0 lands, custom HTML only changes the shell — do not release the Editor.
+
+### Who / where
+
+| Item | Decision (v1) |
+|------|----------------|
+| Audience | Agent Library admin (same gate as tool edit) |
+| Entry | Library → `render_none_interactive` **or** `render_interactive` → **Edit templates** |
+| Storage | `TemplateContent` + `TemplateMetaJson` on that tool row (two tools = two independent maps) |
+| Not in scope v1 | Separate template table; LLM editing; drag-drop designer; Git sync; per-user templates |
+
+### Layouts managed
+
+Keys: `form`, `table`, `cards`, `page`, `kpi`, `chart`, `dashboard`.  
+UI: layout list + Monaco; one layout at a time.  
+Badge **Using platform default** when empty / `{{code_default}}`; **Customize** copies resolved code-default HTML into the edit buffer.
+
+### Capabilities (v1 must-have)
+
+1. **Load** — Read current DB template for tool + layout; if empty / `{{code_default}}`, show resolved code default (read-only badge: “Using platform default”).
+2. **Edit** — Monaco (HTML + Scriban). Optional side panel: allowed tokens (`title`, `columns`, `rows`, `cards`, `meta`, …) and `data-role` checklist.
+3. **Validate** — Before save and on demand (see Validation below). Block save on errors; warnings may save with confirm.
+4. **Preview** — Server merge with `TemplateMetaJson.sampleJson` or a pasted sample dataset → iframe (same sandbox as Result). Mode toggle: NoneInteractive vs Interactive host chrome if applicable.
+5. **Save** — Persist `TemplateContent[layout]` (+ optional `TemplateMetaJson` fields: `printCss`, `sampleJson`, `mode`). Optimistic concurrency if row has rowversion/updated-at.
+6. **Reset to default** — Remove custom layout key (or set `{{code_default}}`) so runtime falls back to code default. Confirm dialog. Optional “reset all layouts”.
+7. **Diff** — Custom buffer vs current code-default HTML.
+8. **Copy to other mode** (v1.1 nice-to-have) — Copy layout HTML to the sibling `render_*` tool.
+
+### Validation & messaging (mature UX)
+
+| Check | Severity | Message intent |
+|-------|----------|----------------|
+| JSON map parse / layout key present | Error | Invalid TemplateContent JSON / missing layout |
+| HTML parse / balanced tags (best-effort) | Warning | Unclosed tags may break export |
+| Forbidden Scriban (`include`, arbitrary methods) | Error | Same safety rules as runtime merge |
+| `javascript:` / inline event handlers in data-bound attrs | Error | Rejected at merge; fix template |
+| Missing required `data-role` markers for layout | Warning | Export/PPT fidelity may degrade |
+| Size cap (e.g. > 512 KB per layout) | Error | Too large for session/SSE |
+| Preview merge failure | Error | Show Scriban/bind error with line if available |
+| Custom template equals code default | Info | Suggest reset to track platform updates |
+
+Inline markers in the editor + a validation panel (errors first, then warnings). Do not silent-truncate on save.
+
+### API (sketch)
+
+| API | Purpose |
+|-----|---------|
+| `GET …/agent-library-tools/{id}/templates` | Full TemplateContent + TemplateMetaJson + list of layout keys + flags which are custom vs default |
+| `GET …/agent-library-tools/{id}/templates/{layout}/default` | Resolved code-default HTML for diff/reset |
+| `POST …/templates/{layout}/validate` | Body: html + optional sampleJson → `{ errors[], warnings[] }` |
+| `POST …/templates/{layout}/preview` | Body: html + sampleJson + mode → `{ html }` or `{ htmlPath }` |
+| `PUT …/templates/{layout}` | Save one layout (+ meta patch) |
+| `POST …/templates/{layout}/reset` | Clear custom → `{{code_default}}` |
+| `POST …/templates/{layout}/copy-to-sibling` | Optional: none ↔ interactive |
+
+All admin-authorized; never expose TemplateContent to the LLM tool schema.
+
+### UX notes
+
+- Layout: left = layouts, center = Monaco, right = Preview / Validation.
+- Dirty-state guard; Save gated on validation.
+- Header must state which tool is open (None vs Interactive) — edits do not cross tools unless Copy is used.
+- React `DataRenderCard` / Wijmo are **not** edited here.
+
+### Implementation checklist
+
+- [ ] **P0** Safe custom-template data merge in `UiTemplateMerge` (blocks Editor release)
+- [ ] Admin entry for both `render_*` tools
+- [ ] Monaco + validate + preview + save + reset + diff
+- [ ] Preview = production merge path
+- [ ] Seed: add `"page":"{{code_default}}"` on both tools (optional; runtime already composes)
+- [ ] Tests: custom bind; reset; preview parity; forbidden constructs rejected
+- [ ] Migrations never overwrite non-default TemplateContent on upgrade
+
+### Out of Template Editor v1
+
+Drag-and-drop, revision history table, multi-file includes, editing `export_*` rows, Interactive dashboard-on-template.
+
+### Decisions locked
+
+| # | Decision |
+|---|----------|
+| 1 | None-interactive Result + export share one TemplateContent merge. Interactive uses React hosts + per-control LAYOUTs (not iframe Wijmo UMD under `agent-ui/wijmo`). |
+| 2 | Edit scope = company library tool rows; upgrades do not clobber custom TemplateContent. |
+| 3 | none ↔ interactive **independent**; Copy button optional. |
+| 4 | Permission = Agent Library admin. |
+| 5 | `sampleJson` on TemplateMetaJson per tool (v1). |
+| 6 | No revision history in v1 (Reset + Diff only). |
+| 7 | `page` key supported; code default = compose table+cards. |
+| 8 | Interactive `kpi`/`dashboard` = React stack + TemplateContent control LAYOUTs (`kpi`/`chart`/`table` keys). Interactive **`chart`-only** may stay iframe. |
+| 9 | **P0 custom merge** required before Editor ships. |
+| 10 | **Tailwind:** vendored `agent-ui` pack only. Result≡PDF (CSS inlined for Playwright). **Word = editable** from same HTML structure (`data-role`); not screenshots; not pixel-identical to Tailwind. **PPT = visual** from same HTML. |
+
+**No blocking open product questions** for Editor v1 beyond implementing P0 + checklist. Optional later: per-layout sampleJson, revision table, dashboard-on-template.
+
+**Card layout (Interactive Result):** edit `render_interactive.TemplateContent["cards"]` (or Reset to code default).
+
+---
+
+## Out of scope
+
+SQL inside render/export tools. Pivot, merged input cells, logos, per-call colors. Replacing the report engine. Changing `file_write`. Pixel-identical Word vs Tailwind Result/PDF. Word body as full-page screenshots. LibreOffice reproducing all Tailwind flex/grid as the primary cards path. Dedicated template **table** (templates stay on tool columns; Editor writes those columns). GemBox/Aspose as default HTML/PDF/DOCX write engine. Embedding Wijmo UMD under `public/agent-ui/wijmo`. Runtime CDN stylesheets/scripts. Excel native chart objects.

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
+using System.Linq;
 using APP.Components.EntityDto;
 using APP.Framework;
 using Newtonsoft.Json;
@@ -16,6 +17,7 @@ namespace App.BL.AIAgent.GenericAgent
         /// <summary>DisplayTitle if renamed; otherwise first real user message.</summary>
         public string        Title      { get; set; }
         public List<JObject> Messages   { get; set; }
+        public GenericAgentSavedSkillDto SavedSkill { get; set; }
     }
 
     /// <summary>
@@ -104,8 +106,9 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
                         SessionKey = key,
                         SkillKey   = row["SkillKey"] as string,
                         Title      = ResolveTitle(row),
-                        // DB stores UTC; UI expects client timezone (same as EntityConverter pattern).
-                        UpdatedAt  = ToClientDateTime(ColDt(row, "UpdatedAt")),
+                        // DB stores UTC (GETUTCDATE). Mark Kind=Utc so JSON emits Z and the
+                        // React chat list can convert to the browser's local ("client") time.
+                        UpdatedAt  = AsUtc(ColDt(row, "UpdatedAt")),
                         IsFixedTestSession = string.Equals(key, fixedKey, StringComparison.Ordinal)
                     });
                 }
@@ -150,7 +153,8 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
                     SessionKey = row["SessionKey"] as string,
                     SkillKey   = row["SkillKey"] as string,
                     Title      = ResolveTitle(row),
-                    Messages   = messages
+                    Messages   = messages,
+                    SavedSkill = ExtractSavedSkill(messages)
                 };
             }
             catch (Exception ex)
@@ -529,6 +533,45 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
                 SaveSession(skillKey, userId, dataSourceId, cleaned, sessionKey);
         }
 
+        public static void AppendMessage(
+            string sessionKey,
+            string skillKey,
+            int userId,
+            int dataSourceId,
+            JObject message)
+        {
+            if (message == null || string.IsNullOrWhiteSpace(sessionKey)) return;
+            var detail = LoadBySessionKey(sessionKey, skillKey, userId, dataSourceId);
+            var list = detail?.Messages != null
+                ? new List<JObject>(detail.Messages)
+                : new List<JObject>();
+            list.Add(message);
+            SaveSession(skillKey, userId, dataSourceId, list, sessionKey);
+        }
+
+        public static void MergeLastAssistant(
+            string sessionKey,
+            string skillKey,
+            int userId,
+            int dataSourceId,
+            Action<JObject> merge)
+        {
+            if (merge == null || string.IsNullOrWhiteSpace(sessionKey)) return;
+            var detail = LoadBySessionKey(sessionKey, skillKey, userId, dataSourceId);
+            var list = detail?.Messages;
+            if (list == null || list.Count == 0) return;
+            for (var i = list.Count - 1; i >= 0; i--)
+            {
+                var message = list[i];
+                if (message == null) continue;
+                if (!string.Equals(message.Value<string>("role"), "assistant", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                merge(message);
+                SaveSession(skillKey, userId, dataSourceId, list, sessionKey);
+                return;
+            }
+        }
+
         public static void SaveSession(
             string skillKey,
             int userId,
@@ -577,6 +620,73 @@ ELSE
             }
         }
 
+        public static bool SetSavedSkill(
+            string sessionKey,
+            string skillKey,
+            int userId,
+            int dataSourceId,
+            GenericAgentSavedSkillDto savedSkill)
+        {
+            if (string.IsNullOrWhiteSpace(sessionKey)
+                || string.IsNullOrWhiteSpace(skillKey)
+                || userId <= 0
+                || savedSkill == null
+                || savedSkill.SkillId <= 0)
+                return false;
+
+            var detail = LoadBySessionKey(sessionKey, skillKey, userId, dataSourceId);
+            if (detail == null) return false;
+
+            var list = CloneMessages(detail.Messages);
+            var target = list.FirstOrDefault(m => m?["universalSavedSkill"] != null || m?["UniversalSavedSkill"] != null);
+            if (target == null)
+            {
+                target = list.FirstOrDefault(m => m != null);
+                if (target == null)
+                {
+                    target = new JObject
+                    {
+                        ["role"] = "system",
+                        ["content"] = ""
+                    };
+                    list.Add(target);
+                }
+            }
+
+            var payload = new JObject
+            {
+                ["skillId"] = savedSkill.SkillId,
+                ["skillName"] = savedSkill.SkillName ?? "",
+                ["savedAt"] = savedSkill.SavedAt == default ? DateTime.UtcNow : savedSkill.SavedAt
+            };
+            target["universalSavedSkill"] = payload;
+            target.Remove("UniversalSavedSkill");
+
+            SaveSession(skillKey, userId, dataSourceId, list, sessionKey);
+            return true;
+        }
+
+        public static bool ClearSavedSkill(
+            string sessionKey,
+            string skillKey,
+            int userId,
+            int dataSourceId)
+        {
+            var detail = LoadBySessionKey(sessionKey, skillKey, userId, dataSourceId);
+            if (detail?.Messages == null) return false;
+            var list = CloneMessages(detail.Messages);
+            var changed = false;
+            foreach (var m in list)
+            {
+                if (m == null) continue;
+                if (m.Remove("universalSavedSkill")) changed = true;
+                if (m.Remove("UniversalSavedSkill")) changed = true;
+            }
+            if (!changed) return true;
+            SaveSession(skillKey, userId, dataSourceId, list, sessionKey);
+            return true;
+        }
+
         public static void DeleteSession(string skillKey, int userId)
         {
             if (string.IsNullOrWhiteSpace(skillKey) || userId <= 0) return;
@@ -605,8 +715,12 @@ ELSE
                 if (n > 0)
                 {
                     AgentSchemaCacheBL.ClearSession(sessionKey.Trim());
+<<<<<<< HEAD
                     AgentSessionSummaryBL.Reset(sessionKey, skillKey, userId);
                     Memory.AgentMemorySessionBL.ResetExtraction(0, sessionKey.Trim(), skillKey.Trim(), userId);
+=======
+                    Documents.AgentRowLimitConfirmBL.Clear(sessionKey.Trim());
+>>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
                 }
                 return n > 0;
             }
@@ -634,7 +748,10 @@ ELSE
                         P(fixture, "@U", userId)
                     });
                 if (n > 0)
+                {
                     AgentSchemaCacheBL.ClearSession(sessionKey.Trim());
+                    Documents.AgentRowLimitConfirmBL.Clear(sessionKey.Trim());
+                }
                 return n > 0;
             }
             catch (Exception ex)
@@ -734,6 +851,28 @@ ELSE
         {
             if (string.IsNullOrWhiteSpace(json)) return new List<JObject>();
             return JsonConvert.DeserializeObject<List<JObject>>(json) ?? new List<JObject>();
+        }
+
+        private static GenericAgentSavedSkillDto ExtractSavedSkill(List<JObject> messages)
+        {
+            if (messages == null) return null;
+            foreach (var m in messages)
+            {
+                var token = m?["universalSavedSkill"] ?? m?["UniversalSavedSkill"];
+                if (token == null || token.Type == JTokenType.Null) continue;
+                var id = (token["skillId"] ?? token["SkillId"])?.Value<int>() ?? 0;
+                if (id <= 0) continue;
+                DateTime.TryParse((token["savedAt"] ?? token["SavedAt"])?.ToString(), out var savedAt);
+                if (savedAt != default && savedAt.Kind == DateTimeKind.Unspecified)
+                    savedAt = DateTime.SpecifyKind(savedAt, DateTimeKind.Utc);
+                return new GenericAgentSavedSkillDto
+                {
+                    SkillId = id,
+                    SkillName = (token["skillName"] ?? token["SkillName"])?.ToString(),
+                    SavedAt = savedAt == default ? DateTime.UtcNow : savedAt
+                };
+            }
+            return null;
         }
 
         private static string ResolveTitle(DataRow row)
@@ -840,14 +979,15 @@ ELSE
         }
 
         /// <summary>
-        /// Convert UTC datetime from DB to the current user's client timezone for API/UI.
-        /// Writes always use GETUTCDATE() / UtcNow — no client→UTC needed on save.
+        /// SQL datetime comes back as Unspecified even though we store UTC (GETUTCDATE).
+        /// Mark Kind=Utc so Newtonsoft emits a trailing Z for the React client.
         /// </summary>
-        public static DateTime ToClientDateTime(DateTime utcDateTime)
+        private static DateTime AsUtc(DateTime utcDateTime)
         {
-            if (utcDateTime == default || !ClientTimeZoneHelper.IsClientUsingTimeZone)
-                return utcDateTime;
-            return ClientTimeZoneHelper.ConvertUTCToClientDateTime(utcDateTime);
+            if (utcDateTime == default) return utcDateTime;
+            return utcDateTime.Kind == DateTimeKind.Utc
+                ? utcDateTime
+                : DateTime.SpecifyKind(utcDateTime, DateTimeKind.Utc);
         }
     }
 }

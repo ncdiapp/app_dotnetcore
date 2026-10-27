@@ -62,7 +62,7 @@ const formatInline = (text: string, files?: AgentFileLink[]): string => {
         });
     }
     s = s.replace(/`([^`]+)`/g, '<code class="agent-md-code">$1</code>');
-    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-medium">$1</strong>');
     s = s.replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, '$1<em>$2</em>');
     if (tokens.length) {
         s = s.replace(/\u0000(\d+)\u0000/g, (_, n) => tokens[Number(n)] ?? '');
@@ -176,13 +176,13 @@ export const FollowupChips: React.FC<{
     if (!items.length) return null;
     const borderCls = t('border_mainContentSection');
     return (
-        <div className="mt-2 flex flex-wrap gap-2">
-            {items.map((q, i) => (
+        <div className="mt-1.5 flex flex-wrap gap-1.5 opacity-80">
+            {items.slice(0, 3).map((q, i) => (
                 <button
                     key={`${i}-${q.slice(0, 24)}`}
                     type="button"
                     disabled={disabled}
-                    className={`text-left text-xs px-3 py-2 rounded-xl border transition-opacity ${borderCls} ${theme.button_default} ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'}`}
+                    className={`text-left text-[11px] px-2.5 py-1 rounded-[4px] border transition-opacity ${borderCls} ${theme.label} bg-transparent ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-100'}`}
                     onClick={() => onSelect(q)}
                     title={q}
                 >
@@ -206,7 +206,7 @@ export const AgentMarkdown: React.FC<{
 
     return (
         <div
-            className={`agent-md text-[15px] leading-relaxed ${className || ''}`}
+            className={`agent-md text-sm leading-6 ${className || ''}`}
             onClick={e => {
                 const a = (e.target as HTMLElement).closest('a[data-agent-file]');
                 if (!a) return;
@@ -226,11 +226,11 @@ export const AgentMarkdown: React.FC<{
                     );
                 }
                 if (b.type === 'h') {
-                    const size = b.level === 1 ? 'text-base' : b.level === 2 ? 'text-sm' : 'text-sm';
+                    const size = 'text-sm';
                     return (
                         <div
                             key={idx}
-                            className={`mb-2 font-semibold ${size} ${theme.title}`}
+                            className={`mb-2 font-medium leading-6 ${size}`}
                             dangerouslySetInnerHTML={{ __html: formatInline(b.text, fileLinks) }}
                         />
                     );

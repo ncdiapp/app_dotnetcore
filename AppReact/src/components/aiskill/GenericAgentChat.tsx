@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import type { RootState } from '../../redux/store';
-import { AskUserEvent, DataRenderEvent, genericAgentSvc, type GenericAgentChatUiSnapshot, type LookupItemDto } from '../../webapi/genericAgentSvc';
+import { AskUserEvent, DataRenderEvent, genericAgentSvc, isInteractivePage, isInteractiveTabular, uiRenderToDataRender, type GenericAgentChatUiSnapshot, type LookupItemDto, type UiRenderEvent } from '../../webapi/genericAgentSvc';
 import { agentSkillSetSvc } from '../../webapi/agentSkillSetSvc';
 import { registerTabDataSaver, unregisterTabDataSaver } from '../../redux/hooks/useTabNavigation';
 import {
@@ -15,7 +16,15 @@ import GenericAgentFilesPanel from './GenericAgentFilesPanel';
 import AgentMemoryPanel from './AgentMemoryPanel';
 import { chatModulesFromEnabledTools, chatModulesFromLibraries, type AgentChatUiModule } from './agentUiModules';
 import { DataRenderPanel } from './dataRender';
+import { ResultChrome } from './ResultChrome';
+import InteractiveDashboardPanel, { isInteractiveDashboard } from './InteractiveDashboardPanel';
+import InteractivePagePanel from './InteractivePagePanel';
+import UiRenderFrame, { hasUiHtml } from './UiRenderFrame';
+import { placeRender, renderKey } from './dataRender/placeRender';
+import { RenderBuilding, RenderChip } from './dataRender/RenderChrome';
+import { ReasoningLoopPanel, type ThinkingStep } from './dataRender/ReasoningLoopPanel';
 import { AgentMarkdown, FollowupChips, splitFollowups, type AgentFileLink } from './AgentMarkdown';
+import { UNIVERSAL_AGENT_KEY } from './universalAgent';
 
 const SESSION_START = '[session_start]';
 const RUN_IN_PROGRESS = '[run_in_progress]';
@@ -23,6 +32,10 @@ const RUN_IN_PROGRESS = '[run_in_progress]';
 type StoredChatMessage = {
     role: string;
     content?: string;
+    thinking?: string;
+    Thinking?: string;
+    thinkingSteps?: ThinkingStep[];
+    ThinkingSteps?: ThinkingStep[];
     toolSteps?: Array<{ toolName: string; label?: string; args?: string; result?: string; isSuccess?: boolean; durationMs?: number }>;
     dataRenders?: DataRenderEvent[];
     DataRenders?: DataRenderEvent[];
@@ -34,25 +47,69 @@ type StoredChatMessage = {
     AskUserSummary?: boolean;
     askUserAnswer?: boolean;
     AskUserAnswer?: boolean;
+    handoffProposals?: HandoffProposal[];
+    HandoffProposals?: HandoffProposal[];
+    handoff?: HandoffMarker;
+    Handoff?: HandoffMarker;
+    sourceAgent?: string;
+    SourceAgent?: string;
 }; 
+
+/** Normalize persisted Ui/Layout to DataRenderPanel keys (server often stores Layout in Ui, e.g. "cards"). */
+const normalizeStoredRenderUi = (uiRaw: string, layoutRaw: string): string => {
+    const layout = (layoutRaw || '').toLowerCase();
+    let ui = (uiRaw || '').toLowerCase();
+    if (!ui) ui = layout;
+    if (ui === 'cards' || layout === 'cards') return 'card';
+    if (ui === 'page' || layout === 'page') return 'page';
+    if (ui === 'kpi' || ui === 'dashboard' || ui === 'kpi_dashboard'
+        || layout === 'kpi' || layout === 'dashboard') return 'kpi_dashboard';
+    if (ui === 'form' || layout === 'form') return 'form';
+    if (ui === 'chart' || layout === 'chart') return 'chart';
+    if (ui === 'card' || ui === 'grid') return ui;
+    return ui || 'grid';
+};
+
+/** Persisted chat may deserialize SpecJson/DataJson as objects — keep string for Result chrome / Export. */
+const coerceJsonField = (v: unknown): string | null => {
+    if (v == null) return null;
+    if (typeof v === 'string') return v;
+    if (typeof v === 'object') {
+        try { return JSON.stringify(v); } catch { return null; }
+    }
+    return String(v);
+};
 
 const parseStoredDataRenders = (m: StoredChatMessage): DataRenderEvent[] | undefined => {
     const raw = m.dataRenders ?? m.DataRenders;
     if (!Array.isArray(raw) || raw.length === 0) return undefined;
-    return raw.map((dr: any) => ({
-        RenderId: String(dr?.RenderId ?? dr?.renderId ?? ''),
-        Ui: String(dr?.Ui ?? dr?.ui ?? 'grid'),
-        Title: dr?.Title ?? dr?.title ?? null,
-        DataJson: dr?.DataJson ?? dr?.dataJson ?? null,
-        ColumnsJson: dr?.ColumnsJson ?? dr?.columnsJson ?? null,
-        ChartConfigJson: dr?.ChartConfigJson ?? dr?.chartConfigJson ?? null,
-        ActionsJson: dr?.ActionsJson ?? dr?.actionsJson ?? null,
-        MetaJson: dr?.MetaJson ?? dr?.metaJson ?? null,
-        BlocksJson: dr?.BlocksJson ?? dr?.blocksJson ?? null,
-        RowCount: dr?.RowCount ?? dr?.rowCount,
-        Truncated: !!(dr?.Truncated ?? dr?.truncated),
-        Timestamp: dr?.Timestamp ?? dr?.timestamp,
-    })).filter(dr => dr.Ui);
+    return raw.map((dr: any) => {
+        const layout = String(dr?.Layout ?? dr?.layout ?? '');
+        const ui = normalizeStoredRenderUi(String(dr?.Ui ?? dr?.ui ?? ''), layout);
+        const specJson = coerceJsonField(dr?.SpecJson ?? dr?.specJson ?? null);
+        const metaJson = coerceJsonField(dr?.MetaJson ?? dr?.metaJson)
+            ?? ((ui === 'card' || ui === 'page') && specJson ? specJson : null);
+        return {
+            RenderId: String(dr?.RenderId ?? dr?.renderId ?? ''),
+            Ui: ui,
+            Title: dr?.Title ?? dr?.title ?? null,
+            DataJson: coerceJsonField(dr?.DataJson ?? dr?.dataJson ?? null),
+            ColumnsJson: coerceJsonField(dr?.ColumnsJson ?? dr?.columnsJson ?? null),
+            ChartConfigJson: coerceJsonField(dr?.ChartConfigJson ?? dr?.chartConfigJson ?? null),
+            ActionsJson: coerceJsonField(dr?.ActionsJson ?? dr?.actionsJson ?? null),
+            MetaJson: metaJson,
+            BlocksJson: coerceJsonField(dr?.BlocksJson ?? dr?.blocksJson ?? null),
+            RowCount: dr?.RowCount ?? dr?.rowCount,
+            Truncated: !!(dr?.Truncated ?? dr?.truncated),
+            Timestamp: dr?.Timestamp ?? dr?.timestamp,
+            Mode: dr?.Mode ?? dr?.mode ?? null,
+            Layout: layout || null,
+            Html: dr?.Html ?? dr?.html ?? null,
+            HtmlPath: dr?.HtmlPath ?? dr?.htmlPath ?? null,
+            HtmlUrl: dr?.HtmlUrl ?? dr?.htmlUrl ?? null,
+            SpecJson: specJson,
+        };
+    }).filter(dr => dr.Ui || dr.Html || dr.HtmlPath || dr.DataJson);
 };
 
 const asLookupItems = (raw: unknown): LookupItemDto[] => {
@@ -157,14 +214,35 @@ interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
     isStreaming?: boolean;
+    /** Reasoning loop narrative (tool choice / recovery) — not raw tool dumps. */
+    thinking?: string;
+    /** Per-step description + expandable SQL/JSON detail. */
+    thinkingSteps?: ThinkingStep[];
     /** Persisted with session; restored into Tool Activity on reload. */
     toolSteps?: ToolStep[];
     /** Non-blocking data_render panels attached to this assistant turn. */
     dataRenders?: DataRenderEvent[];
+    handoffProposals?: HandoffProposal[];
+    handoff?: HandoffMarker;
     /** Read-only ask_user question bubble (controls dismissed). */
     askUserSummary?: boolean;
     /** Read-only ask_user answer bubble on the user side. */
     askUserAnswer?: boolean;
+    sourceAgent?: string;
+}
+
+interface HandoffProposal {
+    targetSkillKey: string;
+    name: string;
+    reason?: string;
+    description?: string;
+}
+
+interface HandoffMarker {
+    targetSkillKey: string;
+    targetSessionKey: string;
+    targetName?: string;
+    summary?: string;
 }
 
 interface ToolStep {
@@ -177,7 +255,7 @@ interface ToolStep {
     durationMs?: number;
 }
 
-/** File names this turn actually wrote, so the reply can link them to download. */
+/** File names this turn wrote. Cap list — prefer Result chrome Export for galleries. */
 const exportFileLinks = (steps?: ToolStep[]): AgentFileLink[] => {
     const byName = new Map<string, string>();
     for (const s of steps ?? []) {
@@ -186,17 +264,27 @@ const exportFileLinks = (steps?: ToolStep[]): AgentFileLink[] => {
         let m: RegExpExecArray | null;
         while ((m = re.exec(raw)) !== null) {
             const path = m[1].replace(/\\/g, '/');
+            // Skip render twin HTML under render/ — Print/Export lives in Result chrome.
+            if (path.startsWith('render/')) continue;
             const name = path.split('/').filter(Boolean).pop();
             if (name) byName.set(name, path);
         }
     }
-    return Array.from(byName.entries()).map(([name, path]) => ({ name, path }));
+    const all = Array.from(byName.entries()).map(([name, path]) => ({ name, path }));
+    // Keep chat tidy: at most 2 file links in-thread.
+    return all.slice(0, 2);
 };
 
 interface TurnActivity {
     turnIndex: number;  // which user message this belongs to
     steps: ToolStep[];
     isComplete: boolean;
+}
+
+interface SaveSkillDraft {
+    name: string;
+    description: string;
+    content: string;
 }
 
 interface PlanEvent {
@@ -212,6 +300,9 @@ interface Props {
     showChatListButton?: boolean;
     onOpenChatList?: () => void;
     onConversationChanged?: () => void;
+    /** After a confirmed hand-off, run the seeded user summary once. */
+    autoRunPendingUser?: boolean;
+    onAutoRunStarted?: () => void;
 }
 
 const snippet = (s?: string | null, max = 300) =>
@@ -337,10 +428,104 @@ const formatToolPayload = (raw?: string | null, max = 4000): string => {
     return snippet(unescaped, max);
 };
 
+/** Split backend ## SQL / ## Input / ## Output (or ## Error) sections for labeled Tool Activity. */
+const parseIoSections = (raw?: string | null): Array<{ label: string; body: string }> => {
+    if (raw == null || raw === '' || raw === 'null') return [];
+    const text = raw.replace(/\r\n/g, '\n').trim();
+    const re = /^##\s+(SQL|Input|Output|Error)\s*$/gim;
+    const matches: Array<{ label: string; index: number; headerLen: number }> = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+        matches.push({ label: (m[1] || '').trim(), index: m.index, headerLen: m[0].length });
+    }
+    if (matches.length === 0) return [];
+    const sections: Array<{ label: string; body: string }> = [];
+    for (let i = 0; i < matches.length; i++) {
+        const cur = matches[i];
+        const start = cur.index + cur.headerLen;
+        const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
+        let body = text.slice(start, end).trim();
+        // Strip fenced code wrappers from ToolIoFormatter
+        const fence = body.match(/^```(?:sql|json)?\s*\n?([\s\S]*?)\n?```$/i);
+        if (fence) body = fence[1].trim();
+        if (cur.label && body) sections.push({ label: cur.label, body });
+    }
+    return sections;
+};
+
+const renderIoPayload = (
+    raw: string | null | undefined,
+    themeLabel: string,
+    fallbackLabel: string,
+): React.ReactNode => {
+    const sections = parseIoSections(raw);
+    if (sections.length > 0) {
+        return (
+            <>
+                {sections.map((sec, i) => (
+                    <div key={`${sec.label}-${i}`}>
+                        <div className="text-xs opacity-40 mb-0.5">{sec.label}</div>
+                        <pre className={`text-xs whitespace-pre-wrap break-all opacity-70 ${themeLabel}`}>
+                            {formatToolPayload(sec.body)}
+                        </pre>
+                    </div>
+                ))}
+            </>
+        );
+    }
+    if (!raw) return null;
+    return (
+        <div>
+            <div className="text-xs opacity-40 mb-0.5">{fallbackLabel}</div>
+            <pre className={`text-xs whitespace-pre-wrap break-all opacity-70 ${themeLabel}`}>
+                {formatToolPayload(raw)}
+            </pre>
+        </div>
+    );
+};
+
 /** Normalize tool result text — literal "null" from void tools is not useful. */
 const displayResult = (result?: string | null) => {
     if (result == null || result === '' || result === 'null') return null;
     return result;
+};
+
+const parseHandoffProposal = (raw: unknown): HandoffProposal | null => {
+    if (!raw || typeof raw !== 'object') return null;
+    const o = raw as Record<string, unknown>;
+    const targetSkillKey = String(o.targetSkillKey ?? o.TargetSkillKey ?? '').trim();
+    if (!targetSkillKey) return null;
+    const reason = o.reason ?? o.Reason;
+    const description = o.description ?? o.Description;
+    return {
+        targetSkillKey,
+        name: String(o.name ?? o.Name ?? targetSkillKey),
+        reason: reason == null ? undefined : String(reason),
+        description: description == null ? undefined : String(description),
+    };
+};
+
+const parseHandoffMarker = (raw: unknown): HandoffMarker | undefined => {
+    if (!raw || typeof raw !== 'object') return undefined;
+    const o = raw as Record<string, unknown>;
+    const targetSkillKey = String(o.targetSkillKey ?? o.TargetSkillKey ?? '').trim();
+    const targetSessionKey = String(o.targetSessionKey ?? o.TargetSessionKey ?? '').trim();
+    if (!targetSkillKey || !targetSessionKey) return undefined;
+    const targetName = o.targetName ?? o.TargetName ?? o.name ?? o.Name;
+    const summary = o.summary ?? o.Summary;
+    return {
+        targetSkillKey,
+        targetSessionKey,
+        targetName: targetName == null ? undefined : String(targetName),
+        summary: summary == null ? undefined : String(summary),
+    };
+};
+
+const parseStoredHandoffProposals = (stored: StoredChatMessage): HandoffProposal[] | undefined => {
+    const raw = stored.handoffProposals ?? stored.HandoffProposals;
+    if (!Array.isArray(raw)) return undefined;
+    const list = raw.map(parseHandoffProposal).filter((x): x is HandoffProposal => !!x);
+    return list.length > 0 ? list : undefined;
 };
 
 const findSkillKeyInValue = (v: unknown, depth = 0): string | undefined => {
@@ -438,13 +623,21 @@ const GenericAgentChat: React.FC<Props> = ({
     showChatListButton,
     onOpenChatList,
     onConversationChanged,
+    autoRunPendingUser,
+    onAutoRunStarted,
 }) => {
+    const navigate = useNavigate();
     const { theme, t } = useTheme();
     const displayName = useSelector((s: RootState) => String(s.userSession?.userContext?.DisplayName || ''));
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [turnActivities, setTurnActivities] = useState<TurnActivity[]>([]);
     const [currentTurnIndex, setCurrentTurnIndex] = useState(0);
     const [input, setInput] = useState('');
+    const [composerFocus, setComposerFocus] = useState(false);
+    const [openRenderKey, setOpenRenderKey] = useState<string | null>(null);
+    const [openRender, setOpenRender] = useState<DataRenderEvent | null>(null);
+    const autoOpenedRender = useRef<string | null>(null);
+    const liveResultOpen = useRef(false);
     const [isRunning, setIsRunning] = useState(false);
     const [pendingPlan, setPendingPlan] = useState<PlanEvent | null>(null);
     const [pendingAskUser, setPendingAskUser] = useState<AskUserEvent | null>(null);
@@ -455,15 +648,31 @@ const GenericAgentChat: React.FC<Props> = ({
     const [error, setError] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [toolsWidth, setToolsWidth] = useState(288);
+    const [renderWidth, setRenderWidth] = useState<number | null>(() => {
+        const stored = Number(localStorage.getItem('agentRenderPanelPx'));
+        return stored >= 280 ? stored : null;
+    });
     const toolsDragRef = useRef(false);
+    const composerRef = useRef<HTMLTextAreaElement | null>(null);
     const chatRootRef = useRef<HTMLDivElement | null>(null);
     const [showEarlierTurns, setShowEarlierTurns] = useState(false);
+<<<<<<< HEAD
     const [rightTab, setRightTab] = useState<'tools' | 'files' | 'memory'>('tools');
+=======
+    const [rightTab, setRightTab] = useState<'result' | 'tools' | 'files'>('tools');
+    const [resultFullscreen, setResultFullscreen] = useState(false);
+>>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
     const [uiModules, setUiModules] = useState<Set<AgentChatUiModule>>(() => new Set());
     const [fileSessionKey, setFileSessionKey] = useState<string | null>(null);
     const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
     const [skillDisplayNames, setSkillDisplayNames] = useState<Record<string, string>>({});
     const [skillExecutionMode, setSkillExecutionMode] = useState<string>('Interactive');
+    const [saveSkillOpen, setSaveSkillOpen] = useState(false);
+    const [saveSkillDraft, setSaveSkillDraft] = useState<SaveSkillDraft | null>(null);
+    const [saveSkillBusy, setSaveSkillBusy] = useState(false);
+    const [saveSkillError, setSaveSkillError] = useState<string | null>(null);
+    const [saveSkillDone, setSaveSkillDone] = useState<string | null>(null);
+    const [handoffBusyKey, setHandoffBusyKey] = useState<string | null>(null);
     const scrollRef = useRef<HTMLDivElement | null>(null);
     // Track in-progress tool calls (call event received, result pending)
     const pendingCallRef = useRef<Map<string, { args?: string; startedAt: number }>>(new Map());
@@ -502,6 +711,75 @@ const GenericAgentChat: React.FC<Props> = ({
     askFreeTextRef.current = askFreeText;
     const chatSessionKeyRef = useRef<string | null>(chatSessionKey ?? null);
     chatSessionKeyRef.current = chatSessionKey ?? null;
+    const autoRunPendingUserRef = useRef(!!autoRunPendingUser);
+    autoRunPendingUserRef.current = !!autoRunPendingUser;
+    const onAutoRunStartedRef = useRef(onAutoRunStarted);
+    onAutoRunStartedRef.current = onAutoRunStarted;
+    const isUniversalAgent = (skillKey || '').trim().toLowerCase() === UNIVERSAL_AGENT_KEY;
+
+    const historyRenderKeys = useRef<Set<string>>(new Set());
+
+    const collectPanelKeys = (list: ChatMessage[]) => {
+        const keys: string[] = [];
+        list.forEach(m => {
+            if (m.role !== 'assistant' || !m.dataRenders?.length) return;
+            m.dataRenders.forEach((dr, r) => {
+                const placed = placeRender(dr);
+                if (placed.panel) keys.push(renderKey(placed.panel, r));
+            });
+        });
+        return keys;
+    };
+
+    useEffect(() => {
+        setOpenRender(null);
+        setOpenRenderKey(null);
+        setRightTab('tools');
+        autoOpenedRender.current = null;
+        liveResultOpen.current = false;
+        historyRenderKeys.current = new Set();
+    }, [chatSessionKey, skillKey]);
+
+    useEffect(() => {
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i];
+            if (m.role !== 'assistant') continue;
+            if (exportFileLinks(m.toolSteps).length === 0) return;
+            setUiModules(prev => {
+                if (prev.has('files')) return prev;
+                const next = new Set(prev);
+                next.add('files');
+                return next;
+            });
+            setRightTab('files');
+            setSidebarOpen(true);
+            return;
+        }
+    }, [messages]);
+
+    useEffect(() => {
+        if (!liveResultOpen.current) {
+            historyRenderKeys.current = new Set(collectPanelKeys(messages));
+            return;
+        }
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i];
+            if (m.role !== 'assistant' || !m.dataRenders?.length) continue;
+            for (let r = 0; r < m.dataRenders.length; r++) {
+                const placed = placeRender(m.dataRenders[r]);
+                if (!placed.panel) continue;
+                const key = renderKey(placed.panel, r);
+                if (historyRenderKeys.current.has(key)) continue;
+                if (autoOpenedRender.current === key) return;
+                autoOpenedRender.current = key;
+                setOpenRenderKey(key);
+                setOpenRender(placed.panel);
+                setRightTab('result');
+                setSidebarOpen(true);
+                return;
+            }
+        }
+    }, [messages]);
     const onConversationChangedRef = useRef(onConversationChanged);
     onConversationChangedRef.current = onConversationChanged;
 
@@ -524,26 +802,53 @@ const GenericAgentChat: React.FC<Props> = ({
 
     const handleDataRenderAction = (evt: DataRenderEvent, actionId: string, selectionJson?: string) => {
         if (isRunningRef.current || pendingAskUserRef.current) return;
+        const useUiPrefix = hasUiHtml(evt) || !!(evt.Mode || evt.Layout);
         const lines = [
-            '[data_render_action]',
+            useUiPrefix ? '[ui_render_action]' : '[data_render_action]',
             `actionId=${actionId}`,
             `renderId=${evt.RenderId || ''}`,
-            `ui=${evt.Ui || ''}`,
+            `ui=${evt.Ui || evt.Layout || ''}`,
+            `mode=${evt.Mode || ''}`,
         ];
         if (selectionJson) lines.push(`selectionJson=${selectionJson}`);
         void runAgentTurnRef.current({ userMessage: lines.join('\n') });
     };
 
+    const appendUiRender = (evt: UiRenderEvent) => {
+        appendDataRender(uiRenderToDataRender(evt));
+    };
+
     useEffect(() => {
+<<<<<<< HEAD
         if (rightTab === 'files' && !uiModules.has('files')) setRightTab('tools');
         if (rightTab === 'memory' && !uiModules.has('memory')) setRightTab('tools');
     }, [rightTab, uiModules]);
+=======
+        if ((rightTab === 'files' && !uiModules.has('files')) || (rightTab === 'result' && !openRender)) setRightTab('tools');
+    }, [rightTab, uiModules, openRender]);
+
+    // Leave Result fullscreen when result closes / tab changes away.
+    useEffect(() => {
+        if (!openRender || rightTab !== 'result') setResultFullscreen(false);
+    }, [openRender, rightTab]);
+
+    useEffect(() => {
+        if (!resultFullscreen) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setResultFullscreen(false);
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [resultFullscreen]);
+>>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
 
     const buildSnapshot = (): GenericAgentChatUiSnapshot => ({
         skillKey: skillKeyRef.current,
         chatSessionKey: chatSessionKeyRef.current,
         messages: messagesRef.current.map(m => ({
             ...m,
+            thinking: m.thinking || undefined,
+            thinkingSteps: m.thinkingSteps?.length ? m.thinkingSteps.map(s => ({ ...s })) : undefined,
             toolSteps: m.toolSteps ? [...m.toolSteps] : undefined,
             dataRenders: m.dataRenders ? [...m.dataRenders] : undefined,
         })),
@@ -606,15 +911,106 @@ const GenericAgentChat: React.FC<Props> = ({
         onStep: (step: { Type: string; ToolName?: string; Description: string; IsSuccess: boolean; Details?: string }) => {
             if (!mountedRef.current) return;
             const s = step;
-                    if (!s.ToolName) return;
             const idx = currentTurnIndexRef.current;
-                    if (s.Type === 'tool_call') {
-                        pendingCallRef.current.set(s.ToolName, { args: s.Details, startedAt: Date.now() });
+            const appendThinking = (line: string, details?: string) => {
+                const bit = (line || '').trim();
+                if (!bit && !(details || '').trim()) return;
+                const stepItem: ThinkingStep = {
+                    description: bit || '…',
+                    ...(details?.trim() ? { details: details.trim() } : {}),
+                };
+                setMessages(prev => {
+                    const last = prev[prev.length - 1];
+                    if (last?.role === 'assistant' && (last.isStreaming || isRunningRef.current)) {
+                        const prevThink = (last.thinking || '').trim();
+                        const prevSteps = last.thinkingSteps ? [...last.thinkingSteps] : [];
+                        // Only skip exact consecutive duplicates — same tool retries often share
+                        // the same one-line description (e.g. "Querying… FROM table") but have
+                        // different Details (fixed SQL / success after soft failure).
+                        const prevLast = prevSteps[prevSteps.length - 1];
+                        const sameAsLast = !!prevLast
+                            && prevLast.description === stepItem.description
+                            && (prevLast.details || '') === (stepItem.details || '');
+                        if (sameAsLast) {
+                            return last.isStreaming ? prev : [...prev.slice(0, -1), { ...last, isStreaming: true }];
+                        }
+                        const nextThink = prevThink ? (bit ? `${prevThink}\n\n${bit}` : prevThink) : bit;
+                        const nextSteps = [...prevSteps, stepItem];
+                        return [...prev.slice(0, -1), {
+                            ...last,
+                            thinking: nextThink || last.thinking,
+                            thinkingSteps: nextSteps,
+                            isStreaming: true,
+                        }];
+                    }
+                    return [...prev, {
+                        role: 'assistant' as const,
+                        content: '',
+                        thinking: bit || undefined,
+                        thinkingSteps: [stepItem],
+                        isStreaming: true,
+                    }];
+                });
+            };
+            if (s.Type === 'handoff_proposal') {
+                const proposal = parseHandoffProposal((() => {
+                    try { return s.Details ? JSON.parse(s.Details) : null; } catch { return null; }
+                })());
+                if (!proposal) return;
+                setMessages(prev => {
+                    const last = prev[prev.length - 1];
+                    const already = (last?.handoffProposals ?? []).some(x => x.targetSkillKey === proposal.targetSkillKey);
+                    if (last?.role === 'assistant' && (last.isStreaming || isRunningRef.current)) {
+                        if (already) return prev;
+                        return [...prev.slice(0, -1), {
+                            ...last,
+                            handoffProposals: [...(last.handoffProposals ?? []), proposal],
+                            isStreaming: true,
+                        }];
+                    }
+                    return [...prev, {
+                        role: 'assistant' as const,
+                        content: '',
+                        handoffProposals: [proposal],
+                        isStreaming: true,
+                    }];
+                });
+                return;
+            }
+            if (s.Type === 'thinking') {
+                appendThinking(s.Description || '', s.Details);
+                return;
+            }
+            if (!s.ToolName) return;
+            if (s.Type === 'tool_call') {
+                // Pre-tool streamed prose: fold into Reasoning only when Think is already active this turn.
+                setMessages(prev => {
+                    const last = prev[prev.length - 1];
+                    if (!(last?.role === 'assistant' && last.isStreaming)) return prev;
+                    const draft = (last.content || '').trim();
+                    if (!draft) return prev;
+                    const prevThink = (last.thinking || '').trim();
+                    const prevSteps = last.thinkingSteps;
+                    if (!prevThink && !(prevSteps?.length)) {
+                        return [...prev.slice(0, -1), { ...last, content: '' }];
+                    }
+                    const nextThink = prevThink.includes(draft) ? prevThink : `${prevThink}\n\n${draft}`;
+                    const nextSteps = prevThink.includes(draft)
+                        ? prevSteps
+                        : [...(prevSteps || []), { description: draft }];
+                    return [...prev.slice(0, -1), {
+                        ...last,
+                        thinking: nextThink,
+                        thinkingSteps: nextSteps,
+                        content: '',
+                    }];
+                });
+                pendingCallRef.current.set(s.ToolName, { args: s.Details, startedAt: Date.now() });
                 addStep(idx, { toolName: s.ToolName, label: s.Description, args: s.Details, isSuccess: true });
-                    } else if (s.Type === 'tool_result') {
-                        const pending = pendingCallRef.current.get(s.ToolName);
-                        const durationMs = pending ? Date.now() - pending.startedAt : undefined;
-                        pendingCallRef.current.delete(s.ToolName);
+            } else if (s.Type === 'tool_result') {
+                const pending = pendingCallRef.current.get(s.ToolName);
+                const durationMs = pending ? Date.now() - pending.startedAt : undefined;
+                pendingCallRef.current.delete(s.ToolName);
                 const resultLabel = extractCallAgentKeyFromLabel(s.Description)
                     ? s.Description.split('—')[0].trim()
                     : undefined;
@@ -652,6 +1048,10 @@ const GenericAgentChat: React.FC<Props> = ({
             if (!mountedRef.current || !evt) return;
             appendDataRender(evt);
         },
+        onUiRender: (evt: UiRenderEvent) => {
+            if (!mountedRef.current || !evt) return;
+            appendUiRender(evt);
+        },
         onDone: (done: { FinalResponse: string }) => {
             if (!mountedRef.current) return;
             const idx = currentTurnIndexRef.current;
@@ -670,6 +1070,7 @@ const GenericAgentChat: React.FC<Props> = ({
                             ...last,
                             content: done.FinalResponse || last.content,
                             isStreaming: false,
+                            thinking: last.thinking || undefined,
                             toolSteps: stepsForMsg.length > 0 ? stepsForMsg : undefined,
                             dataRenders: last.dataRenders,
                         }];
@@ -794,16 +1195,11 @@ const GenericAgentChat: React.FC<Props> = ({
             });
         }
 
-        const fireSessionStartIfAllowed = (mode: string, allowFirstTurn: boolean) => {
+        // Empty / New Chat / Reset: show welcome chips only — do not auto-run [session_start]
+        // (that produced misleading "Request: [session_start]" Reasoning steps).
+        const fireSessionStartIfAllowed = (_mode: string, _allowFirstTurn: boolean) => {
             if (cancelled || sessionStartFiredRef.current) return;
             sessionStartFiredRef.current = true;
-            if (!/^Interactive$/i.test(mode || 'Interactive')) return;
-            if (!allowFirstTurn) return;
-            void runAgentTurnRef.current({
-                userMessage: SESSION_START,
-                hideUserBubble: true,
-                historyBase: [],
-            });
         };
 
         const boot = async () => {
@@ -823,36 +1219,48 @@ const GenericAgentChat: React.FC<Props> = ({
                         allowFirstTurn = !!s.AllowAgentFirstTurn;
                     }
                 }
+                if (isUniversalAgent) map[UNIVERSAL_AGENT_KEY] = 'Universal Agent';
                 setSkillDisplayNames(map);
-                const libraryKeys = (subRes?.Object ?? []).map(s => s.LibraryKey);
-                const fileLibs = libraryKeys.filter(k => chatModulesFromLibraries([k]).has('files'));
-                if (fileLibs.length === 0) {
-                    setUiModules(new Set());
+                if (isUniversalAgent) {
+                    setUiModules(new Set<AgentChatUiModule>(['files']));
+                    mode = 'Interactive';
+                    allowFirstTurn = false;
                 } else {
-                    try {
-                        const [exclRes, ...toolRes] = await Promise.all([
-                            agentSkillSetSvc.GetToolExclusions(skillKey),
-                            ...fileLibs.map(k => agentSkillSetSvc.GetLibraryTools(k)),
-                        ]);
-                        const excluded = new Set(
-                            (exclRes?.Object ?? []).map(e => `${e.LibraryKey}\u0001${e.ToolName}`),
-                        );
-                        const toolsByLibrary = fileLibs.map((k, i) => ({
-                            libraryKey: k,
-                            toolNames: (toolRes[i]?.Object ?? [])
-                                .filter(t => t.IsActive !== false)
-                                .map(t => t.ToolName),
-                        }));
-                        setUiModules(chatModulesFromEnabledTools(libraryKeys, toolsByLibrary, excluded));
-                    } catch {
-                        setUiModules(chatModulesFromLibraries(libraryKeys));
+                    const libraryKeys = (subRes?.Object ?? []).map(s => s.LibraryKey);
+                    const fileLibs = libraryKeys.filter(k => chatModulesFromLibraries([k]).has('files'));
+                    if (fileLibs.length === 0) {
+                        setUiModules(new Set());
+                    } else {
+                        try {
+                            const [exclRes, ...toolRes] = await Promise.all([
+                                agentSkillSetSvc.GetToolExclusions(skillKey),
+                                ...fileLibs.map(k => agentSkillSetSvc.GetLibraryTools(k)),
+                            ]);
+                            const excluded = new Set(
+                                (exclRes?.Object ?? []).map(e => `${e.LibraryKey}\u0001${e.ToolName}`),
+                            );
+                            const toolsByLibrary = fileLibs.map((k, i) => ({
+                                libraryKey: k,
+                                toolNames: (toolRes[i]?.Object ?? [])
+                                    .filter(t => t.IsActive !== false)
+                                    .map(t => t.ToolName),
+                            }));
+                            setUiModules(chatModulesFromEnabledTools(libraryKeys, toolsByLibrary, excluded));
+                        } catch {
+                            setUiModules(chatModulesFromLibraries(libraryKeys));
+                        }
                     }
                 }
                 if (!restored) {
                     setSkillExecutionMode(mode);
                     skillExecutionModeRef.current = mode;
                 }
-            } catch { /* optional */ }
+            } catch {
+                if (isUniversalAgent) {
+                    setSkillDisplayNames({ [UNIVERSAL_AGENT_KEY]: 'Universal Agent' });
+                    setUiModules(new Set<AgentChatUiModule>(['files']));
+                }
+            }
 
             if (cancelled) return;
 
@@ -884,10 +1292,24 @@ const GenericAgentChat: React.FC<Props> = ({
                     if (role === 'user' && content === SESSION_START) return false;
                     return true;
                 });
+                const hasRealUser = meaningful.some(m => {
+                    if ((m.role || '').toLowerCase() !== 'user') return false;
+                    const sm = m as StoredChatMessage;
+                    if (sm.askUserAnswer ?? sm.AskUserAnswer) return false;
+                    const content = typeof m.content === 'string' ? m.content : String(m.content ?? '');
+                    return !!(content || '').trim();
+                });
                 const stored = (prior ?? []) as StoredChatMessage[];
                 const pendingFromStore = findPendingAskUser(stored);
                 const runSid = findRunSessionId(stored);
-                if (meaningful.length > 0 || pendingFromStore || runSid) {
+                // Only session_start greeting / think left → same UI as New Chat
+                if (!hasRealUser && !pendingFromStore && !runSid) {
+                    setMessages([]);
+                    setTurnActivities([]);
+                    setCurrentTurnIndex(0);
+                    currentTurnIndexRef.current = 0;
+                    fireSessionStartIfAllowed(mode, allowFirstTurn);
+                } else if (meaningful.length > 0 || pendingFromStore || runSid) {
                     sessionStartFiredRef.current = true;
                     const restoredMsgs: ChatMessage[] = [];
                     const restoredActs: TurnActivity[] = [];
@@ -917,6 +1339,7 @@ const GenericAgentChat: React.FC<Props> = ({
                                 role: 'user',
                                 content,
                                 askUserAnswer: isAskAnswer || undefined,
+                                sourceAgent: String(storedMsg.sourceAgent ?? storedMsg.SourceAgent ?? '') || undefined,
                             });
                         } else if (m.role === 'assistant') {
                             const pendingOnMsg = parseAskUser(
@@ -927,13 +1350,27 @@ const GenericAgentChat: React.FC<Props> = ({
                             const skipPendingPlaceholder = !!pendingOnMsg && !isAskSummary;
                             if (!skipPendingPlaceholder) {
                                 const dataRenders = parseStoredDataRenders(storedMsg);
+                                const thinkingText = String(storedMsg.thinking ?? storedMsg.Thinking ?? '').trim();
+                                const rawSteps = storedMsg.thinkingSteps ?? storedMsg.ThinkingSteps;
+                                const thinkingSteps = Array.isArray(rawSteps)
+                                    ? rawSteps
+                                        .map((x: any) => ({
+                                            description: String(x?.description ?? x?.Description ?? '').trim(),
+                                            details: String(x?.details ?? x?.Details ?? '').trim() || undefined,
+                                        }))
+                                        .filter(x => x.description)
+                                    : undefined;
                                 restoredMsgs.push({
                                     role: 'assistant',
                                     content: isAskSummary
                                         ? formatAskUserQuestionSummary(content)
                                         : content,
+                                    thinking: thinkingText || undefined,
+                                    thinkingSteps: thinkingSteps?.length ? thinkingSteps : undefined,
                                     toolSteps: steps,
                                     dataRenders,
+                                    handoffProposals: parseStoredHandoffProposals(storedMsg),
+                                    handoff: parseHandoffMarker(storedMsg.handoff ?? storedMsg.Handoff),
                                     askUserSummary: isAskSummary || undefined,
                                 });
                             }
@@ -955,6 +1392,27 @@ const GenericAgentChat: React.FC<Props> = ({
                     setTurnActivities(restoredActs);
                     setCurrentTurnIndex(userTurns);
                     currentTurnIndexRef.current = userTurns;
+                    const lastRestored = restoredMsgs[restoredMsgs.length - 1];
+                    if (
+                        autoRunPendingUserRef.current
+                        && !pendingFromStore
+                        && !runSid
+                        && lastRestored?.role === 'user'
+                        && (lastRestored.content || '').trim()
+                    ) {
+                        autoRunPendingUserRef.current = false;
+                        onAutoRunStartedRef.current?.();
+                        const historyBase = restoredMsgs.slice(0, -1);
+                        const userMessage = lastRestored.content;
+                        queueMicrotask(() => {
+                            if (cancelled) return;
+                            void runAgentTurnRef.current({
+                                userMessage,
+                                hideUserBubble: true,
+                                historyBase,
+                            });
+                        });
+                    }
                     if (pendingFromStore) {
                         setPendingAskUser(pendingFromStore);
                         setIsRunning(true);
@@ -1002,6 +1460,7 @@ const GenericAgentChat: React.FC<Props> = ({
     }) => {
         const msg = opts.userMessage.trim();
         if (!msg || isRunningRef.current) return;
+        liveResultOpen.current = true;
         setError(null);
         setIsRunning(true);
         isRunningRef.current = true;
@@ -1018,6 +1477,10 @@ const GenericAgentChat: React.FC<Props> = ({
                 .map(m => ({
                     role: m.role === 'user' ? 'user' : 'assistant',
                     content: m.content,
+                    ...(m.role === 'assistant' && m.thinking ? { thinking: m.thinking } : {}),
+                    ...(m.role === 'assistant' && m.thinkingSteps && m.thinkingSteps.length > 0
+                        ? { thinkingSteps: m.thinkingSteps }
+                        : {}),
                     ...(m.role === 'assistant' && m.toolSteps && m.toolSteps.length > 0
                         ? { toolSteps: m.toolSteps }
                         : {}),
@@ -1209,11 +1672,103 @@ const GenericAgentChat: React.FC<Props> = ({
         setAskAnswers({});
         setAskSelectedIds([]);
         setAskFreeText('');
+        // Clear Result panel (ui_render / data_render) with the chat
+        setOpenRender(null);
+        setOpenRenderKey(null);
+        liveResultOpen.current = false;
+        setRightTab('tools');
         if (!testMode) await genericAgentSvc.ClearSession(skillKey, chatSessionKeyRef.current || undefined);
         sessionStartFiredRef.current = true;
-        if (/^Interactive$/i.test(skillExecutionModeRef.current || 'Interactive')) {
-            await runAgentTurn({ userMessage: SESSION_START, hideUserBubble: true, historyBase: [] });
+        // Same as New Chat: welcome chips only — no [session_start] agent turn.
+    };
+
+    const openSaveSkill = async () => {
+        const sessionKey = chatSessionKeyRef.current;
+        if (!sessionKey) {
+            setError('Open a Universal chat before saving a skill.');
+            return;
         }
+        setSaveSkillError(null);
+        setSaveSkillDone(null);
+        setSaveSkillDraft(null);
+        setSaveSkillOpen(true);
+        setSaveSkillBusy(true);
+        try {
+            const draft = await genericAgentSvc.DraftUniversalSkill(skillKeyRef.current, sessionKey);
+            setSaveSkillDraft({
+                name: draft.Name || '',
+                description: draft.Description || '',
+                content: draft.SkillContent || '',
+            });
+        } catch (e: any) {
+            setSaveSkillError(e?.message || 'Could not draft a skill from this chat.');
+        } finally {
+            setSaveSkillBusy(false);
+        }
+    };
+
+    const updateSaveSkillDraft = (field: keyof SaveSkillDraft, value: string) => {
+        setSaveSkillDraft(prev => prev ? { ...prev, [field]: value } : prev);
+        setSaveSkillError(null);
+        setSaveSkillDone(null);
+    };
+
+    const handleSaveSkill = async () => {
+        const draft = saveSkillDraft;
+        const sessionKey = chatSessionKeyRef.current;
+        if (!draft || !sessionKey) return;
+        if (!draft.name.trim()) {
+            setSaveSkillError('Skill name is required.');
+            return;
+        }
+        if (!draft.content.trim()) {
+            setSaveSkillError('Skill instructions are required.');
+            return;
+        }
+        setSaveSkillBusy(true);
+        setSaveSkillError(null);
+        setSaveSkillDone(null);
+        try {
+            const saved = await genericAgentSvc.SaveUniversalSkill(
+                skillKeyRef.current,
+                sessionKey,
+                draft.name.trim(),
+                draft.description.trim(),
+                draft.content.trim(),
+            );
+            setSaveSkillDone(`Saved as ${saved.Name}. Universal Agent can select it on a later chat.`);
+        } catch (e: any) {
+            setSaveSkillError(e?.message || 'Could not save skill.');
+        } finally {
+            setSaveSkillBusy(false);
+        }
+    };
+
+    const confirmHandoff = async (proposal: HandoffProposal) => {
+        const sessionKey = chatSessionKeyRef.current;
+        if (!sessionKey) {
+            setError('Open a Universal chat before handing off.');
+            return;
+        }
+        setHandoffBusyKey(proposal.targetSkillKey);
+        setError(null);
+        try {
+            const created = await genericAgentSvc.CreateSpecialistHandoff(
+                skillKeyRef.current,
+                sessionKey,
+                proposal.targetSkillKey,
+                proposal.reason || '',
+            );
+            navigate(`/agent-chat?skillKey=${encodeURIComponent(created.TargetSkillKey)}&chat=${encodeURIComponent(created.TargetSessionKey)}&handoffRun=1`);
+        } catch (e: any) {
+            setError(e?.message || 'Could not hand off to the Specialist.');
+        } finally {
+            setHandoffBusyKey(null);
+        }
+    };
+
+    const openHandedOffChat = (marker: HandoffMarker) => {
+        navigate(`/agent-chat?skillKey=${encodeURIComponent(marker.targetSkillKey)}&chat=${encodeURIComponent(marker.targetSessionKey)}`);
     };
 
     const toggleExpand = (key: string) =>
@@ -1235,12 +1790,16 @@ const GenericAgentChat: React.FC<Props> = ({
         && askUi === 'button_group'
         && (pendingAskUser?.Options?.length ?? 0) > 0;
     const blocked = isRunning || !!pendingAskUser;
-    const skillLabel = skillDisplayNames[skillKey] || skillKey || 'Agent';
-    const hasConversation = messages.some(m => {
-        if (m.role === 'user' && (m.content || '').trim() === SESSION_START) return false;
-        if (m.askUserSummary || m.askUserAnswer || m.isStreaming) return true;
+    const skillLabel = isUniversalAgent ? 'Universal Agent' : (skillDisplayNames[skillKey] || skillKey || 'Agent');
+    const hasRealUserTurn = messages.some(m =>
+        m.role === 'user'
+        && (m.content || '').trim() !== SESSION_START
+        && !m.askUserAnswer
+        && !!(m.content || '').trim());
+    const hasConversation = hasRealUserTurn || messages.some(m => {
+        if (m.askUserSummary || m.isStreaming) return true;
         if ((m.dataRenders?.length ?? 0) > 0) return true;
-        return !!(m.content || '').trim();
+        return false;
     });
     const showWelcome = !hasConversation && !isRunning && !pendingAskUser && !pendingPlan;
     const hour = new Date().getHours();
@@ -1255,54 +1814,111 @@ const GenericAgentChat: React.FC<Props> = ({
 
     const windowCard = `flex flex-col overflow-hidden min-w-0 min-h-0 rounded-[8px] shadow-sm ${theme.mainContentSection}`;
 
-    const startToolsResize = (e: React.MouseEvent) => {
+    useEffect(() => {
+        const ta = composerRef.current;
+        if (!ta) return;
+        ta.style.height = 'auto';
+        const next = Math.min(ta.scrollHeight, 200);
+        ta.style.height = next + 'px';
+        ta.style.overflowY = ta.scrollHeight > 200 ? 'auto' : 'hidden';
+    }, [input]);
+
+    const startToolsResize = (e: React.PointerEvent<HTMLDivElement>) => {
         e.preventDefault();
+        e.stopPropagation();
+        const handle = e.currentTarget;
+        try { handle.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+
         toolsDragRef.current = true;
         const startX = e.clientX;
-        const startW = toolsWidth;
+        const host = chatRootRef.current;
+        const hostW = host?.clientWidth ?? 900;
+        const usingResult = openRender != null;
+        const startW = usingResult
+            ? (renderWidth ?? Math.max(280, Math.round((hostW - 8) / 2)))
+            : toolsWidth;
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
-        const onMove = (ev: MouseEvent) => {
+
+        // Result iframe / Wijmo steal pointermove/up once the cursor enters the panel.
+        // Disable hit-testing on the side panel for the drag duration.
+        host?.setAttribute('data-panel-resizing', '1');
+        const side = host?.querySelector('[data-agent-side-panel]') as HTMLElement | null;
+        const sidePrevPe = side?.style.pointerEvents ?? '';
+        if (side) side.style.pointerEvents = 'none';
+        const iframes = host ? Array.from(host.querySelectorAll('iframe')) : [];
+        const iframePrevPe = iframes.map(f => f.style.pointerEvents);
+        iframes.forEach(f => { f.style.pointerEvents = 'none'; });
+
+        let nextW = startW;
+        const onMove = (ev: PointerEvent) => {
             if (!toolsDragRef.current) return;
-            const hostW = chatRootRef.current?.clientWidth ?? 900;
-            const max = Math.min(560, Math.max(220, hostW - 320));
-            setToolsWidth(Math.min(max, Math.max(220, startW - (ev.clientX - startX))));
+            const max = Math.max(320, hostW - 280);
+            nextW = Math.min(max, Math.max(280, startW - (ev.clientX - startX)));
+            if (usingResult) setRenderWidth(nextW);
+            else setToolsWidth(nextW);
         };
-        const onUp = () => {
+        const end = () => {
+            if (!toolsDragRef.current) return;
             toolsDragRef.current = false;
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
+            host?.removeAttribute('data-panel-resizing');
+            if (side) side.style.pointerEvents = sidePrevPe;
+            iframes.forEach((f, i) => { f.style.pointerEvents = iframePrevPe[i] ?? ''; });
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', end);
+            window.removeEventListener('pointercancel', end);
+            try { handle.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+            if (usingResult) localStorage.setItem('agentRenderPanelPx', String(nextW));
         };
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', end);
+        window.addEventListener('pointercancel', end);
     };
+
+    const handedOffByKey = new Map<string, HandoffMarker>();
+    for (const msg of messages) {
+        if (msg.handoff?.targetSkillKey && msg.handoff.targetSessionKey)
+            handedOffByKey.set(msg.handoff.targetSkillKey, msg.handoff);
+    }
 
     return (
         <div ref={chatRootRef} className="w-full h-full flex flex-row overflow-hidden">
             {/* ── Left: chat ── */}
             <div className={`w-1 flex-auto border ${regionBorder} ${windowCard}`}>
-                <div className={`flex items-center gap-3 px-3 py-2.5 border-b shrink-0 ${regionBorder}`}>
+                <div className={`flex items-center gap-1 px-2 py-1.5 border-b shrink-0 ${regionBorder}`}>
                     {showChatListButton && (
                         <button
                             type="button"
-                            className={`w-8 h-8 rounded-[4px] text-sm shrink-0 ${theme.button_default}`}
+                            className={`w-6 h-6 rounded-[4px] text-xs shrink-0 ${theme.button_default}`}
                             title="Chats"
                             onClick={onOpenChatList}
                         >
                             <i className="fa-solid fa-bars" aria-hidden />
                         </button>
                     )}
-                    <div className="min-w-0">
-                        <div className={`text-base font-semibold truncate leading-tight ${theme.title}`}>{chatTitle || 'New chat'}</div>
-                        <div className={`text-xs truncate mt-0.5 ${theme.label}`}>{skillLabel}</div>
+                    <div className={`min-w-0 w-1 flex-auto truncate text-xs leading-none ${t('text_default')}`}>
+                        <span className="font-medium">{chatTitle || 'New Conversation'}</span>
+                        {skillLabel ? <span className={`ml-1.5 font-normal ${theme.label}`}>{skillLabel}</span> : null}
                     </div>
-                    <div className="ml-auto flex items-center gap-2 shrink-0">
+                    <div className="ml-auto flex items-center gap-1 shrink-0">
+                        {isUniversalAgent && hasConversation && (
+                            <button
+                                type="button"
+                                className={`h-6 px-2 rounded-[4px] text-xs ${theme.button_default}`}
+                                onClick={() => { void openSaveSkill(); }}
+                                disabled={saveSkillBusy}
+                                title="Save this conversation as a reusable skill"
+                            >
+                                <i className={`fa-solid ${saveSkillBusy && !saveSkillOpen ? 'fa-spinner fa-spin' : 'fa-bookmark'} mr-1`} aria-hidden />
+                                Save as Skill
+                            </button>
+                        )}
                         {(messages.length > 0 || pendingAskUser) && (
                             <button
                                 type="button"
-                                className={`w-8 h-8 rounded-[4px] text-sm ${theme.button_default}`}
+                                className={`w-6 h-6 rounded-[4px] text-xs ${theme.button_default}`}
                                 onClick={() => { void handleClear(); }}
                                 title="Clear conversation"
                             >
@@ -1311,7 +1927,7 @@ const GenericAgentChat: React.FC<Props> = ({
                         )}
                         <button
                             type="button"
-                            className={`w-8 h-8 rounded-[4px] text-sm ${theme.button_default}${sidebarOpen ? ' font-semibold' : ''}`}
+                            className={`w-6 h-6 rounded-[4px] text-xs ${theme.button_default}${sidebarOpen ? ' font-medium' : ' opacity-70'}`}
                             onClick={() => setSidebarOpen(o => !o)}
                             title="Tool activity"
                         >
@@ -1319,14 +1935,14 @@ const GenericAgentChat: React.FC<Props> = ({
                         </button>
                     </div>
                 </div>
-                <div ref={scrollRef} className="w-full h-1 flex-auto overflow-auto px-3 py-3 flex flex-col">
+                <div ref={scrollRef} className="w-full h-1 flex-auto overflow-auto px-6 py-4 flex flex-col">
                     {showWelcome && (
                         <div className="w-full max-w-3xl mx-auto h-1 flex-auto flex flex-col items-center justify-center gap-6 py-8">
                             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl ${theme.button_default}`}>
                                 <i className="fa-solid fa-robot" aria-hidden />
                             </div>
                             <div className="text-center">
-                                <div className={`text-2xl font-semibold ${theme.title}`}>
+                                <div className={`text-xl font-medium ${t('text_default')}`}>
                                     {greetingWord}{firstName ? `, ${firstName}` : ''}
                                 </div>
                                 <div className={`mt-2 text-sm ${theme.label}`}>
@@ -1348,22 +1964,48 @@ const GenericAgentChat: React.FC<Props> = ({
                         </div>
                     )}
                     <div className="w-full flex flex-col gap-3">
-                    {messages.map((m, i) => {
+                    {!showWelcome && messages.map((m, i) => {
                         const split = m.role === 'assistant'
                             ? splitFollowups(sanitizeAgentDisplayText(m.content), m.isStreaming)
                             : { body: m.content, followups: [] as string[] };
                         const showBubble = !!(split.body || m.isStreaming || m.askUserSummary || m.askUserAnswer);
                         const hasRenders = m.role === 'assistant' && (m.dataRenders?.length ?? 0) > 0;
-                        const hasFollowups = m.role === 'assistant' && !m.isStreaming && split.followups.length > 0;
-                        if (!showBubble && !hasRenders && !hasFollowups) return null;
+                        const thinkingLooksLikeSessionStart = /\[session_start\]/i.test(m.thinking || '')
+                            || (m.thinkingSteps ?? []).some(s => /\[session_start\]/i.test(s.description || ''));
+                        const showThinking = m.role === 'assistant' && !thinkingLooksLikeSessionStart && !!(
+                            m.thinking?.trim()
+                            || (m.thinkingSteps?.length ?? 0) > 0
+                            || (m.isStreaming && isRunning && !split.body)
+                        );
+                        // Soft chips only after analysis this turn (data_analyze or KPI confirm).
+                        const turnHasAnalysis = (m.toolSteps ?? []).some(s => {
+                            const n = (s.toolName || '').toLowerCase();
+                            if (n === 'data_analyze') return true;
+                            if (n === 'ask_user') {
+                                const a = (s.args || '') + (s.result || '');
+                                return /kpi_dashboard/i.test(a);
+                            }
+                            return false;
+                        });
+                        const hasFollowups = m.role === 'assistant' && !m.isStreaming
+                            && turnHasAnalysis && split.followups.length > 0;
+                        const largeOpen = hasRenders && m.dataRenders!.some(dr => placeRender(dr).panel);
+                        if (!showBubble && !hasRenders && !hasFollowups && !showThinking) return null;
                         return (
                         <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                             <div className={m.role === 'user' ? 'max-w-xl' : 'w-full min-w-0 flex flex-col gap-2'}>
+                            {showThinking && (
+                                <ReasoningLoopPanel
+                                    text={m.thinking || ''}
+                                    steps={m.thinkingSteps}
+                                    isLive={!!(m.isStreaming || (i === messages.length - 1 && isRunning && !pendingAskUser))}
+                                />
+                            )}
                             {showBubble && (
                                     <div className={
                                         m.role === 'user'
-                                            ? `px-3 py-2 rounded-[8px] border text-[15px] leading-relaxed ${regionBorder}`
-                                            : `w-full px-3 py-2.5 rounded-[8px] border text-[15px] leading-relaxed ${regionBorder}`
+                                            ? `px-3 py-2 rounded-tl-[8px] rounded-tr-[8px] rounded-bl-[8px] rounded-br-none border text-sm leading-6 ${t('text_default')} ${regionBorder}`
+                                            : `w-full text-sm leading-6 ${t('text_default')}`
                                     }>
                                         {(m.askUserSummary || m.askUserAnswer) && (
                                             <div className={`text-xs mb-1 ${theme.label}`}>
@@ -1383,20 +2025,104 @@ const GenericAgentChat: React.FC<Props> = ({
                                                 {m.role === 'assistant' ? split.body : m.content}
                                             </div>
                                         )}
-                                        {m.isStreaming && <span className="animate-pulse ml-1">|</span>}
+                                        {m.isStreaming && !largeOpen && <span className="inline-block w-0.5 h-4 ml-0.5 align-middle animate-pulse">|</span>}
                                     </div>
                             )}
-                            {hasRenders && (
-                                <div className="w-full flex flex-col gap-3">
-                                    {m.dataRenders!.map(dr => (
-                                        <DataRenderPanel
-                                            key={dr.RenderId || `${i}-${dr.Timestamp}`}
-                                            event={dr}
-                                            disabled={blocked}
-                                            onAction={(actionId, selectionJson) => handleDataRenderAction(dr, actionId, selectionJson)}
-                                        />
-                                    ))}
+                            {m.role === 'assistant' && ((m.handoffProposals?.length ?? 0) > 0 || !!m.handoff) && (
+                                <div className="w-full max-w-xl flex flex-col gap-2">
+                                    {(m.handoffProposals ?? []).map(s => {
+                                        const done = handedOffByKey.get(s.targetSkillKey);
+                                        const busy = handoffBusyKey === s.targetSkillKey;
+                                        return (
+                                            <div
+                                                key={s.targetSkillKey}
+                                                className={`rounded-[8px] border px-3 py-2 ${theme.mainContentSection} ${regionBorder}`}
+                                            >
+                                                <div className="flex items-start gap-2">
+                                                    <div className={`w-7 h-7 rounded-[4px] flex items-center justify-center shrink-0 ${theme.button_default}`}>
+                                                        <i className="fa-solid fa-route" aria-hidden />
+                                                    </div>
+                                                    <div className="min-w-0 w-1 flex-auto">
+                                                        <div className={`text-xs font-medium ${t('text_default')}`}>
+                                                            {done ? 'Handed off' : 'Hand off to a Specialist?'}
+                                                        </div>
+                                                        <div className={`text-sm mt-0.5 ${t('text_default')}`}>{s.name || s.targetSkillKey}</div>
+                                                        {(s.reason || s.description) && (
+                                                            <div className={`text-xs mt-1 ${theme.label}`}>
+                                                                {s.reason || s.description}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    {done ? (
+                                                        <button
+                                                            type="button"
+                                                            className={`px-2.5 py-1.5 rounded-[4px] text-xs shrink-0 ${theme.button_default}`}
+                                                            onClick={() => openHandedOffChat(done)}
+                                                        >
+                                                            Open
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            className={`px-2.5 py-1.5 rounded-[4px] text-xs shrink-0 ${theme.button_default}`}
+                                                            disabled={busy || isRunning}
+                                                            onClick={() => { void confirmHandoff(s); }}
+                                                        >
+                                                            {busy ? <i className="fa-solid fa-spinner fa-spin mr-1" aria-hidden /> : null}
+                                                            Hand off
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    {m.handoff && !(m.handoffProposals ?? []).some(p => p.targetSkillKey === m.handoff?.targetSkillKey) && (
+                                        <div className={`rounded-[8px] border px-3 py-2 ${theme.mainContentSection} ${regionBorder}`}>
+                                            <div className="flex items-center gap-2">
+                                                <div className="min-w-0 w-1 flex-auto">
+                                                    <div className={`text-xs font-medium ${t('text_default')}`}>Handed off</div>
+                                                    <div className={`text-sm mt-0.5 ${t('text_default')}`}>{m.handoff.targetName || m.handoff.targetSkillKey}</div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className={`px-2.5 py-1.5 rounded-[4px] text-xs shrink-0 ${theme.button_default}`}
+                                                    onClick={() => openHandedOffChat(m.handoff!)}
+                                                >
+                                                    Open
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
+                            )}
+                            {hasRenders && (
+                                <div className="w-full flex flex-col gap-2">
+                                    {m.dataRenders!.map((dr, r) => {
+                                        const placed = placeRender(dr);
+                                        const key = renderKey(dr, r);
+                                        return (
+                                            <React.Fragment key={key}>
+                                                {placed.inline && (
+                                                    <DataRenderPanel
+                                                        event={placed.inline}
+                                                        disabled={blocked}
+                                                        onAction={(actionId, selectionJson) => handleDataRenderAction(dr, actionId, selectionJson)}
+                                                    />
+                                                )}
+                                                {placed.panel && (
+                                                    <RenderChip
+                                                        event={placed.panel}
+                                                        open={openRenderKey === key}
+                                                        onOpen={() => { setOpenRenderKey(key); setOpenRender(placed.panel!); setRightTab('result'); setSidebarOpen(true); }}
+                                                    />
+                                                )}
+                                            </React.Fragment>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                            {m.role === 'assistant' && m.isStreaming && !hasRenders && (m.toolSteps?.some(s => /data_render|render_none_interactive|render_interactive/i.test(s.toolName)) ?? false) && (
+                                <RenderBuilding />
                             )}
                             {hasFollowups && (
                                 <FollowupChips
@@ -1412,10 +2138,12 @@ const GenericAgentChat: React.FC<Props> = ({
 
                     {isRunning && !pendingAskUser && (
                         <div className={`flex items-center gap-2 text-xs ${theme.label}`}>
-                            <i className="fa-solid fa-spinner fa-spin" />
-                            <span>{turnActivities.find(t => t.turnIndex === currentTurnIndex)?.steps.length
-                                ? `Running tools…`
-                                : 'Thinking…'}</span>
+                            {!(messages[messages.length - 1]?.role === 'assistant' && messages[messages.length - 1]?.thinking) && (
+                                <>
+                                    <i className="fa-solid fa-spinner fa-spin" />
+                                    <span>Reasoning…</span>
+                                </>
+                            )}
                             <button
                                 type="button"
                                 className={`${btn} ml-1`}
@@ -1429,7 +2157,7 @@ const GenericAgentChat: React.FC<Props> = ({
 
                     {pendingPlan && (
                         <div className={`mx-2 p-3 rounded border ${theme.mainContentSection} flex flex-col gap-2`}>
-                            <div className={`text-xs font-semibold ${theme.title}`}>Plan Review</div>
+                            <div className={`text-xs font-medium ${t('text_default')}`}>Plan Review</div>
                             <div className={`text-xs ${theme.label} whitespace-pre-wrap`}>{pendingPlan.PlanSummary}</div>
                             <div className="flex gap-2">
                                 <button className={btn} onClick={() => handleConfirmPlan(true)}><i className="fa-solid fa-check mr-1" />Approve</button>
@@ -1440,7 +2168,7 @@ const GenericAgentChat: React.FC<Props> = ({
 
                     {pendingAskUser && (
                         <div className={`mx-2 p-3 rounded border ${theme.mainContentSection} flex flex-col gap-2`}>
-                            <div className={`text-xs font-semibold ${theme.title}`}>Question</div>
+                            <div className={`text-xs font-medium ${t('text_default')}`}>Question</div>
                             <div className={`text-xs ${theme.label} whitespace-pre-wrap`}>{sanitizeAgentDisplayText(pendingAskUser.Prompt)}</div>
 
                             {isButtonGroup && (
@@ -1613,18 +2341,21 @@ const GenericAgentChat: React.FC<Props> = ({
                     </div>
                 </div>
 
-                <div className="px-3 pb-3 pt-1 shrink-0">
-                    <div className={`flex items-center rounded-[8px] border ${theme.inputBox}`}>
+                <div className="px-6 pb-2 pt-1 shrink-0 w-full max-w-3xl mx-auto">
+                    <div className={`relative min-h-[100px] px-3 pt-2 pb-2 rounded-[8px] border ${theme.inputBox}${composerFocus ? ' ring-1' : ''}`}>
                     <textarea
-                        className="w-1 flex-auto min-h-[2.5rem] px-3 py-2 text-[15px] leading-relaxed bg-transparent border-0 rounded-[8px] focus:outline-none resize-none"
+                        ref={composerRef}
+                        className={`w-full px-0 py-1 text-sm leading-6 bg-transparent border-0 focus:outline-none resize-none ${isRunning || pendingAskUser ? 'pr-20' : 'pr-12'}`}
                         rows={2}
                         value={input}
-                        placeholder={`Message ${skillLabel}…`}
+                        placeholder="Type your request here..."
                         onChange={e => setInput(e.target.value)}
+                        onFocus={() => setComposerFocus(true)}
+                        onBlur={() => setComposerFocus(false)}
                         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                         disabled={blocked}
                     />
-                    <div className="flex items-center gap-1 pr-1.5 shrink-0">
+                    <div className="absolute bottom-2 right-2 flex items-center gap-1">
                     {(isRunning || pendingAskUser) && (
                         <button
                             type="button"
@@ -1646,25 +2377,41 @@ const GenericAgentChat: React.FC<Props> = ({
                     </button>
                     </div>
                     </div>
+                    <p className={`hidden md:block text-center text-xs mt-2 ${theme.label}`}>The agent can be wrong about people, places, and facts.</p>
                 </div>
             </div>
 
-            {/* ── Right: Tool Activity | Files ── */}
             {sidebarOpen && (
                 <div
                     role="separator"
                     aria-orientation="vertical"
-                    title="Drag to resize tools"
-                    className="w-2 shrink-0 cursor-col-resize"
-                    onMouseDown={startToolsResize}
+                    title="Drag to resize"
+                    className="w-2 shrink-0 cursor-col-resize touch-none"
+                    onPointerDown={startToolsResize}
                 />
             )}
             {sidebarOpen && (
-                <div style={{ width: toolsWidth }} className={`shrink-0 border ${regionBorder} ${windowCard}`}>
+                <div
+                    data-agent-side-panel
+                    style={resultFullscreen ? undefined : {
+                        width: openRender ? (renderWidth ?? Math.max(280, Math.round(((chatRootRef.current?.clientWidth ?? 900) - 8) / 2))) : toolsWidth,
+                        maxWidth: '100%',
+                        minWidth: 0,
+                    }}
+                    className={
+                        resultFullscreen
+                            ? `fixed inset-0 z-[12000] border flex flex-col min-w-0 min-h-0 overflow-hidden shadow-xl ${regionBorder} ${theme.mainContentSection}`
+                            : `shrink-0 border flex flex-col min-w-0 min-h-0 overflow-hidden ${regionBorder} ${windowCard}`
+                    }
+                    role={resultFullscreen ? 'dialog' : undefined}
+                    aria-modal={resultFullscreen ? true : undefined}
+                    aria-label={resultFullscreen ? 'Result full screen' : undefined}
+                >
+                    {!resultFullscreen && (
                     <div className={`flex items-center gap-1 px-2 py-1.5 border-b ${regionBorder}`}>
                         <button
                             type="button"
-                            className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'tools' ? ' font-semibold' : ' opacity-70'}`}
+                            className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'tools' ? ' font-medium' : ' opacity-70'}`}
                             onClick={() => setRightTab('tools')}
                         >
                             Tool Activity
@@ -1672,12 +2419,13 @@ const GenericAgentChat: React.FC<Props> = ({
                         {uiModules.has('files') && (
                         <button
                             type="button"
-                            className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'files' ? ' font-semibold' : ' opacity-70'}`}
+                            className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'files' ? ' font-medium' : ' opacity-70'}`}
                             onClick={() => setRightTab('files')}
                         >
                             Files
                         </button>
                         )}
+<<<<<<< HEAD
                         {uiModules.has('memory') && (
                         <button
                             type="button"
@@ -1689,12 +2437,104 @@ const GenericAgentChat: React.FC<Props> = ({
                         )}
                         <button className="text-xs opacity-50 hover:opacity-100 ml-auto" onClick={() => setSidebarOpen(false)}>
                             <i className="fa-solid fa-xmark" />
+=======
+                        {openRender && (
+                        <button
+                            type="button"
+                            className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'result' ? ' font-medium' : ' opacity-70'}`}
+                            onClick={() => setRightTab('result')}
+                        >
+                            Result
+>>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
                         </button>
+                        )}
+                        <div className="ml-auto flex items-center gap-1 shrink-0">
+                            {rightTab === 'result' && openRender && (
+                                <button
+                                    type="button"
+                                    className={`rounded-[4px] p-1.5 text-xs ${theme.button_default}`}
+                                    onClick={() => setResultFullscreen(true)}
+                                    title="Full screen"
+                                    aria-label="Full screen"
+                                >
+                                    <i className="fa-solid fa-expand" aria-hidden />
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                className="text-xs opacity-50 hover:opacity-100 px-1"
+                                title="Close panel"
+                                onClick={() => setSidebarOpen(false)}
+                            >
+                                <i className="fa-solid fa-xmark" />
+                            </button>
+                        </div>
                     </div>
+                    )}
 
+<<<<<<< HEAD
                     {rightTab === 'memory' && uiModules.has('memory') ? (
                         <div className="w-full h-1 flex-auto overflow-hidden min-h-0">
                             <AgentMemoryPanel skillKey={skillKey} sessionKey={fileSessionKey} />
+=======
+                    {rightTab === 'result' && openRender ? (
+                        <div className="w-full h-1 flex-auto overflow-hidden min-w-0 min-h-0 max-w-full p-2 box-border">
+                            <ResultChrome
+                                event={openRender}
+                                skillKey={skillKey}
+                                sessionKey={fileSessionKey}
+                                disabled={blocked}
+                                fullscreen={resultFullscreen}
+                                onExitFullscreen={() => setResultFullscreen(false)}
+                                onCloseFullscreen={() => { setResultFullscreen(false); setSidebarOpen(false); }}
+                            >
+                                {(filteredEvent) => (
+                                    isInteractiveDashboard(filteredEvent) ? (
+                                        <div className="w-full h-full min-w-0 max-w-full overflow-hidden">
+                                            <InteractiveDashboardPanel
+                                                event={filteredEvent}
+                                                disabled={blocked}
+                                                onAction={(actionId, selectionJson) => handleDataRenderAction(filteredEvent, actionId, selectionJson)}
+                                            />
+                                        </div>
+                                    ) : isInteractivePage(filteredEvent) ? (
+                                        <div className="w-full h-full min-w-0 max-w-full overflow-hidden">
+                                            <InteractivePagePanel
+                                                event={filteredEvent}
+                                                disabled={blocked}
+                                                onAction={(actionId, selectionJson) => handleDataRenderAction(filteredEvent, actionId, selectionJson)}
+                                            />
+                                        </div>
+                                    ) : isInteractiveTabular(filteredEvent) ? (
+                                        <div className="w-full h-full min-w-0 max-w-full overflow-hidden">
+                                            <DataRenderPanel
+                                                event={filteredEvent}
+                                                disabled={blocked}
+                                                onAction={(actionId, selectionJson) => handleDataRenderAction(filteredEvent, actionId, selectionJson)}
+                                            />
+                                        </div>
+                                    ) : hasUiHtml(filteredEvent) ? (
+                                        <div className="w-full h-full min-w-0 max-w-full overflow-hidden">
+                                            <UiRenderFrame
+                                                event={filteredEvent}
+                                                skillKey={skillKey}
+                                                sessionKey={fileSessionKey}
+                                                disabled={blocked}
+                                                onAction={(actionId, selectionJson) => handleDataRenderAction(filteredEvent, actionId, selectionJson)}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="w-full h-full min-w-0 max-w-full overflow-auto">
+                                            <DataRenderPanel
+                                                event={filteredEvent}
+                                                disabled={blocked}
+                                                onAction={(actionId, selectionJson) => handleDataRenderAction(filteredEvent, actionId, selectionJson)}
+                                            />
+                                        </div>
+                                    )
+                                )}
+                            </ResultChrome>
+>>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
                         </div>
                     ) : rightTab === 'files' && uiModules.has('files') ? (
                         <div className="w-full h-1 flex-auto overflow-hidden min-h-0">
@@ -1704,12 +2544,12 @@ const GenericAgentChat: React.FC<Props> = ({
                         <div className="w-full h-1 flex-auto overflow-y-auto flex flex-col gap-0 p-2">
                             {!hasAnyTools && !isRunning && messages.length > 0 && (
                                 <div className={`p-3 rounded text-xs ${theme.label} flex flex-col gap-1`}>
-                                    <div className="flex items-center gap-2 opacity-60">
+                                    <div className="flex items-center gap-2 opacity-70">
                                         <i className="fa-solid fa-circle-info" />
-                                        <span className="font-semibold">No tool activity</span>
+                                        <span className="font-medium">No tools used</span>
                                     </div>
-                                    <p className="opacity-50 leading-relaxed">
-                                        No tool steps are stored for this chat view. New runs save tool activity with the session; chats saved before that change will not show past tools after reload.
+                                    <p className="opacity-60 leading-relaxed">
+                                        This answer did not need a tool. When the agent searches, reads files, creates results, or calls another capability, the steps will appear here.
                                     </p>
                                 </div>
                             )}
@@ -1776,7 +2616,7 @@ const GenericAgentChat: React.FC<Props> = ({
                                                         onClick={() => hasDetails && toggleExpand(expandKey)}
                                                     >
                                                         <i className={`fa-solid ${!hasResult ? `fa-spinner fa-spin ${t('text_default_active')}` : isSuccess ? `fa-circle-check ${t('text_default_active')}` : 'fa-circle-xmark text-red-600'}`} />
-                                                        <span className="font-mono font-semibold truncate">{title}</span>
+                                                        <span className={`font-mono font-medium truncate ${t('text_default')}`}>{title}</span>
                                                         {isSystemBuiltInTool(toolName) && (
                                                             <span
                                                                 className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 opacity-70 border ${regionBorder} ${theme.label}`}
@@ -1795,17 +2635,11 @@ const GenericAgentChat: React.FC<Props> = ({
                                                     </button>
                                                     {isExpanded && (
                                                         <div className="px-2 py-1.5 flex flex-col gap-1.5">
-                                                            {argsText && (
-                                                                <div>
-                                                                    <div className="text-xs opacity-40 mb-0.5">Args</div>
-                                                                    <pre className={`text-xs whitespace-pre-wrap break-all opacity-70 ${theme.label}`}>{formatToolPayload(argsText)}</pre>
-                                                                </div>
-                                                            )}
-                                                            {resultText && (
-                                                                <div>
-                                                                    <div className="text-xs opacity-40 mb-0.5">{isSuccess ? 'Result' : 'Error'}</div>
-                                                                    <pre className={`text-xs whitespace-pre-wrap break-all opacity-70 ${theme.label}`}>{formatToolPayload(resultText)}</pre>
-                                                                </div>
+                                                            {argsText && renderIoPayload(argsText, theme.label, 'Args')}
+                                                            {resultText && renderIoPayload(
+                                                                resultText,
+                                                                theme.label,
+                                                                isSuccess ? 'Result' : 'Error',
                                                             )}
                                                             {!resultText && hasResult && isSuccess && (
                                                                 <div className={`text-xs opacity-50 ${theme.label}`}>Completed (see Args for written values).</div>
@@ -1822,11 +2656,92 @@ const GenericAgentChat: React.FC<Props> = ({
                             {isRunning && turnActivities.find(t => t.turnIndex === currentTurnIndex) === undefined && (
                                 <div className={`px-2 py-1.5 text-xs opacity-50 ${theme.label} flex items-center gap-2`}>
                                     <i className="fa-solid fa-spinner fa-spin" />
-                                    Waiting for tools…
+                                    Working on the answer...
                                 </div>
                             )}
                         </div>
                     )}
+                </div>
+            )}
+            {saveSkillOpen && (
+                <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/30 px-4">
+                    <div className={`w-full max-w-3xl max-h-[86vh] flex flex-col rounded-[8px] border shadow-xl ${regionBorder} ${theme.mainContentSection}`}>
+                        <div className={`flex items-center gap-2 px-4 py-3 border-b ${regionBorder}`}>
+                            <div className={`font-medium text-sm ${t('text_default')}`}>Save as Skill</div>
+                            <div className={`text-xs ${theme.label}`}>Review the draft before saving. A new skill is created.</div>
+                            <button
+                                type="button"
+                                className={`ml-auto w-7 h-7 rounded-[4px] ${theme.button_default}`}
+                                onClick={() => setSaveSkillOpen(false)}
+                                title="Close"
+                            >
+                                <i className="fa-solid fa-xmark" aria-hidden />
+                            </button>
+                        </div>
+                        <div className="p-4 overflow-auto flex flex-col gap-3">
+                            {saveSkillBusy && !saveSkillDraft && (
+                                <div className={`text-sm flex items-center gap-2 ${theme.label}`}>
+                                    <i className="fa-solid fa-spinner fa-spin" aria-hidden />
+                                    Drafting a skill from this chat...
+                                </div>
+                            )}
+                            {saveSkillDraft && (
+                                <>
+                                    <label className="flex flex-col gap-1 text-xs">
+                                        <span className={theme.label}>Name</span>
+                                        <input
+                                            className={`px-2 py-1.5 text-sm rounded-[4px] border ${theme.inputBox}`}
+                                            value={saveSkillDraft.name}
+                                            onChange={e => updateSaveSkillDraft('name', e.target.value)}
+                                            disabled={saveSkillBusy}
+                                        />
+                                    </label>
+                                    <label className="flex flex-col gap-1 text-xs">
+                                        <span className={theme.label}>Description</span>
+                                        <input
+                                            className={`px-2 py-1.5 text-sm rounded-[4px] border ${theme.inputBox}`}
+                                            value={saveSkillDraft.description}
+                                            onChange={e => updateSaveSkillDraft('description', e.target.value)}
+                                            disabled={saveSkillBusy}
+                                        />
+                                    </label>
+                                    <label className="flex flex-col gap-1 text-xs">
+                                        <span className={theme.label}>Skill Instructions</span>
+                                        <textarea
+                                            className={`min-h-[260px] px-2 py-2 text-sm font-mono rounded-[4px] border ${theme.inputBox}`}
+                                            value={saveSkillDraft.content}
+                                            onChange={e => updateSaveSkillDraft('content', e.target.value)}
+                                            disabled={saveSkillBusy}
+                                        />
+                                    </label>
+                                    <div className={`text-xs ${theme.label}`}>
+                                        If this name already exists, the saved skill gets a suffix such as (2). An audit note is stored as _source_context.md and is not loaded into later chats.
+                                    </div>
+                                </>
+                            )}
+                            {saveSkillError && <div className="text-xs text-red-600">{saveSkillError}</div>}
+                            {saveSkillDone && <div className="text-xs text-green-700">{saveSkillDone}</div>}
+                        </div>
+                        <div className={`flex items-center justify-end gap-2 px-4 py-3 border-t ${regionBorder}`}>
+                            <button
+                                type="button"
+                                className={`px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default}`}
+                                onClick={() => setSaveSkillOpen(false)}
+                                disabled={saveSkillBusy}
+                            >
+                                Close
+                            </button>
+                            <button
+                                type="button"
+                                className={`px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default}`}
+                                onClick={() => { void handleSaveSkill(); }}
+                                disabled={saveSkillBusy || !saveSkillDraft || !!saveSkillDone}
+                            >
+                                {saveSkillBusy ? <i className="fa-solid fa-spinner fa-spin mr-1" /> : <i className="fa-solid fa-floppy-disk mr-1" />}
+                                Save Skill
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

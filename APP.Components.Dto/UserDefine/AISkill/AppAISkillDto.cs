@@ -46,6 +46,12 @@ namespace APP.Components.EntityDto
         /// <summary>When true and Interactive, empty chat sends [session_start] (UI: Agent Starts Chat First).</summary>
         public bool   AllowAgentFirstTurn { get; set; }
 
+        /// <summary>
+        /// When true, emit Reasoning-loop (Think) step events. Default false — Think uses extra tokens.
+        /// UI: "Reasoning loop (Think)"
+        /// </summary>
+        public bool   EnableThinkMode { get; set; }
+
         /// <summary>Count of Child-Agents mapped under this agent (Orchestrator when &gt; 0). Not a DB column.</summary>
         public int ChildCount { get; set; }
 

@@ -67,6 +67,7 @@ try
     // ── Print engine ─────────────────────────────────────────────────────────
     builder.Services.AddMemoryCache();
     builder.Services.AddSingleton<AppAI.Web.Services.PrintTokenService>();
+    builder.Services.AddSingleton<AppAI.Web.Services.AgentUiRenderTokenService>();
 
     // ── Session ───────────────────────────────────────────────────────────────
     // Production: swap AddDistributedMemoryCache → AddStackExchangeRedisCache

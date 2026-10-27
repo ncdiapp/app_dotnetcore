@@ -73,6 +73,32 @@ namespace App.BL.TenantBusiness
             return GetBySkillKeyWithLibraries(skillKey, fixture);
         }
 
+        public static List<AppAgentMcpServerDto> GetAllActiveLibraryServers()
+        {
+            var fixture = GetFixture();
+            if (fixture == null) return new List<AppAgentMcpServerDto>();
+            return GetAllActiveLibraryServers(fixture);
+        }
+
+        public static List<AppAgentMcpServerDto> GetAllActiveLibraryServers(int dataSourceId)
+        {
+            var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
+            if (fixture == null) return new List<AppAgentMcpServerDto>();
+            return GetAllActiveLibraryServers(fixture);
+        }
+
+        private static List<AppAgentMcpServerDto> GetAllActiveLibraryServers(DatabaseSchemaMrg.DatabaseFixture fixture)
+        {
+            var dt = fixture.RetriveDataTable(@"
+SELECT m.McpServerId,m.SkillKey,m.ServerName,m.ServerType,m.ServerUrl,m.Command,m.IsActive,m.BearerTokenEnvVar,m.Headers,m.HeadersFromEnv
+FROM dbo.AppAgentMcpServer m
+INNER JOIN dbo.AppAgentToolLibrary l ON m.SkillKey=l.LibraryKey
+WHERE m.IsActive=1 AND l.IsActive=1
+ORDER BY m.McpServerId",
+                new List<DbParameter>());
+            return MapAll(dt);
+        }
+
         private static List<AppAgentMcpServerDto> GetBySkillKeyWithLibraries(string skillKey, DatabaseSchemaMrg.DatabaseFixture fixture)
         {
             var dt = fixture.RetriveDataTable(@"
