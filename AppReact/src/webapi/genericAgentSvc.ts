@@ -29,6 +29,14 @@ export interface GenericAgentChatSummary {
     IsFixedTestSession: boolean;
 }
 
+export interface GenericAgentSavedSkill {
+    SkillKey?: string;
+    SessionKey?: string;
+    SkillId: number;
+    SkillName?: string | null;
+    SavedAt?: string;
+}
+
 export function genericAgentChatTitle(item?: { Title?: string | null } | null): string {
     const text = (item?.Title || '').trim();
     return text || 'New Chat';
@@ -253,7 +261,7 @@ export interface GenericAgentChatUiSnapshot {
 
 export interface GenericAgentEventHandlers {
     onToken: (text: string) => void;
-    onStep: (step: { Type: string; ToolName?: string; Description: string; IsSuccess: boolean }) => void;
+    onStep: (step: { Type: string; ToolName?: string; Description: string; Details?: string; IsSuccess: boolean }) => void;
     onPlan: (plan: { PlanSummary: string }) => void;
     onAskUser?: (ask: AskUserEvent) => void;
     onDataRender?: (evt: DataRenderEvent) => void;
@@ -381,6 +389,7 @@ class GenericAgentService {
     async LoadChat(skillKey: string, sessionKey: string): Promise<{
         SessionKey: string;
         Title?: string | null;
+        SavedSkill?: GenericAgentSavedSkill | null;
         Messages: Array<{
             role: string;
             content: string;
@@ -460,6 +469,23 @@ class GenericAgentService {
             }),
         });
         if (!res.ok) throw new Error('Failed to rename chat');
+        const data = await res.json();
+        return !!data?.Object;
+    }
+
+    async SetSavedSkill(skillKey: string, sessionKey: string, skillId: number, skillName: string): Promise<boolean> {
+        const res = await fetch(`${BASE}/SetSavedSkill`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({
+                SkillKey: skillKey || '',
+                SessionKey: sessionKey || '',
+                SkillId: skillId,
+                SkillName: skillName || '',
+                SavedAt: new Date().toISOString(),
+            }),
+        });
+        if (!res.ok) throw new Error('Failed to save chat skill link');
         const data = await res.json();
         return !!data?.Object;
     }

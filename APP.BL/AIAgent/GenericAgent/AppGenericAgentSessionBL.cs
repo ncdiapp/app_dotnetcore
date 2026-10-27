@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
+using System.Linq;
 using APP.Components.EntityDto;
 using APP.Framework;
 using Newtonsoft.Json;
@@ -16,6 +17,7 @@ namespace App.BL.AIAgent.GenericAgent
         /// <summary>DisplayTitle if renamed; otherwise first real user message.</summary>
         public string        Title      { get; set; }
         public List<JObject> Messages   { get; set; }
+        public GenericAgentSavedSkillDto SavedSkill { get; set; }
     }
 
     /// <summary>
@@ -151,7 +153,8 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
                     SessionKey = row["SessionKey"] as string,
                     SkillKey   = row["SkillKey"] as string,
                     Title      = ResolveTitle(row),
-                    Messages   = messages
+                    Messages   = messages,
+                    SavedSkill = ExtractSavedSkill(messages)
                 };
             }
             catch (Exception ex)
@@ -578,6 +581,73 @@ ELSE
             }
         }
 
+        public static bool SetSavedSkill(
+            string sessionKey,
+            string skillKey,
+            int userId,
+            int dataSourceId,
+            GenericAgentSavedSkillDto savedSkill)
+        {
+            if (string.IsNullOrWhiteSpace(sessionKey)
+                || string.IsNullOrWhiteSpace(skillKey)
+                || userId <= 0
+                || savedSkill == null
+                || savedSkill.SkillId <= 0)
+                return false;
+
+            var detail = LoadBySessionKey(sessionKey, skillKey, userId, dataSourceId);
+            if (detail == null) return false;
+
+            var list = CloneMessages(detail.Messages);
+            var target = list.FirstOrDefault(m => m?["universalSavedSkill"] != null || m?["UniversalSavedSkill"] != null);
+            if (target == null)
+            {
+                target = list.FirstOrDefault(m => m != null);
+                if (target == null)
+                {
+                    target = new JObject
+                    {
+                        ["role"] = "system",
+                        ["content"] = ""
+                    };
+                    list.Add(target);
+                }
+            }
+
+            var payload = new JObject
+            {
+                ["skillId"] = savedSkill.SkillId,
+                ["skillName"] = savedSkill.SkillName ?? "",
+                ["savedAt"] = savedSkill.SavedAt == default ? DateTime.UtcNow : savedSkill.SavedAt
+            };
+            target["universalSavedSkill"] = payload;
+            target.Remove("UniversalSavedSkill");
+
+            SaveSession(skillKey, userId, dataSourceId, list, sessionKey);
+            return true;
+        }
+
+        public static bool ClearSavedSkill(
+            string sessionKey,
+            string skillKey,
+            int userId,
+            int dataSourceId)
+        {
+            var detail = LoadBySessionKey(sessionKey, skillKey, userId, dataSourceId);
+            if (detail?.Messages == null) return false;
+            var list = CloneMessages(detail.Messages);
+            var changed = false;
+            foreach (var m in list)
+            {
+                if (m == null) continue;
+                if (m.Remove("universalSavedSkill")) changed = true;
+                if (m.Remove("UniversalSavedSkill")) changed = true;
+            }
+            if (!changed) return true;
+            SaveSession(skillKey, userId, dataSourceId, list, sessionKey);
+            return true;
+        }
+
         public static void DeleteSession(string skillKey, int userId)
         {
             if (string.IsNullOrWhiteSpace(skillKey) || userId <= 0) return;
@@ -737,6 +807,28 @@ ELSE
         {
             if (string.IsNullOrWhiteSpace(json)) return new List<JObject>();
             return JsonConvert.DeserializeObject<List<JObject>>(json) ?? new List<JObject>();
+        }
+
+        private static GenericAgentSavedSkillDto ExtractSavedSkill(List<JObject> messages)
+        {
+            if (messages == null) return null;
+            foreach (var m in messages)
+            {
+                var token = m?["universalSavedSkill"] ?? m?["UniversalSavedSkill"];
+                if (token == null || token.Type == JTokenType.Null) continue;
+                var id = (token["skillId"] ?? token["SkillId"])?.Value<int>() ?? 0;
+                if (id <= 0) continue;
+                DateTime.TryParse((token["savedAt"] ?? token["SavedAt"])?.ToString(), out var savedAt);
+                if (savedAt != default && savedAt.Kind == DateTimeKind.Unspecified)
+                    savedAt = DateTime.SpecifyKind(savedAt, DateTimeKind.Utc);
+                return new GenericAgentSavedSkillDto
+                {
+                    SkillId = id,
+                    SkillName = (token["skillName"] ?? token["SkillName"])?.ToString(),
+                    SavedAt = savedAt == default ? DateTime.UtcNow : savedAt
+                };
+            }
+            return null;
         }
 
         private static string ResolveTitle(DataRow row)

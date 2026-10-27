@@ -20,6 +20,15 @@ namespace APP.Components.EntityDto
         public string Title      { get; set; }
     }
 
+    public class GenericAgentSavedSkillDto
+    {
+        public string   SkillKey   { get; set; }
+        public string   SessionKey { get; set; }
+        public int      SkillId    { get; set; }
+        public string   SkillName  { get; set; }
+        public DateTime SavedAt    { get; set; }
+    }
+
     public class GenericAgentFileDto
     {
         public string   RelativePath { get; set; }

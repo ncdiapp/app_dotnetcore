@@ -705,6 +705,39 @@ public class GenericAgentController : SecureBaseController
 
     // ── Agent Files APIs ──────────────────────────────────────────────────────
 
+    [HttpPost]
+    public OperationCallResult<bool> SetSavedSkill([FromBody] GenericAgentSavedSkillDto request)
+    {
+        var result = new OperationCallResult<bool>();
+        var identity = ServerContext.Instance.CurrnetClientIdentity;
+        if (identity is not AppClientIdentity ai || ai.UserId == null)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "SetSavedSkill_NoUser",
+                ValidationItemType.Error, "User identity required."));
+            return result;
+        }
+        if (request == null
+            || string.IsNullOrWhiteSpace(request.SkillKey)
+            || string.IsNullOrWhiteSpace(request.SessionKey)
+            || request.SkillId <= 0)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "SetSavedSkill_BadRequest",
+                ValidationItemType.Error, "SkillKey, SessionKey, and SkillId are required."));
+            return result;
+        }
+
+        request.SavedAt = request.SavedAt == default ? DateTime.UtcNow : request.SavedAt;
+        result.Object = SessionBL.SetSavedSkill(
+            request.SessionKey,
+            request.SkillKey,
+            Convert.ToInt32(ai.UserId),
+            ai.DataSourceId,
+            request);
+        return result;
+    }
+
     private bool TryFilesIdentity(out AppClientIdentity ai, out int companyId, out OperationCallResult<object> err)
     {
         ai = default;

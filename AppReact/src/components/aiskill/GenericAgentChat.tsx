@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import type { RootState } from '../../redux/store';
-import { AskUserEvent, DataRenderEvent, genericAgentSvc, isInteractivePage, isInteractiveTabular, uiRenderToDataRender, type GenericAgentChatUiSnapshot, type LookupItemDto, type UiRenderEvent } from '../../webapi/genericAgentSvc';
+import { AskUserEvent, DataRenderEvent, genericAgentSvc, isInteractivePage, isInteractiveTabular, uiRenderToDataRender, type GenericAgentChatUiSnapshot, type GenericAgentSavedSkill, type LookupItemDto, type UiRenderEvent } from '../../webapi/genericAgentSvc';
 import { agentSkillSetSvc } from '../../webapi/agentSkillSetSvc';
+import { aiSkillSvc, type AppAISkillDto, type AppAISkillRefDto } from '../../webapi/aiSkillSvc';
 import { registerTabDataSaver, unregisterTabDataSaver } from '../../redux/hooks/useTabNavigation';
 import {
     clearAgentChatTabCache,
@@ -41,6 +43,8 @@ type StoredChatMessage = {
     PendingAskUser?: AskUserEvent;
     runSessionId?: string;
     RunSessionId?: string;
+    specialistSuggestions?: SpecialistSuggestion[];
+    SpecialistSuggestions?: SpecialistSuggestion[];
     askUserSummary?: boolean;
     AskUserSummary?: boolean;
     askUserAnswer?: boolean;
@@ -214,10 +218,19 @@ interface ChatMessage {
     toolSteps?: ToolStep[];
     /** Non-blocking data_render panels attached to this assistant turn. */
     dataRenders?: DataRenderEvent[];
+    specialistSuggestions?: SpecialistSuggestion[];
     /** Read-only ask_user question bubble (controls dismissed). */
     askUserSummary?: boolean;
     /** Read-only ask_user answer bubble on the user side. */
     askUserAnswer?: boolean;
+}
+
+interface SpecialistSuggestion {
+    SkillKey: string;
+    Name: string;
+    Description?: string | null;
+    Reason?: string | null;
+    Score?: number;
 }
 
 interface ToolStep {
@@ -256,6 +269,13 @@ interface TurnActivity {
     isComplete: boolean;
 }
 
+interface SaveSkillDraft {
+    name: string;
+    description: string;
+    content: string;
+    sourceRef: string;
+}
+
 interface PlanEvent {
     PlanSummary: string;
 }
@@ -274,6 +294,29 @@ interface Props {
 const snippet = (s?: string | null, max = 300) =>
     !s ? '' : s.length > max ? s.slice(0, max) + '…' : s;
 
+const cleanOneLine = (s?: string | null, max = 90) => {
+    const text = (s || '').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    return text.length > max ? text.slice(0, max).trimEnd() : text;
+};
+
+const skillNameFromMessage = (s?: string | null) => {
+    const base = cleanOneLine(s, 70)
+        .replace(/[^\w\s\-#/.:]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return base ? `Skill - ${base}` : `Skill - ${new Date().toISOString().slice(0, 10)}`;
+};
+
+const summarizeToolSteps = (steps?: ToolStep[]) => {
+    const names: string[] = [];
+    for (const s of steps ?? []) {
+        const label = cleanOneLine(s.label || s.toolName, 80);
+        if (label && !names.includes(label)) names.push(label);
+    }
+    return names;
+};
+
 /** Strip leading LLM junk before a step title like [Linear]… (not before TODO [x] lines). */
 const sanitizeAgentDisplayText = (raw?: string | null): string => {
     if (!raw) return '';
@@ -288,6 +331,59 @@ const sanitizeAgentDisplayText = (raw?: string | null): string => {
         return (m[2].replace(/^#{1,6}\s*/, '') + s.slice(m[0].length)).trim();
     }
     return s;
+};
+
+const buildSaveSkillDraft = (messages: ChatMessage[]): SaveSkillDraft => {
+    const userMessages = messages
+        .filter(m => m.role === 'user' && !m.askUserAnswer && (m.content || '').trim() && (m.content || '').trim() !== SESSION_START)
+        .map(m => (m.content || '').trim());
+    const assistantMessages = messages
+        .filter(m => m.role === 'assistant' && (m.content || '').trim())
+        .map(m => sanitizeAgentDisplayText(m.content).trim());
+    const allTools = messages.flatMap(m => m.role === 'assistant' ? summarizeToolSteps(m.toolSteps) : []);
+    const distinctTools = Array.from(new Set(allTools));
+    const firstUser = userMessages[0] ?? '';
+    const lastAssistant = assistantMessages[assistantMessages.length - 1] ?? '';
+    const name = skillNameFromMessage(firstUser);
+    const description = cleanOneLine(firstUser || lastAssistant, 180) || 'Reusable skill saved from a Universal Agent conversation.';
+
+    const content = [
+        '# Reusable Skill',
+        '',
+        '## Purpose',
+        description,
+        '',
+        '## Inputs',
+        '- Use the current user request and chat context as the input.',
+        '- Ask a concise clarification question when required information is missing.',
+        '',
+        '## Expected Output',
+        lastAssistant ? `- ${cleanOneLine(lastAssistant, 220)}` : '- Complete the requested task and explain the result clearly.',
+        '',
+        '## Procedure',
+        ...userMessages.slice(0, 5).map((m, i) => `${i + 1}. Start from this type of user intent: ${cleanOneLine(m, 180)}`),
+        distinctTools.length > 0 ? `${Math.min(userMessages.length + 1, 6)}. Prefer these tool/capability patterns when relevant: ${distinctTools.join(', ')}.` : '',
+        `${Math.min(userMessages.length + 2, 7)}. Validate the result against the user request before final response.`,
+        '',
+        '## Tool Guidance',
+        distinctTools.length > 0
+            ? distinctTools.map(t => `- ${t}`).join('\n')
+            : '- Use the most specific available tool when a tool can do the work.',
+        '',
+        '## Notes',
+        '- This skill was saved from a Universal Agent chat. Review and tighten these instructions before broad reuse.',
+    ].filter(Boolean).join('\n');
+
+    const sourceRef = messages.map((m, idx) => {
+        const role = m.role.toUpperCase();
+        const body = typeof m.content === 'string' ? m.content.trim() : '';
+        const tools = m.toolSteps?.length
+            ? '\n\nTool steps:\n' + m.toolSteps.map(s => `- ${s.toolName}${s.label ? `: ${s.label}` : ''}`).join('\n')
+            : '';
+        return `## ${idx + 1}. ${role}\n\n${body || '(no text)'}${tools}`;
+    }).join('\n\n');
+
+    return { name, description, content, sourceRef };
 };
 
 /** Format ask_user answers so Q&A stays in the chat after the Question card closes. */
@@ -456,6 +552,24 @@ const displayResult = (result?: string | null) => {
     return result;
 };
 
+const parseSpecialistSuggestion = (raw?: string | null, fallbackDescription?: string | null): SpecialistSuggestion | null => {
+    if (!raw && !fallbackDescription) return null;
+    try {
+        const o = raw ? JSON.parse(raw) : {};
+        const skillKey = String(o.SkillKey ?? o.skillKey ?? '').trim();
+        if (!skillKey) return null;
+        return {
+            SkillKey: skillKey,
+            Name: String(o.Name ?? o.name ?? skillKey),
+            Description: o.Description ?? o.description ?? null,
+            Reason: o.Reason ?? o.reason ?? fallbackDescription ?? null,
+            Score: Number(o.Score ?? o.score ?? 0) || undefined,
+        };
+    } catch {
+        return null;
+    }
+};
+
 const findSkillKeyInValue = (v: unknown, depth = 0): string | undefined => {
     if (depth > 4 || v == null) return undefined;
     if (typeof v === 'string') {
@@ -552,6 +666,7 @@ const GenericAgentChat: React.FC<Props> = ({
     onOpenChatList,
     onConversationChanged,
 }) => {
+    const navigate = useNavigate();
     const { theme, t } = useTheme();
     const displayName = useSelector((s: RootState) => String(s.userSession?.userContext?.DisplayName || ''));
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -588,6 +703,13 @@ const GenericAgentChat: React.FC<Props> = ({
     const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
     const [skillDisplayNames, setSkillDisplayNames] = useState<Record<string, string>>({});
     const [skillExecutionMode, setSkillExecutionMode] = useState<string>('Interactive');
+    const [saveSkillOpen, setSaveSkillOpen] = useState(false);
+    const [saveSkillDraft, setSaveSkillDraft] = useState<SaveSkillDraft | null>(null);
+    const [saveSkillBusy, setSaveSkillBusy] = useState(false);
+    const [saveSkillError, setSaveSkillError] = useState<string | null>(null);
+    const [saveSkillDone, setSaveSkillDone] = useState<string | null>(null);
+    const [overwriteSkillCandidate, setOverwriteSkillCandidate] = useState<AppAISkillDto | null>(null);
+    const [savedSkill, setSavedSkill] = useState<GenericAgentSavedSkill | null>(null);
     const scrollRef = useRef<HTMLDivElement | null>(null);
     // Track in-progress tool calls (call event received, result pending)
     const pendingCallRef = useRef<Map<string, { args?: string; startedAt: number }>>(new Map());
@@ -646,6 +768,7 @@ const GenericAgentChat: React.FC<Props> = ({
         setOpenRender(null);
         setOpenRenderKey(null);
         setRightTab('tools');
+        setSavedSkill(null);
         autoOpenedRender.current = null;
         liveResultOpen.current = false;
         historyRenderKeys.current = new Set();
@@ -857,6 +980,29 @@ const GenericAgentChat: React.FC<Props> = ({
                     }];
                 });
             };
+            if (s.Type === 'specialist_suggestion') {
+                const suggestion = parseSpecialistSuggestion(s.Details, s.Description);
+                if (!suggestion) return;
+                setMessages(prev => {
+                    const last = prev[prev.length - 1];
+                    const already = (last?.specialistSuggestions ?? []).some(x => x.SkillKey === suggestion.SkillKey);
+                    if (last?.role === 'assistant' && (last.isStreaming || isRunningRef.current)) {
+                        if (already) return prev;
+                        return [...prev.slice(0, -1), {
+                            ...last,
+                            specialistSuggestions: [...(last.specialistSuggestions ?? []), suggestion],
+                            isStreaming: true,
+                        }];
+                    }
+                    return [...prev, {
+                        role: 'assistant' as const,
+                        content: '',
+                        specialistSuggestions: [suggestion],
+                        isStreaming: true,
+                    }];
+                });
+                return;
+            }
             if (s.Type === 'thinking') {
                 appendThinking(s.Description || '', s.Details);
                 return;
@@ -1165,6 +1311,7 @@ const GenericAgentChat: React.FC<Props> = ({
                     ? loaded?.Messages ?? []
                     : await genericAgentSvc.LoadSession(skillKey);
                 if (cancelled) return;
+                setSavedSkill(loaded?.SavedSkill ?? null);
                 const meaningful = (prior ?? []).filter(m => {
                     const role = (m.role || '').toLowerCase();
                     const content = typeof m.content === 'string' ? m.content : String(m.content ?? '');
@@ -1248,6 +1395,7 @@ const GenericAgentChat: React.FC<Props> = ({
                                     thinkingSteps: thinkingSteps?.length ? thinkingSteps : undefined,
                                     toolSteps: steps,
                                     dataRenders,
+                                    specialistSuggestions: storedMsg.specialistSuggestions ?? storedMsg.SpecialistSuggestions,
                                     askUserSummary: isAskSummary || undefined,
                                 });
                             }
@@ -1538,6 +1686,133 @@ const GenericAgentChat: React.FC<Props> = ({
         // Same as New Chat: welcome chips only — no [session_start] agent turn.
     };
 
+    const openSaveSkill = async () => {
+        setSaveSkillError(null);
+        setSaveSkillDone(null);
+        setOverwriteSkillCandidate(null);
+        setSaveSkillOpen(true);
+        if (savedSkill?.SkillId) {
+            try {
+                const dsRes = await aiSkillSvc.GetDefaultDataSourceId();
+                const dsId = dsRes?.Object;
+                if (!dsId) throw new Error('Default AI Skill data source is not configured.');
+                const res = await aiSkillSvc.GetById(dsId, savedSkill.SkillId);
+                const existing = res.Object;
+                if (existing) {
+                    const sourceRef = (existing.References ?? [])
+                        .find(r => (r.FileName || '').toLowerCase() === '_source-conversation.md')
+                        ?.FileContent ?? buildSaveSkillDraft(messagesRef.current).sourceRef;
+                    setSaveSkillDraft({
+                        name: existing.Name || savedSkill.SkillName || '',
+                        description: existing.Description || '',
+                        content: existing.SkillContent || '',
+                        sourceRef,
+                    });
+                    return;
+                }
+            } catch (e: any) {
+                setSaveSkillError(e?.message || 'Could not load saved skill. A new draft is shown.');
+            }
+        }
+        setSaveSkillDraft(buildSaveSkillDraft(messagesRef.current));
+    };
+
+    const updateSaveSkillDraft = (field: keyof SaveSkillDraft, value: string) => {
+        setSaveSkillDraft(prev => prev ? { ...prev, [field]: value } : prev);
+        setSaveSkillError(null);
+        setSaveSkillDone(null);
+        setOverwriteSkillCandidate(null);
+    };
+
+    const handleSaveSkill = async (asNewCopy = false, overwriteSkillId = 0) => {
+        const draft = saveSkillDraft;
+        if (!draft) return;
+        if (!draft.name.trim()) {
+            setSaveSkillError('Skill name is required.');
+            return;
+        }
+        if (!draft.content.trim()) {
+            setSaveSkillError('Skill instructions are required.');
+            return;
+        }
+        setSaveSkillBusy(true);
+        setSaveSkillError(null);
+        setSaveSkillDone(null);
+        setOverwriteSkillCandidate(null);
+        try {
+            const dsRes = await aiSkillSvc.GetDefaultDataSourceId();
+            const dsId = dsRes?.Object;
+            if (!dsId) throw new Error('Default AI Skill data source is not configured.');
+
+            const now = new Date().toISOString();
+            const updatingSkillId = overwriteSkillId > 0
+                ? overwriteSkillId
+                : (!asNewCopy && savedSkill?.SkillId ? savedSkill.SkillId : 0);
+            if (overwriteSkillId <= 0) {
+                const allSkills = await aiSkillSvc.GetAll(dsId);
+                const duplicate = (allSkills.Object ?? []).find(s =>
+                    s.SkillId !== updatingSkillId
+                    && (s.Name || '').trim().toLowerCase() === draft.name.trim().toLowerCase());
+                if (duplicate) {
+                    setOverwriteSkillCandidate(duplicate);
+                    setSaveSkillBusy(false);
+                    return;
+                }
+            }
+            const skillDto: AppAISkillDto = {
+                SkillId: updatingSkillId,
+                Name: draft.name.trim(),
+                Description: draft.description.trim(),
+                SkillContent: draft.content.trim(),
+                IsActive: true,
+                CreatedDate: now,
+                References: [],
+            };
+            let skillId = updatingSkillId;
+            let existingRefs: AppAISkillRefDto[] = [];
+            if (updatingSkillId > 0) {
+                const existing = await aiSkillSvc.GetById(dsId, updatingSkillId);
+                existingRefs = existing.Object?.References ?? [];
+                await aiSkillSvc.Update(dsId, skillDto);
+            } else {
+                const created = await aiSkillSvc.Create(dsId, skillDto);
+                if (!created?.ValidationResult?.IsValid) {
+                    throw new Error(created?.ValidationResult?.Items?.[0]?.Message || 'Could not save skill.');
+                }
+                skillId = created.Object;
+            }
+            if (draft.sourceRef.trim()) {
+                const existingSourceRef = existingRefs.find(r => (r.FileName || '').toLowerCase() === '_source-conversation.md');
+                const refDto: AppAISkillRefDto = {
+                    RefId: existingSourceRef?.RefId ?? 0,
+                    SkillId: skillId,
+                    FileName: '_source-conversation.md',
+                    FileContent: draft.sourceRef.trim(),
+                    SortOrder: 1000,
+                    CreatedDate: existingSourceRef?.CreatedDate ?? now,
+                };
+                if (refDto.RefId > 0) await aiSkillSvc.UpdateRef(dsId, refDto);
+                else await aiSkillSvc.CreateRef(dsId, refDto);
+            }
+            if (chatSessionKeyRef.current) {
+                await genericAgentSvc.SetSavedSkill(skillKeyRef.current, chatSessionKeyRef.current, skillId, draft.name.trim());
+                setSavedSkill({
+                    SkillId: skillId,
+                    SkillName: draft.name.trim(),
+                    SkillKey: skillKeyRef.current,
+                    SessionKey: chatSessionKeyRef.current,
+                    SavedAt: now,
+                });
+            }
+            setSaveSkillDone(updatingSkillId > 0 ? 'Updated. This chat is still linked to the saved skill.' : 'Saved. The skill is now available to Universal Agent.');
+            setSaveSkillOpen(false);
+        } catch (e: any) {
+            setSaveSkillError(e?.message || 'Could not save skill.');
+        } finally {
+            setSaveSkillBusy(false);
+        }
+    };
+
     const toggleExpand = (key: string) =>
         setExpandedTools(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
@@ -1644,6 +1919,12 @@ const GenericAgentChat: React.FC<Props> = ({
         window.addEventListener('pointercancel', end);
     };
 
+    const openSpecialistAgent = (targetSkillKey: string) => {
+        const key = (targetSkillKey || '').trim();
+        if (!key) return;
+        navigate(`/agent-chat?skillKey=${encodeURIComponent(key)}`);
+    };
+
     return (
         <div ref={chatRootRef} className="w-full h-full flex flex-row overflow-hidden">
             {/* ── Left: chat ── */}
@@ -1664,6 +1945,17 @@ const GenericAgentChat: React.FC<Props> = ({
                         {skillLabel ? <span className={`ml-1.5 font-normal ${theme.label}`}>{skillLabel}</span> : null}
                     </div>
                     <div className="ml-auto flex items-center gap-1 shrink-0">
+                        {isUniversalAgent && hasConversation && (
+                            <button
+                                type="button"
+                                className={`h-6 px-2 rounded-[4px] text-xs ${theme.button_default}`}
+                                onClick={() => { void openSaveSkill(); }}
+                                title={savedSkill?.SkillId ? 'Edit the skill saved from this chat' : 'Save this conversation as a reusable skill'}
+                            >
+                                <i className="fa-solid fa-bookmark mr-1" aria-hidden />
+                                {savedSkill?.SkillId ? 'Edit Skill' : 'Save as Skill'}
+                            </button>
+                        )}
                         {(messages.length > 0 || pendingAskUser) && (
                             <button
                                 type="button"
@@ -1776,6 +2068,39 @@ const GenericAgentChat: React.FC<Props> = ({
                                         )}
                                         {m.isStreaming && !largeOpen && <span className="inline-block w-0.5 h-4 ml-0.5 align-middle animate-pulse">|</span>}
                                     </div>
+                            )}
+                            {m.role === 'assistant' && (m.specialistSuggestions?.length ?? 0) > 0 && (
+                                <div className="w-full max-w-xl flex flex-col gap-2">
+                                    {m.specialistSuggestions!.map(s => (
+                                        <div
+                                            key={s.SkillKey}
+                                            className={`rounded-[8px] border px-3 py-2 ${theme.mainContentSection} ${regionBorder}`}
+                                        >
+                                            <div className="flex items-start gap-2">
+                                                <div className={`w-7 h-7 rounded-[4px] flex items-center justify-center shrink-0 ${theme.button_default}`}>
+                                                    <i className="fa-solid fa-route" aria-hidden />
+                                                </div>
+                                                <div className="min-w-0 flex-auto">
+                                                    <div className={`text-xs font-medium ${t('text_default')}`}>Specialist Agent may fit better</div>
+                                                    <div className={`text-sm mt-0.5 ${t('text_default')}`}>{s.Name || s.SkillKey}</div>
+                                                    {(s.Reason || s.Description) && (
+                                                        <div className={`text-xs mt-1 ${theme.label}`}>
+                                                            {s.Reason || s.Description}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className={`px-2.5 py-1.5 rounded-[4px] text-xs shrink-0 ${theme.button_default}`}
+                                                    onClick={() => openSpecialistAgent(s.SkillKey)}
+                                                    title={`Open ${s.Name || s.SkillKey}`}
+                                                >
+                                                    Open
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             )}
                             {hasRenders && (
                                 <div className="w-full flex flex-col gap-2">
@@ -2323,6 +2648,118 @@ const GenericAgentChat: React.FC<Props> = ({
                             )}
                         </div>
                     )}
+                </div>
+            )}
+            {saveSkillOpen && saveSkillDraft && (
+                <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/30 px-4">
+                    <div className={`w-full max-w-3xl max-h-[86vh] flex flex-col rounded-[8px] border shadow-xl ${regionBorder} ${theme.mainContentSection}`}>
+                        <div className={`flex items-center gap-2 px-4 py-3 border-b ${regionBorder}`}>
+                            <div className={`font-medium text-sm ${t('text_default')}`}>{savedSkill?.SkillId ? 'Edit Saved Skill' : 'Save as Skill'}</div>
+                            <div className={`text-xs ${theme.label}`}>Review the draft before saving.</div>
+                            <button
+                                type="button"
+                                className={`ml-auto w-7 h-7 rounded-[4px] ${theme.button_default}`}
+                                onClick={() => setSaveSkillOpen(false)}
+                                title="Close"
+                            >
+                                <i className="fa-solid fa-xmark" aria-hidden />
+                            </button>
+                        </div>
+                        <div className="p-4 overflow-auto flex flex-col gap-3">
+                            <label className="flex flex-col gap-1 text-xs">
+                                <span className={theme.label}>Name</span>
+                                <input
+                                    className={`px-2 py-1.5 text-sm rounded-[4px] border ${theme.inputBox}`}
+                                    value={saveSkillDraft.name}
+                                    onChange={e => updateSaveSkillDraft('name', e.target.value)}
+                                    disabled={saveSkillBusy}
+                                />
+                            </label>
+                            <label className="flex flex-col gap-1 text-xs">
+                                <span className={theme.label}>Description</span>
+                                <input
+                                    className={`px-2 py-1.5 text-sm rounded-[4px] border ${theme.inputBox}`}
+                                    value={saveSkillDraft.description}
+                                    onChange={e => updateSaveSkillDraft('description', e.target.value)}
+                                    disabled={saveSkillBusy}
+                                />
+                            </label>
+                            <label className="flex flex-col gap-1 text-xs">
+                                <span className={theme.label}>Skill Instructions</span>
+                                <textarea
+                                    className={`min-h-[260px] px-2 py-2 text-sm font-mono rounded-[4px] border ${theme.inputBox}`}
+                                    value={saveSkillDraft.content}
+                                    onChange={e => updateSaveSkillDraft('content', e.target.value)}
+                                    disabled={saveSkillBusy}
+                                />
+                            </label>
+                            <details className={`text-xs ${theme.label}`}>
+                                <summary className="cursor-pointer">Source conversation reference</summary>
+                                <textarea
+                                    className={`mt-2 w-full min-h-[160px] px-2 py-2 text-xs font-mono rounded-[4px] border ${theme.inputBox}`}
+                                    value={saveSkillDraft.sourceRef}
+                                    onChange={e => updateSaveSkillDraft('sourceRef', e.target.value)}
+                                    disabled={saveSkillBusy}
+                                />
+                            </details>
+                            {overwriteSkillCandidate && (
+                                <div className={`rounded-[6px] border px-3 py-2 text-xs ${theme.mainContentSection} ${regionBorder}`}>
+                                    <div className={`font-medium ${t('text_default')}`}>A skill named "{overwriteSkillCandidate.Name}" already exists.</div>
+                                    <div className={`mt-1 ${theme.label}`}>Overwrite the existing skill with this draft?</div>
+                                    <div className="mt-2 flex justify-end gap-2">
+                                        <button
+                                            type="button"
+                                            className={`px-2.5 py-1.5 rounded-[4px] border ${theme.button_default}`}
+                                            onClick={() => setOverwriteSkillCandidate(null)}
+                                            disabled={saveSkillBusy}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`px-2.5 py-1.5 rounded-[4px] border ${theme.button_default}`}
+                                            onClick={() => { void handleSaveSkill(false, overwriteSkillCandidate.SkillId); }}
+                                            disabled={saveSkillBusy}
+                                        >
+                                            Overwrite
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                            {saveSkillError && <div className="text-xs text-red-600">{saveSkillError}</div>}
+                            {saveSkillDone && <div className="text-xs text-green-700">{saveSkillDone}</div>}
+                        </div>
+                        <div className={`flex items-center justify-end gap-2 px-4 py-3 border-t ${regionBorder}`}>
+                            <button
+                                type="button"
+                                className={`px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default}`}
+                                onClick={() => setSaveSkillOpen(false)}
+                                disabled={saveSkillBusy}
+                            >
+                                Close
+                            </button>
+                            {savedSkill?.SkillId && (
+                                <button
+                                    type="button"
+                                    className={`px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default}`}
+                                    onClick={() => { void handleSaveSkill(true); }}
+                                    disabled={saveSkillBusy}
+                                    title="Create a separate new skill from this draft"
+                                >
+                                    Save as New Copy
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                className={`px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default}`}
+                                onClick={() => { void handleSaveSkill(false); }}
+                                disabled={saveSkillBusy || !!saveSkillDone}
+                            >
+                                {saveSkillBusy ? <i className="fa-solid fa-spinner fa-spin mr-1" /> : <i className="fa-solid fa-floppy-disk mr-1" />}
+                                {savedSkill?.SkillId ? 'Update Skill' : 'Save Skill'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

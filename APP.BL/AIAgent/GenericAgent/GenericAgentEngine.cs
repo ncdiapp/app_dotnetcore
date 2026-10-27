@@ -55,6 +55,15 @@ namespace App.BL.AIAgent.GenericAgent
         /// <summary>Capability marker tool in library data-analyze. Presence (subscribed, not excluded) enables followups inject.</summary>
         private const string DataAnalyzeToolName = "data_analyze";
         private const string PromptHintToolType = "PromptHint";
+        private sealed class UniversalSpecialistSuggestion
+        {
+            public string SkillKey { get; set; }
+            public string Name { get; set; }
+            public string Description { get; set; }
+            public string Reason { get; set; }
+            public int Score { get; set; }
+        }
+
         private const string UniversalBasePrompt = @"
 
 ## Universal Agent
@@ -222,6 +231,23 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
 
                 if (isUniversal)
                 {
+                    var specialistSuggestion = FindUniversalSpecialistSuggestion(dsId, userMessage, chatHistory);
+                    if (specialistSuggestion != null)
+                    {
+                        await Safe(callbacks?.OnStep, new AgentStepEvent
+                        {
+                            Type = "specialist_suggestion",
+                            Description = $"Specialist available: {specialistSuggestion.Name}",
+                            Details = JsonSerializer.Serialize(specialistSuggestion),
+                            IsSuccess = true
+                        }).ConfigureAwait(false);
+
+                        systemPrompt = (systemPrompt ?? "") + "\n\n" +
+                            "## Specialist suggestion already shown\n" +
+                            $"A UI suggestion card has been shown for {specialistSuggestion.Name} ({specialistSuggestion.SkillKey}). " +
+                            "Continue helping in Universal Agent unless the user chooses to switch.";
+                    }
+
                     var skillPrompt = await BuildUniversalSkillPromptAsync(
                         dsId, userMessage, chatHistory, kernel, callbacks, ct).ConfigureAwait(false);
                     if (!string.IsNullOrWhiteSpace(skillPrompt))
@@ -543,6 +569,101 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 SwallowLog.Write(ex, "Universal specialist catalog load failed");
                 return "";
             }
+        }
+
+        private static UniversalSpecialistSuggestion FindUniversalSpecialistSuggestion(
+            int dataSourceId,
+            string userMessage,
+            List<JObject> chatHistory)
+        {
+            if (dataSourceId <= 0 || string.IsNullOrWhiteSpace(userMessage)) return null;
+            try
+            {
+                var agents = dataSourceId > 0 ? TbSkillBL.GetAll(dataSourceId) : TbSkillBL.GetAll();
+                var hay = NormalizeSpecialistText(userMessage + "\n" + BuildRecentPlainChat(chatHistory, 2));
+                var scored = (agents ?? new List<TbSkillSetDto>())
+                    .Where(a => a != null
+                        && a.IsActive
+                        && !UniversalAgentConstants.IsUniversalAgentKey(a.SkillKey))
+                    .Select(a => new
+                    {
+                        Agent = a,
+                        Score = ScoreSpecialistMatch(hay, a),
+                    })
+                    .Where(x => x.Score >= 3)
+                    .OrderByDescending(x => x.Score)
+                    .ThenBy(x => x.Agent.DisplayName ?? x.Agent.SkillKey)
+                    .FirstOrDefault();
+
+                if (scored == null) return null;
+                var name = string.IsNullOrWhiteSpace(scored.Agent.DisplayName)
+                    ? scored.Agent.SkillKey
+                    : scored.Agent.DisplayName.Trim();
+                return new UniversalSpecialistSuggestion
+                {
+                    SkillKey = scored.Agent.SkillKey,
+                    Name = name,
+                    Description = scored.Agent.Description,
+                    Reason = $"This request matches {name}'s focused workflow.",
+                    Score = scored.Score
+                };
+            }
+            catch (Exception ex)
+            {
+                SwallowLog.Write(ex, "Universal specialist suggestion failed");
+                return null;
+            }
+        }
+
+        private static int ScoreSpecialistMatch(string hay, TbSkillSetDto agent)
+        {
+            if (string.IsNullOrWhiteSpace(hay) || agent == null) return 0;
+            var key = NormalizeSpecialistText(agent.SkillKey);
+            var name = NormalizeSpecialistText(agent.DisplayName);
+            var desc = NormalizeSpecialistText(agent.Description);
+            var score = 0;
+
+            if (!string.IsNullOrWhiteSpace(key) && hay.Contains(key)) score += 8;
+            if (!string.IsNullOrWhiteSpace(name) && hay.Contains(name)) score += 8;
+
+            foreach (var token in SpecialistTokens((agent.SkillKey ?? "") + " " + (agent.DisplayName ?? "")))
+            {
+                if (hay.Contains(token)) score += token.Length <= 3 ? 2 : 3;
+            }
+            foreach (var token in SpecialistTokens(agent.Description ?? ""))
+            {
+                if (hay.Contains(token)) score += 1;
+            }
+
+            if (hay.Contains("database") && (key.Contains("db") || name.Contains("db") || desc.Contains("database") || desc.Contains("sql")))
+                score += 3;
+            if (hay.Contains("sql") && (key.Contains("sql") || desc.Contains("sql") || desc.Contains("database")))
+                score += 3;
+
+            return score;
+        }
+
+        private static IEnumerable<string> SpecialistTokens(string text)
+        {
+            var stop = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "agent", "chat", "the", "and", "for", "with", "from", "this", "that",
+                "generic", "universal", "assistant", "skill", "workflow", "task", "tasks",
+                "data", "user", "app", "application"
+            };
+            foreach (Match m in Regex.Matches(NormalizeSpecialistText(text), @"[a-z0-9_]{2,}"))
+            {
+                var token = m.Value;
+                if (!stop.Contains(token)) yield return token;
+            }
+        }
+
+        private static string NormalizeSpecialistText(string text)
+        {
+            var s = (text ?? "").ToLowerInvariant();
+            s = Regex.Replace(s, @"\bdb\b", "database");
+            s = Regex.Replace(s, @"[^a-z0-9_]+", " ");
+            return Regex.Replace(s, @"\s+", " ").Trim();
         }
 
         private static async Task<HashSet<int>> SelectUniversalSkillIdsAsync(
