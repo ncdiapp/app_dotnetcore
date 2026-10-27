@@ -5,6 +5,7 @@ import { useTheme } from '../../redux/hooks/useTheme';
 import type { RootState } from '../../redux/store';
 import { AskUserEvent, DataRenderEvent, genericAgentSvc, isInteractivePage, isInteractiveTabular, uiRenderToDataRender, type GenericAgentChatUiSnapshot, type LookupItemDto, type UiRenderEvent } from '../../webapi/genericAgentSvc';
 import { agentSkillSetSvc } from '../../webapi/agentSkillSetSvc';
+import { aiSkillSvc } from '../../webapi/aiSkillSvc';
 import { registerTabDataSaver, unregisterTabDataSaver } from '../../redux/hooks/useTabNavigation';
 import {
     clearAgentChatTabCache,
@@ -656,12 +657,8 @@ const GenericAgentChat: React.FC<Props> = ({
     const composerRef = useRef<HTMLTextAreaElement | null>(null);
     const chatRootRef = useRef<HTMLDivElement | null>(null);
     const [showEarlierTurns, setShowEarlierTurns] = useState(false);
-<<<<<<< HEAD
-    const [rightTab, setRightTab] = useState<'tools' | 'files' | 'memory'>('tools');
-=======
-    const [rightTab, setRightTab] = useState<'result' | 'tools' | 'files'>('tools');
+    const [rightTab, setRightTab] = useState<'result' | 'tools' | 'files' | 'memory'>('tools');
     const [resultFullscreen, setResultFullscreen] = useState(false);
->>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
     const [uiModules, setUiModules] = useState<Set<AgentChatUiModule>>(() => new Set());
     const [fileSessionKey, setFileSessionKey] = useState<string | null>(null);
     const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
@@ -672,6 +669,8 @@ const GenericAgentChat: React.FC<Props> = ({
     const [saveSkillBusy, setSaveSkillBusy] = useState(false);
     const [saveSkillError, setSaveSkillError] = useState<string | null>(null);
     const [saveSkillDone, setSaveSkillDone] = useState<string | null>(null);
+    const [saveSkillOverwritePending, setSaveSkillOverwritePending] = useState(false);
+    const saveSkillExistingNamesRef = useRef<Set<string>>(new Set());
     const [handoffBusyKey, setHandoffBusyKey] = useState<string | null>(null);
     const scrollRef = useRef<HTMLDivElement | null>(null);
     // Track in-progress tool calls (call event received, result pending)
@@ -819,15 +818,11 @@ const GenericAgentChat: React.FC<Props> = ({
     };
 
     useEffect(() => {
-<<<<<<< HEAD
         if (rightTab === 'files' && !uiModules.has('files')) setRightTab('tools');
         if (rightTab === 'memory' && !uiModules.has('memory')) setRightTab('tools');
-    }, [rightTab, uiModules]);
-=======
-        if ((rightTab === 'files' && !uiModules.has('files')) || (rightTab === 'result' && !openRender)) setRightTab('tools');
+        if ((rightTab === 'result' && !openRender)) setRightTab('tools');
     }, [rightTab, uiModules, openRender]);
 
-    // Leave Result fullscreen when result closes / tab changes away.
     useEffect(() => {
         if (!openRender || rightTab !== 'result') setResultFullscreen(false);
     }, [openRender, rightTab]);
@@ -840,7 +835,6 @@ const GenericAgentChat: React.FC<Props> = ({
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
     }, [resultFullscreen]);
->>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
 
     const buildSnapshot = (): GenericAgentChatUiSnapshot => ({
         skillKey: skillKeyRef.current,
@@ -1690,10 +1684,25 @@ const GenericAgentChat: React.FC<Props> = ({
         }
         setSaveSkillError(null);
         setSaveSkillDone(null);
+        setSaveSkillOverwritePending(false);
         setSaveSkillDraft(null);
         setSaveSkillOpen(true);
         setSaveSkillBusy(true);
         try {
+            saveSkillExistingNamesRef.current = new Set();
+            try {
+                const dsRes = await aiSkillSvc.GetDefaultDataSourceId();
+                const dsId = dsRes?.Object;
+                if (dsId && dsId > 0) {
+                    const allRes = await aiSkillSvc.GetAll(dsId);
+                    const names = (allRes?.Object ?? [])
+                        .map(s => (s.Name || '').trim().toLowerCase())
+                        .filter(Boolean);
+                    saveSkillExistingNamesRef.current = new Set(names);
+                }
+            } catch {
+                /* optional — overwrite confirm falls back to server error */
+            }
             const draft = await genericAgentSvc.DraftUniversalSkill(skillKeyRef.current, sessionKey);
             setSaveSkillDraft({
                 name: draft.Name || '',
@@ -1711,6 +1720,7 @@ const GenericAgentChat: React.FC<Props> = ({
         setSaveSkillDraft(prev => prev ? { ...prev, [field]: value } : prev);
         setSaveSkillError(null);
         setSaveSkillDone(null);
+        setSaveSkillOverwritePending(false);
     };
 
     const handleSaveSkill = async () => {
@@ -1725,6 +1735,16 @@ const GenericAgentChat: React.FC<Props> = ({
             setSaveSkillError('Skill instructions are required.');
             return;
         }
+        const nameTrim = draft.name.trim();
+        const nameKey = nameTrim.toLowerCase();
+        const nameExists = saveSkillExistingNamesRef.current.has(nameKey);
+        const overwrite = saveSkillOverwritePending || !nameExists;
+        if (nameExists && !saveSkillOverwritePending) {
+            setSaveSkillOverwritePending(true);
+            setSaveSkillError(`A skill named "${nameTrim}" already exists. Click Save again to replace it.`);
+            return;
+        }
+
         setSaveSkillBusy(true);
         setSaveSkillError(null);
         setSaveSkillDone(null);
@@ -1732,13 +1752,20 @@ const GenericAgentChat: React.FC<Props> = ({
             const saved = await genericAgentSvc.SaveUniversalSkill(
                 skillKeyRef.current,
                 sessionKey,
-                draft.name.trim(),
+                nameTrim,
                 draft.description.trim(),
                 draft.content.trim(),
+                overwrite && nameExists,
             );
-            setSaveSkillDone(`Saved as ${saved.Name}. Universal Agent can select it on a later chat.`);
+            const verb = saved.Overwritten ? 'Updated' : 'Saved';
+            setSaveSkillDone(`${verb} skill "${saved.Name}". Universal Agent can use it on a later chat.`);
+            setSaveSkillOverwritePending(false);
         } catch (e: any) {
-            setSaveSkillError(e?.message || 'Could not save skill.');
+            const msg = e?.message || 'Could not save skill.';
+            if (/already exists/i.test(msg)) {
+                setSaveSkillOverwritePending(true);
+            }
+            setSaveSkillError(msg);
         } finally {
             setSaveSkillBusy(false);
         }
@@ -2425,7 +2452,6 @@ const GenericAgentChat: React.FC<Props> = ({
                             Files
                         </button>
                         )}
-<<<<<<< HEAD
                         {uiModules.has('memory') && (
                         <button
                             type="button"
@@ -2435,9 +2461,6 @@ const GenericAgentChat: React.FC<Props> = ({
                             Memory
                         </button>
                         )}
-                        <button className="text-xs opacity-50 hover:opacity-100 ml-auto" onClick={() => setSidebarOpen(false)}>
-                            <i className="fa-solid fa-xmark" />
-=======
                         {openRender && (
                         <button
                             type="button"
@@ -2445,7 +2468,6 @@ const GenericAgentChat: React.FC<Props> = ({
                             onClick={() => setRightTab('result')}
                         >
                             Result
->>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
                         </button>
                         )}
                         <div className="ml-auto flex items-center gap-1 shrink-0">
@@ -2472,11 +2494,6 @@ const GenericAgentChat: React.FC<Props> = ({
                     </div>
                     )}
 
-<<<<<<< HEAD
-                    {rightTab === 'memory' && uiModules.has('memory') ? (
-                        <div className="w-full h-1 flex-auto overflow-hidden min-h-0">
-                            <AgentMemoryPanel skillKey={skillKey} sessionKey={fileSessionKey} />
-=======
                     {rightTab === 'result' && openRender ? (
                         <div className="w-full h-1 flex-auto overflow-hidden min-w-0 min-h-0 max-w-full p-2 box-border">
                             <ResultChrome
@@ -2534,7 +2551,10 @@ const GenericAgentChat: React.FC<Props> = ({
                                     )
                                 )}
                             </ResultChrome>
->>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
+                        </div>
+                    ) : rightTab === 'memory' && uiModules.has('memory') ? (
+                        <div className="w-full h-1 flex-auto overflow-hidden min-h-0">
+                            <AgentMemoryPanel skillKey={skillKey} sessionKey={fileSessionKey} />
                         </div>
                     ) : rightTab === 'files' && uiModules.has('files') ? (
                         <div className="w-full h-1 flex-auto overflow-hidden min-h-0">
@@ -2668,7 +2688,7 @@ const GenericAgentChat: React.FC<Props> = ({
                     <div className={`w-full max-w-3xl max-h-[86vh] flex flex-col rounded-[8px] border shadow-xl ${regionBorder} ${theme.mainContentSection}`}>
                         <div className={`flex items-center gap-2 px-4 py-3 border-b ${regionBorder}`}>
                             <div className={`font-medium text-sm ${t('text_default')}`}>Save as Skill</div>
-                            <div className={`text-xs ${theme.label}`}>Review the draft before saving. A new skill is created.</div>
+                            <div className={`text-xs ${theme.label}`}>Review the draft before saving. Same name replaces the existing skill after you confirm.</div>
                             <button
                                 type="button"
                                 className={`ml-auto w-7 h-7 rounded-[4px] ${theme.button_default}`}
@@ -2715,7 +2735,9 @@ const GenericAgentChat: React.FC<Props> = ({
                                         />
                                     </label>
                                     <div className={`text-xs ${theme.label}`}>
-                                        If this name already exists, the saved skill gets a suffix such as (2). An audit note is stored as _source_context.md and is not loaded into later chats.
+                                        {saveSkillOverwritePending
+                                            ? 'This will overwrite the existing skill with the same name (instructions, description, and audit ref).'
+                                            : 'If the name matches an existing skill, Save will ask you to confirm overwrite. Audit text is stored as _source_context.md and is not loaded into later chats.'}
                                     </div>
                                 </>
                             )}
@@ -2738,7 +2760,7 @@ const GenericAgentChat: React.FC<Props> = ({
                                 disabled={saveSkillBusy || !saveSkillDraft || !!saveSkillDone}
                             >
                                 {saveSkillBusy ? <i className="fa-solid fa-spinner fa-spin mr-1" /> : <i className="fa-solid fa-floppy-disk mr-1" />}
-                                Save Skill
+                                {saveSkillOverwritePending ? 'Replace Skill' : 'Save Skill'}
                             </button>
                         </div>
                     </div>

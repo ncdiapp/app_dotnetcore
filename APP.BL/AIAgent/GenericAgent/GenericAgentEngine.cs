@@ -225,13 +225,8 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 var enableThinkMode = skillSet.EnableThinkMode;
 
                 // Build SK kernel from tenant Application Settings default provider
-<<<<<<< HEAD
                 var kernel = KernelFactory.Build(identity);
-                kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks));
-=======
-                var kernel = BuildKernel(identity);
                 kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks, enableThinkMode));
->>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
                 kernel.AutoFunctionInvocationFilters.Add(new GenericAgentPruneFilter(skillSet.MaxIterations, skillSet.MaxHistoryTokens));
 
                 if (isUniversal)
@@ -258,9 +253,14 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                         .Where(r => r != null && !string.Equals(r.ToolName, "call_agent", StringComparison.OrdinalIgnoreCase))
                         .ToList();
                 }
-<<<<<<< HEAD
-                // Layer 2/3 memory: saved facts and similar past conversations. On for agents with the InjectMemory
-                // flag, or that subscribe to the platform-memory library (the no-code switch in the library tab).
+                if (HasNamedTool(toolRows, DataAnalyzeToolName))
+                {
+                    if (systemPrompt.IndexOf("## Analysis path (platform hard rule", StringComparison.OrdinalIgnoreCase) < 0)
+                        systemPrompt += AnalysisPathHardRule;
+                    if (systemPrompt.IndexOf("Follow-up suggestions (soft chips)", StringComparison.OrdinalIgnoreCase) < 0)
+                        systemPrompt += FollowupsPromptHint;
+                }
+                // Layer 2/3 memory: saved facts and similar past conversations.
                 if (identity.HasValue && userId > 0
                     && (AgentMemoryInjector.IsEnabled(skillSet.CapabilityFlags) || AgentMemoryInjector.HasMemoryTools(toolRows.Select(r => r.ToolName))))
                 {
@@ -272,21 +272,9 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     catch (OperationCanceledException) { throw; }
                     catch (Exception swallowed) { SwallowLog.Write(swallowed, "memory inject must not fail the run"); }
                 }
-                var callableTools = toolRows.Where(r => !IsPromptHintTool(r)).ToList();
-=======
-                if (HasNamedTool(toolRows, DataAnalyzeToolName))
-                {
-                    if (systemPrompt.IndexOf("## Analysis path (platform hard rule", StringComparison.OrdinalIgnoreCase) < 0)
-                        systemPrompt += AnalysisPathHardRule;
-                    if (systemPrompt.IndexOf("Follow-up suggestions (soft chips)", StringComparison.OrdinalIgnoreCase) < 0)
-                        systemPrompt += FollowupsPromptHint;
-                }
-                // Skip BuiltIn stubs with empty TypeName/MethodName (UI default) — they surface as
-                // "BuiltIn type or method not found: ." and shadow real MCP tools with the same name.
                 var callableTools = toolRows
                     .Where(r => !IsPromptHintTool(r) && !IsBrokenBuiltInTool(r))
                     .ToList();
->>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
                 if (callableTools.Count > 0)
                     kernel.Plugins.AddFromFunctions("tools",
                         callableTools.Select(r => WrapRegisteredTool(r, context, skillSet.MaxToolResultChars, instancePool)).ToArray());
@@ -476,9 +464,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
         }
 
         // ─────────────────────────────────────────────────────────────────────
-<<<<<<< HEAD
-=======
-        // Kernel builder
+        // Universal Agent helpers
         // ─────────────────────────────────────────────────────────────────────
 
         private static TbSkillSetDto BuildUniversalSkillSet() =>
@@ -729,7 +715,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
             string userPrompt,
             CancellationToken ct)
         {
-            var kernel = BuildKernel(identity);
+            var kernel = KernelFactory.Build(identity);
             var chat = kernel.GetRequiredService<IChatCompletionService>();
             var history = new ChatHistory();
             if (!string.IsNullOrWhiteSpace(systemPrompt))
@@ -801,51 +787,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 parameters: parameters);
         }
 
-        private static Kernel BuildKernel(AppClientIdentity? identity)
-        {
-            EmLLMProvider provider;
-            string        apiKey;
-            string        model;
-
-            if (identity.HasValue)
-            {
-                var providerStr = AIConfigSettingBL.GetProvider(identity.Value) ?? "";
-                provider = Enum.TryParse<EmLLMProvider>(providerStr, true, out var parsed) ? parsed : EmLLMProvider.Gemini;
-                apiKey   = AIConfigSettingBL.GetApiKey(identity.Value) ?? "";
-                model    = AIConfigSettingBL.GetModel(identity.Value)  ?? "";
-            }
-            else
-            {
-                provider = KernelProviderHelper.GetProvider();
-                apiKey   = KernelProviderHelper.GetApiKey() ?? "";
-                model    = KernelProviderHelper.GetModel()  ?? "";
-            }
-
-            var builder = Kernel.CreateBuilder();
-            switch (provider)
-            {
-                case EmLLMProvider.Anthropic:
-                    // No official SK connector package for Anthropic — use a custom wrapper.
-                    builder.Services.AddSingleton<IChatCompletionService>(new AnthropicChatCompletionService(model, apiKey));
-                    break;
-                case EmLLMProvider.Gemini:
-                    // Bound hang risk: default HttpClient timeout is 100s and can stall forever on
-                    // some streaming paths. Keep a hard ceiling; CancelRun still cancels via CT.
-                    var geminiHttp = new HttpClient(new GeminiRoleFixHandler())
-                    {
-                        Timeout = TimeSpan.FromMinutes(10)
-                    };
-                    builder.AddGoogleAIGeminiChatCompletion(model, apiKey, httpClient: geminiHttp);
-                    break;
-                default:
-                    builder.AddOpenAIChatCompletion(model, apiKey);
-                    break;
-            }
-            return builder.Build();
-        }
-
         // ─────────────────────────────────────────────────────────────────────
->>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
         // Registered tool wrapper (AppAgentToolEngine → KernelFunction)
         // ─────────────────────────────────────────────────────────────────────
 

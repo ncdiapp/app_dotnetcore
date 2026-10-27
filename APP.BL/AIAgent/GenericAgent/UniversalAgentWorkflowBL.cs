@@ -27,6 +27,7 @@ namespace App.BL.AIAgent.GenericAgent
     {
         public int SkillId { get; set; }
         public string Name { get; set; } = "";
+        public bool Overwritten { get; set; }
     }
 
     public sealed class UniversalHandoffResult
@@ -80,7 +81,8 @@ namespace App.BL.AIAgent.GenericAgent
             string sessionKey,
             string name,
             string description,
-            string skillContent)
+            string skillContent,
+            bool overwriteExisting = false)
         {
             var dsId = ResolveDataSourceId(identity);
             if (dsId <= 0)
@@ -89,12 +91,35 @@ namespace App.BL.AIAgent.GenericAgent
                 throw new InvalidOperationException("Skill instructions are required.");
 
             var evidence = LoadEvidence(identity, sessionKey);
-            var finalName = SkillLib.ResolveUniqueSkillName(dsId, string.IsNullOrWhiteSpace(name) ? "Saved skill" : name);
+            var trimmedName = NormalizeSkillName(name);
+            var existing = SkillLib.FindSkillByName(dsId, trimmedName);
+            if (existing != null && !overwriteExisting)
+                throw new InvalidOperationException(
+                    "A skill named \"" + existing.Name + "\" already exists. Confirm overwrite to replace its instructions.");
+
+            var descriptionTrim = TrimTo((description ?? "").Trim(), 500);
+            var contentTrim = EnsureSkillHeadings(skillContent);
+
+            if (existing != null)
+            {
+                existing.Description = descriptionTrim;
+                existing.SkillContent = contentTrim;
+                existing.IsActive = true;
+                SkillLib.UpdateSkill(dsId, existing);
+                UpsertSourceContextRef(dsId, existing.SkillId, evidence.Text);
+                return new UniversalSkillSaveResult
+                {
+                    SkillId = existing.SkillId,
+                    Name = existing.Name,
+                    Overwritten = true
+                };
+            }
+
             var dto = new AppAISkillDto
             {
-                Name = finalName,
-                Description = TrimTo((description ?? "").Trim(), 500),
-                SkillContent = EnsureSkillHeadings(skillContent),
+                Name = trimmedName,
+                Description = descriptionTrim,
+                SkillContent = contentTrim,
                 IsActive = true,
                 CreatedDate = DateTime.UtcNow,
                 References = new List<AppAISkillRefDto>()
@@ -103,28 +128,50 @@ namespace App.BL.AIAgent.GenericAgent
             if (skillId <= 0)
                 throw new InvalidOperationException("Could not save skill.");
 
-            if (!string.IsNullOrWhiteSpace(evidence.Text))
-            {
-                try
-                {
-                    SkillLib.CreateRef(dsId, new AppAISkillRefDto
-                    {
-                        SkillId = skillId,
-                        FileName = SourceContextFileName,
-                        FileContent = TrimTo(
-                            "Audit context for this skill. Not instructions.\n\n" + evidence.Text,
-                            30000),
-                        SortOrder = 1000,
-                        CreatedDate = DateTime.UtcNow
-                    });
-                }
-                catch (Exception ex)
-                {
-                    SwallowLog.Write(ex, "Universal skill source context ref failed");
-                }
-            }
+            UpsertSourceContextRef(dsId, skillId, evidence.Text);
 
-            return new UniversalSkillSaveResult { SkillId = skillId, Name = finalName };
+            return new UniversalSkillSaveResult { SkillId = skillId, Name = trimmedName, Overwritten = false };
+        }
+
+        private static string NormalizeSkillName(string name)
+        {
+            var baseName = (name ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(baseName)) baseName = "Saved skill";
+            if (baseName.Length > 200) baseName = baseName.Substring(0, 200).TrimEnd();
+            return baseName;
+        }
+
+        private static void UpsertSourceContextRef(int dataSourceId, int skillId, string evidenceText)
+        {
+            if (string.IsNullOrWhiteSpace(evidenceText)) return;
+            var body = TrimTo(
+                "Audit context for this skill. Not instructions.\n\n" + evidenceText,
+                30000);
+            try
+            {
+                var refs = SkillLib.GetRefsBySkillId(dataSourceId, skillId);
+                var existing = refs?.FirstOrDefault(r =>
+                    string.Equals((r.FileName ?? "").Trim(), SourceContextFileName, StringComparison.OrdinalIgnoreCase));
+                if (existing != null)
+                {
+                    existing.FileContent = body;
+                    existing.SortOrder = 1000;
+                    SkillLib.UpdateRef(dataSourceId, existing);
+                    return;
+                }
+                SkillLib.CreateRef(dataSourceId, new AppAISkillRefDto
+                {
+                    SkillId = skillId,
+                    FileName = SourceContextFileName,
+                    FileContent = body,
+                    SortOrder = 1000,
+                    CreatedDate = DateTime.UtcNow
+                });
+            }
+            catch (Exception ex)
+            {
+                SwallowLog.Write(ex, "Universal skill source context ref failed");
+            }
         }
 
         public static async Task<UniversalHandoffResult> CreateHandoffAsync(

@@ -46,6 +46,7 @@ export interface UniversalSkillDraft {
 export interface UniversalSkillSaveResult {
     SkillId: number;
     Name: string;
+    Overwritten?: boolean;
 }
 
 export interface UniversalHandoffResult {
@@ -534,6 +535,7 @@ class GenericAgentService {
         name: string,
         description: string,
         skillContent: string,
+        overwriteExisting = false,
     ): Promise<UniversalSkillSaveResult> {
         const res = await fetch(`${BASE}/SaveUniversalSkill`, {
             method: 'POST',
@@ -544,6 +546,7 @@ class GenericAgentService {
                 Name: name || '',
                 Description: description || '',
                 SkillContent: skillContent || '',
+                OverwriteExisting: overwriteExisting,
             }),
         });
         const data = await res.json().catch(() => null);

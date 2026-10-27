@@ -59,6 +59,19 @@ namespace App.BL.AppMgr.AiSkill
             return list;
         }
 
+        /// <summary>Case-insensitive match; includes inactive skills (for save/overwrite).</summary>
+        public static AppAISkillDto FindSkillByName(int dataSourceRegisterId, string name)
+        {
+            var needle = (name ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(needle)) return null;
+            foreach (var skill in GetAllSkills(dataSourceRegisterId))
+            {
+                if (skill != null && string.Equals(skill.Name?.Trim(), needle, StringComparison.OrdinalIgnoreCase))
+                    return GetSkillById(dataSourceRegisterId, skill.SkillId);
+            }
+            return null;
+        }
+
         public static AppAISkillDto GetSkillByName(int dataSourceRegisterId, string name)
         {
             var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceRegisterId);

@@ -1487,7 +1487,8 @@ public class GenericAgentController : SecureBaseController
                 request.SessionKey.Trim(),
                 request.Name,
                 request.Description,
-                request.SkillContent);
+                request.SkillContent,
+                request.OverwriteExisting);
         }
         catch (Exception ex)
         {
@@ -1598,6 +1599,8 @@ public class UniversalSkillSaveRequest
     public string Name { get; set; }
     public string Description { get; set; }
     public string SkillContent { get; set; }
+    /// <summary>When true, replace an existing AppAISkill with the same name (case-insensitive).</summary>
+    public bool OverwriteExisting { get; set; }
 }
 
 public class UniversalHandoffRequest
