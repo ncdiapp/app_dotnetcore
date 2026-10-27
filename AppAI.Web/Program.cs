@@ -139,6 +139,9 @@ try
     // ── McpGateway (always on) ──
     builder.Services.AddMcpGateway(builder.Configuration);
 
+    // Agent memory extraction (L2 facts / L3 episodes). AgentMemory:Mode is Off unless configured.
+    builder.Services.AddHostedService<AppAI.Web.Services.MemoryExtractionService>();
+
     // ── OAuth server for MCP clients (off unless OAuth:Enabled; see Document/mcp/mcp-oauth-plan.md) ──
     builder.Services.AddSingleton<APP.OAuth.IOAuthIdentityBridge, AppAI.Web.Services.OAuthIdentityBridge>();
     builder.Services.AddAppOAuth(builder.Configuration, masterConnStr, builder.Environment.IsDevelopment());

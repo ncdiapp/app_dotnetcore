@@ -715,6 +715,8 @@ ELSE
                 if (n > 0)
                 {
                     AgentSchemaCacheBL.ClearSession(sessionKey.Trim());
+                    AgentSessionSummaryBL.Reset(sessionKey, skillKey, userId);
+                    Memory.AgentMemorySessionBL.ResetExtraction(0, sessionKey.Trim(), skillKey.Trim(), userId);
                     Documents.AgentRowLimitConfirmBL.Clear(sessionKey.Trim());
                     Documents.AgentDisplayRowLimitBL.ClearSession(sessionKey.Trim());
                 }

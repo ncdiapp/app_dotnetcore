@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using App.BL.AIAgent.AiSkill;
+using App.BL.AIAgent.GenericAgent.Memory;
 using App.BL.AIAgent.GenericAgent.Plugins;
 using App.BL.DbGenie;
 using App.BL.GenericAgent;
@@ -224,8 +225,13 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 var enableThinkMode = skillSet.EnableThinkMode;
 
                 // Build SK kernel from tenant Application Settings default provider
+<<<<<<< HEAD
+                var kernel = KernelFactory.Build(identity);
+                kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks));
+=======
                 var kernel = BuildKernel(identity);
                 kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks, enableThinkMode));
+>>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
                 kernel.AutoFunctionInvocationFilters.Add(new GenericAgentPruneFilter(skillSet.MaxIterations, skillSet.MaxHistoryTokens));
 
                 if (isUniversal)
@@ -252,6 +258,22 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                         .Where(r => r != null && !string.Equals(r.ToolName, "call_agent", StringComparison.OrdinalIgnoreCase))
                         .ToList();
                 }
+<<<<<<< HEAD
+                // Layer 2/3 memory: saved facts and similar past conversations. On for agents with the InjectMemory
+                // flag, or that subscribe to the platform-memory library (the no-code switch in the library tab).
+                if (identity.HasValue && userId > 0
+                    && (AgentMemoryInjector.IsEnabled(skillSet.CapabilityFlags) || AgentMemoryInjector.HasMemoryTools(toolRows.Select(r => r.ToolName))))
+                {
+                    try
+                    {
+                        systemPrompt += await AgentMemoryInjector.BuildAsync(
+                            identity.Value, skillKey, userId, dsId, userMessage, chatHistory, ct).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception swallowed) { SwallowLog.Write(swallowed, "memory inject must not fail the run"); }
+                }
+                var callableTools = toolRows.Where(r => !IsPromptHintTool(r)).ToList();
+=======
                 if (HasNamedTool(toolRows, DataAnalyzeToolName))
                 {
                     if (systemPrompt.IndexOf("## Analysis path (platform hard rule", StringComparison.OrdinalIgnoreCase) < 0)
@@ -264,6 +286,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 var callableTools = toolRows
                     .Where(r => !IsPromptHintTool(r) && !IsBrokenBuiltInTool(r))
                     .ToList();
+>>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
                 if (callableTools.Count > 0)
                     kernel.Plugins.AddFromFunctions("tools",
                         callableTools.Select(r => WrapRegisteredTool(r, context, skillSet.MaxToolResultChars, instancePool)).ToArray());
@@ -324,7 +347,15 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
 
                 try
                 {
-                    var history = await BuildChatHistoryAsync(chatHistory, skillSet.RecentWindowSize, kernel).ConfigureAwait(false);
+                    var canPersistSummary = userId > 0 && !string.IsNullOrWhiteSpace(resolvedChatKey);
+                    var storedSummary = canPersistSummary
+                        ? AgentSessionSummaryBL.Load(resolvedChatKey, skillKey, userId, dsId)
+                        : null;
+                    var history = await ChatHistoryBuilder.BuildAsync(
+                        chatHistory, skillSet.RecentWindowSize, skillSet.SummarizeThreshold, kernel,
+                        storedSummary,
+                        canPersistSummary ? s => AgentSessionSummaryBL.Save(resolvedChatKey, skillKey, userId, dsId, s) : null)
+                        .ConfigureAwait(false);
                     history.AddUserMessage(userMessage);
 
                     // Only enable auto tool calling when tools are actually registered;
@@ -445,6 +476,8 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
         }
 
         // ─────────────────────────────────────────────────────────────────────
+<<<<<<< HEAD
+=======
         // Kernel builder
         // ─────────────────────────────────────────────────────────────────────
 
@@ -812,6 +845,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
         }
 
         // ─────────────────────────────────────────────────────────────────────
+>>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
         // Registered tool wrapper (AppAgentToolEngine → KernelFunction)
         // ─────────────────────────────────────────────────────────────────────
 
@@ -1147,104 +1181,6 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
         }
 
         // ─────────────────────────────────────────────────────────────────────
-        // ChatHistory builder
-        // ─────────────────────────────────────────────────────────────────────
-
-        private static async Task<ChatHistory> BuildChatHistoryAsync(
-            List<JObject>? messages, int recentWindowSize, Kernel kernel)
-        {
-            var window = recentWindowSize > 0 ? recentWindowSize : 10;
-            if (messages == null || messages.Count == 0) return new ChatHistory();
-
-            // Fast path: history fits within the window — no summarization needed
-            if (messages.Count <= window)
-                return BuildChatHistory(messages, window);
-
-            // Overflow: summarize older turns, keep recent ones verbatim
-            var oldTurns = messages.Take(messages.Count - window).ToList();
-            var recent   = messages.Skip(messages.Count - window).ToList();
-
-            var finalHistory = new ChatHistory();
-
-            if (oldTurns.Count >= 2)
-            {
-                var summaryText = await SummarizeOldTurnsAsync(oldTurns, kernel).ConfigureAwait(false);
-                if (!string.IsNullOrEmpty(summaryText))
-                    finalHistory.AddSystemMessage($"[Earlier conversation summary: {summaryText}]");
-            }
-
-            foreach (var msg in recent)
-            {
-                var role    = msg["role"]?.ToString() ?? "user";
-                var content = msg["content"];
-                if (content == null || content.Type == JTokenType.Array) continue;
-                var contentStr = content.ToString();
-                if (string.IsNullOrEmpty(contentStr)) continue;
-                if (role == "user")
-                    finalHistory.AddUserMessage(contentStr);
-                else if (role == "assistant" || role == "model")
-                    finalHistory.AddAssistantMessage(contentStr);
-            }
-
-            return finalHistory;
-        }
-
-        private static ChatHistory BuildChatHistory(List<JObject>? messages, int recentWindowSize)
-        {
-            var history = new ChatHistory();
-            if (messages == null || messages.Count == 0) return history;
-
-            var source = messages.Count > recentWindowSize
-                ? messages.Skip(messages.Count - recentWindowSize).ToList()
-                : messages;
-
-            foreach (var msg in source)
-            {
-                var role    = msg["role"]?.ToString() ?? "user";
-                var content = msg["content"];
-
-                // Skip tool-call turns (content is array) or messages with no plain-text content
-                if (content == null || content.Type == JTokenType.Array) continue;
-                var contentStr = content.ToString();
-                if (string.IsNullOrEmpty(contentStr)) continue;
-
-                if (role == "user")
-                    history.AddUserMessage(contentStr);
-                else if (role == "assistant" || role == "model")
-                    history.AddAssistantMessage(contentStr);
-                // roles "tool"/"function" are intentionally skipped
-            }
-            return history;
-        }
-
-        private static async Task<string?> SummarizeOldTurnsAsync(List<JObject> turns, Kernel kernel)
-        {
-            try
-            {
-                var sb = new StringBuilder();
-                foreach (var msg in turns)
-                {
-                    var role    = msg["role"]?.ToString() ?? "user";
-                    var content = msg["content"]?.ToString();
-                    if (string.IsNullOrEmpty(content)) continue;
-                    sb.AppendLine($"{role}: {content}");
-                }
-
-                var prompt = "Summarize the following conversation in 2-3 sentences, preserving key facts, user goals, and any decisions made:\n\n" + sb;
-                var chat = kernel.GetRequiredService<IChatCompletionService>();
-                var h = new ChatHistory();
-                h.AddUserMessage(prompt);
-                var result = await chat.GetChatMessageContentAsync(h).ConfigureAwait(false);
-                return result.Content;
-            }
-            catch (Exception ex)
-            {
-                NLog.LogManager.GetCurrentClassLogger().Warn(ex, "SummarizeOldTurnsAsync failed — no summary injected");
-                return null;
-            }
-        }
-
-        // ─────────────────────────────────────────────────────────────────────
         // Helpers
         // ─────────────────────────────────────────────────────────────────────
 
@@ -1392,7 +1328,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
         //   in every outgoing request body before the bytes leave the process.
         // ─────────────────────────────────────────────────────────────────────
 
-        private sealed class GeminiRoleFixHandler : DelegatingHandler
+        internal sealed class GeminiRoleFixHandler : DelegatingHandler
         {
             private static readonly NLog.Logger DiagLog = NLog.LogManager.GetCurrentClassLogger();
 

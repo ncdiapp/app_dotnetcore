@@ -13,6 +13,7 @@ import {
     saveAgentChatToTabCache,
 } from './agentChatTabCache';
 import GenericAgentFilesPanel from './GenericAgentFilesPanel';
+import AgentMemoryPanel from './AgentMemoryPanel';
 import { chatModulesFromEnabledTools, chatModulesFromLibraries, type AgentChatUiModule } from './agentUiModules';
 import { DataRenderPanel } from './dataRender';
 import { ResultChrome } from './ResultChrome';
@@ -655,8 +656,12 @@ const GenericAgentChat: React.FC<Props> = ({
     const composerRef = useRef<HTMLTextAreaElement | null>(null);
     const chatRootRef = useRef<HTMLDivElement | null>(null);
     const [showEarlierTurns, setShowEarlierTurns] = useState(false);
+<<<<<<< HEAD
+    const [rightTab, setRightTab] = useState<'tools' | 'files' | 'memory'>('tools');
+=======
     const [rightTab, setRightTab] = useState<'result' | 'tools' | 'files'>('tools');
     const [resultFullscreen, setResultFullscreen] = useState(false);
+>>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
     const [uiModules, setUiModules] = useState<Set<AgentChatUiModule>>(() => new Set());
     const [fileSessionKey, setFileSessionKey] = useState<string | null>(null);
     const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
@@ -814,6 +819,11 @@ const GenericAgentChat: React.FC<Props> = ({
     };
 
     useEffect(() => {
+<<<<<<< HEAD
+        if (rightTab === 'files' && !uiModules.has('files')) setRightTab('tools');
+        if (rightTab === 'memory' && !uiModules.has('memory')) setRightTab('tools');
+    }, [rightTab, uiModules]);
+=======
         if ((rightTab === 'files' && !uiModules.has('files')) || (rightTab === 'result' && !openRender)) setRightTab('tools');
     }, [rightTab, uiModules, openRender]);
 
@@ -830,6 +840,7 @@ const GenericAgentChat: React.FC<Props> = ({
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
     }, [resultFullscreen]);
+>>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
 
     const buildSnapshot = (): GenericAgentChatUiSnapshot => ({
         skillKey: skillKeyRef.current,
@@ -2414,6 +2425,19 @@ const GenericAgentChat: React.FC<Props> = ({
                             Files
                         </button>
                         )}
+<<<<<<< HEAD
+                        {uiModules.has('memory') && (
+                        <button
+                            type="button"
+                            className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'memory' ? ' font-semibold' : ' opacity-70'}`}
+                            onClick={() => setRightTab('memory')}
+                        >
+                            Memory
+                        </button>
+                        )}
+                        <button className="text-xs opacity-50 hover:opacity-100 ml-auto" onClick={() => setSidebarOpen(false)}>
+                            <i className="fa-solid fa-xmark" />
+=======
                         {openRender && (
                         <button
                             type="button"
@@ -2421,6 +2445,7 @@ const GenericAgentChat: React.FC<Props> = ({
                             onClick={() => setRightTab('result')}
                         >
                             Result
+>>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
                         </button>
                         )}
                         <div className="ml-auto flex items-center gap-1 shrink-0">
@@ -2447,6 +2472,11 @@ const GenericAgentChat: React.FC<Props> = ({
                     </div>
                     )}
 
+<<<<<<< HEAD
+                    {rightTab === 'memory' && uiModules.has('memory') ? (
+                        <div className="w-full h-1 flex-auto overflow-hidden min-h-0">
+                            <AgentMemoryPanel skillKey={skillKey} sessionKey={fileSessionKey} />
+=======
                     {rightTab === 'result' && openRender ? (
                         <div className="w-full h-1 flex-auto overflow-hidden min-w-0 min-h-0 max-w-full p-2 box-border">
                             <ResultChrome
@@ -2504,6 +2534,7 @@ const GenericAgentChat: React.FC<Props> = ({
                                     )
                                 )}
                             </ResultChrome>
+>>>>>>> 3ca7037a509e2e7b3582f25c87da8e293af05187
                         </div>
                     ) : rightTab === 'files' && uiModules.has('files') ? (
                         <div className="w-full h-1 flex-auto overflow-hidden min-h-0">
