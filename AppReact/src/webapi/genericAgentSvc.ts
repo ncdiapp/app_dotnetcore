@@ -282,6 +282,8 @@ export interface GenericAgentChatUiSnapshot {
     isRunning: boolean;
     error: string | null;
     skillExecutionMode: string;
+    /** Last skill name saved from this chat (MessagesJson universalSavedSkill). */
+    chatSavedSkillName?: string | null;
 }
 
 export interface GenericAgentEventHandlers {

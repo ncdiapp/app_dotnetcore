@@ -288,6 +288,14 @@ interface SaveSkillDraft {
     content: string;
 }
 
+function chatSavedSkillNameFromSession(
+    loaded: { SavedSkill?: { SkillName?: string | null; skillName?: string | null } | null; savedSkill?: { SkillName?: string | null; skillName?: string | null } | null } | null,
+): string | null {
+    const ss = loaded?.SavedSkill ?? loaded?.savedSkill;
+    const name = (ss?.SkillName ?? ss?.skillName ?? '').trim();
+    return name || null;
+}
+
 interface PlanEvent {
     PlanSummary: string;
 }
@@ -671,6 +679,7 @@ const GenericAgentChat: React.FC<Props> = ({
     const [saveSkillDone, setSaveSkillDone] = useState<string | null>(null);
     const [saveSkillOverwritePending, setSaveSkillOverwritePending] = useState(false);
     const saveSkillExistingNamesRef = useRef<Set<string>>(new Set());
+    const chatSavedSkillNameRef = useRef<string | null>(null);
     const [handoffBusyKey, setHandoffBusyKey] = useState<string | null>(null);
     const scrollRef = useRef<HTMLDivElement | null>(null);
     // Track in-progress tool calls (call event received, result pending)
@@ -860,6 +869,7 @@ const GenericAgentChat: React.FC<Props> = ({
         isRunning: isRunningRef.current,
         error: null,
         skillExecutionMode: skillExecutionModeRef.current,
+        chatSavedSkillName: chatSavedSkillNameRef.current,
     });
 
     const persistSnapshotToTab = () => {
@@ -1145,6 +1155,7 @@ const GenericAgentChat: React.FC<Props> = ({
             isRunningRef.current = !!snap.isRunning || !!snap.pendingAskUser;
             setSkillExecutionMode(snap.skillExecutionMode || 'Interactive');
             skillExecutionModeRef.current = snap.skillExecutionMode || 'Interactive';
+            chatSavedSkillNameRef.current = snap.chatSavedSkillName?.trim() || null;
             if (snap.error) setError(snap.error);
             if (snap.sessionId && (genericAgentSvc.isPolling() || snap.isRunning || snap.pendingAskUser)) {
                 genericAgentSvc.resumePolling(snap.sessionId, buildLiveHandlers(snap.currentTurnIndex), chatSessionKey ?? null);
@@ -1179,6 +1190,7 @@ const GenericAgentChat: React.FC<Props> = ({
             setError(null);
             setSkillExecutionMode('Interactive');
             skillExecutionModeRef.current = 'Interactive';
+            chatSavedSkillNameRef.current = null;
         }
 
         if (chatSessionKey) {
@@ -1275,6 +1287,9 @@ const GenericAgentChat: React.FC<Props> = ({
                 const loaded = chatSessionKey
                     ? await genericAgentSvc.LoadChat(skillKey, chatSessionKey)
                     : null;
+                if (chatSessionKey && loaded) {
+                    chatSavedSkillNameRef.current = chatSavedSkillNameFromSession(loaded);
+                }
                 const prior = chatSessionKey
                     ? loaded?.Messages ?? []
                     : await genericAgentSvc.LoadSession(skillKey);
@@ -1704,8 +1719,9 @@ const GenericAgentChat: React.FC<Props> = ({
                 /* optional — overwrite confirm falls back to server error */
             }
             const draft = await genericAgentSvc.DraftUniversalSkill(skillKeyRef.current, sessionKey);
+            const rememberedName = chatSavedSkillNameRef.current?.trim();
             setSaveSkillDraft({
-                name: draft.Name || '',
+                name: rememberedName || draft.Name || '',
                 description: draft.Description || '',
                 content: draft.SkillContent || '',
             });
@@ -1760,6 +1776,9 @@ const GenericAgentChat: React.FC<Props> = ({
             const verb = saved.Overwritten ? 'Updated' : 'Saved';
             setSaveSkillDone(`${verb} skill "${saved.Name}". Universal Agent can use it on a later chat.`);
             setSaveSkillOverwritePending(false);
+            chatSavedSkillNameRef.current = saved.Name;
+            saveSkillExistingNamesRef.current.add(saved.Name.trim().toLowerCase());
+            persistSnapshotToTab();
         } catch (e: any) {
             const msg = e?.message || 'Could not save skill.';
             if (/already exists/i.test(msg)) {

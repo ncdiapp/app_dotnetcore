@@ -1489,6 +1489,22 @@ public class GenericAgentController : SecureBaseController
                 request.Description,
                 request.SkillContent,
                 request.OverwriteExisting);
+            if (result.Object != null && result.Object.SkillId > 0)
+            {
+                SessionBL.SetSavedSkill(
+                    request.SessionKey.Trim(),
+                    request.SkillKey.Trim(),
+                    Convert.ToInt32(ai.UserId),
+                    ai.DataSourceId,
+                    new GenericAgentSavedSkillDto
+                    {
+                        SkillKey = request.SkillKey.Trim(),
+                        SessionKey = request.SessionKey.Trim(),
+                        SkillId = result.Object.SkillId,
+                        SkillName = result.Object.Name,
+                        SavedAt = DateTime.UtcNow
+                    });
+            }
         }
         catch (Exception ex)
         {
