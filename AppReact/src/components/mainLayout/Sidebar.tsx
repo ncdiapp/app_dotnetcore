@@ -162,6 +162,7 @@ const Sidebar: React.FC = () => {
       Sort: 0,
       Name: 'AI Agent',
       AppListMenu_List: [
+        { Id: 'ai-agent-universal', Name: 'Universal Agent', RouteCode: '/universal-agent' },
         { Id: 'ai-agent-dba', Name: 'DBA Agent', RouteCode: '/DbaGenie' },
         { Id: 'ai-agent-app-builder', Name: 'App Builder Agent', RouteCode: '/app-builder-agent' },
         { Id: 'ai-agent-data-integration', Name: 'App Data Integration Agent', RouteCode: '/app-data-integration-agent' },

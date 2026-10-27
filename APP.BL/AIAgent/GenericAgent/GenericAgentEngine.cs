@@ -29,6 +29,8 @@ using TbToolBL  = App.BL.TenantBusiness.AppAgentToolRegisterBL;
 using TbMcpBL   = App.BL.TenantBusiness.AppAgentMcpServerBL;
 using TbToolDto = App.BL.TenantBusiness.AppAgentToolRegisterDto;
 using TbMcpDto  = App.BL.TenantBusiness.AppAgentMcpServerDto;
+using TbSkillSetDto = App.BL.AIAgent.AiSkill.AppAgentSkillSetDto;
+using SkillLib  = App.BL.AppMgr.AiSkill.AppAISkillBL;
 
 namespace App.BL.AIAgent.GenericAgent
 {
@@ -53,6 +55,14 @@ namespace App.BL.AIAgent.GenericAgent
         /// <summary>Capability marker tool in library data-analyze. Presence (subscribed, not excluded) enables followups inject.</summary>
         private const string DataAnalyzeToolName = "data_analyze";
         private const string PromptHintToolType = "PromptHint";
+        private const string UniversalBasePrompt = @"
+
+## Universal Agent
+You are Universal Agent, the built-in general work agent for this application.
+Understand the user's goal, use the most relevant loaded skills, and call tools whenever tools can do the work.
+Skills are reusable operating instructions for this chat run. Follow them when relevant, but do not claim a skill was used unless it was actually loaded.
+Use library tools directly when they match the task. Ask the user concise questions when required inputs are missing.
+If one configured Specialist Agent is clearly better for the next step, propose a hand-off and explain why. Do not silently jump to a Specialist.";
         /// <summary>
         /// Platform hard rule — always appended to Instructions. Not stored in AppAgentSkillSet;
         /// admins cannot turn it off. Prefer tools over model-invented data/UI/files.
@@ -130,10 +140,13 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
             try
             {
                 var dsId = identity.HasValue ? identity.Value.DataSourceId : 0;
+                var isUniversal = UniversalAgentConstants.IsUniversalAgentKey(skillKey);
 
-                var skillSet = dsId > 0
-                    ? TbSkillBL.GetByKey(skillKey, dsId)
-                    : TbSkillBL.GetByKey(skillKey);
+                var skillSet = isUniversal
+                    ? BuildUniversalSkillSet()
+                    : (dsId > 0
+                        ? TbSkillBL.GetByKey(skillKey, dsId)
+                        : TbSkillBL.GetByKey(skillKey));
                 if (skillSet == null)
                 {
                     await Safe(callbacks?.OnError, $"Skill key not found: {skillKey}").ConfigureAwait(false);
@@ -207,9 +220,23 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks, enableThinkMode));
                 kernel.AutoFunctionInvocationFilters.Add(new GenericAgentPruneFilter(skillSet.MaxIterations, skillSet.MaxHistoryTokens));
 
+                if (isUniversal)
+                {
+                    var skillPrompt = await BuildUniversalSkillPromptAsync(
+                        dsId, userMessage, chatHistory, kernel, callbacks, ct).ConfigureAwait(false);
+                    if (!string.IsNullOrWhiteSpace(skillPrompt))
+                        systemPrompt = (systemPrompt ?? "") + "\n\n" + skillPrompt;
+                    var specialistPrompt = BuildUniversalSpecialistPrompt(dsId);
+                    if (!string.IsNullOrWhiteSpace(specialistPrompt))
+                        systemPrompt = (systemPrompt ?? "") + "\n\n" + specialistPrompt;
+                }
+
                 // Wrap AppAgentToolRegister rows as KernelFunctions (agent-owned + subscribed library tools).
                 // PromptHint rows gate prompt inject only — not registered as callable KernelFunctions.
-                var toolRows = (dsId > 0 ? TbToolBL.GetBySkillKeyWithLibraries(skillKey, dsId) : TbToolBL.GetBySkillKeyWithLibraries(skillKey)) ?? new List<TbToolDto>();
+                var toolRows = isUniversal
+                    ? (dsId > 0 ? TbToolBL.GetAllActiveLibraryTools(dsId) : TbToolBL.GetAllActiveLibraryTools())
+                    : (dsId > 0 ? TbToolBL.GetBySkillKeyWithLibraries(skillKey, dsId) : TbToolBL.GetBySkillKeyWithLibraries(skillKey));
+                toolRows = toolRows ?? new List<TbToolDto>();
                 if (HasNamedTool(toolRows, DataAnalyzeToolName))
                 {
                     if (systemPrompt.IndexOf("## Analysis path (platform hard rule", StringComparison.OrdinalIgnoreCase) < 0)
@@ -236,8 +263,13 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
 
                 // Connect MCP servers (agent-owned + subscribed library MCP servers)
                 var mcpClients = new List<McpClient>();
-                var mcpServers = (dsId > 0 ? TbMcpBL.GetBySkillKeyWithLibraries(skillKey, dsId) : TbMcpBL.GetBySkillKeyWithLibraries(skillKey)) ?? new List<TbMcpDto>();
-                List<App.BL.TenantBusiness.AppAgentToolExclusionDto> exclusions;
+                var mcpServers = isUniversal
+                    ? (dsId > 0 ? TbMcpBL.GetAllActiveLibraryServers(dsId) : TbMcpBL.GetAllActiveLibraryServers())
+                    : (dsId > 0 ? TbMcpBL.GetBySkillKeyWithLibraries(skillKey, dsId) : TbMcpBL.GetBySkillKeyWithLibraries(skillKey));
+                mcpServers = mcpServers ?? new List<TbMcpDto>();
+                List<App.BL.TenantBusiness.AppAgentToolExclusionDto> exclusions = new List<App.BL.TenantBusiness.AppAgentToolExclusionDto>();
+                if (!isUniversal)
+                {
                 try
                 {
                     exclusions = dsId > 0
@@ -248,6 +280,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 {
                     log.Warn(ex, "Tool exclusions not loaded — using all tools");
                     exclusions = new List<App.BL.TenantBusiness.AppAgentToolExclusionDto>();
+                }
                 }
 
                 foreach (var srv in mcpServers)
@@ -389,6 +422,227 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
         // ─────────────────────────────────────────────────────────────────────
         // Kernel builder
         // ─────────────────────────────────────────────────────────────────────
+
+        private static TbSkillSetDto BuildUniversalSkillSet() =>
+            new TbSkillSetDto(
+                SkillKey: UniversalAgentConstants.SkillKey,
+                DisplayName: "Universal Agent",
+                Description: "Built-in general agent",
+                SystemPrompt: UniversalBasePrompt,
+                CapabilityFlags: 0,
+                IsActive: true,
+                SortOrder: 0,
+                Version: 1,
+                MaxHistoryTokens: 24000,
+                SummarizeThreshold: 18000,
+                MaxToolResultChars: DefaultMaxToolResultChars,
+                RecentWindowSize: 12,
+                MaxIterations: 40,
+                ExecutionMode: "Interactive",
+                AgentUi: 1,
+                AllowAgentFirstTurn: false,
+                EnableThinkMode: false);
+
+        private static async Task<string> BuildUniversalSkillPromptAsync(
+            int dataSourceId,
+            string userMessage,
+            List<JObject> chatHistory,
+            Kernel kernel,
+            GenericAgentCallbacks callbacks,
+            CancellationToken ct)
+        {
+            if (dataSourceId <= 0) return "";
+
+            List<AppAISkillDto> catalog;
+            try
+            {
+                catalog = SkillLib.GetActiveSkillCatalog(dataSourceId) ?? new List<AppAISkillDto>();
+            }
+            catch (Exception ex)
+            {
+                SwallowLog.Write(ex, "Universal skill catalog load failed");
+                return "";
+            }
+            if (catalog.Count == 0) return "";
+
+            var selectedIds = await SelectUniversalSkillIdsAsync(catalog, userMessage, chatHistory, kernel, ct).ConfigureAwait(false);
+            if (selectedIds.Count == 0) return "";
+
+            var selected = catalog
+                .Where(s => selectedIds.Contains(s.SkillId))
+                .Take(UniversalAgentConstants.MaxSelectedSkills)
+                .ToList();
+            if (selected.Count == 0) return "";
+
+            var sb = new StringBuilder();
+            var loaded = new List<AppAISkillDto>();
+            sb.AppendLine("## Loaded Skills");
+            sb.AppendLine("The following reusable skills were selected from the current Universal Agent context. Follow them when relevant.");
+            foreach (var skill in selected)
+            {
+                var content = "";
+                try
+                {
+                    content = SkillLib.GetComposedSkillPrompt(dataSourceId, skill.SkillId, skipUnderscoreRefs: true) ?? "";
+                }
+                catch (Exception ex)
+                {
+                    SwallowLog.Write(ex, "Universal skill compose failed");
+                }
+                if (string.IsNullOrWhiteSpace(content)) continue;
+
+                loaded.Add(skill);
+                sb.AppendLine();
+                sb.AppendLine($"### Skill: {skill.Name}");
+                if (!string.IsNullOrWhiteSpace(skill.Description))
+                    sb.AppendLine(skill.Description.Trim());
+                sb.AppendLine();
+                sb.AppendLine(content.Trim());
+            }
+
+            if (loaded.Count == 0) return "";
+
+            if (sb.Length > 0)
+            {
+                await Safe(callbacks?.OnStep, new AgentStepEvent
+                {
+                    Type = "thinking",
+                    ToolName = "skill_selection",
+                    Description = "Loaded skills: " + string.Join(", ", loaded.Select(s => s.Name)),
+                    Details = string.Join("\n", loaded.Select(s => $"{s.SkillId}: {s.Name}")),
+                    IsSuccess = true
+                }).ConfigureAwait(false);
+            }
+            return sb.ToString();
+        }
+
+        private static string BuildUniversalSpecialistPrompt(int dataSourceId)
+        {
+            try
+            {
+                var agents = dataSourceId > 0 ? TbSkillBL.GetAll(dataSourceId) : TbSkillBL.GetAll();
+                var rows = (agents ?? new List<TbSkillSetDto>())
+                    .Where(a => a != null && !UniversalAgentConstants.IsUniversalAgentKey(a.SkillKey))
+                    .Take(30)
+                    .Select(a => $"- {a.DisplayName ?? a.SkillKey} ({a.SkillKey}): {a.Description}")
+                    .ToList();
+                if (rows.Count == 0) return "";
+
+                var sb = new StringBuilder();
+                sb.AppendLine("## Available Specialist Agents");
+                sb.AppendLine("These configured Specialist Agents can be better entry points for focused workflows:");
+                foreach (var row in rows) sb.AppendLine(row);
+                sb.AppendLine();
+                sb.AppendLine("When the user's next step is clearly better handled by one Specialist Agent, recommend switching explicitly.");
+                sb.AppendLine("Use this format: \"I recommend switching to <Specialist Agent Name> (<skillKey>) because <short reason>.\"");
+                sb.AppendLine("Do not claim the chat was switched automatically unless a handoff tool or UI action actually performs the switch.");
+                return sb.ToString();
+            }
+            catch (Exception ex)
+            {
+                SwallowLog.Write(ex, "Universal specialist catalog load failed");
+                return "";
+            }
+        }
+
+        private static async Task<HashSet<int>> SelectUniversalSkillIdsAsync(
+            List<AppAISkillDto> catalog,
+            string userMessage,
+            List<JObject> chatHistory,
+            Kernel kernel,
+            CancellationToken ct)
+        {
+            HashSet<int> Fallback() => SelectUniversalSkillIdsByKeyword(catalog, userMessage, chatHistory);
+            try
+            {
+                var chat = kernel.GetRequiredService<IChatCompletionService>();
+                var prompt = new ChatHistory();
+                prompt.AddSystemMessage(
+                    "Select up to 3 relevant skills for the user's current task. " +
+                    "Return only JSON like {\"skillIds\":[1,2]}. Return an empty array when no skill is relevant.");
+                var catalogText = string.Join("\n", catalog.Select(s =>
+                    $"- {s.SkillId}: {s.Name} - {s.Description}"));
+                prompt.AddUserMessage(
+                    "Skill catalog:\n" + catalogText +
+                    "\n\nRecent chat:\n" + BuildRecentPlainChat(chatHistory, 6) +
+                    "\n\nCurrent user message:\n" + (userMessage ?? ""));
+                var result = await chat.GetChatMessageContentAsync(prompt, cancellationToken: ct).ConfigureAwait(false);
+                var ids = ParseSkillIds(result?.Content, catalog);
+                return ids.Count > 0 ? ids : Fallback();
+            }
+            catch (Exception ex)
+            {
+                SwallowLog.Write(ex, "Universal skill model selection failed");
+                return Fallback();
+            }
+        }
+
+        private static HashSet<int> ParseSkillIds(string text, List<AppAISkillDto> catalog)
+        {
+            var allowed = new HashSet<int>(catalog.Select(s => s.SkillId));
+            var result = new HashSet<int>();
+            if (string.IsNullOrWhiteSpace(text)) return result;
+            foreach (Match m in Regex.Matches(text, @"\d+"))
+            {
+                if (int.TryParse(m.Value, out var id) && allowed.Contains(id))
+                    result.Add(id);
+                if (result.Count >= UniversalAgentConstants.MaxSelectedSkills) break;
+            }
+            return result;
+        }
+
+        private static HashSet<int> SelectUniversalSkillIdsByKeyword(
+            List<AppAISkillDto> catalog,
+            string userMessage,
+            List<JObject> chatHistory)
+        {
+            var hay = ((userMessage ?? "") + "\n" + BuildRecentPlainChat(chatHistory, 4)).ToLowerInvariant();
+            var scored = catalog
+                .Select(s => new
+                {
+                    Skill = s,
+                    Score = ScoreSkill(hay, ((s.Name ?? "") + " " + (s.Description ?? "")).ToLowerInvariant())
+                })
+                .Where(x => x.Score > 0)
+                .OrderByDescending(x => x.Score)
+                .ThenBy(x => x.Skill.Name)
+                .Take(UniversalAgentConstants.MaxSelectedSkills)
+                .Select(x => x.Skill.SkillId);
+            return new HashSet<int>(scored);
+        }
+
+        private static int ScoreSkill(string hay, string needleText)
+        {
+            if (string.IsNullOrWhiteSpace(hay) || string.IsNullOrWhiteSpace(needleText)) return 0;
+            var score = 0;
+            foreach (Match m in Regex.Matches(needleText, @"[a-zA-Z0-9_]{3,}"))
+            {
+                if (hay.Contains(m.Value.ToLowerInvariant()))
+                    score++;
+            }
+            return score;
+        }
+
+        private static string BuildRecentPlainChat(List<JObject> chatHistory, int take)
+        {
+            if (chatHistory == null || chatHistory.Count == 0) return "";
+            var rows = chatHistory
+                .Where(m => m != null)
+                .Skip(Math.Max(0, chatHistory.Count - Math.Max(1, take)))
+                .Select(m => $"{m.Value<string>("role")}: {ExtractContentText(m["content"])}");
+            return string.Join("\n", rows);
+        }
+
+        private static string ExtractContentText(JToken token)
+        {
+            if (token == null || token.Type == JTokenType.Null) return "";
+            if (token.Type == JTokenType.String) return token.ToString();
+            if (token.Type == JTokenType.Array)
+                return string.Join(" ", token.Select(ExtractContentText));
+            if (token.Type == JTokenType.Object)
+                return token["text"]?.ToString() ?? token["content"]?.ToString() ?? token.ToString(Newtonsoft.Json.Formatting.None);
+            return token.ToString();
+        }
 
         private static Kernel BuildKernel(AppClientIdentity? identity)
         {

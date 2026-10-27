@@ -22,6 +22,7 @@ import { placeRender, renderKey } from './dataRender/placeRender';
 import { RenderBuilding, RenderChip } from './dataRender/RenderChrome';
 import { ReasoningLoopPanel, type ThinkingStep } from './dataRender/ReasoningLoopPanel';
 import { AgentMarkdown, FollowupChips, splitFollowups, type AgentFileLink } from './AgentMarkdown';
+import { UNIVERSAL_AGENT_KEY } from './universalAgent';
 
 const SESSION_START = '[session_start]';
 const RUN_IN_PROGRESS = '[run_in_progress]';
@@ -625,6 +626,7 @@ const GenericAgentChat: React.FC<Props> = ({
     askFreeTextRef.current = askFreeText;
     const chatSessionKeyRef = useRef<string | null>(chatSessionKey ?? null);
     chatSessionKeyRef.current = chatSessionKey ?? null;
+    const isUniversalAgent = (skillKey || '').trim().toLowerCase() === UNIVERSAL_AGENT_KEY;
 
     const historyRenderKeys = useRef<Set<string>>(new Set());
 
@@ -648,6 +650,23 @@ const GenericAgentChat: React.FC<Props> = ({
         liveResultOpen.current = false;
         historyRenderKeys.current = new Set();
     }, [chatSessionKey, skillKey]);
+
+    useEffect(() => {
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i];
+            if (m.role !== 'assistant') continue;
+            if (exportFileLinks(m.toolSteps).length === 0) return;
+            setUiModules(prev => {
+                if (prev.has('files')) return prev;
+                const next = new Set(prev);
+                next.add('files');
+                return next;
+            });
+            setRightTab('files');
+            setSidebarOpen(true);
+            return;
+        }
+    }, [messages]);
 
     useEffect(() => {
         if (!liveResultOpen.current) {
@@ -1080,36 +1099,48 @@ const GenericAgentChat: React.FC<Props> = ({
                         allowFirstTurn = !!s.AllowAgentFirstTurn;
                     }
                 }
+                if (isUniversalAgent) map[UNIVERSAL_AGENT_KEY] = 'Universal Agent';
                 setSkillDisplayNames(map);
-                const libraryKeys = (subRes?.Object ?? []).map(s => s.LibraryKey);
-                const fileLibs = libraryKeys.filter(k => chatModulesFromLibraries([k]).has('files'));
-                if (fileLibs.length === 0) {
-                    setUiModules(new Set());
+                if (isUniversalAgent) {
+                    setUiModules(new Set<AgentChatUiModule>(['files']));
+                    mode = 'Interactive';
+                    allowFirstTurn = false;
                 } else {
-                    try {
-                        const [exclRes, ...toolRes] = await Promise.all([
-                            agentSkillSetSvc.GetToolExclusions(skillKey),
-                            ...fileLibs.map(k => agentSkillSetSvc.GetLibraryTools(k)),
-                        ]);
-                        const excluded = new Set(
-                            (exclRes?.Object ?? []).map(e => `${e.LibraryKey}\u0001${e.ToolName}`),
-                        );
-                        const toolsByLibrary = fileLibs.map((k, i) => ({
-                            libraryKey: k,
-                            toolNames: (toolRes[i]?.Object ?? [])
-                                .filter(t => t.IsActive !== false)
-                                .map(t => t.ToolName),
-                        }));
-                        setUiModules(chatModulesFromEnabledTools(libraryKeys, toolsByLibrary, excluded));
-                    } catch {
-                        setUiModules(chatModulesFromLibraries(libraryKeys));
+                    const libraryKeys = (subRes?.Object ?? []).map(s => s.LibraryKey);
+                    const fileLibs = libraryKeys.filter(k => chatModulesFromLibraries([k]).has('files'));
+                    if (fileLibs.length === 0) {
+                        setUiModules(new Set());
+                    } else {
+                        try {
+                            const [exclRes, ...toolRes] = await Promise.all([
+                                agentSkillSetSvc.GetToolExclusions(skillKey),
+                                ...fileLibs.map(k => agentSkillSetSvc.GetLibraryTools(k)),
+                            ]);
+                            const excluded = new Set(
+                                (exclRes?.Object ?? []).map(e => `${e.LibraryKey}\u0001${e.ToolName}`),
+                            );
+                            const toolsByLibrary = fileLibs.map((k, i) => ({
+                                libraryKey: k,
+                                toolNames: (toolRes[i]?.Object ?? [])
+                                    .filter(t => t.IsActive !== false)
+                                    .map(t => t.ToolName),
+                            }));
+                            setUiModules(chatModulesFromEnabledTools(libraryKeys, toolsByLibrary, excluded));
+                        } catch {
+                            setUiModules(chatModulesFromLibraries(libraryKeys));
+                        }
                     }
                 }
                 if (!restored) {
                     setSkillExecutionMode(mode);
                     skillExecutionModeRef.current = mode;
                 }
-            } catch { /* optional */ }
+            } catch {
+                if (isUniversalAgent) {
+                    setSkillDisplayNames({ [UNIVERSAL_AGENT_KEY]: 'Universal Agent' });
+                    setUiModules(new Set<AgentChatUiModule>(['files']));
+                }
+            }
 
             if (cancelled) return;
 
@@ -1526,7 +1557,7 @@ const GenericAgentChat: React.FC<Props> = ({
         && askUi === 'button_group'
         && (pendingAskUser?.Options?.length ?? 0) > 0;
     const blocked = isRunning || !!pendingAskUser;
-    const skillLabel = skillDisplayNames[skillKey] || skillKey || 'Agent';
+    const skillLabel = isUniversalAgent ? 'Universal Agent' : (skillDisplayNames[skillKey] || skillKey || 'Agent');
     const hasRealUserTurn = messages.some(m =>
         m.role === 'user'
         && (m.content || '').trim() !== SESSION_START
@@ -1999,7 +2030,7 @@ const GenericAgentChat: React.FC<Props> = ({
                         className={`w-full px-0 py-1 text-sm leading-6 bg-transparent border-0 focus:outline-none resize-none ${isRunning || pendingAskUser ? 'pr-20' : 'pr-12'}`}
                         rows={2}
                         value={input}
-                        placeholder={`Ask ${skillLabel}…`}
+                        placeholder="Type your request here..."
                         onChange={e => setInput(e.target.value)}
                         onFocus={() => setComposerFocus(true)}
                         onBlur={() => setComposerFocus(false)}
@@ -2175,12 +2206,12 @@ const GenericAgentChat: React.FC<Props> = ({
                         <div className="w-full h-1 flex-auto overflow-y-auto flex flex-col gap-0 p-2">
                             {!hasAnyTools && !isRunning && messages.length > 0 && (
                                 <div className={`p-3 rounded text-xs ${theme.label} flex flex-col gap-1`}>
-                                    <div className="flex items-center gap-2 opacity-60">
+                                    <div className="flex items-center gap-2 opacity-70">
                                         <i className="fa-solid fa-circle-info" />
-                                        <span className="font-medium">No tool activity</span>
+                                        <span className="font-medium">No tools used</span>
                                     </div>
-                                    <p className="opacity-50 leading-relaxed">
-                                        No tool steps are stored for this chat view. New runs save tool activity with the session; chats saved before that change will not show past tools after reload.
+                                    <p className="opacity-60 leading-relaxed">
+                                        This answer did not need a tool. When the agent searches, reads files, creates results, or calls another capability, the steps will appear here.
                                     </p>
                                 </div>
                             )}
@@ -2287,7 +2318,7 @@ const GenericAgentChat: React.FC<Props> = ({
                             {isRunning && turnActivities.find(t => t.turnIndex === currentTurnIndex) === undefined && (
                                 <div className={`px-2 py-1.5 text-xs opacity-50 ${theme.label} flex items-center gap-2`}>
                                     <i className="fa-solid fa-spinner fa-spin" />
-                                    Waiting for tools…
+                                    Working on the answer...
                                 </div>
                             )}
                         </div>
