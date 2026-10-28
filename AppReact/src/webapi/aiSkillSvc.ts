@@ -35,6 +35,26 @@ export interface OperationCallResult<T> {
 
 // --- Service ---
 
+function skillDtoForWrite(dto: AppAISkillDto) {
+    return {
+        SkillId: dto.SkillId,
+        Name: dto.Name,
+        Description: dto.Description ?? '',
+        SkillContent: dto.SkillContent ?? '',
+        IsActive: dto.IsActive,
+    };
+}
+
+function refDtoForWrite(dto: AppAISkillRefDto) {
+    return {
+        RefId: dto.RefId,
+        SkillId: dto.SkillId,
+        FileName: dto.FileName,
+        FileContent: dto.FileContent ?? '',
+        SortOrder: dto.SortOrder,
+    };
+}
+
 class AISkillService {
     private baseUrl = `${endpoints.BASE_URL}/webapi/AISkill`;
 
@@ -66,7 +86,7 @@ class AISkillService {
         const res = await fetch(`${this.baseUrl}/Create?dataSourceId=${dataSourceId}`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify(dto)
+            body: JSON.stringify(skillDtoForWrite(dto))
         });
         if (!res.ok) throw new Error('Failed to create skill');
         return res.json();
@@ -76,7 +96,7 @@ class AISkillService {
         const res = await fetch(`${this.baseUrl}/Update?dataSourceId=${dataSourceId}`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify(dto)
+            body: JSON.stringify(skillDtoForWrite(dto))
         });
         if (!res.ok) throw new Error('Failed to update skill');
         return res.json();
@@ -103,7 +123,7 @@ class AISkillService {
         const res = await fetch(`${this.baseUrl}/CreateRef?dataSourceId=${dataSourceId}`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify(dto)
+            body: JSON.stringify(refDtoForWrite(dto))
         });
         if (!res.ok) throw new Error('Failed to create reference');
         return res.json();
@@ -113,7 +133,7 @@ class AISkillService {
         const res = await fetch(`${this.baseUrl}/UpdateRef?dataSourceId=${dataSourceId}`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify(dto)
+            body: JSON.stringify(refDtoForWrite(dto))
         });
         if (!res.ok) throw new Error('Failed to update reference');
         return res.json();

@@ -142,7 +142,7 @@ namespace App.BL.AppMgr.AiSkill
             var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceRegisterId);
 
             var sql = @"INSERT INTO AppAISkill (Name, Description, SkillContent, IsActive, CreatedDate)
-                        VALUES (@Name, @Description, @SkillContent, @IsActive, GETDATE());
+                        VALUES (@Name, @Description, @SkillContent, @IsActive, GETUTCDATE());
                         SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
             var pName = fixture.CreateParameter("@Name"); pName.Value = dto.Name ?? "";
@@ -166,7 +166,7 @@ namespace App.BL.AppMgr.AiSkill
                             Description = @Description,
                             SkillContent = @SkillContent,
                             IsActive = @IsActive,
-                            UpdatedDate = GETDATE()
+                            UpdatedDate = GETUTCDATE()
                         WHERE SkillId = @SkillId";
 
             var pId = fixture.CreateParameter("@SkillId"); pId.Value = dto.SkillId;
@@ -224,7 +224,7 @@ namespace App.BL.AppMgr.AiSkill
             var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceRegisterId);
 
             var sql = @"INSERT INTO AppAISkillRef (SkillId, FileName, FileContent, SortOrder, CreatedDate)
-                        VALUES (@SkillId, @FileName, @FileContent, @SortOrder, GETDATE());
+                        VALUES (@SkillId, @FileName, @FileContent, @SortOrder, GETUTCDATE());
                         SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
             var pSkillId = fixture.CreateParameter("@SkillId"); pSkillId.Value = dto.SkillId;
@@ -317,8 +317,11 @@ namespace App.BL.AppMgr.AiSkill
                 SkillContent = includeContent && row.Table.Columns.Contains("SkillContent") && row["SkillContent"] != DBNull.Value
                     ? row["SkillContent"].ToString() : null,
                 IsActive = row["IsActive"] != DBNull.Value && Convert.ToBoolean(row["IsActive"]),
-                CreatedDate = row["CreatedDate"] != DBNull.Value ? Convert.ToDateTime(row["CreatedDate"]) : DateTime.UtcNow,
-                UpdatedDate = row["UpdatedDate"] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(row["UpdatedDate"]),
+                CreatedDate = ToClientDateTimeFromDb(
+                    row["CreatedDate"] == DBNull.Value ? DateTime.UtcNow : Convert.ToDateTime(row["CreatedDate"])),
+                UpdatedDate = row["UpdatedDate"] == DBNull.Value
+                    ? null
+                    : ToClientDateTimeFromDb(Convert.ToDateTime(row["UpdatedDate"])),
                 References = new List<AppAISkillRefDto>()
             };
         }
@@ -332,8 +335,25 @@ namespace App.BL.AppMgr.AiSkill
                 FileName = row["FileName"]?.ToString(),
                 FileContent = row["FileContent"] == DBNull.Value ? null : row["FileContent"].ToString(),
                 SortOrder = Convert.ToInt32(row["SortOrder"]),
-                CreatedDate = row["CreatedDate"] != DBNull.Value ? Convert.ToDateTime(row["CreatedDate"]) : DateTime.UtcNow
+                CreatedDate = ToClientDateTimeFromDb(
+                    row["CreatedDate"] == DBNull.Value ? DateTime.UtcNow : Convert.ToDateTime(row["CreatedDate"]))
             };
+        }
+
+        /// <summary>DB stores GETUTCDATE(); same pattern as entity converters (e.g. AppCountryConverter).</summary>
+        private static DateTime? ToClientDateTimeFromDb(DateTime dbValue)
+        {
+            if (dbValue == default)
+                return null;
+
+            var utc = dbValue.Kind == DateTimeKind.Utc
+                ? dbValue
+                : DateTime.SpecifyKind(dbValue, DateTimeKind.Utc);
+
+            if (ClientTimeZoneHelper.IsClientUsingTimeZone)
+                return ClientTimeZoneHelper.ConvertUTCToClientDateTime(utc);
+
+            return utc;
         }
 
         #endregion
