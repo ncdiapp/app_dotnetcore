@@ -58,7 +58,7 @@ namespace App.BL.AIAgent.GenericAgent
             string raw = "";
             try
             {
-                raw = await GenericAgentEngine.CompleteOnceAsync(
+                raw = await SharedAgentEngine.CompleteOnceAsync(
                     identity,
                     SkillDraftSystemPrompt,
                     evidence.Text,
@@ -274,7 +274,7 @@ namespace App.BL.AIAgent.GenericAgent
             string raw = "";
             try
             {
-                raw = await GenericAgentEngine.CompleteOnceAsync(
+                raw = await SharedAgentEngine.CompleteOnceAsync(
                     identity,
                     HandoffSummarySystemPrompt,
                     user.ToString(),

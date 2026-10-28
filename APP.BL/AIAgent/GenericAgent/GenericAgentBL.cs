@@ -39,7 +39,7 @@ namespace App.BL.AIAgent.GenericAgent
 
             try
             {
-                await GenericAgentEngine.RunAsync(
+                await SharedAgentEngine.RunAsync(
                     skillKey, userMessage,
                     chatHistory ?? new List<JObject>(),
                     callbacks, identity, ct,
