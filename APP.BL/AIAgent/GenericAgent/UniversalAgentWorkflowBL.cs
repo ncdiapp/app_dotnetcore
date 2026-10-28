@@ -52,7 +52,7 @@ namespace App.BL.AIAgent.GenericAgent
             CancellationToken ct)
         {
             var evidence = LoadEvidence(identity, sessionKey);
-            if (string.IsNullOrWhiteSpace(evidence.Text))
+            if (!HasSavableWork(evidence))
                 throw new InvalidOperationException("This chat has no completed work to save as a skill.");
 
             string raw = "";
@@ -72,7 +72,7 @@ namespace App.BL.AIAgent.GenericAgent
             var draft = ParseSkillDraft(raw) ?? FallbackSkillDraft(evidence);
             draft.Name = TrimTo(string.IsNullOrWhiteSpace(draft.Name) ? "Saved skill" : draft.Name.Trim(), 80);
             draft.Description = TrimTo((draft.Description ?? "").Trim(), 400);
-            draft.SkillContent = EnsureSkillHeadings(draft.SkillContent);
+            draft.SkillContent = FinalizeDraftSkillContent(draft.SkillContent, evidence);
             return draft;
         }
 
@@ -98,7 +98,7 @@ namespace App.BL.AIAgent.GenericAgent
                     "A skill named \"" + existing.Name + "\" already exists. Confirm overwrite to replace its instructions.");
 
             var descriptionTrim = TrimTo((description ?? "").Trim(), 500);
-            var contentTrim = EnsureSkillHeadings(skillContent);
+            var contentTrim = FinalizeSavedSkillContent(skillContent);
 
             if (existing != null)
             {
@@ -307,8 +307,13 @@ namespace App.BL.AIAgent.GenericAgent
         {
             var ev = new ChatEvidence();
             if (messages == null) return ev;
-            var sb = new StringBuilder();
+
+            var trace = new StringBuilder();
             var userCount = 0;
+            string pendingUserVerbatim = null;
+            List<ProvenToolStep> lastProvenChain = null;
+            string goalUserVerbatim = null;
+
             foreach (var m in messages)
             {
                 if (m == null) continue;
@@ -320,13 +325,19 @@ namespace App.BL.AIAgent.GenericAgent
                 if (string.Equals(role, "user", StringComparison.OrdinalIgnoreCase))
                 {
                     if (string.IsNullOrWhiteSpace(content)) continue;
+                    var isDecision = m.Value<bool?>("askUserAnswer") == true;
+                    if (!isDecision)
+                    {
+                        pendingUserVerbatim = content.Trim();
+                        if (string.IsNullOrWhiteSpace(goalUserVerbatim))
+                            goalUserVerbatim = pendingUserVerbatim;
+                    }
                     userCount++;
                     if (userCount > 8) continue;
                     var line = TrimTo(OneLine(content), 400);
-                    var isDecision = m.Value<bool?>("askUserAnswer") == true;
                     if (!isDecision && string.IsNullOrWhiteSpace(ev.Goal))
                         ev.Goal = line;
-                    sb.AppendLine(isDecision ? "User decision: " + line : "User request: " + line);
+                    trace.AppendLine(isDecision ? "User decision: " + line : "User request: " + line);
                     continue;
                 }
 
@@ -335,29 +346,203 @@ namespace App.BL.AIAgent.GenericAgent
                     ev.FinalAnswer = TrimTo(OneLine(content), 600);
 
                 var steps = m["toolSteps"] as JArray;
-                if (steps == null) continue;
+                if (steps == null || steps.Count == 0) continue;
+
+                var chain = BuildProvenChainFromSteps(steps);
+                if (chain.Count > 0)
+                {
+                    lastProvenChain = chain;
+                    if (!string.IsNullOrWhiteSpace(pendingUserVerbatim))
+                        goalUserVerbatim = pendingUserVerbatim;
+                }
+
                 foreach (var step in steps.OfType<JObject>())
                 {
-                    if (ev.ToolNames.Count >= 16) break;
+                    if (ev.ToolNames.Count >= 24) break;
                     var name = (step.Value<string>("toolName") ?? "").Trim();
                     if (string.IsNullOrWhiteSpace(name)) continue;
                     if (string.Equals(name, "propose_specialist_handoff", StringComparison.OrdinalIgnoreCase))
                         continue;
-                    ev.ToolNames.Add(name);
-                    sb.AppendLine("Tool call: " + name);
+                    if (!ev.ToolNames.Any(t => string.Equals(t, name, StringComparison.OrdinalIgnoreCase)))
+                        ev.ToolNames.Add(name);
+                    trace.AppendLine("Tool call: " + name);
                     var args = TrimTo(OneLine(step.Value<string>("args")), 350);
                     if (!string.IsNullOrWhiteSpace(args))
-                        sb.AppendLine("Arguments: " + args);
-                    sb.AppendLine("Result shape: " + ResultShape(step.Value<string>("result")));
+                        trace.AppendLine("Arguments: " + args);
+                    trace.AppendLine("Result shape: " + ResultShape(step.Value<string>("result")));
                 }
             }
 
+            ev.GoalVerbatim = goalUserVerbatim;
+            ev.ProvenChain = lastProvenChain ?? new List<ProvenToolStep>();
+            if (ev.ProvenChain.Count > 0)
+            {
+                ev.AllowedTools = ev.ProvenChain
+                    .Select(s => s.ToolName)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                ev.ToolNames = ev.AllowedTools.ToList();
+            }
+            ev.RowLimitHint = ExtractRowLimitHint(ev.ProvenChain, ev.GoalVerbatim);
+
+            var sb = new StringBuilder();
+            sb.AppendLine("=== DRAFT RULES ===");
+            sb.AppendLine("- skillContent must follow the proven tool chain order in # Do.");
+            sb.AppendLine("- List ONLY tools under ALLOWED TOOLS. Do not add tools that never ran.");
+            sb.AppendLine("- No persona / Role section. Use # When to use, # Do, # Tools, # Notes only.");
+            sb.AppendLine();
+            if (!string.IsNullOrWhiteSpace(ev.GoalVerbatim))
+            {
+                sb.AppendLine("=== PRIMARY USER REQUEST (verbatim) ===");
+                sb.AppendLine(TrimTo(ev.GoalVerbatim, 800));
+                sb.AppendLine();
+            }
+            if (ev.ProvenChain.Count > 0)
+            {
+                sb.AppendLine("=== PROVEN TOOL CHAIN (successful last run; preserve order) ===");
+                for (var i = 0; i < ev.ProvenChain.Count; i++)
+                {
+                    var s = ev.ProvenChain[i];
+                    sb.AppendLine((i + 1) + ". " + s.ToolName
+                        + " | args: " + (string.IsNullOrWhiteSpace(s.ArgsSummary) ? "{}" : s.ArgsSummary)
+                        + " | result: " + (string.IsNullOrWhiteSpace(s.ResultHints) ? ResultShape(s.RawResult) : s.ResultHints));
+                }
+                sb.AppendLine();
+                sb.AppendLine("=== ALLOWED TOOLS (only these may appear in skillContent) ===");
+                sb.AppendLine(string.Join(", ", ev.AllowedTools));
+                sb.AppendLine();
+            }
+            if (ev.RowLimitHint.HasValue)
+            {
+                sb.AppendLine("=== ROW / DISPLAY LIMIT ===");
+                sb.AppendLine(ev.RowLimitHint.Value.ToString());
+                sb.AppendLine();
+            }
+            sb.AppendLine("=== CHAT TRACE (reference) ===");
+            sb.Append(trace);
             if (!string.IsNullOrWhiteSpace(ev.FinalAnswer))
                 sb.AppendLine("Final answer: " + ev.FinalAnswer);
+
             ev.Text = sb.ToString().Trim();
             if (ev.Text.Length > 12000)
                 ev.Text = ev.Text.Substring(0, 12000);
             return ev;
+        }
+
+        private static List<ProvenToolStep> BuildProvenChainFromSteps(JArray steps)
+        {
+            var chain = new List<ProvenToolStep>();
+            if (steps == null) return chain;
+            foreach (var step in steps.OfType<JObject>())
+            {
+                if (!IsToolStepSuccess(step)) continue;
+                var name = (step.Value<string>("toolName") ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(name)) continue;
+                if (string.Equals(name, "propose_specialist_handoff", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var rawArgs = step.Value<string>("args") ?? "";
+                var rawResult = step.Value<string>("result") ?? "";
+                chain.Add(new ProvenToolStep
+                {
+                    ToolName = name,
+                    ArgsSummary = SummarizeToolArgs(rawArgs),
+                    ResultHints = SummarizeToolResultHints(rawResult),
+                    RawResult = rawResult
+                });
+            }
+            return chain;
+        }
+
+        private static bool IsToolStepSuccess(JObject step)
+        {
+            if (step == null) return false;
+            var token = step["isSuccess"] ?? step["IsSuccess"];
+            if (token == null || token.Type == JTokenType.Null) return true;
+            if (token.Type == JTokenType.Boolean) return token.Value<bool>();
+            return true;
+        }
+
+        private static string SummarizeToolArgs(string rawArgs)
+        {
+            if (string.IsNullOrWhiteSpace(rawArgs)) return "{}";
+            var trimmed = rawArgs.Trim();
+            try
+            {
+                if (trimmed.StartsWith("{", StringComparison.Ordinal))
+                {
+                    var obj = JObject.Parse(trimmed);
+                    if (obj.Count == 0) return "{}";
+                    var parts = new List<string>();
+                    foreach (var p in obj.Properties().Take(12))
+                    {
+                        var v = p.Value;
+                        if (v.Type == JTokenType.String)
+                            parts.Add(p.Name + "=" + TrimTo(v.ToString(), 40));
+                        else if (v.Type is JTokenType.Integer or JTokenType.Float or JTokenType.Boolean)
+                            parts.Add(p.Name + "=" + v.ToString(Formatting.None));
+                        else
+                            parts.Add(p.Name + "=(set)");
+                    }
+                    return "{" + string.Join(", ", parts) + "}";
+                }
+            }
+            catch
+            {
+                /* fall through */
+            }
+            return TrimTo(OneLine(trimmed), 120);
+        }
+
+        private static string SummarizeToolResultHints(string rawResult)
+        {
+            if (string.IsNullOrWhiteSpace(rawResult)) return "";
+            var candidate = ExtractJsonFence(rawResult) ?? rawResult.Trim();
+            try
+            {
+                var token = JToken.Parse(candidate);
+                if (token is not JObject obj) return "";
+                var hints = new List<string>();
+                foreach (var key in new[] { "display_row_limit", "DisplayRowLimit", "totalRows", "TotalRows", "dataset_name", "datasetName", "cache_key", "CacheKey", "rowCount", "RowCount" })
+                {
+                    var val = obj[key];
+                    if (val == null || val.Type == JTokenType.Null) continue;
+                    hints.Add(key + "=" + TrimTo(val.ToString(), 40));
+                }
+                return hints.Count == 0 ? "" : string.Join(", ", hints);
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        private static int? ExtractRowLimitHint(IList<ProvenToolStep> chain, string goalVerbatim)
+        {
+            int? fromGoal = ParseLimitFromText(goalVerbatim);
+            int? fromSteps = null;
+            if (chain != null)
+            {
+                foreach (var step in chain)
+                {
+                    var fromArgs = ParseLimitFromText(step.ArgsSummary);
+                    if (fromArgs.HasValue) fromSteps = fromArgs;
+                    var fromResult = ParseLimitFromText(step.ResultHints);
+                    if (fromResult.HasValue) fromSteps = fromResult;
+                }
+            }
+            if (fromGoal.HasValue && fromSteps.HasValue)
+                return Math.Min(fromGoal.Value, fromSteps.Value);
+            return fromGoal ?? fromSteps;
+        }
+
+        private static int? ParseLimitFromText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            var m = Regex.Match(text, @"(?:display_row_limit|limit|top|rowlimit|maxrows)\s*[=:]\s*(\d+)", RegexOptions.IgnoreCase);
+            if (m.Success && int.TryParse(m.Groups[1].Value, out var n) && n > 0) return n;
+            m = Regex.Match(text, @"(?:first|top|latest|最近|前)\s*(\d+)\s*(?:条|行|records|rows)?", RegexOptions.IgnoreCase);
+            if (m.Success && int.TryParse(m.Groups[1].Value, out n) && n > 0) return n;
+            return null;
         }
 
         private static string ResultShape(string raw)
@@ -411,37 +596,21 @@ namespace App.BL.AIAgent.GenericAgent
 
         private static UniversalSkillDraft FallbackSkillDraft(ChatEvidence evidence)
         {
-            var tools = evidence.ToolNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            var toolLines = tools.Count == 0
-                ? "- Use the library tool that matches the task."
-                : string.Join("\n", tools.Select(t => "- " + t));
-            var content = string.Join("\n\n", new[]
-            {
-                "# Role",
-                "Carry out this repeatable workflow for a similar user request.",
-                "# Inputs",
-                string.IsNullOrWhiteSpace(evidence.Goal)
-                    ? "- Use the current user request. Ask when a required input is missing."
-                    : "- Typical request: " + evidence.Goal,
-                "# Steps",
-                tools.Count == 0
-                    ? "1. Confirm the goal and any missing inputs.\n2. Complete the task and report the result."
-                    : "1. Confirm required inputs before calling tools.\n2. Call " + string.Join(", ", tools) + " with the fields used in the original run.\n3. Check the result shape before answering.",
-                "# Tools",
-                toolLines,
-                "# Outputs",
-                string.IsNullOrWhiteSpace(evidence.FinalAnswer)
-                    ? "- The completed result for the user's request."
-                    : "- " + evidence.FinalAnswer,
-                "# Constraints",
-                "- Do not invent tool results.\n- Ask the user before a destructive or irreversible step."
-            });
-            var name = string.IsNullOrWhiteSpace(evidence.Goal) ? "Saved skill" : TrimTo(evidence.Goal, 60);
+            var name = string.IsNullOrWhiteSpace(evidence.Goal)
+                ? "Saved skill"
+                : TrimTo(OneLine(evidence.Goal), 60);
+            var whenLine = string.IsNullOrWhiteSpace(evidence.GoalVerbatim)
+                ? (string.IsNullOrWhiteSpace(evidence.Goal)
+                    ? "Similar requests handled in the source Universal Agent chat."
+                    : evidence.Goal)
+                : TrimTo(OneLine(evidence.GoalVerbatim), 300);
             return new UniversalSkillDraft
             {
                 Name = name,
-                Description = TrimTo(evidence.Goal ?? "Reusable workflow saved from a Universal Agent chat.", 180),
-                SkillContent = content
+                Description = TrimTo(
+                    "Repeat the proven tool workflow for: " + whenLine,
+                    400),
+                SkillContent = BuildFallbackSkillContentBody(evidence)
             };
         }
 
@@ -468,17 +637,142 @@ namespace App.BL.AIAgent.GenericAgent
             return sb.ToString().Trim();
         }
 
-        private static string EnsureSkillHeadings(string content)
+        private static string BuildFallbackSkillContentBody(ChatEvidence evidence)
+        {
+            var when = string.IsNullOrWhiteSpace(evidence.GoalVerbatim)
+                ? (string.IsNullOrWhiteSpace(evidence.Goal)
+                    ? "When the user has a similar request to the saved chat."
+                    : "When the user asks like: " + evidence.Goal)
+                : "When the user asks like: \"" + TrimTo(OneLine(evidence.GoalVerbatim), 280) + "\"";
+
+            var doLines = new List<string>();
+            if (evidence.ProvenChain != null && evidence.ProvenChain.Count > 0)
+            {
+                for (var i = 0; i < evidence.ProvenChain.Count; i++)
+                {
+                    var s = evidence.ProvenChain[i];
+                    doLines.Add((i + 1) + ". Call `" + s.ToolName + "` with args " + (string.IsNullOrWhiteSpace(s.ArgsSummary) ? "{}" : s.ArgsSummary) + ".");
+                }
+            }
+            else if (evidence.AllowedTools != null && evidence.AllowedTools.Count > 0)
+            {
+                doLines.Add("1. Call `" + evidence.AllowedTools[0] + "` using the same argument pattern as the saved chat.");
+            }
+            else
+            {
+                doLines.Add("1. Confirm the user goal and required inputs.");
+                doLines.Add("2. Use the library tool that matches the task; do not invent results.");
+            }
+            if (evidence.RowLimitHint.HasValue)
+                doLines.Add((doLines.Count + 1) + ". Show at most " + evidence.RowLimitHint.Value + " rows in the UI when displaying tabular data.");
+            doLines.Add((doLines.Count + 1) + ". Summarize what was retrieved for the user.");
+
+            var tools = evidence.AllowedTools != null && evidence.AllowedTools.Count > 0
+                ? evidence.AllowedTools
+                : evidence.ToolNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var toolLines = tools.Count == 0
+                ? "- (Use the tool that matched the saved chat.)"
+                : string.Join("\n", tools.Select(t => "- `" + t + "`"));
+
+            var notes = new List<string>
+            {
+                "- Do not invent tool results or data.",
+                "- Do not call tools that were not in the proven chain unless the user asks for something new."
+            };
+            if (evidence.RowLimitHint.HasValue)
+                notes.Add("- Honor display limit " + evidence.RowLimitHint.Value + " when rendering lists.");
+            notes.Add("- Ask the user before destructive or irreversible actions.");
+
+            return string.Join("\n\n", new[]
+            {
+                "# When to use",
+                when,
+                "# Do",
+                string.Join("\n", doLines),
+                "# Tools",
+                toolLines,
+                "# Notes",
+                string.Join("\n", notes)
+            });
+        }
+
+        private static string FinalizeDraftSkillContent(string content, ChatEvidence evidence)
+        {
+            var text = NormalizeSkillContent(content, evidence);
+            if (evidence != null && !SkillContentReferencesOnlyAllowedTools(text, evidence))
+                text = BuildFallbackSkillContentBody(evidence);
+            return TrimTo(text, 2500);
+        }
+
+        private static string FinalizeSavedSkillContent(string content)
+        {
+            return TrimTo((content ?? "").Trim(), 12000);
+        }
+
+        private static bool SkillContentReferencesOnlyAllowedTools(string content, ChatEvidence evidence)
+        {
+            if (evidence?.AllowedTools == null || evidence.AllowedTools.Count == 0)
+                return true;
+            var allowed = new HashSet<string>(evidence.AllowedTools, StringComparer.OrdinalIgnoreCase);
+            foreach (Match m in Regex.Matches(content ?? "", @"`([^`]+)`"))
+            {
+                var token = (m.Groups[1].Value ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(token)) continue;
+                if (token.IndexOf(' ') >= 0) continue;
+                if (allowed.Contains(token)) continue;
+                if (LooksLikeToolName(token)) return false;
+            }
+            return true;
+        }
+
+        private static bool LooksLikeToolName(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token) || token.Length > 80) return false;
+            return token.Contains('_') || token.StartsWith("PLM_", StringComparison.OrdinalIgnoreCase)
+                || token.StartsWith("render_", StringComparison.OrdinalIgnoreCase)
+                || token.StartsWith("execute_", StringComparison.OrdinalIgnoreCase)
+                || token.StartsWith("prepare_", StringComparison.OrdinalIgnoreCase)
+                || token.StartsWith("cache_", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeSkillContent(string content, ChatEvidence evidence)
         {
             var text = (content ?? "").Trim();
-            var sb = new StringBuilder(text);
-            foreach (var heading in new[] { "# Role", "# Inputs", "# Steps", "# Tools", "# Outputs", "# Constraints" })
+            if (evidence == null) return text;
+            if (string.IsNullOrWhiteSpace(text))
+                return BuildFallbackSkillContentBody(evidence);
+
+            var fallback = BuildFallbackSkillContentBody(evidence);
+            foreach (var heading in new[] { "# When to use", "# Do", "# Tools", "# Notes" })
             {
-                if (sb.ToString().IndexOf(heading, StringComparison.OrdinalIgnoreCase) >= 0) continue;
-                if (sb.Length > 0) sb.AppendLine().AppendLine();
-                sb.AppendLine(heading);
-                sb.AppendLine();
-                sb.AppendLine("- Review and complete this section.");
+                if (text.IndexOf(heading, StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                var section = ExtractMarkdownSection(fallback, heading);
+                if (string.IsNullOrWhiteSpace(section)) continue;
+                text = text + "\n\n" + section;
+            }
+            return text.Trim();
+        }
+
+        private static string ExtractMarkdownSection(string markdown, string heading)
+        {
+            if (string.IsNullOrWhiteSpace(markdown)) return "";
+            var lines = markdown.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            var sb = new StringBuilder();
+            var inSection = false;
+            foreach (var line in lines)
+            {
+                if (line.StartsWith("# ", StringComparison.Ordinal) && !line.StartsWith(heading, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (inSection) break;
+                    continue;
+                }
+                if (line.StartsWith(heading, StringComparison.OrdinalIgnoreCase))
+                {
+                    inSection = true;
+                    sb.AppendLine(line);
+                    continue;
+                }
+                if (inSection) sb.AppendLine(line);
             }
             return sb.ToString().Trim();
         }
@@ -533,6 +827,16 @@ namespace App.BL.AIAgent.GenericAgent
             return s.Substring(0, max).TrimEnd();
         }
 
+        private static bool HasSavableWork(ChatEvidence evidence)
+        {
+            if (evidence == null) return false;
+            if (evidence.ProvenChain != null && evidence.ProvenChain.Count > 0) return true;
+            if (!string.IsNullOrWhiteSpace(evidence.FinalAnswer)) return true;
+            if (!string.IsNullOrWhiteSpace(evidence.Goal)) return true;
+            if (!string.IsNullOrWhiteSpace(evidence.GoalVerbatim)) return true;
+            return false;
+        }
+
         private static int ResolveDataSourceId(AppClientIdentity identity)
         {
             if (identity.DataSourceId > 0) return identity.DataSourceId;
@@ -545,18 +849,22 @@ namespace App.BL.AIAgent.GenericAgent
         }
 
         private const string SkillDraftSystemPrompt = @"
-You write a reusable skill from a compact evidence package.
+You write a concise reusable skill from the evidence package (especially PROVEN TOOL CHAIN and ALLOWED TOOLS).
 Return only JSON with keys name, description, and skillContent.
-skillContent must be markdown with these headings, in this order:
-# Role
-# Inputs
-# Steps
+
+skillContent must be markdown with exactly these headings in order:
+# When to use
+# Do
 # Tools
-# Outputs
-# Constraints
-Steps must name the tools to call again, the important input fields, and any user confirmations required before those tools.
-Summarize the repeatable workflow. Do not paste the chat transcript, raw tool results, or row data.
-name is under 80 characters. description is one sentence under 400 characters.";
+# Notes
+
+Rules:
+- # Do: numbered steps (max 8). Each data/UI step must name tools with backticks. Follow PROVEN TOOL CHAIN order and args.
+- # Tools: one bullet per tool; only tools listed under ALLOWED TOOLS in the evidence.
+- Do NOT invent tools, polish/render steps, personas, or extra confirmations not in the evidence.
+- Do NOT use # Role, # Inputs, # Steps, # Outputs, or long agent personas.
+- Keep skillContent under 2000 characters. No transcript, raw JSON rows, or full tool results.
+- name: under 80 characters. description: one sentence under 400 characters describing when to select this skill.";
 
         private const string HandoffSummarySystemPrompt = @"
 Write a handoff summary for one Specialist Agent.
@@ -567,12 +875,24 @@ Relevant tool outcomes:
 Known inputs and constraints:
 Do not paste the raw transcript or full tool results. Mention tool names and field names only.";
 
+        private sealed class ProvenToolStep
+        {
+            public string ToolName = "";
+            public string ArgsSummary = "";
+            public string ResultHints = "";
+            public string RawResult = "";
+        }
+
         private sealed class ChatEvidence
         {
             public string Text = "";
             public string Goal = "";
+            public string GoalVerbatim = "";
             public string FinalAnswer = "";
             public List<string> ToolNames = new List<string>();
+            public List<string> AllowedTools = new List<string>();
+            public List<ProvenToolStep> ProvenChain = new List<ProvenToolStep>();
+            public int? RowLimitHint;
         }
     }
 }
