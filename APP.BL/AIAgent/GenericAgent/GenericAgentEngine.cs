@@ -58,8 +58,8 @@ namespace App.BL.AIAgent.GenericAgent
         private const string PromptHintToolType = "PromptHint";
         private const string UniversalBasePrompt = @"
 
-## Universal Agent
-You are Universal Agent, the built-in general work agent for this application.
+## General Agent
+You are General Agent, the built-in general work agent for this application.
 Understand the user's goal, use the most relevant loaded skills, and call tools whenever tools can do the work.
 Skills are reusable operating instructions for this chat run. Follow them when relevant, but do not claim a skill was used unless it was actually loaded.
 Use library tools directly when they match the task. Ask the user concise questions when required inputs are missing.
@@ -145,7 +145,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
             try
             {
                 var dsId = identity.HasValue ? identity.Value.DataSourceId : 0;
-                var isUniversal = UniversalAgentConstants.IsUniversalAgentKey(skillKey);
+                var isUniversal = GeneralAgentConstants.IsGeneralAgentKey(skillKey);
 
                 var skillSet = isUniversal
                     ? BuildUniversalSkillSet()
@@ -464,13 +464,13 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
         }
 
         // ─────────────────────────────────────────────────────────────────────
-        // Universal Agent helpers
+        // General Agent helpers
         // ─────────────────────────────────────────────────────────────────────
 
         private static TbSkillSetDto BuildUniversalSkillSet() =>
             new TbSkillSetDto(
-                SkillKey: UniversalAgentConstants.SkillKey,
-                DisplayName: "Universal Agent",
+                SkillKey: GeneralAgentConstants.SkillKey,
+                DisplayName: "General Agent",
                 Description: "Built-in general agent",
                 SystemPrompt: UniversalBasePrompt,
                 CapabilityFlags: 0,
@@ -514,14 +514,14 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
 
             var selected = catalog
                 .Where(s => selectedIds.Contains(s.SkillId))
-                .Take(UniversalAgentConstants.MaxSelectedSkills)
+                .Take(GeneralAgentConstants.MaxSelectedSkills)
                 .ToList();
             if (selected.Count == 0) return "";
 
             var sb = new StringBuilder();
             var loaded = new List<AppAISkillDto>();
             sb.AppendLine("## Loaded Skills");
-            sb.AppendLine("The following reusable skills were selected from the current Universal Agent context. Follow them when relevant.");
+            sb.AppendLine("The following reusable skills were selected from the current General Agent context. Follow them when relevant.");
             foreach (var skill in selected)
             {
                 var content = "";
@@ -566,7 +566,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
             {
                 var agents = dataSourceId > 0 ? TbSkillBL.GetAll(dataSourceId) : TbSkillBL.GetAll();
                 var rows = (agents ?? new List<TbSkillSetDto>())
-                    .Where(a => a != null && !UniversalAgentConstants.IsUniversalAgentKey(a.SkillKey))
+                    .Where(a => a != null && !GeneralAgentConstants.IsGeneralAgentKey(a.SkillKey))
                     .Take(30)
                     .Select(a => $"- {a.DisplayName ?? a.SkillKey} ({a.SkillKey}): {a.Description}")
                     .ToList();
@@ -644,7 +644,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 var allowed = new HashSet<int>(catalog.Select(s => s.SkillId));
                 foreach (var token in arr)
                 {
-                    if (ids.Count >= UniversalAgentConstants.MaxSelectedSkills) break;
+                    if (ids.Count >= GeneralAgentConstants.MaxSelectedSkills) break;
                     if (int.TryParse(token?.ToString(), out var id) && allowed.Contains(id))
                         ids.Add(id);
                 }
@@ -671,7 +671,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 .Where(x => x.Score > 0)
                 .OrderByDescending(x => x.Score)
                 .ThenBy(x => x.Skill.Name)
-                .Take(UniversalAgentConstants.MaxSelectedSkills)
+                .Take(GeneralAgentConstants.MaxSelectedSkills)
                 .Select(x => x.Skill.SkillId);
             return new HashSet<int>(scored);
         }
@@ -780,7 +780,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     }
 
                     return "Shown a handoff card for " + name + " (" + agent.SkillKey + "). "
-                        + "The user has not confirmed. Stay in Universal Agent and do not claim the chat was switched.";
+                        + "The user has not confirmed. Stay in General Agent and do not claim the chat was switched.";
                 },
                 functionName: "propose_specialist_handoff",
                 description: "Propose moving this task to one Specialist Agent. Shows a confirmation card. Does not open or continue a Specialist chat.",

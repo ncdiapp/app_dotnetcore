@@ -194,7 +194,7 @@ namespace App.BL.AIAgent.GenericAgent
             var summary = await WriteHandoffSummaryAsync(identity, evidence, agent, reason, ct).ConfigureAwait(false);
             var targetName = string.IsNullOrWhiteSpace(agent.DisplayName) ? agent.SkillKey : agent.DisplayName.Trim();
             var content =
-                "Transferred from Universal Agent.\n\n" + summary.Trim();
+                "Transferred from General Agent.\n\n" + summary.Trim();
 
             var targetSessionKey = AppGenericAgentSessionBL.CreateChat(agent.SkillKey, userId, dsId);
             if (string.IsNullOrWhiteSpace(targetSessionKey))
@@ -217,7 +217,7 @@ namespace App.BL.AIAgent.GenericAgent
 
             AppGenericAgentSessionBL.AppendMessage(
                 sourceSessionKey.Trim(),
-                UniversalAgentConstants.SkillKey,
+                GeneralAgentConstants.SkillKey,
                 userId,
                 dsId,
                 new JObject
@@ -245,7 +245,7 @@ namespace App.BL.AIAgent.GenericAgent
         public static SkillSetDto FindActiveSpecialist(int dataSourceId, string skillKeyOrName)
         {
             var key = (skillKeyOrName ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(key) || UniversalAgentConstants.IsUniversalAgentKey(key))
+            if (string.IsNullOrWhiteSpace(key) || GeneralAgentConstants.IsGeneralAgentKey(key))
                 return null;
             var agents = dataSourceId > 0 ? AgentCatalogBL.GetAll(dataSourceId) : AgentCatalogBL.GetAll();
             return (agents ?? new List<SkillSetDto>())
@@ -297,7 +297,7 @@ namespace App.BL.AIAgent.GenericAgent
             var dsId = ResolveDataSourceId(identity);
             var detail = AppGenericAgentSessionBL.LoadBySessionKey(
                 sessionKey?.Trim(),
-                UniversalAgentConstants.SkillKey,
+                GeneralAgentConstants.SkillKey,
                 userId,
                 dsId);
             return BuildEvidence(detail?.Messages);
@@ -440,7 +440,7 @@ namespace App.BL.AIAgent.GenericAgent
             return new UniversalSkillDraft
             {
                 Name = name,
-                Description = TrimTo(evidence.Goal ?? "Reusable workflow saved from a Universal Agent chat.", 180),
+                Description = TrimTo(evidence.Goal ?? "Reusable workflow saved from a General Agent chat.", 180),
                 SkillContent = content
             };
         }

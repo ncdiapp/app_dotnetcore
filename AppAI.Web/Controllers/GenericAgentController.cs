@@ -1425,7 +1425,7 @@ public class GenericAgentController : SecureBaseController
             : SkillSetBL.GetAll();
 
         result.Object = agents
-            .Where(a => a != null && !UniversalAgentConstants.IsUniversalAgentKey(a.SkillKey))
+            .Where(a => a != null && !GeneralAgentConstants.IsGeneralAgentKey(a.SkillKey))
             .Select(a => new ActiveAgentDto
         {
             SkillKey  = a.SkillKey,
@@ -1568,9 +1568,9 @@ public class GenericAgentController : SecureBaseController
             return false;
         }
         ai = current;
-        if (!UniversalAgentConstants.IsUniversalAgentKey(skillKey))
+        if (!GeneralAgentConstants.IsGeneralAgentKey(skillKey))
         {
-            error = "This action is only available on Universal Agent.";
+            error = "This action is only available on General Agent.";
             return false;
         }
         if (string.IsNullOrWhiteSpace(sessionKey))

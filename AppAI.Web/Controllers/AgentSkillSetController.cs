@@ -66,7 +66,7 @@ public class AgentSkillSetController : SecureBaseController
     {
         var result = new OperationCallResult<List<AppAgentSkillSetDto>>();
         result.Object = AppAgentSkillSetBL.GetAllSkillSets(GetDsId())
-            .Where(a => a != null && !UniversalAgentConstants.IsUniversalAgentKey(a.SkillKey))
+            .Where(a => a != null && !GeneralAgentConstants.IsGeneralAgentKey(a.SkillKey))
             .ToList();
         return result;
     }
@@ -82,12 +82,12 @@ public class AgentSkillSetController : SecureBaseController
                 "SkillKey_Required", ValidationItemType.Error, "SkillKey is required."));
             return result;
         }
-        if (UniversalAgentConstants.IsUniversalAgentKey(dto.SkillKey))
+        if (GeneralAgentConstants.IsGeneralAgentKey(dto.SkillKey))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
                 typeof(AgentSkillSetController),
                 "SkillKey_Reserved", ValidationItemType.Error,
-                "Universal Agent is built in and is not managed here."));
+                "General Agent is built in and is not managed here."));
             return result;
         }
         result.Object = AppAgentSkillSetBL.UpsertSkillSet(GetDsId(), dto);

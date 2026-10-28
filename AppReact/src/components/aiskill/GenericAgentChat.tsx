@@ -25,7 +25,7 @@ import { placeRender, renderKey } from './dataRender/placeRender';
 import { RenderBuilding, RenderChip } from './dataRender/RenderChrome';
 import { ReasoningLoopPanel, type ThinkingStep } from './dataRender/ReasoningLoopPanel';
 import { AgentMarkdown, FollowupChips, splitFollowups, type AgentFileLink } from './AgentMarkdown';
-import { UNIVERSAL_AGENT_KEY } from './universalAgent';
+import { GENERAL_AGENT_KEY, isGeneralAgentKey } from './generalAgent';
 
 const SESSION_START = '[session_start]';
 const RUN_IN_PROGRESS = '[run_in_progress]';
@@ -723,7 +723,7 @@ const GenericAgentChat: React.FC<Props> = ({
     autoRunPendingUserRef.current = !!autoRunPendingUser;
     const onAutoRunStartedRef = useRef(onAutoRunStarted);
     onAutoRunStartedRef.current = onAutoRunStarted;
-    const isUniversalAgent = (skillKey || '').trim().toLowerCase() === UNIVERSAL_AGENT_KEY;
+    const isGeneralAgent = isGeneralAgentKey(skillKey);
 
     const historyRenderKeys = useRef<Set<string>>(new Set());
 
@@ -1225,9 +1225,9 @@ const GenericAgentChat: React.FC<Props> = ({
                         allowFirstTurn = !!s.AllowAgentFirstTurn;
                     }
                 }
-                if (isUniversalAgent) map[UNIVERSAL_AGENT_KEY] = 'Universal Agent';
+                if (isGeneralAgent) map[GENERAL_AGENT_KEY] = 'General Agent';
                 setSkillDisplayNames(map);
-                if (isUniversalAgent) {
+                if (isGeneralAgent) {
                     setUiModules(new Set<AgentChatUiModule>(['files']));
                     mode = 'Interactive';
                     allowFirstTurn = false;
@@ -1262,8 +1262,8 @@ const GenericAgentChat: React.FC<Props> = ({
                     skillExecutionModeRef.current = mode;
                 }
             } catch {
-                if (isUniversalAgent) {
-                    setSkillDisplayNames({ [UNIVERSAL_AGENT_KEY]: 'Universal Agent' });
+                if (isGeneralAgent) {
+                    setSkillDisplayNames({ [GENERAL_AGENT_KEY]: 'General Agent' });
                     setUiModules(new Set<AgentChatUiModule>(['files']));
                 }
             }
@@ -1774,7 +1774,7 @@ const GenericAgentChat: React.FC<Props> = ({
                 overwrite && nameExists,
             );
             const verb = saved.Overwritten ? 'Updated' : 'Saved';
-            setSaveSkillDone(`${verb} skill "${saved.Name}". Universal Agent can use it on a later chat.`);
+            setSaveSkillDone(`${verb} skill "${saved.Name}". General Agent can use it on a later chat.`);
             setSaveSkillOverwritePending(false);
             chatSavedSkillNameRef.current = saved.Name;
             saveSkillExistingNamesRef.current.add(saved.Name.trim().toLowerCase());
@@ -1836,7 +1836,7 @@ const GenericAgentChat: React.FC<Props> = ({
         && askUi === 'button_group'
         && (pendingAskUser?.Options?.length ?? 0) > 0;
     const blocked = isRunning || !!pendingAskUser;
-    const skillLabel = isUniversalAgent ? 'Universal Agent' : (skillDisplayNames[skillKey] || skillKey || 'Agent');
+    const skillLabel = isGeneralAgent ? 'General Agent' : (skillDisplayNames[skillKey] || skillKey || 'Agent');
     const hasRealUserTurn = messages.some(m =>
         m.role === 'user'
         && (m.content || '').trim() !== SESSION_START
@@ -1949,7 +1949,7 @@ const GenericAgentChat: React.FC<Props> = ({
                         {skillLabel ? <span className={`ml-1.5 font-normal ${theme.label}`}>{skillLabel}</span> : null}
                     </div>
                     <div className="ml-auto flex items-center gap-1 shrink-0">
-                        {isUniversalAgent && hasConversation && (
+                        {isGeneralAgent && hasConversation && (
                             <button
                                 type="button"
                                 className={`h-6 px-2 rounded-[4px] text-xs ${theme.button_default}`}

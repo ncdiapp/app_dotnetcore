@@ -170,6 +170,7 @@ export const AUTHENTICATED_ROUTES: SharedRouteDef[] = [
   { path: 'ai-skill-management', element: <AISkillManagement /> },
 
   // Agent Skill Set Management
+  { path: 'general-agent', element: <UniversalAgentPage /> },
   { path: 'universal-agent', element: <UniversalAgentPage /> },
   { path: 'agent-skill-management', element: <AgentSkillSetManagement /> },
   { path: 'agent-chat', element: <AgentChatPage /> },
