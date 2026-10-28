@@ -16,6 +16,7 @@ type JsonCodeEditorProps = {
   monacoTheme?: string;
   /** Enable trigger-character suggestions (e.g. {{ autocomplete). Default false. */
   enableTriggerSuggestions?: boolean;
+  lineNumbers?: 'on' | 'off';
 };
 
 export const JsonCodeEditor: React.FC<JsonCodeEditorProps> = ({
@@ -29,6 +30,7 @@ export const JsonCodeEditor: React.FC<JsonCodeEditorProps> = ({
   onMount,
   monacoTheme = 'vs',
   enableTriggerSuggestions = false,
+  lineNumbers = 'on',
   placeholder: _placeholder,
 }) => {
   const [localValue, setLocalValue] = useState<string>(value ?? '');
@@ -129,7 +131,7 @@ export const JsonCodeEditor: React.FC<JsonCodeEditorProps> = ({
             wordWrap: 'on',
             scrollBeyondLastLine: false,
             renderWhitespace: 'none',
-            lineNumbers: 'on',
+            lineNumbers,
             folding: true,
             contextmenu: true,
             automaticLayout: true,
