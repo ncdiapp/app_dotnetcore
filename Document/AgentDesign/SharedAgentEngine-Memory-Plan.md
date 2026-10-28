@@ -1,15 +1,15 @@
 # Plan: Three-layer chat memory for the Generic Agent
 
-**Date:** 2026-10-21 · **Design doc:** `GenericAgent-Memory-Architecture.md` (current design, scope and open decisions)
+**Date:** 2026-10-21 · **Design doc:** `SharedAgentEngine-Memory-Architecture.md` (current design, scope and open decisions)
 
 **Status (2026-10-21):**
 - Built: all four phases (L1 repairs, L2 facts, L3 episodes, extraction job, viewer UI, tools). 66 unit tests pass, web project builds, React type-checks. **Not yet run against a real tenant DB or LLM.**
 - Deliberately deferred: making the server copy the only chat history source (needs its own change and Playwright coverage).
-- Next: run migrations V054/V055, enable memory on one test agent, then `AgentMemory:Mode` DryRun → Preview → On (see `GenericAgent-Memory-Architecture.md` §9).
+- Next: run migrations V054/V055, enable memory on one test agent, then `AgentMemory:Mode` DryRun → Preview → On (see `SharedAgentEngine-Memory-Architecture.md` §9).
 - Changes since this plan was approved: the summary is stored as turn count plus fingerprint (not `SummarizedUpToIndex`); `ExtractedUpToIndex` is replaced by `ExtractedAt` / `ExtractedTurnCount` on the extraction job; scope of facts and episodes across chats is an open decision (see the design doc, §4.3 and §7).
 
 ## Context
-Review of `Document/AgentDesign/GenericAgent-Architecture.md` (§4, §9, §13) against your 3-layer memory model (L1 short-term, L2 entity/fact, L3 episodic/fuzzy). Verified against code: `GenericAgentEngine.BuildChatHistoryAsync` (line 566), `AppGenericAgentSessionBL`, `MemoryContextPlugin`, `AppBuilderAgentMemoryBL`.
+Review of `Document/AgentDesign/SharedAgentEngine-Architecture.md` (§4, §9, §13) against your 3-layer memory model (L1 short-term, L2 entity/fact, L3 episodic/fuzzy). Verified against code: `GenericAgentEngine.BuildChatHistoryAsync` (line 566), `AppGenericAgentSessionBL`, `MemoryContextPlugin`, `AppBuilderAgentMemoryBL`.
 
 ## Review: where each layer stands today
 
@@ -63,7 +63,7 @@ Review of `Document/AgentDesign/GenericAgent-Architecture.md` (§4, §9, §13) a
 **Extraction pipeline.** Triggered at chat clear/idle (not per turn), background, cheap model, temp 0. One call returns `{episode, facts[]}` JSON. Facts need a verbatim user-quote `evidence`; code validates JSON, evidence match, secret scan, key/length caps. Upsert facts on `(UserId, SkillKey, FactKey)`; log every extraction. Build explicit `remember_fact` + episode summary first; add auto fact extraction after reviewing real episodes.
 
 ## Files to change
-- `Document/AgentDesign/GenericAgent-Architecture.md` — fix §4 `InjectMemory`, add new "Memory layers" subsection to §9, new tables in §3.7, new backlog rows.
+- `Document/AgentDesign/SharedAgentEngine-Architecture.md` — fix §4 `InjectMemory`, add new "Memory layers" subsection to §9, new tables in §3.7, new backlog rows.
 - `APP.BL/AIAgent/GenericAgent/GenericAgentEngine.cs` — `BuildChatHistoryAsync` (token-based, persisted summary, tool-turn compaction), memory injection step.
 - `APP.BL/AIAgent/GenericAgent/AppGenericAgentSessionBL.cs` — load/save summary fields.
 - New: `AppAgentMemoryFactBL.cs`, `MemoryFactPlugin.cs` (tools), migration SQL in `AppAI.Web/Migrations/`.

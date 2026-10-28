@@ -5,13 +5,13 @@
 **Date:** 2026-09-08  
 **Status:** Implemented  
 **Audience:** Backend and frontend developers  
-**Depends on:** `GenericAgent-Architecture.md` (base platform)
+**Depends on:** `SharedAgentEngine-Architecture.md` (base platform)
 
 ---
 
 ## 1. System Overview
 
-This document covers the **Tool Library subsystem** and the **AI Generate endpoint** introduced in Plan 1 / Plan 2. The base `GenericAgentEngine` execution path is documented in `GenericAgent-Architecture.md`.
+This document covers the **Tool Library subsystem** and the **AI Generate endpoint** introduced in Plan 1 / Plan 2. The base `GenericAgentEngine` execution path is documented in `SharedAgentEngine-Architecture.md`.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐

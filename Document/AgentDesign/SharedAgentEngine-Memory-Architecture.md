@@ -5,7 +5,7 @@
 **Date:** 2026-10-21  
 **Status (2026-10-21):** Implemented end to end and unit-tested (66 tests pass, web project builds, React type-checks). **Not yet run against a real tenant database or LLM.** Rollout starts in `DryRun`, then `Preview` (see §9).  
 **Audience:** Senior developers, backend engineers  
-**Related:** `GenericAgent-Architecture.md` (§3.7, §4, §9), `ToolNameConvention-ProviderLimits.md`
+**Related:** `SharedAgentEngine-Architecture.md` (§3.7, §4, §9), `ToolNameConvention-ProviderLimits.md`
 
 ---
 
@@ -161,7 +161,7 @@ Embedding provider: Gemini and OpenAI have embedding endpoints; Anthropic does n
 
 ### 4.6 Isolation and safety
 
-- Every memory read and write is keyed by tenant DB plus `UserId`, resolved from the execution identity — never from an LLM argument (see `GenericAgent-Architecture.md` §3.4).
+- Every memory read and write is keyed by tenant DB plus `UserId`, resolved from the execution identity — never from an LLM argument (see `SharedAgentEngine-Architecture.md` §3.4).
 - Use `AppTenantAdapterBL` / data-source routing, parameterised SQL, tenant DB (not `AppMasterDB`).
 - Memory text is injected as labelled, length-capped data, never as instructions.
 - Log which facts and episodes were injected on each run (feeds backlog #12, observability).

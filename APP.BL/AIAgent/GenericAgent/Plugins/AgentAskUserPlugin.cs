@@ -14,7 +14,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     /// ask_user — structured HITL question gate for Interactive GenericAgent runs.
     ///
     /// Reads <see cref="GenericAgentCallbacks.OnAskUser"/> via <see cref="AgentHitlBridge"/>
-    /// (set by GenericAgentEngine). Waits until the UI POSTs ConfirmAskUser.
+    /// (set by SharedAgentEngine). Waits until the UI POSTs ConfirmAskUser.
     /// Deterministic mode returns an error JSON (no blocking).
     /// </summary>
     public class AgentAskUserPlugin
