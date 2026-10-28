@@ -10,7 +10,7 @@
 
 ## 1. Problem Statement
 
-After the Generic Agent Platform refactor (see `GenericAgent-PRD.md`), the platform could *run* any agent configured in the database — but creating a good agent still required developer involvement:
+After the Generic Agent Platform refactor (see `SharedAgentEngine-PRD.md`), the platform could *run* any agent configured in the database — but creating a good agent still required developer involvement:
 
 | Gap | Impact |
 |---|---|

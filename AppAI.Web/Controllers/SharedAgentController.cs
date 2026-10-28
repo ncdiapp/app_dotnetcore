@@ -44,8 +44,8 @@ namespace AppAI.Web.Controllers;
 ///   GUID → New/Continue Chat
 /// File area folder = ChatSessionKey (sanitized).
 /// </summary>
-[Route("webapi/[controller]/[action]")]
-public class GenericAgentController : SecureBaseController
+[Route("webapi/GenericAgent/[action]")]
+public class SharedAgentController : SecureBaseController
 {
     [HttpPost]
     public OperationCallResult<GenericAgentStartResultDto> RunAgent(
@@ -66,7 +66,7 @@ public class GenericAgentController : SecureBaseController
         if (string.IsNullOrWhiteSpace(request?.SkillKey))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "GenericAgent_NoSkill",
+                typeof(SharedAgentController), "GenericAgent_NoSkill",
                 ValidationItemType.Error, "SkillKey is required."));
             return result;
         }
@@ -74,7 +74,7 @@ public class GenericAgentController : SecureBaseController
         if (string.IsNullOrWhiteSpace(request.UserMessage))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "GenericAgent_NoMessage",
+                typeof(SharedAgentController), "GenericAgent_NoMessage",
                 ValidationItemType.Error, "UserMessage is required."));
             return result;
         }
@@ -94,7 +94,7 @@ public class GenericAgentController : SecureBaseController
                 SessionBL.LoadBySessionKey(chatSessionKey, request.SkillKey.Trim(), agentUserId, agentDsId) == null)
             {
                 result.ValidationResult.Items.Add(new ValidationItem(
-                    typeof(GenericAgentController), "GenericAgent_BadChat",
+                    typeof(SharedAgentController), "GenericAgent_BadChat",
                     ValidationItemType.Error, "ChatSessionKey not found for this agent."));
                 return result;
             }
@@ -363,7 +363,7 @@ public class GenericAgentController : SecureBaseController
         if (string.IsNullOrWhiteSpace(sessionId))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "GenericAgent_NoSession",
+                typeof(SharedAgentController), "GenericAgent_NoSession",
                 ValidationItemType.Error, "SessionId is required."));
             return result;
         }
@@ -372,7 +372,7 @@ public class GenericAgentController : SecureBaseController
         if (!result.Object)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "GenericAgent_SessionGone",
+                typeof(SharedAgentController), "GenericAgent_SessionGone",
                 ValidationItemType.Warning, "Session not found or already finished."));
         }
         return result;
@@ -438,7 +438,7 @@ public class GenericAgentController : SecureBaseController
         if (string.IsNullOrWhiteSpace(request?.SessionId))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "ConfirmPlan_NoSession",
+                typeof(SharedAgentController), "ConfirmPlan_NoSession",
                 ValidationItemType.Error, "SessionId is required."));
             return result;
         }
@@ -447,7 +447,7 @@ public class GenericAgentController : SecureBaseController
 
         if (!found)
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "ConfirmPlan_NoPending",
+                typeof(SharedAgentController), "ConfirmPlan_NoPending",
                 ValidationItemType.Warning, "No pending plan confirmation found. It may have already resolved or timed out."));
 
         result.Object = found;
@@ -462,7 +462,7 @@ public class GenericAgentController : SecureBaseController
         if (string.IsNullOrWhiteSpace(request?.SessionId))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "ConfirmSchema_NoSession",
+                typeof(SharedAgentController), "ConfirmSchema_NoSession",
                 ValidationItemType.Error, "SessionId is required."));
             return result;
         }
@@ -478,7 +478,7 @@ public class GenericAgentController : SecureBaseController
 
         if (!found)
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "ConfirmSchema_NoPending",
+                typeof(SharedAgentController), "ConfirmSchema_NoPending",
                 ValidationItemType.Warning, "No pending schema confirmation found. It may have already resolved or timed out."));
 
         result.Object = found;
@@ -493,7 +493,7 @@ public class GenericAgentController : SecureBaseController
         if (string.IsNullOrWhiteSpace(request?.SessionId))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "ConfirmAskUser_NoSession",
+                typeof(SharedAgentController), "ConfirmAskUser_NoSession",
                 ValidationItemType.Error, "SessionId is required."));
             return result;
         }
@@ -557,7 +557,7 @@ public class GenericAgentController : SecureBaseController
 
         if (!found)
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "ConfirmAskUser_NoPending",
+                typeof(SharedAgentController), "ConfirmAskUser_NoPending",
                 ValidationItemType.Warning, "No pending ask_user confirmation found. It may have already resolved or timed out."));
 
         result.Object = found;
@@ -629,7 +629,7 @@ public class GenericAgentController : SecureBaseController
         if (identity is not AppClientIdentity ai || ai.UserId == null)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "CreateChat_NoUser",
+                typeof(SharedAgentController), "CreateChat_NoUser",
                 ValidationItemType.Error, "User identity required."));
             return result;
         }
@@ -639,7 +639,7 @@ public class GenericAgentController : SecureBaseController
         if (string.IsNullOrWhiteSpace(key))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "CreateChat_Failed",
+                typeof(SharedAgentController), "CreateChat_Failed",
                 ValidationItemType.Error, "Failed to create chat."));
             return result;
         }
@@ -705,21 +705,21 @@ public class GenericAgentController : SecureBaseController
         if (identity is not AppClientIdentity ai || ai.UserId == null)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "RenameChat_NoUser",
+                typeof(SharedAgentController), "RenameChat_NoUser",
                 ValidationItemType.Error, "User identity required."));
             return result;
         }
         if (request == null || string.IsNullOrWhiteSpace(request.SkillKey) || string.IsNullOrWhiteSpace(request.SessionKey))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "RenameChat_BadRequest",
+                typeof(SharedAgentController), "RenameChat_BadRequest",
                 ValidationItemType.Error, "SkillKey and SessionKey are required."));
             return result;
         }
         if (string.IsNullOrWhiteSpace(request.Title))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "RenameChat_NoTitle",
+                typeof(SharedAgentController), "RenameChat_NoTitle",
                 ValidationItemType.Error, "Title is required."));
             return result;
         }
@@ -738,7 +738,7 @@ public class GenericAgentController : SecureBaseController
         if (identity is not AppClientIdentity ai || ai.UserId == null)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "SetSavedSkill_NoUser",
+                typeof(SharedAgentController), "SetSavedSkill_NoUser",
                 ValidationItemType.Error, "User identity required."));
             return result;
         }
@@ -748,7 +748,7 @@ public class GenericAgentController : SecureBaseController
             || request.SkillId <= 0)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "SetSavedSkill_BadRequest",
+                typeof(SharedAgentController), "SetSavedSkill_BadRequest",
                 ValidationItemType.Error, "SkillKey, SessionKey, and SkillId are required."));
             return result;
         }
@@ -773,7 +773,7 @@ public class GenericAgentController : SecureBaseController
         {
             err = new OperationCallResult<object>();
             err.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "Files_NoUser",
+                typeof(SharedAgentController), "Files_NoUser",
                 ValidationItemType.Error, "User identity required."));
             return false;
         }
@@ -783,7 +783,7 @@ public class GenericAgentController : SecureBaseController
         {
             err = new OperationCallResult<object>();
             err.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "Files_NoCompany",
+                typeof(SharedAgentController), "Files_NoCompany",
                 ValidationItemType.Error, "Company id required."));
             return false;
         }
@@ -800,7 +800,7 @@ public class GenericAgentController : SecureBaseController
             if (string.IsNullOrWhiteSpace(skillKey))
             {
                 result.ValidationResult.Items.Add(new ValidationItem(
-                    typeof(GenericAgentController), "Files_NoSkill",
+                    typeof(SharedAgentController), "Files_NoSkill",
                     ValidationItemType.Error, "skillKey is required."));
                 return false;
             }
@@ -814,14 +814,14 @@ public class GenericAgentController : SecureBaseController
         if (string.IsNullOrWhiteSpace(sessionKey))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "Files_NoSession",
+                typeof(SharedAgentController), "Files_NoSession",
                 ValidationItemType.Error, "sessionKey is required."));
             return false;
         }
         if (SessionBL.IsFixedKey(sessionKey, skillKey, userId)) return true;
         if (SessionBL.LoadBySessionKey(sessionKey, skillKey, userId) != null) return true;
         result.ValidationResult.Items.Add(new ValidationItem(
-            typeof(GenericAgentController), "Files_BadChat",
+            typeof(SharedAgentController), "Files_BadChat",
             ValidationItemType.Error, "Chat session not found."));
         return false;
     }
@@ -852,7 +852,7 @@ public class GenericAgentController : SecureBaseController
         catch (Exception ex)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "Files_List",
+                typeof(SharedAgentController), "Files_List",
                 ValidationItemType.Error, ex.Message));
         }
         return result;
@@ -884,7 +884,7 @@ public class GenericAgentController : SecureBaseController
         catch (Exception ex)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "Files_Read",
+                typeof(SharedAgentController), "Files_Read",
                 ValidationItemType.Error, ex.Message));
         }
         return result;
@@ -952,7 +952,7 @@ public class GenericAgentController : SecureBaseController
         if (body == null || string.IsNullOrWhiteSpace(body.Html))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "IssueAgentUiHtmlToken",
+                typeof(SharedAgentController), "IssueAgentUiHtmlToken",
                 ValidationItemType.Error, "Html is required."));
             return result;
         }
@@ -960,7 +960,7 @@ public class GenericAgentController : SecureBaseController
         if (tokenSvc == null)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "IssueAgentUiHtmlToken",
+                typeof(SharedAgentController), "IssueAgentUiHtmlToken",
                 ValidationItemType.Error, "Token service unavailable."));
             return result;
         }
@@ -1011,7 +1011,7 @@ public class GenericAgentController : SecureBaseController
         catch (Exception ex)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "Files_Write",
+                typeof(SharedAgentController), "Files_Write",
                 ValidationItemType.Error, ex.Message));
         }
         return result;
@@ -1046,7 +1046,7 @@ public class GenericAgentController : SecureBaseController
         catch (Exception ex)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "Files_Mkdir",
+                typeof(SharedAgentController), "Files_Mkdir",
                 ValidationItemType.Error, ex.Message));
         }
         return result;
@@ -1081,7 +1081,7 @@ public class GenericAgentController : SecureBaseController
         catch (Exception ex)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "Files_Rename",
+                typeof(SharedAgentController), "Files_Rename",
                 ValidationItemType.Error, ex.Message));
         }
         return result;
@@ -1116,7 +1116,7 @@ public class GenericAgentController : SecureBaseController
         catch (Exception ex)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "Files_Delete",
+                typeof(SharedAgentController), "Files_Delete",
                 ValidationItemType.Error, ex.Message));
         }
         return result;
@@ -1141,7 +1141,7 @@ public class GenericAgentController : SecureBaseController
         if (!IsDefaultSourceScope(scope))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "Files_DescScope",
+                typeof(SharedAgentController), "Files_DescScope",
                 ValidationItemType.Error, "Descriptions can only be edited on Default Source Files."));
             return result;
         }
@@ -1159,7 +1159,7 @@ public class GenericAgentController : SecureBaseController
         catch (Exception ex)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "Files_SetDescription",
+                typeof(SharedAgentController), "Files_SetDescription",
                 ValidationItemType.Error, ex.Message));
         }
         return result;
@@ -1188,7 +1188,7 @@ public class GenericAgentController : SecureBaseController
         if (file == null || file.Length == 0)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "Files_UploadEmpty",
+                typeof(SharedAgentController), "Files_UploadEmpty",
                 ValidationItemType.Error, "File is required."));
             return result;
         }
@@ -1209,7 +1209,7 @@ public class GenericAgentController : SecureBaseController
         catch (Exception ex)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "Files_Upload",
+                typeof(SharedAgentController), "Files_Upload",
                 ValidationItemType.Error, ex.Message));
         }
         return result;
@@ -1326,7 +1326,7 @@ public class GenericAgentController : SecureBaseController
         catch (Exception ex)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "ExportResult",
+                typeof(SharedAgentController), "ExportResult",
                 ValidationItemType.Error, ex.Message));
             result.Object = new GenericAgentExportResultDto { Error = ex.Message };
         }
@@ -1407,7 +1407,7 @@ public class GenericAgentController : SecureBaseController
         catch (Exception ex)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "Files_RestoreDefault",
+                typeof(SharedAgentController), "Files_RestoreDefault",
                 ValidationItemType.Error, ex.Message));
         }
         return result;
@@ -1443,7 +1443,7 @@ public class GenericAgentController : SecureBaseController
         if (!TryRequireUniversalChat(request?.SkillKey, request?.SessionKey, out var ai, out var error))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "DraftUniversalSkill",
+                typeof(SharedAgentController), "DraftUniversalSkill",
                 ValidationItemType.Error, error));
             return result;
         }
@@ -1455,7 +1455,7 @@ public class GenericAgentController : SecureBaseController
         catch (Exception ex)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "DraftUniversalSkill",
+                typeof(SharedAgentController), "DraftUniversalSkill",
                 ValidationItemType.Error, ex.Message));
         }
         return result;
@@ -1469,14 +1469,14 @@ public class GenericAgentController : SecureBaseController
         if (!TryRequireUniversalChat(request?.SkillKey, request?.SessionKey, out var ai, out var error))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "SaveUniversalSkill",
+                typeof(SharedAgentController), "SaveUniversalSkill",
                 ValidationItemType.Error, error));
             return result;
         }
         if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.SkillContent))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "SaveUniversalSkill",
+                typeof(SharedAgentController), "SaveUniversalSkill",
                 ValidationItemType.Error, "Name and skill instructions are required."));
             return result;
         }
@@ -1509,7 +1509,7 @@ public class GenericAgentController : SecureBaseController
         catch (Exception ex)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "SaveUniversalSkill",
+                typeof(SharedAgentController), "SaveUniversalSkill",
                 ValidationItemType.Error, ex.Message));
         }
         return result;
@@ -1524,14 +1524,14 @@ public class GenericAgentController : SecureBaseController
         if (!TryRequireUniversalChat(request?.SkillKey, request?.SessionKey, out var ai, out var error))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "CreateSpecialistHandoff",
+                typeof(SharedAgentController), "CreateSpecialistHandoff",
                 ValidationItemType.Error, error));
             return result;
         }
         if (string.IsNullOrWhiteSpace(request.TargetSkillKey))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "CreateSpecialistHandoff",
+                typeof(SharedAgentController), "CreateSpecialistHandoff",
                 ValidationItemType.Error, "Target Specialist is required."));
             return result;
         }
@@ -1547,7 +1547,7 @@ public class GenericAgentController : SecureBaseController
         catch (Exception ex)
         {
             result.ValidationResult.Items.Add(new ValidationItem(
-                typeof(GenericAgentController), "CreateSpecialistHandoff",
+                typeof(SharedAgentController), "CreateSpecialistHandoff",
                 ValidationItemType.Error, ex.Message));
         }
         return result;

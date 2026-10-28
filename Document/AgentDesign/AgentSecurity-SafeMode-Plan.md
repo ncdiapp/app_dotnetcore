@@ -100,7 +100,7 @@ Effort is a rough estimate for one developer including tests.
 | A3 | ExternalDll: accept a bare file name only, resolve and check the full path stays inside the repo folder (F8) | `ExternalDllToolExecutor` | `..\x.dll`, `C:\x.dll`, `sub\x.dll` are rejected |
 | A4 | BuiltIn: resolve only types in the BL assembly (or types with a new `[AgentTool]` attribute); drop the all-assemblies scan and case-insensitive fallback for unknown types (F7) | `BuiltInToolExecutor`, seed check of existing `TypeName`s | Existing seeded tools still work; `System.IO.File` is rejected |
 | A5 | Script child process: clear the environment, pass only declared variables (F4) | `GenericAgentProcessBL` | A script printing `$env:*` shows no app secrets |
-| A6 | Documentation corrections: DynamicCSharp limits, "super-admin only", TimeoutSeconds | `GenericAgent-Architecture.md` §5 | Doc matches the code |
+| A6 | Documentation corrections: DynamicCSharp limits, "super-admin only", TimeoutSeconds | `SharedAgentEngine-Architecture.md` §5 | Doc matches the code |
 
 Phase A risk: turning executable tools off by default can break tenants that use scripts today (the PLM data-integration flow uses `run_agent_script`). Mitigation: list existing tools by type first (query below), enable the flag explicitly where needed.
 
@@ -176,6 +176,6 @@ Security regression tests (xUnit, plus one Playwright scenario for the UI error 
 
 ## 8. Related documents
 
-- `GenericAgent-Architecture.md` — §5 tool types, §8 MCP security policy, §13 backlog
+- `SharedAgentEngine-Architecture.md` — §5 tool types, §8 MCP security policy, §13 backlog
 - `ToolNameConvention-ProviderLimits.md`
 - `AppAI.Web/Migrations/README.md` — migration rules

@@ -9,7 +9,7 @@ namespace App.BL.AIAgent.GenericAgent
 {
     /// <summary>
     /// Top-level entry point for the generic agent framework.
-    /// Called by GenericAgentController with a fire-and-forget pattern.
+    /// Called by SharedAgentController with a fire-and-forget pattern.
     /// Multi-turn: callers pass chatHistory built from prior session messages.
     /// LLM provider comes from tenant Application Settings (AIConfigDefaultProvider).
     /// </summary>

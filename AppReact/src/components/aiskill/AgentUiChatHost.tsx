@@ -1,5 +1,5 @@
 import React from 'react';
-import GenericAgentChat from './GenericAgentChat';
+import SharedAgentChat from './SharedAgentChat';
 
 interface Props {
   skillKey: string;
@@ -26,7 +26,7 @@ const AgentUiChatHost: React.FC<Props> = ({
   autoRunPendingUser,
   onAutoRunStarted,
 }) => (
-  <GenericAgentChat
+  <SharedAgentChat
     skillKey={skillKey}
     testMode={testMode}
     chatSessionKey={chatSessionKey}

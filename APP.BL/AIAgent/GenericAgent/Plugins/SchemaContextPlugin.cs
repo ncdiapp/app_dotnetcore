@@ -10,7 +10,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     /// <summary>
     /// BuiltIn tool that returns the tenant database schema on demand.
     /// Results are cached by DataSourceRegisterId (1h TTL); chat session marks
-    /// loaded DS ids so GenericAgentEngine can inject a "do not re-fetch" hint.
+    /// loaded DS ids so SharedAgentEngine can inject a "do not re-fetch" hint.
     ///
     /// ToolConfig: {"TypeName":"App.BL.AIAgent.GenericAgent.Plugins.SchemaContextPlugin","MethodName":"GetDatabaseSchema"}
     /// BuiltInToolExecutor injects context.DataSourceId via the int? constructor.

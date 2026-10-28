@@ -47,7 +47,7 @@ namespace App.BL.AIAgent.GenericAgent
                 case EmLLMProvider.Gemini:
                     // Bound hang risk: default HttpClient timeout is 100s and can stall forever on
                     // some streaming paths. Keep a hard ceiling; CancelRun still cancels via CT.
-                    var geminiHttp = new HttpClient(new GenericAgentEngine.GeminiRoleFixHandler())
+                    var geminiHttp = new HttpClient(new SharedAgentEngine.GeminiRoleFixHandler())
                     {
                         Timeout = TimeSpan.FromMinutes(10)
                     };

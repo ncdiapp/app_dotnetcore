@@ -624,7 +624,7 @@ const toolTooltip = (toolName: string, args?: string | null, skillNames?: Record
     return `SkillKey: ${key}`;
 };
 
-const GenericAgentChat: React.FC<Props> = ({
+const SharedAgentChat: React.FC<Props> = ({
     skillKey,
     testMode,
     chatSessionKey,
@@ -2789,4 +2789,4 @@ const GenericAgentChat: React.FC<Props> = ({
     );
 };
 
-export default GenericAgentChat;
+export default SharedAgentChat;
