@@ -302,14 +302,41 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             PromoteBodyRolesToGallery(fields);
             DemoteDateStatusPills(fields);
 
-            // Still only one visible text role → rebuild from column heuristic.
+            // Still only one visible text role → rebuild text bindings from heuristic (keep cached primaryImageField).
             var visible = fields.Count(f => f != null && !f.IsImage && IsGalleryTextRole(f.Role));
             if (allowHeuristicFallback && visible <= 1)
             {
                 var heuristic = AiRenderPolishHeuristics.Build(
                     "cards", "", obj.Properties().Select(p => p.Name).ToList(), new JArray(obj));
-                if (heuristic?.Bindings?.Fields != null && heuristic.Bindings.Fields.Count > 0)
+                var hb = heuristic?.Bindings;
+                if (hb?.Fields != null && hb.Fields.Count > 0)
+                {
+                    var preservedPrimary = bindings?.PrimaryImageField?.Trim();
+                    if (!string.IsNullOrEmpty(preservedPrimary) && FindProperty(obj, preservedPrimary) != null)
+                    {
+                        var merged = new AiPolishedRenderSpec
+                        {
+                            Version = polish?.Version ?? AiPolishedRenderSpec.CurrentVersion,
+                            Layout = polish?.Layout ?? "cards",
+                            Title = polish?.Title,
+                            SelectAllColumns = polish?.SelectAllColumns ?? false,
+                            Bindings = new AiPolishBindings
+                            {
+                                PrimaryImageField = preservedPrimary,
+                                Fields = hb.Fields
+                                    .Where(f => f != null && !string.IsNullOrWhiteSpace(f.Name)
+                                        && !string.Equals(f.Name, preservedPrimary, StringComparison.OrdinalIgnoreCase))
+                                    .ToList(),
+                                Columns = hb.Columns ?? bindings?.Columns,
+                                FilterFields = hb.FilterFields
+                            },
+                            LayoutHints = polish?.LayoutHints ?? heuristic.LayoutHints
+                        };
+                        return FieldsOf(obj, merged, allowHeuristicFallback: false);
+                    }
+
                     return FieldsOf(obj, heuristic, allowHeuristicFallback: false);
+                }
             }
             return fields;
         }
@@ -554,6 +581,30 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             var text = value.Trim().Trim('"', '\'');
             if (text.Length == 0 || text.Length > 2048 || text.IndexOf(' ') >= 0) return false;
             return HttpOrPathUrl.IsMatch(text);
+        }
+
+        /// <summary>HTTP or app file API path suitable for &lt;img src&gt; (not bare /regular/ storage keys).</summary>
+        public static bool IsPreferredBrowserImageUrl(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return false;
+            var text = value.Trim().Trim('"', '\'');
+            if (text.Length == 0 || IsBareStorageImagePath(text)) return false;
+            if (text.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                || text.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                return FileImage.IsMatch(text) || ResourceImage.IsMatch(text)
+                    || text.IndexOf("/api/files/", StringComparison.OrdinalIgnoreCase) >= 0;
+            return FileImage.IsMatch(text) || ResourceImage.IsMatch(text);
+        }
+
+        /// <summary>Internal file-repository path — not a browser URL; use api/files/latest or FileRepository bytes.</summary>
+        public static bool IsBareStorageImagePath(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return false;
+            var text = value.Trim().Trim('"', '\'');
+            if (text.IndexOf("/api/", StringComparison.OrdinalIgnoreCase) >= 0) return false;
+            return text.StartsWith("/regular/", StringComparison.OrdinalIgnoreCase)
+                || text.StartsWith("/thumbnail/", StringComparison.OrdinalIgnoreCase)
+                || text.StartsWith("/image/", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>

@@ -263,9 +263,27 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         private static string PickImageField(
             List<string> cols, List<JObject> sample, Dictionary<string, double> fillRates)
         {
+            string best = null;
+            var bestHits = 0;
+            foreach (var c in cols)
+            {
+                if (sample.Count > 0 && fillRates.GetValueOrDefault(c, 0) < MinFillRate * 0.5)
+                    continue;
+                var hits = sample.Count(r => CardSheet.IsPreferredBrowserImageUrl(r?[c]?.ToString()));
+                if (hits > bestHits)
+                {
+                    bestHits = hits;
+                    best = c;
+                }
+            }
+            if (bestHits > 0 && !string.IsNullOrEmpty(best))
+                return best;
+
             foreach (var c in cols)
             {
                 var n = c.ToLowerInvariant();
+                if (n.Contains("filepath") || n.Contains("file_path") || n.Contains("storagepath"))
+                    continue;
                 if (n.Contains("image") || n.Contains("sketch") || n.Contains("photo")
                     || n.Contains("picture") || n.Contains("thumb") || n.EndsWith("link") && n.Contains("img"))
                 {
@@ -273,11 +291,23 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                         return c;
                 }
             }
+
             foreach (var c in cols)
             {
                 foreach (var row in sample)
                 {
                     var v = row[c]?.ToString();
+                    if (CardSheet.IsPreferredBrowserImageUrl(v))
+                        return c;
+                }
+            }
+
+            foreach (var c in cols)
+            {
+                foreach (var row in sample)
+                {
+                    var v = row[c]?.ToString();
+                    if (CardSheet.IsBareStorageImagePath(v)) continue;
                     if (CardSheet.IsImageValue(v, c))
                         return c;
                 }
