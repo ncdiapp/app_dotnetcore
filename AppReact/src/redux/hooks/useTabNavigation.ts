@@ -216,7 +216,10 @@ export const TabNavigationProvider: React.FC<{ children: ReactNode }> = ({ child
         : undefined;
       if (existingAgent) {
         activateTabFlushing(existingAgent.tabKey);
-        navigate(existingAgent.path);
+        if (existingAgent.path !== routePath) {
+          dispatch(updateTabPath({ tabKey: existingAgent.tabKey, path: routePath }));
+        }
+        navigate(routePath);
         return;
       }
     }

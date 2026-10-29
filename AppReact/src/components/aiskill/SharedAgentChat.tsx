@@ -1,12 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import type { RootState } from '../../redux/store';
 import { AskUserEvent, DataRenderEvent, genericAgentSvc, isInteractivePage, isInteractiveTabular, uiRenderToDataRender, type GenericAgentChatUiSnapshot, type LookupItemDto, type UiRenderEvent } from '../../webapi/genericAgentSvc';
 import { agentSkillSetSvc } from '../../webapi/agentSkillSetSvc';
 import { aiSkillSvc } from '../../webapi/aiSkillSvc';
-import { registerTabDataSaver, unregisterTabDataSaver } from '../../redux/hooks/useTabNavigation';
+import { registerTabDataSaver, unregisterTabDataSaver, useTabNavigation } from '../../redux/hooks/useTabNavigation';
 import {
     clearAgentChatTabCache,
     getActiveTabKey,
@@ -25,7 +24,7 @@ import { placeRender, renderKey } from './dataRender/placeRender';
 import { RenderBuilding, RenderChip } from './dataRender/RenderChrome';
 import { ReasoningLoopPanel, type ThinkingStep } from './dataRender/ReasoningLoopPanel';
 import { AgentMarkdown, FollowupChips, splitFollowups, type AgentFileLink } from './AgentMarkdown';
-import { GENERAL_AGENT_KEY, isGeneralAgentKey } from './generalAgent';
+import { GENERAL_AGENT_KEY, isGeneralAgentKey, STAY_IN_GENERAL_MARKER } from './generalAgent';
 
 const SESSION_START = '[session_start]';
 const RUN_IN_PROGRESS = '[run_in_progress]';
@@ -52,6 +51,8 @@ type StoredChatMessage = {
     HandoffProposals?: HandoffProposal[];
     handoff?: HandoffMarker;
     Handoff?: HandoffMarker;
+    handoffStayHere?: boolean;
+    HandoffStayHere?: boolean;
     sourceAgent?: string;
     SourceAgent?: string;
 }; 
@@ -225,6 +226,7 @@ interface ChatMessage {
     dataRenders?: DataRenderEvent[];
     handoffProposals?: HandoffProposal[];
     handoff?: HandoffMarker;
+    handoffStayHere?: boolean;
     /** Read-only ask_user question bubble (controls dismissed). */
     askUserSummary?: boolean;
     /** Read-only ask_user answer bubble on the user side. */
@@ -237,6 +239,7 @@ interface HandoffProposal {
     name: string;
     reason?: string;
     description?: string;
+    score?: number;
 }
 
 interface HandoffMarker {
@@ -511,11 +514,14 @@ const parseHandoffProposal = (raw: unknown): HandoffProposal | null => {
     if (!targetSkillKey) return null;
     const reason = o.reason ?? o.Reason;
     const description = o.description ?? o.Description;
+    const scoreRaw = o.score ?? o.Score;
+    const score = typeof scoreRaw === 'number' ? scoreRaw : Number(scoreRaw);
     return {
         targetSkillKey,
         name: String(o.name ?? o.Name ?? targetSkillKey),
         reason: reason == null ? undefined : String(reason),
         description: description == null ? undefined : String(description),
+        score: Number.isFinite(score) ? score : undefined,
     };
 };
 
@@ -640,7 +646,7 @@ const SharedAgentChat: React.FC<Props> = ({
     autoRunPendingUser,
     onAutoRunStarted,
 }) => {
-    const navigate = useNavigate();
+    const { addTabAndNavigate } = useTabNavigation();
     const { theme, t } = useTheme();
     const displayName = useSelector((s: RootState) => String(s.userSession?.userContext?.DisplayName || ''));
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -1393,6 +1399,7 @@ const SharedAgentChat: React.FC<Props> = ({
                                     dataRenders,
                                     handoffProposals: parseStoredHandoffProposals(storedMsg),
                                     handoff: parseHandoffMarker(storedMsg.handoff ?? storedMsg.Handoff),
+                                    handoffStayHere: !!(storedMsg.handoffStayHere ?? storedMsg.HandoffStayHere),
                                     askUserSummary: isAskSummary || undefined,
                                 });
                             }
@@ -1951,7 +1958,15 @@ const SharedAgentChat: React.FC<Props> = ({
                 proposal.targetSkillKey,
                 proposal.reason || '',
             );
-            navigate(`/agent-chat?skillKey=${encodeURIComponent(created.TargetSkillKey)}&chat=${encodeURIComponent(created.TargetSessionKey)}&handoffRun=1`);
+            addTabAndNavigate(
+                '/agent-chat',
+                created.TargetName || proposal.name || created.TargetSkillKey,
+                {
+                    skillKey: created.TargetSkillKey,
+                    chat: created.TargetSessionKey,
+                    handoffRun: '1',
+                },
+            );
         } catch (e: any) {
             setError(e?.message || 'Could not hand off to the Specialist.');
         } finally {
@@ -1959,8 +1974,40 @@ const SharedAgentChat: React.FC<Props> = ({
         }
     };
 
+    const stayInCurrentChat = async (messageIndex: number) => {
+        if (isRunningRef.current) return;
+        const original = [...messagesRef.current]
+            .reverse()
+            .find(m => m.role === 'user'
+                && (m.content || '').trim()
+                && (m.content || '').trim() !== SESSION_START
+                && !(m.content || '').includes(STAY_IN_GENERAL_MARKER))
+            ?.content?.trim() || '';
+        setHandoffBusyKey('__stay__');
+        setError(null);
+        setMessages(prev => prev.map((row, idx) => (
+            idx === messageIndex ? { ...row, handoffStayHere: true } : row
+        )));
+        persistSnapshotToTab();
+        try {
+            await runAgentTurn({
+                userMessage: `${STAY_IN_GENERAL_MARKER}\nUser declined specialist hand-off. Stay in this General Agent chat and complete the request:\n${original}`,
+                hideUserBubble: true,
+            });
+        } finally {
+            setHandoffBusyKey(null);
+        }
+    };
+
     const openHandedOffChat = (marker: HandoffMarker) => {
-        navigate(`/agent-chat?skillKey=${encodeURIComponent(marker.targetSkillKey)}&chat=${encodeURIComponent(marker.targetSessionKey)}`);
+        addTabAndNavigate(
+            '/agent-chat',
+            marker.targetName || marker.targetSkillKey,
+            {
+                skillKey: marker.targetSkillKey,
+                chat: marker.targetSessionKey,
+            },
+        );
     };
 
     const toggleExpand = (key: string) =>
@@ -2222,9 +2269,10 @@ const SharedAgentChat: React.FC<Props> = ({
                             )}
                             {m.role === 'assistant' && ((m.handoffProposals?.length ?? 0) > 0 || !!m.handoff) && (
                                 <div className="w-full max-w-xl flex flex-col gap-2">
-                                    {(m.handoffProposals ?? []).map(s => {
+                                    {(m.handoffProposals ?? []).slice().sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).map(s => {
                                         const done = handedOffByKey.get(s.targetSkillKey);
                                         const busy = handoffBusyKey === s.targetSkillKey;
+                                        const stayChosen = !!m.handoffStayHere;
                                         return (
                                             <div
                                                 key={s.targetSkillKey}
@@ -2239,6 +2287,11 @@ const SharedAgentChat: React.FC<Props> = ({
                                                             {done ? 'Handed off' : 'Hand off to a Specialist?'}
                                                         </div>
                                                         <div className={`text-sm mt-0.5 ${t('text_default')}`}>{s.name || s.targetSkillKey}</div>
+                                                        {s.score != null && (
+                                                            <div className={`text-xs mt-0.5 ${theme.label}`}>
+                                                                Match {s.score}/100
+                                                            </div>
+                                                        )}
                                                         {(s.reason || s.description) && (
                                                             <div className={`text-xs mt-1 ${theme.label}`}>
                                                                 {s.reason || s.description}
@@ -2257,7 +2310,7 @@ const SharedAgentChat: React.FC<Props> = ({
                                                         <button
                                                             type="button"
                                                             className={`px-2.5 py-1.5 rounded-[4px] text-xs shrink-0 ${theme.button_default}`}
-                                                            disabled={busy || isRunning}
+                                                            disabled={busy || isRunning || stayChosen}
                                                             onClick={() => { void confirmHandoff(s); }}
                                                         >
                                                             {busy ? <i className="fa-solid fa-spinner fa-spin mr-1" aria-hidden /> : null}
@@ -2268,6 +2321,37 @@ const SharedAgentChat: React.FC<Props> = ({
                                             </div>
                                         );
                                     })}
+                                    {(m.handoffProposals?.length ?? 0) > 0 && !m.handoff && (
+                                        <div className={`rounded-[8px] border px-3 py-2 ${theme.mainContentSection} ${regionBorder}`}>
+                                            <div className="flex items-start gap-2">
+                                                <div className={`w-7 h-7 rounded-[4px] flex items-center justify-center shrink-0 ${theme.button_default}`}>
+                                                    <i className="fa-solid fa-comments" aria-hidden />
+                                                </div>
+                                                <div className="min-w-0 w-1 flex-auto">
+                                                    <div className={`text-xs font-medium ${t('text_default')}`}>
+                                                        {m.handoffStayHere ? 'Staying in this chat' : 'Stay in this chat'}
+                                                    </div>
+                                                    <div className={`text-sm mt-0.5 ${t('text_default')}`}>General Agent</div>
+                                                    <div className={`text-xs mt-1 ${theme.label}`}>
+                                                        Do not switch. Continue here and handle the request in this conversation.
+                                                    </div>
+                                                </div>
+                                                {m.handoffStayHere ? (
+                                                    <span className={`px-2.5 py-1.5 rounded-[4px] text-xs shrink-0 ${theme.label}`}>Selected</span>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        className={`px-2.5 py-1.5 rounded-[4px] text-xs shrink-0 ${theme.button_default}`}
+                                                        disabled={!!handoffBusyKey || isRunning}
+                                                        onClick={() => { void stayInCurrentChat(i); }}
+                                                    >
+                                                        {handoffBusyKey === '__stay__' ? <i className="fa-solid fa-spinner fa-spin mr-1" aria-hidden /> : null}
+                                                        Continue
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                                     {m.handoff && !(m.handoffProposals ?? []).some(p => p.targetSkillKey === m.handoff?.targetSkillKey) && (
                                         <div className={`rounded-[8px] border px-3 py-2 ${theme.mainContentSection} ${regionBorder}`}>
                                             <div className="flex items-center gap-2">

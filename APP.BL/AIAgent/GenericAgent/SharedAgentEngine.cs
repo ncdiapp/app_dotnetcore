@@ -59,12 +59,23 @@ namespace App.BL.AIAgent.GenericAgent
         private const string UniversalBasePrompt = @"
 
 ## General Agent
-You are General Agent, the built-in general work agent for this application.
-Understand the user's goal, use the most relevant loaded skills, and call tools whenever tools can do the work.
-Skills are reusable operating instructions for this chat run. Follow them when relevant, but do not claim a skill was used unless it was actually loaded.
-Use library tools directly when they match the task. Ask the user concise questions when required inputs are missing.
-When one configured Specialist Agent is clearly better for the next step, call propose_specialist_handoff with that agent's skillKey and a short reason.
+You are General Agent, the built-in general work agent for this application — like a family clinic: triage first, then treat only if no specialist fits.
+Understand the user's goal. Skills are reusable operating instructions for this chat run. Follow them when relevant, but do not claim a skill was used unless it was actually loaded.
+Ask the user concise questions when required inputs are missing.
 Do not call call_agent. Nothing switches until the user confirms the hand-off card. Do not claim the chat was switched.";
+
+        /// <summary>
+        /// Appended only in General mode, after Tools Prefer, so specialist triage wins
+        /// when a configured Specialist also matches the task.
+        /// </summary>
+        private static readonly string UniversalHandoffPreferHardRule = @"
+
+## Specialist hand-off (platform hard rule — General Agent only)
+A scored shortlist of Specialist Agents may already be shown as hand-off cards (score >= "
+            + GeneralAgentConstants.HandoffMinScore + @", max "
+            + GeneralAgentConstants.HandoffMaxSuggestions + @").
+If cards are shown: do not call other tools for this task until the user confirms or declines. Do not claim the chat was switched. Do not call call_agent.
+If no card was shown, no Specialist reached the score threshold — follow Tools Prefer and do the work yourself.";
         /// <summary>
         /// Platform hard rule — always appended to Instructions. Not stored in AppAgentSkillSet;
         /// admins cannot turn it off. Prefer tools over model-invented data/UI/files.
@@ -229,15 +240,29 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks, enableThinkMode));
                 kernel.AutoFunctionInvocationFilters.Add(new GenericAgentPruneFilter(skillSet.MaxIterations, skillSet.MaxHistoryTokens));
 
+                List<SpecialistHandoffCandidate> handoffShortlist = new List<SpecialistHandoffCandidate>();
                 if (isUniversal)
                 {
                     var skillPrompt = await BuildUniversalSkillPromptAsync(
                         dsId, userMessage, chatHistory, kernel, callbacks, ct).ConfigureAwait(false);
                     if (!string.IsNullOrWhiteSpace(skillPrompt))
                         systemPrompt = (systemPrompt ?? "") + "\n\n" + skillPrompt;
-                    var specialistPrompt = BuildUniversalSpecialistPrompt(dsId);
+                    try
+                    {
+                        handoffShortlist = await UniversalHandoffScoring.SelectAsync(
+                            dsId, userMessage, chatHistory, kernel, ct).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception swallowed)
+                    {
+                        SwallowLog.Write(swallowed, "Universal specialist scoring must not fail the run");
+                        handoffShortlist = new List<SpecialistHandoffCandidate>();
+                    }
+                    var specialistPrompt = BuildUniversalSpecialistPrompt(handoffShortlist);
+                    systemPrompt = (systemPrompt ?? "") + "\n\n" + UniversalHandoffPreferHardRule;
                     if (!string.IsNullOrWhiteSpace(specialistPrompt))
-                        systemPrompt = (systemPrompt ?? "") + "\n\n" + specialistPrompt;
+                        systemPrompt += "\n\n" + specialistPrompt;
+                    await EmitHandoffShortlistAsync(handoffShortlist, callbacks).ConfigureAwait(false);
                 }
 
                 // Wrap AppAgentToolRegister rows as KernelFunctions (agent-owned + subscribed library tools).
@@ -291,7 +316,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 {
                     kernel.Plugins.AddFromFunctions("universal", new[]
                     {
-                        CreateHandoffProposalKernelFunction(dsId, callbacks)
+                        CreateHandoffProposalKernelFunction(dsId, callbacks, handoffShortlist)
                     });
                 }
 
@@ -560,33 +585,54 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
             return sb.ToString();
         }
 
-        private static string BuildUniversalSpecialistPrompt(int dataSourceId)
+        private static async Task EmitHandoffShortlistAsync(
+            List<SpecialistHandoffCandidate> shortlist,
+            GenericAgentCallbacks callbacks)
         {
-            try
+            if (shortlist == null || shortlist.Count == 0 || callbacks?.OnStep == null) return;
+            var summary = string.Join(", ", shortlist.Select(c => c.Name + " " + c.Score));
+            await Safe(callbacks.OnStep, new AgentStepEvent
             {
-                var agents = dataSourceId > 0 ? TbSkillBL.GetAll(dataSourceId) : TbSkillBL.GetAll();
-                var rows = (agents ?? new List<TbSkillSetDto>())
-                    .Where(a => a != null && !GeneralAgentConstants.IsGeneralAgentKey(a.SkillKey))
-                    .Take(30)
-                    .Select(a => $"- {a.DisplayName ?? a.SkillKey} ({a.SkillKey}): {a.Description}")
-                    .ToList();
-                if (rows.Count == 0) return "";
+                Type = "thinking",
+                ToolName = "specialist_match",
+                Description = "Specialist match: " + summary,
+                Details = "minScore=" + GeneralAgentConstants.HandoffMinScore
+                    + " max=" + GeneralAgentConstants.HandoffMaxSuggestions + "\n"
+                    + string.Join("\n", shortlist.Select(c =>
+                        c.SkillKey + " score=" + c.Score
+                        + " lex=" + c.LexicalScore
+                        + " phrase=" + c.PhraseScore
+                        + " model=" + c.ModelScore)),
+                IsSuccess = true
+            }).ConfigureAwait(false);
+            foreach (var c in shortlist)
+            {
+                await Safe(callbacks.OnStep, new AgentStepEvent
+                {
+                    Type = "handoff_proposal",
+                    Description = "Handoff proposed: " + c.Name + " (" + c.Score + ")",
+                    Details = UniversalHandoffScoring.ToProposalPayload(c).ToString(Newtonsoft.Json.Formatting.None),
+                    IsSuccess = true
+                }).ConfigureAwait(false);
+            }
+        }
 
-                var sb = new StringBuilder();
-                sb.AppendLine("## Available Specialist Agents");
-                sb.AppendLine("These configured Specialist Agents can be better entry points for focused workflows:");
-                foreach (var row in rows) sb.AppendLine(row);
-                sb.AppendLine();
-                sb.AppendLine("When the next step is clearly better handled by exactly one Specialist, call propose_specialist_handoff.");
-                sb.AppendLine("Pass that agent's skillKey as targetSkillKey and a short reason. Do not call call_agent.");
-                sb.AppendLine("The user must confirm before any Specialist chat opens. Do not claim the chat was switched.");
+        private static string BuildUniversalSpecialistPrompt(List<SpecialistHandoffCandidate> shortlist)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("## Specialist match shortlist");
+            sb.AppendLine("Threshold: score >= " + GeneralAgentConstants.HandoffMinScore
+                + ". Suggest at most " + GeneralAgentConstants.HandoffMaxSuggestions + ".");
+            if (shortlist == null || shortlist.Count == 0)
+            {
+                sb.AppendLine("No Specialist reached the threshold. Do the work with library tools.");
                 return sb.ToString();
             }
-            catch (Exception ex)
-            {
-                SwallowLog.Write(ex, "Universal specialist catalog load failed");
-                return "";
-            }
+            sb.AppendLine("Hand-off cards already shown for:");
+            foreach (var c in shortlist)
+                sb.AppendLine("- " + c.Name + " (" + c.SkillKey + ") score=" + c.Score + ": " + c.Reason);
+            sb.AppendLine("Do not call propose_specialist_handoff again unless the user asks for a different Specialist from this shortlist.");
+            return sb.ToString();
         }
 
         private static async Task<HashSet<int>> SelectUniversalSkillIdsAsync(
@@ -725,13 +771,22 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
             return result?.Content ?? "";
         }
 
-        private static KernelFunction CreateHandoffProposalKernelFunction(int dataSourceId, GenericAgentCallbacks callbacks)
+        private static KernelFunction CreateHandoffProposalKernelFunction(
+            int dataSourceId,
+            GenericAgentCallbacks callbacks,
+            List<SpecialistHandoffCandidate> shortlist)
         {
+            var allowed = new HashSet<string>(
+                (shortlist ?? new List<SpecialistHandoffCandidate>()).Select(c => c.SkillKey),
+                StringComparer.OrdinalIgnoreCase);
+            var byKey = (shortlist ?? new List<SpecialistHandoffCandidate>())
+                .ToDictionary(c => c.SkillKey, c => c, StringComparer.OrdinalIgnoreCase);
+
             var parameters = new List<KernelParameterMetadata>
             {
                 new("targetSkillKey")
                 {
-                    Description = "SkillKey of the one active Specialist Agent to propose. Not the display name unless it matches exactly.",
+                    Description = "SkillKey from the scored Specialist shortlist only.",
                     IsRequired = true,
                     ParameterType = typeof(string)
                 },
@@ -752,28 +807,40 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
 
                     var target = (Arg("targetSkillKey") ?? "").Trim();
                     var reason = (Arg("reason") ?? "").Trim();
+                    if (allowed.Count == 0)
+                        return "Handoff was not shown. No Specialist reached score "
+                            + GeneralAgentConstants.HandoffMinScore + ".";
+                    if (!allowed.Contains(target))
+                        return "Handoff was not shown. targetSkillKey is not in the scored shortlist.";
+
                     var agent = UniversalAgentWorkflowBL.FindActiveSpecialist(dataSourceId, target);
                     if (agent == null)
-                        return "Handoff was not shown. targetSkillKey is not an active Specialist. Use a skillKey from Available Specialist Agents.";
+                        return "Handoff was not shown. targetSkillKey is not an active Specialist.";
 
+                    byKey.TryGetValue(agent.SkillKey, out var scored);
                     var name = string.IsNullOrWhiteSpace(agent.DisplayName) ? agent.SkillKey : agent.DisplayName.Trim();
                     if (string.IsNullOrWhiteSpace(reason))
-                        reason = name + " is a better fit for the next step.";
+                        reason = scored != null ? scored.Reason : (name + " is a better fit for the next step.");
 
-                    var payload = new JObject
-                    {
-                        ["targetSkillKey"] = agent.SkillKey,
-                        ["name"] = name,
-                        ["reason"] = reason.Length > 500 ? reason.Substring(0, 500) : reason,
-                        ["description"] = agent.Description ?? ""
-                    };
+                    var payload = scored != null
+                        ? UniversalHandoffScoring.ToProposalPayload(scored)
+                        : new JObject
+                        {
+                            ["targetSkillKey"] = agent.SkillKey,
+                            ["name"] = name,
+                            ["reason"] = reason.Length > 500 ? reason.Substring(0, 500) : reason,
+                            ["description"] = agent.Description ?? ""
+                        };
+                    if (!string.IsNullOrWhiteSpace(reason))
+                        payload["reason"] = reason.Length > 500 ? reason.Substring(0, 500) : reason;
 
                     if (callbacks?.OnStep != null)
                     {
                         await callbacks.OnStep(new AgentStepEvent
                         {
                             Type = "handoff_proposal",
-                            Description = "Handoff proposed: " + name,
+                            Description = "Handoff proposed: " + name
+                                + (scored != null ? " (" + scored.Score + ")" : ""),
                             Details = payload.ToString(Newtonsoft.Json.Formatting.None),
                             IsSuccess = true
                         }).ConfigureAwait(false);
@@ -783,7 +850,10 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                         + "The user has not confirmed. Stay in General Agent and do not claim the chat was switched.";
                 },
                 functionName: "propose_specialist_handoff",
-                description: "Propose moving this task to one Specialist Agent. Shows a confirmation card. Does not open or continue a Specialist chat.",
+                description: "Propose a Specialist from the scored shortlist only (score >= "
+                    + GeneralAgentConstants.HandoffMinScore + ", max "
+                    + GeneralAgentConstants.HandoffMaxSuggestions
+                    + "). Cards for the shortlist are usually already shown. Does not open a Specialist chat.",
                 parameters: parameters);
         }
 
