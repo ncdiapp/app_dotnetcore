@@ -284,6 +284,7 @@ export interface GenericAgentChatUiSnapshot {
     skillExecutionMode: string;
     /** Last skill name saved from this chat (MessagesJson universalSavedSkill). */
     chatSavedSkillName?: string | null;
+    chatSavedSkillId?: number | null;
 }
 
 export interface GenericAgentEventHandlers {
@@ -538,6 +539,7 @@ class GenericAgentService {
         description: string,
         skillContent: string,
         overwriteExisting = false,
+        skillId = 0,
     ): Promise<UniversalSkillSaveResult> {
         const res = await fetch(`${BASE}/SaveUniversalSkill`, {
             method: 'POST',
@@ -549,6 +551,7 @@ class GenericAgentService {
                 Description: description || '',
                 SkillContent: skillContent || '',
                 OverwriteExisting: overwriteExisting,
+                SkillId: skillId > 0 ? skillId : 0,
             }),
         });
         const data = await res.json().catch(() => null);

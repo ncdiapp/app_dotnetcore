@@ -1488,7 +1488,8 @@ public class SharedAgentController : SecureBaseController
                 request.Name,
                 request.Description,
                 request.SkillContent,
-                request.OverwriteExisting);
+                request.OverwriteExisting,
+                request.SkillId);
             if (result.Object != null && result.Object.SkillId > 0)
             {
                 SessionBL.SetSavedSkill(
@@ -1615,6 +1616,8 @@ public class UniversalSkillSaveRequest
     public string Name { get; set; }
     public string Description { get; set; }
     public string SkillContent { get; set; }
+    /// <summary>When set, update this skill (including a renamed name) instead of matching by name.</summary>
+    public int SkillId { get; set; }
     /// <summary>When true, replace an existing AppAISkill with the same name (case-insensitive).</summary>
     public bool OverwriteExisting { get; set; }
 }

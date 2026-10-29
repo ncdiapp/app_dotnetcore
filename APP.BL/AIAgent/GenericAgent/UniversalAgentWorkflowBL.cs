@@ -92,7 +92,8 @@ namespace App.BL.AIAgent.GenericAgent
             string name,
             string description,
             string skillContent,
-            bool overwriteExisting = false)
+            bool overwriteExisting = false,
+            int skillId = 0)
         {
             var dsId = ResolveDataSourceId(identity);
             if (dsId <= 0)
@@ -102,13 +103,36 @@ namespace App.BL.AIAgent.GenericAgent
 
             var evidence = LoadEvidence(identity, sessionKey);
             var trimmedName = NormalizeSkillName(name);
+            var descriptionTrim = TrimTo((description ?? "").Trim(), 500);
+            var contentTrim = FinalizeSavedSkillContent(skillContent, evidence);
+
+            if (skillId > 0)
+            {
+                var linked = SkillLib.GetSkillById(dsId, skillId);
+                if (linked == null)
+                    throw new InvalidOperationException("This skill no longer exists.");
+                var taken = SkillLib.FindSkillByName(dsId, trimmedName);
+                if (taken != null && taken.SkillId != linked.SkillId)
+                    throw new InvalidOperationException(
+                        "A skill named \"" + taken.Name + "\" already exists.");
+                linked.Name = trimmedName;
+                linked.Description = descriptionTrim;
+                linked.SkillContent = contentTrim;
+                linked.IsActive = true;
+                SkillLib.UpdateSkill(dsId, linked);
+                UpsertSourceContextRef(dsId, linked.SkillId, evidence.Text);
+                return new UniversalSkillSaveResult
+                {
+                    SkillId = linked.SkillId,
+                    Name = trimmedName,
+                    Overwritten = true
+                };
+            }
+
             var existing = SkillLib.FindSkillByName(dsId, trimmedName);
             if (existing != null && !overwriteExisting)
                 throw new InvalidOperationException(
                     "A skill named \"" + existing.Name + "\" already exists. Confirm overwrite to replace its instructions.");
-
-            var descriptionTrim = TrimTo((description ?? "").Trim(), 500);
-            var contentTrim = FinalizeSavedSkillContent(skillContent, evidence);
 
             if (existing != null)
             {
@@ -134,13 +158,13 @@ namespace App.BL.AIAgent.GenericAgent
                 CreatedDate = DateTime.UtcNow,
                 References = new List<AppAISkillRefDto>()
             };
-            var skillId = SkillLib.CreateSkill(dsId, dto);
-            if (skillId <= 0)
+            var createdId = SkillLib.CreateSkill(dsId, dto);
+            if (createdId <= 0)
                 throw new InvalidOperationException("Could not save skill.");
 
-            UpsertSourceContextRef(dsId, skillId, evidence.Text);
+            UpsertSourceContextRef(dsId, createdId, evidence.Text);
 
-            return new UniversalSkillSaveResult { SkillId = skillId, Name = trimmedName, Overwritten = false };
+            return new UniversalSkillSaveResult { SkillId = createdId, Name = trimmedName, Overwritten = false };
         }
 
         private static string NormalizeSkillName(string name)

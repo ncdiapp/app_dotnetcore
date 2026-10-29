@@ -288,12 +288,17 @@ interface SaveSkillDraft {
     content: string;
 }
 
-function chatSavedSkillNameFromSession(
-    loaded: { SavedSkill?: { SkillName?: string | null; skillName?: string | null } | null; savedSkill?: { SkillName?: string | null; skillName?: string | null } | null } | null,
-): string | null {
+function chatSavedSkillFromSession(
+    loaded: {
+        SavedSkill?: { SkillId?: number; skillId?: number; SkillName?: string | null; skillName?: string | null } | null;
+        savedSkill?: { SkillId?: number; skillId?: number; SkillName?: string | null; skillName?: string | null } | null;
+    } | null,
+): { skillId: number; skillName: string } | null {
     const ss = loaded?.SavedSkill ?? loaded?.savedSkill;
-    const name = (ss?.SkillName ?? ss?.skillName ?? '').trim();
-    return name || null;
+    const skillName = (ss?.SkillName ?? ss?.skillName ?? '').trim();
+    if (!skillName) return null;
+    const skillId = Number(ss?.SkillId ?? ss?.skillId ?? 0);
+    return { skillId: Number.isFinite(skillId) && skillId > 0 ? skillId : 0, skillName };
 }
 
 interface PlanEvent {
@@ -673,6 +678,8 @@ const SharedAgentChat: React.FC<Props> = ({
     const [skillDisplayNames, setSkillDisplayNames] = useState<Record<string, string>>({});
     const [skillExecutionMode, setSkillExecutionMode] = useState<string>('Interactive');
     const [saveSkillOpen, setSaveSkillOpen] = useState(false);
+    const [saveSkillPhase, setSaveSkillPhase] = useState<'choose' | 'form'>('form');
+    const [saveSkillMode, setSaveSkillMode] = useState<'create' | 'edit' | 'regenerate'>('create');
     const [saveSkillDraft, setSaveSkillDraft] = useState<SaveSkillDraft | null>(null);
     const [saveSkillBusy, setSaveSkillBusy] = useState(false);
     const [saveSkillError, setSaveSkillError] = useState<string | null>(null);
@@ -680,6 +687,7 @@ const SharedAgentChat: React.FC<Props> = ({
     const [saveSkillOverwritePending, setSaveSkillOverwritePending] = useState(false);
     const saveSkillExistingNamesRef = useRef<Set<string>>(new Set());
     const chatSavedSkillNameRef = useRef<string | null>(null);
+    const chatSavedSkillIdRef = useRef(0);
     const [handoffBusyKey, setHandoffBusyKey] = useState<string | null>(null);
     const scrollRef = useRef<HTMLDivElement | null>(null);
     // Track in-progress tool calls (call event received, result pending)
@@ -870,6 +878,7 @@ const SharedAgentChat: React.FC<Props> = ({
         error: null,
         skillExecutionMode: skillExecutionModeRef.current,
         chatSavedSkillName: chatSavedSkillNameRef.current,
+        chatSavedSkillId: chatSavedSkillIdRef.current || null,
     });
 
     const persistSnapshotToTab = () => {
@@ -1156,6 +1165,7 @@ const SharedAgentChat: React.FC<Props> = ({
             setSkillExecutionMode(snap.skillExecutionMode || 'Interactive');
             skillExecutionModeRef.current = snap.skillExecutionMode || 'Interactive';
             chatSavedSkillNameRef.current = snap.chatSavedSkillName?.trim() || null;
+            chatSavedSkillIdRef.current = Number(snap.chatSavedSkillId) > 0 ? Number(snap.chatSavedSkillId) : 0;
             if (snap.error) setError(snap.error);
             if (snap.sessionId && (genericAgentSvc.isPolling() || snap.isRunning || snap.pendingAskUser)) {
                 genericAgentSvc.resumePolling(snap.sessionId, buildLiveHandlers(snap.currentTurnIndex), chatSessionKey ?? null);
@@ -1191,6 +1201,7 @@ const SharedAgentChat: React.FC<Props> = ({
             setSkillExecutionMode('Interactive');
             skillExecutionModeRef.current = 'Interactive';
             chatSavedSkillNameRef.current = null;
+            chatSavedSkillIdRef.current = 0;
         }
 
         if (chatSessionKey) {
@@ -1288,7 +1299,9 @@ const SharedAgentChat: React.FC<Props> = ({
                     ? await genericAgentSvc.LoadChat(skillKey, chatSessionKey)
                     : null;
                 if (chatSessionKey && loaded) {
-                    chatSavedSkillNameRef.current = chatSavedSkillNameFromSession(loaded);
+                    const linked = chatSavedSkillFromSession(loaded);
+                    chatSavedSkillNameRef.current = linked?.skillName ?? null;
+                    chatSavedSkillIdRef.current = linked?.skillId ?? 0;
                 }
                 const prior = chatSessionKey
                     ? loaded?.Messages ?? []
@@ -1688,7 +1701,77 @@ const SharedAgentChat: React.FC<Props> = ({
         setRightTab('tools');
         if (!testMode) await genericAgentSvc.ClearSession(skillKey, chatSessionKeyRef.current || undefined);
         sessionStartFiredRef.current = true;
+        chatSavedSkillNameRef.current = null;
+        chatSavedSkillIdRef.current = 0;
         // Same as New Chat: welcome chips only — no [session_start] agent turn.
+    };
+
+    const rememberChatSkill = (skillId: number, skillName: string) => {
+        chatSavedSkillNameRef.current = skillName;
+        chatSavedSkillIdRef.current = skillId > 0 ? skillId : chatSavedSkillIdRef.current;
+    };
+
+    const loadExistingNames = async () => {
+        saveSkillExistingNamesRef.current = new Set();
+        try {
+            const dsRes = await aiSkillSvc.GetDefaultDataSourceId();
+            const dsId = dsRes?.Object;
+            if (dsId && dsId > 0) {
+                const allRes = await aiSkillSvc.GetAll(dsId);
+                const names = (allRes?.Object ?? [])
+                    .map(s => (s.Name || '').trim().toLowerCase())
+                    .filter(Boolean);
+                saveSkillExistingNamesRef.current = new Set(names);
+                return { dsId, skills: allRes?.Object ?? [] };
+            }
+        } catch {
+            /* optional — overwrite confirm falls back to server error */
+        }
+        return { dsId: 0, skills: [] as Array<{ SkillId: number; Name: string }> };
+    };
+
+    const findLinkedSkill = async () => {
+        const skillName = chatSavedSkillNameRef.current?.trim() || '';
+        const linkedId = chatSavedSkillIdRef.current;
+        const { dsId, skills } = await loadExistingNames();
+        if (!dsId) throw new Error('Data source is not available.');
+        const byId = linkedId > 0 ? skills.find(s => s.SkillId === linkedId) : undefined;
+        const byName = skillName
+            ? skills.find(s => (s.Name || '').trim().toLowerCase() === skillName.toLowerCase())
+            : undefined;
+        const skillId = byId?.SkillId || byName?.SkillId || 0;
+        if (skillId <= 0) return null;
+        const res = await aiSkillSvc.GetById(dsId, skillId);
+        const skill = res?.Object;
+        if (!skill?.SkillId || !(skill.Name || '').trim()) return null;
+        return skill;
+    };
+
+    const forgetLinkedSkill = () => {
+        chatSavedSkillNameRef.current = null;
+        chatSavedSkillIdRef.current = 0;
+        persistSnapshotToTab();
+    };
+
+    const draftNewSkill = async (sessionKey: string) => {
+        setSaveSkillPhase('form');
+        setSaveSkillMode('create');
+        setSaveSkillOverwritePending(false);
+        setSaveSkillDraft(null);
+        setSaveSkillBusy(true);
+        try {
+            await loadExistingNames();
+            const draft = await genericAgentSvc.DraftUniversalSkill(skillKeyRef.current, sessionKey);
+            setSaveSkillDraft({
+                name: draft.Name || '',
+                description: draft.Description || '',
+                content: draft.SkillContent || '',
+            });
+        } catch (e: any) {
+            setSaveSkillError(e?.message || 'Could not draft a skill from this chat.');
+        } finally {
+            setSaveSkillBusy(false);
+        }
     };
 
     const openSaveSkill = async () => {
@@ -1701,27 +1784,88 @@ const SharedAgentChat: React.FC<Props> = ({
         setSaveSkillDone(null);
         setSaveSkillOverwritePending(false);
         setSaveSkillDraft(null);
+        const existingName = chatSavedSkillNameRef.current?.trim();
+        if (existingName) {
+            setSaveSkillBusy(true);
+            try {
+                const skill = await findLinkedSkill();
+                if (!skill) {
+                    forgetLinkedSkill();
+                } else {
+                    rememberChatSkill(skill.SkillId, skill.Name.trim());
+                    setSaveSkillOpen(true);
+                    setSaveSkillPhase('choose');
+                    setSaveSkillMode('edit');
+                    return;
+                }
+            } catch (e: any) {
+                setSaveSkillOpen(true);
+                setSaveSkillPhase('choose');
+                setSaveSkillMode('edit');
+                setSaveSkillError(e?.message || 'Could not check whether this skill still exists.');
+                return;
+            } finally {
+                setSaveSkillBusy(false);
+            }
+        }
         setSaveSkillOpen(true);
+        await draftNewSkill(sessionKey);
+    };
+
+    const continueEditSavedSkill = async () => {
+        const skillName = chatSavedSkillNameRef.current?.trim();
+        if (!skillName) return;
+        setSaveSkillError(null);
+        setSaveSkillDone(null);
         setSaveSkillBusy(true);
         try {
-            saveSkillExistingNamesRef.current = new Set();
-            try {
-                const dsRes = await aiSkillSvc.GetDefaultDataSourceId();
-                const dsId = dsRes?.Object;
-                if (dsId && dsId > 0) {
-                    const allRes = await aiSkillSvc.GetAll(dsId);
-                    const names = (allRes?.Object ?? [])
-                        .map(s => (s.Name || '').trim().toLowerCase())
-                        .filter(Boolean);
-                    saveSkillExistingNamesRef.current = new Set(names);
-                }
-            } catch {
-                /* optional — overwrite confirm falls back to server error */
+            const skill = await findLinkedSkill();
+            if (!skill) {
+                forgetLinkedSkill();
+                const sessionKey = chatSessionKeyRef.current;
+                if (!sessionKey) return;
+                await draftNewSkill(sessionKey);
+                return;
             }
-            const draft = await genericAgentSvc.DraftUniversalSkill(skillKeyRef.current, sessionKey);
-            const rememberedName = chatSavedSkillNameRef.current?.trim();
+            rememberChatSkill(skill.SkillId, (skill.Name || skillName).trim());
+            setSaveSkillPhase('form');
+            setSaveSkillMode('edit');
+            setSaveSkillOverwritePending(true);
             setSaveSkillDraft({
-                name: rememberedName || draft.Name || '',
+                name: (skill.Name || skillName).trim(),
+                description: skill.Description || '',
+                content: skill.SkillContent || '',
+            });
+        } catch (e: any) {
+            setSaveSkillError(e?.message || 'Could not load the saved skill.');
+        } finally {
+            setSaveSkillBusy(false);
+        }
+    };
+
+    const regenerateSavedSkill = async () => {
+        const sessionKey = chatSessionKeyRef.current;
+        const skillName = chatSavedSkillNameRef.current?.trim();
+        if (!sessionKey || !skillName) return;
+        setSaveSkillError(null);
+        setSaveSkillDone(null);
+        setSaveSkillBusy(true);
+        try {
+            const skill = await findLinkedSkill();
+            if (!skill) {
+                forgetLinkedSkill();
+                await draftNewSkill(sessionKey);
+                return;
+            }
+            rememberChatSkill(skill.SkillId, skill.Name.trim());
+            setSaveSkillPhase('form');
+            setSaveSkillMode('regenerate');
+            setSaveSkillDraft(null);
+            setSaveSkillOverwritePending(true);
+            await loadExistingNames();
+            const draft = await genericAgentSvc.DraftUniversalSkill(skillKeyRef.current, sessionKey);
+            setSaveSkillDraft({
+                name: skill.Name.trim(),
                 description: draft.Description || '',
                 content: draft.SkillContent || '',
             });
@@ -1736,7 +1880,7 @@ const SharedAgentChat: React.FC<Props> = ({
         setSaveSkillDraft(prev => prev ? { ...prev, [field]: value } : prev);
         setSaveSkillError(null);
         setSaveSkillDone(null);
-        setSaveSkillOverwritePending(false);
+        if (saveSkillMode === 'create') setSaveSkillOverwritePending(false);
     };
 
     const handleSaveSkill = async () => {
@@ -1754,8 +1898,9 @@ const SharedAgentChat: React.FC<Props> = ({
         const nameTrim = draft.name.trim();
         const nameKey = nameTrim.toLowerCase();
         const nameExists = saveSkillExistingNamesRef.current.has(nameKey);
-        const overwrite = saveSkillOverwritePending || !nameExists;
-        if (nameExists && !saveSkillOverwritePending) {
+        const replacingChatSkill = saveSkillMode === 'edit' || saveSkillMode === 'regenerate';
+        const overwrite = replacingChatSkill || saveSkillOverwritePending || !nameExists;
+        if (nameExists && !overwrite) {
             setSaveSkillOverwritePending(true);
             setSaveSkillError(`A skill named "${nameTrim}" already exists. Click Save again to replace it.`);
             return;
@@ -1771,17 +1916,18 @@ const SharedAgentChat: React.FC<Props> = ({
                 nameTrim,
                 draft.description.trim(),
                 draft.content.trim(),
-                overwrite && nameExists,
+                replacingChatSkill || (overwrite && nameExists),
+                replacingChatSkill ? chatSavedSkillIdRef.current : 0,
             );
             const verb = saved.Overwritten ? 'Updated' : 'Saved';
             setSaveSkillDone(`${verb} skill "${saved.Name}". General Agent can use it on a later chat.`);
             setSaveSkillOverwritePending(false);
-            chatSavedSkillNameRef.current = saved.Name;
+            rememberChatSkill(saved.SkillId, saved.Name);
             saveSkillExistingNamesRef.current.add(saved.Name.trim().toLowerCase());
             persistSnapshotToTab();
         } catch (e: any) {
             const msg = e?.message || 'Could not save skill.';
-            if (/already exists/i.test(msg)) {
+            if (/already exists/i.test(msg) && saveSkillMode === 'create') {
                 setSaveSkillOverwritePending(true);
             }
             setSaveSkillError(msg);
@@ -2704,13 +2850,25 @@ const SharedAgentChat: React.FC<Props> = ({
             )}
             {saveSkillOpen && (
                 <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/30 px-4">
-                    <div className={`w-full max-w-3xl max-h-[86vh] flex flex-col rounded-[8px] border shadow-xl ${regionBorder} ${theme.mainContentSection}`}>
+                    <div className={`w-full ${saveSkillPhase === 'choose' ? 'max-w-lg' : 'max-w-3xl'} max-h-[86vh] flex flex-col rounded-[8px] border shadow-xl ${regionBorder} ${theme.mainContentSection}`}>
                         <div className={`flex items-center gap-2 px-4 py-3 border-b ${regionBorder}`}>
-                            <div className={`font-medium text-sm ${t('text_default')}`}>Save as Skill</div>
-                            <div className={`text-xs ${theme.label}`}>Review the draft before saving. Same name replaces the existing skill after you confirm.</div>
+                            {saveSkillPhase === 'choose' ? (
+                                <div className={`min-w-0 w-1 flex-auto text-sm ${t('text_default')}`}>This skill already exists. How do you want to continue?</div>
+                            ) : (
+                                <>
+                                    <div className={`font-medium text-sm shrink-0 ${t('text_default')}`}>Save as Skill</div>
+                                    <div className={`text-xs ${theme.label}`}>
+                                        {saveSkillMode === 'edit'
+                                            ? 'These are the saved instructions. Save writes your edits back to this skill.'
+                                            : saveSkillMode === 'regenerate'
+                                                ? 'Review the new draft. Save replaces this skill.'
+                                                : 'Review the draft before saving. Same name replaces the existing skill after you confirm.'}
+                                    </div>
+                                </>
+                            )}
                             <button
                                 type="button"
-                                className={`ml-auto w-7 h-7 rounded-[4px] ${theme.button_default}`}
+                                className={`ml-auto w-7 h-7 rounded-[4px] shrink-0 ${theme.button_default}`}
                                 onClick={() => setSaveSkillOpen(false)}
                                 title="Close"
                             >
@@ -2718,10 +2876,30 @@ const SharedAgentChat: React.FC<Props> = ({
                             </button>
                         </div>
                         <div className="p-4 overflow-auto flex flex-col gap-3">
-                            {saveSkillBusy && !saveSkillDraft && (
+                            {saveSkillPhase === 'choose' && (
+                                <>
+                                    <div className={`text-sm truncate ${t('text_default')}`} title={chatSavedSkillNameRef.current || ''}>
+                                        <span className={theme.label}>Skill Name: </span>
+                                        <span className="font-medium">{chatSavedSkillNameRef.current}</span>
+                                    </div>
+                                    <button type="button" className={choiceCardBase} disabled={saveSkillBusy} onClick={() => { void continueEditSavedSkill(); }}>
+                                        <div className={`font-medium ${t('text_default')}`}>Continue editing</div>
+                                        <div className={`mt-1 text-xs ${theme.label}`}>
+                                            Open the saved description and instructions and change them yourself. This chat is not used to rewrite the skill.
+                                        </div>
+                                    </button>
+                                    <button type="button" className={choiceCardBase} disabled={saveSkillBusy} onClick={() => { void regenerateSavedSkill(); }}>
+                                        <div className={`font-medium ${t('text_default')}`}>Regenerate from this chat</div>
+                                        <div className={`mt-1 text-xs ${theme.label}`}>
+                                            Draft new instructions from the current conversation and replace what is saved. You review the draft before it overwrites the skill.
+                                        </div>
+                                    </button>
+                                </>
+                            )}
+                            {saveSkillPhase === 'form' && saveSkillBusy && !saveSkillDraft && (
                                 <div className={`text-sm flex items-center gap-2 ${theme.label}`}>
                                     <i className="fa-solid fa-spinner fa-spin" aria-hidden />
-                                    Drafting a skill from this chat...
+                                    {saveSkillMode === 'edit' ? 'Loading the saved skill...' : 'Drafting a skill from this chat...'}
                                 </div>
                             )}
                             {saveSkillDraft && (
@@ -2754,9 +2932,13 @@ const SharedAgentChat: React.FC<Props> = ({
                                         />
                                     </label>
                                     <div className={`text-xs ${theme.label}`}>
-                                        {saveSkillOverwritePending
-                                            ? 'This will overwrite the existing skill with the same name (instructions, description, and audit ref).'
-                                            : 'If the name matches an existing skill, Save will ask you to confirm overwrite. Audit text is stored as _source_context.md and is not loaded into later chats.'}
+                                        {saveSkillMode === 'regenerate'
+                                            ? 'Saving replaces the instructions, description, and audit ref of this skill.'
+                                            : saveSkillMode === 'edit'
+                                                ? 'Saving writes your edits back to this skill.'
+                                                : saveSkillOverwritePending
+                                                    ? 'This will overwrite the existing skill with the same name (instructions, description, and audit ref).'
+                                                    : 'If the name matches an existing skill, Save will ask you to confirm overwrite. Audit text is stored as _source_context.md and is not loaded into later chats.'}
                                     </div>
                                 </>
                             )}
@@ -2764,6 +2946,22 @@ const SharedAgentChat: React.FC<Props> = ({
                             {saveSkillDone && <div className="text-xs text-green-700">{saveSkillDone}</div>}
                         </div>
                         <div className={`flex items-center justify-end gap-2 px-4 py-3 border-t ${regionBorder}`}>
+                            {saveSkillPhase === 'form' && saveSkillMode !== 'create' && !saveSkillDone && (
+                                <button
+                                    type="button"
+                                    className={`mr-auto px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default}`}
+                                    onClick={() => {
+                                        setSaveSkillPhase('choose');
+                                        setSaveSkillDraft(null);
+                                        setSaveSkillError(null);
+                                        setSaveSkillBusy(false);
+                                        setSaveSkillOverwritePending(false);
+                                    }}
+                                    disabled={saveSkillBusy}
+                                >
+                                    Back
+                                </button>
+                            )}
                             <button
                                 type="button"
                                 className={`px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default}`}
@@ -2772,6 +2970,7 @@ const SharedAgentChat: React.FC<Props> = ({
                             >
                                 Close
                             </button>
+                            {saveSkillPhase === 'form' && (
                             <button
                                 type="button"
                                 className={`px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default}`}
@@ -2779,8 +2978,9 @@ const SharedAgentChat: React.FC<Props> = ({
                                 disabled={saveSkillBusy || !saveSkillDraft || !!saveSkillDone}
                             >
                                 {saveSkillBusy ? <i className="fa-solid fa-spinner fa-spin mr-1" /> : <i className="fa-solid fa-floppy-disk mr-1" />}
-                                {saveSkillOverwritePending ? 'Replace Skill' : 'Save Skill'}
+                                {saveSkillMode === 'regenerate' || (saveSkillMode === 'create' && saveSkillOverwritePending) ? 'Replace Skill' : 'Save Skill'}
                             </button>
+                            )}
                         </div>
                     </div>
                 </div>
