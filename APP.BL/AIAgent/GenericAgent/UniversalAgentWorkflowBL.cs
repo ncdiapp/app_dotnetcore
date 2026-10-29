@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.Framework;
+using App.BL.AIAgent.GenericAgent.DataAnalyze;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using SkillLib = App.BL.AppMgr.AiSkill.AppAISkillBL;
@@ -227,12 +228,37 @@ namespace App.BL.AIAgent.GenericAgent
             var evidence = LoadEvidence(identity, sourceSessionKey);
             var summary = await WriteHandoffSummaryAsync(identity, evidence, agent, reason, ct).ConfigureAwait(false);
             var targetName = string.IsNullOrWhiteSpace(agent.DisplayName) ? agent.SkillKey : agent.DisplayName.Trim();
-            var content =
-                "Transferred from General Agent.\n\n" + summary.Trim();
 
             var targetSessionKey = AppGenericAgentSessionBL.CreateChat(agent.SkillKey, userId, dsId);
             if (string.IsNullOrWhiteSpace(targetSessionKey))
                 throw new InvalidOperationException("Could not create the Specialist chat.");
+
+            var sourceKey = sourceSessionKey.Trim();
+            var copied = AgentDataAnalyzeCacheBL.CopySession(sourceKey, targetSessionKey);
+            var transferBlock = BuildTransferredDataInstructions(copied, sourceKey);
+            var content =
+                "Transferred from General Agent.\n\n" + summary.Trim()
+                + (string.IsNullOrWhiteSpace(transferBlock) ? "" : "\n\n" + transferBlock);
+
+            var sourceDetail = AppGenericAgentSessionBL.LoadBySessionKey(
+                sourceKey, GeneralAgentConstants.SkillKey, userId, dsId);
+            var lastRenders = ExtractLastDataRenders(sourceDetail?.Messages);
+            if (lastRenders != null && lastRenders.Count > 0)
+            {
+                AppGenericAgentSessionBL.AppendMessage(
+                    targetSessionKey,
+                    agent.SkillKey,
+                    userId,
+                    dsId,
+                    new JObject
+                    {
+                        ["role"] = "assistant",
+                        ["content"] = "Results transferred from General Agent (same card/query output — do not re-fetch).",
+                        ["dataRenders"] = new JArray(lastRenders.Select(r => r.DeepClone())),
+                        ["sourceAgent"] = "UniversalAgent",
+                        ["sourceSessionKey"] = sourceKey
+                    });
+            }
 
             AppGenericAgentSessionBL.AppendMessage(
                 targetSessionKey,
@@ -244,7 +270,7 @@ namespace App.BL.AIAgent.GenericAgent
                     ["role"] = "user",
                     ["content"] = content,
                     ["sourceAgent"] = "UniversalAgent",
-                    ["sourceSessionKey"] = sourceSessionKey.Trim(),
+                    ["sourceSessionKey"] = sourceKey,
                     ["handoffSummary"] = summary.Trim()
                 });
             AppGenericAgentSessionBL.TryAutoTitle(targetSessionKey, agent.SkillKey, userId, content);
@@ -1486,6 +1512,56 @@ namespace App.BL.AIAgent.GenericAgent
             return false;
         }
 
+        private static string BuildTransferredDataInstructions(IReadOnlyList<AgentCachedDataset> copied, string sourceSessionKey)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("TRANSFERRED SESSION DATA (already in this chat cache):");
+            if (copied != null && copied.Count > 0)
+            {
+                foreach (var ds in copied.OrderByDescending(d => d.CachedAt))
+                {
+                    var cols = ds.Columns == null || ds.Columns.Count == 0
+                        ? ""
+                        : " columns: " + string.Join(", ", ds.Columns.Select(c => c.Name).Take(12));
+                    var limit = ds.DisplayRowLimit is > 0 ? ", display_limit=" + ds.DisplayRowLimit : "";
+                    sb.AppendLine("- dataset_name=`" + ds.Name + "`: " + (ds.Rows?.Count ?? 0) + " rows"
+                        + cols + limit
+                        + (string.IsNullOrWhiteSpace(ds.SourceTool) ? "" : " (from " + ds.SourceTool + ")"));
+                }
+            }
+            else
+            {
+                sb.AppendLine("- No tabular cache was present on the source chat.");
+            }
+
+            if (AgentDataAnalyzeCacheBL.TryGetCardRender(sourceSessionKey, out var cardRows, out var cardTitle)
+                && cardRows != null && cardRows.Count > 0)
+            {
+                sb.AppendLine("- Card view titled \"" + TrimTo(cardTitle ?? "Results", 80) + "\" (" + cardRows.Count
+                    + " rows) is in this session. Export tools must use this panel, not a new query.");
+            }
+
+            sb.AppendLine("Hard rules: Do NOT search, query, SQL, or call APIs to fetch data again.");
+            sb.AppendLine("Convert the transferred dataset / card view (export_pdf / export_* / document tools with dataset_name).");
+            sb.AppendLine("If the user asked for PDF of the current Result, export that cache only.");
+            return sb.ToString().Trim();
+        }
+
+        private static List<JObject> ExtractLastDataRenders(List<JObject> messages)
+        {
+            if (messages == null || messages.Count == 0) return null;
+            for (var i = messages.Count - 1; i >= 0; i--)
+            {
+                var m = messages[i];
+                if (m == null) continue;
+                var arr = m["dataRenders"] as JArray;
+                if (arr == null || arr.Count == 0) continue;
+                var list = arr.OfType<JObject>().ToList();
+                if (list.Count > 0) return list;
+            }
+            return null;
+        }
+
         private static int ResolveDataSourceId(AppClientIdentity identity)
         {
             if (identity.DataSourceId > 0) return identity.DataSourceId;
@@ -1543,7 +1619,8 @@ Goal:
 Decisions already made:
 Relevant tool outcomes:
 Known inputs and constraints:
-Do not paste the raw transcript or full tool results. Mention tool names and field names only.";
+Do not paste the raw transcript or full tool results. Mention tool names and field names only.
+If the user wants export/PDF/document of results already shown, say so: convert the transferred cached dataset / card view; do not search or query again.";
 
         private sealed class ProvenToolStep
         {

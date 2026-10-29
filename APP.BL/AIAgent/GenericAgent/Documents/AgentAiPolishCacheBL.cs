@@ -82,6 +82,19 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             Sessions.TryRemove(chatSessionKey.Trim(), out _);
         }
 
+        public static void CopySession(string sourceChatSessionKey, string targetChatSessionKey)
+        {
+            if (string.IsNullOrWhiteSpace(sourceChatSessionKey) || string.IsNullOrWhiteSpace(targetChatSessionKey))
+                return;
+            var src = sourceChatSessionKey.Trim();
+            var dst = targetChatSessionKey.Trim();
+            if (string.Equals(src, dst, StringComparison.OrdinalIgnoreCase)) return;
+            if (!Sessions.TryGetValue(src, out var bag) || bag.Count == 0) return;
+            var target = Sessions.GetOrAdd(dst, _ => new ConcurrentDictionary<string, AiPolishedRenderSpec>(StringComparer.OrdinalIgnoreCase));
+            foreach (var kv in bag)
+                target[kv.Key] = kv.Value;
+        }
+
         /// <summary>Distinct values for filter UI from full row array (capped).</summary>
         public static JObject BuildFilterOptions(JArray rows, AiPolishedRenderSpec spec)
         {

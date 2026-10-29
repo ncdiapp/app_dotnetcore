@@ -18,7 +18,10 @@ const AgentChatManagement: React.FC<Props> = ({ skillKey, routeBasePath = '/agen
     const dispatch = useDispatch();
     const [searchParams, setSearchParams] = useSearchParams();
     const chatFromUrl = searchParams.get('chat');
-    const handoffRun = searchParams.get('handoffRun') === '1';
+    const handoffRunParam = searchParams.get('handoffRun') === '1';
+    const handoffRunHeld = useRef(handoffRunParam);
+    if (handoffRunParam) handoffRunHeld.current = true;
+    const handoffRun = handoffRunParam || handoffRunHeld.current;
     const [chats, setChats] = useState<GenericAgentChatSummary[]>([]);
     const [selectedKey, setSelectedKey] = useState<string | null>(chatFromUrl);
     const [creating, setCreating] = useState(false);
@@ -58,6 +61,7 @@ const AgentChatManagement: React.FC<Props> = ({ skillKey, routeBasePath = '/agen
     }, [applyChatQuery, chatFromUrl, skillKey]);
 
     const clearHandoffRun = useCallback(() => {
+        handoffRunHeld.current = false;
         const next = new URLSearchParams(searchParams);
         if (next.get('handoffRun') !== '1') return;
         next.delete('handoffRun');

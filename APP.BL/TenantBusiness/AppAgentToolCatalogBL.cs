@@ -26,6 +26,13 @@ namespace App.BL.TenantBusiness
             return MapAll(fixture.RetriveDataTable(SelectSql + " ORDER BY LibraryKey, ToolName", new List<DbParameter>()));
         }
 
+        public static List<AppAgentToolCatalogDto> GetByMcpServerIds(int dataSourceId, IEnumerable<int> mcpServerIds)
+        {
+            var ids = new HashSet<int>(mcpServerIds ?? Enumerable.Empty<int>());
+            if (ids.Count == 0) return new List<AppAgentToolCatalogDto>();
+            return GetAll(dataSourceId).Where(t => t.McpServerId.HasValue && ids.Contains(t.McpServerId.Value)).ToList();
+        }
+
         public static List<AppAgentToolCatalogDto> GetByLibraries(int dataSourceId, IEnumerable<string> libraryKeys)
         {
             var keys = new HashSet<string>((libraryKeys ?? Enumerable.Empty<string>()).Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => k.Trim()),

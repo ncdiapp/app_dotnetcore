@@ -12,6 +12,7 @@ using Newtonsoft.Json.Linq;
 using TbSkillSetDto = App.BL.AIAgent.AiSkill.AppAgentSkillSetDto;
 using TbToolBL = App.BL.TenantBusiness.AppAgentToolRegisterBL;
 using TbMcpBL = App.BL.TenantBusiness.AppAgentMcpServerBL;
+using CatalogBL = App.BL.TenantBusiness.AppAgentToolCatalogBL;
 
 namespace App.BL.AIAgent.GenericAgent
 {
@@ -36,6 +37,7 @@ namespace App.BL.AIAgent.GenericAgent
     {
         private const int PromptExcerptChars = 1200;
         private const int MaxToolNames = 24;
+        private const int MaxMcpApiNames = 40;
 
         public static async Task<List<SpecialistHandoffCandidate>> SelectAsync(
             int dataSourceId,
@@ -70,10 +72,12 @@ namespace App.BL.AIAgent.GenericAgent
                 .ToList();
             if (catalog.Count == 0) return empty;
 
-            var scored = await ScoreWithLlmAsync(dataSourceId, catalog, userMessage, chatHistory, kernel, ct)
+            var mcpApis = await LoadMcpApisByAgentAsync(dataSourceId, catalog, ct).ConfigureAwait(false);
+            var scored = await ScoreWithLlmAsync(dataSourceId, catalog, mcpApis, userMessage, chatHistory, kernel, ct)
                 .ConfigureAwait(false);
             if (scored.Count == 0)
                 scored = FallbackByName(catalog, userMessage);
+            scored = ApplyMcpApiBoost(scored, catalog, mcpApis, userMessage);
 
             return scored
                 .Where(x => x.Score >= GeneralAgentConstants.HandoffMinScore)
@@ -101,6 +105,7 @@ namespace App.BL.AIAgent.GenericAgent
         private static async Task<List<SpecialistHandoffCandidate>> ScoreWithLlmAsync(
             int dataSourceId,
             List<TbSkillSetDto> catalog,
+            Dictionary<string, List<string>> mcpApis,
             string userMessage,
             List<JObject> chatHistory,
             Kernel kernel,
@@ -114,7 +119,7 @@ namespace App.BL.AIAgent.GenericAgent
                 var prompt = new ChatHistory();
                 prompt.AddSystemMessage(BuildRubric());
                 prompt.AddUserMessage(
-                    "Specialist agents:\n" + BuildCatalogForLlm(dataSourceId, catalog) +
+                    "Specialist agents:\n" + BuildCatalogForLlm(dataSourceId, catalog, mcpApis) +
                     "\n\nRecent chat:\n" + BuildRecentPlain(chatHistory, 6) +
                     "\n\nCurrent user message:\n" + (userMessage ?? ""));
                 var raw = await chat.GetChatMessageContentAsync(prompt, cancellationToken: ct).ConfigureAwait(false);
@@ -152,15 +157,20 @@ namespace App.BL.AIAgent.GenericAgent
                 "40-69: only loosely related.\n" +
                 "0-39: not a fit.\n" +
                 "Rules:\n" +
-                "- Judge only the specialist's Code, Display, Description, Tools, and Prompt against the user request.\n" +
+                "- Judge only the specialist's Code, Display, Description, Tools, MCP APIs, and Prompt against the user request.\n" +
                 "- Do not assume product or domain synonyms. Distinct specialists stay distinct unless the user's words match that specialist's own settings.\n" +
-                "- A specialist that can technically query or search data is not a match unless those settings describe this request.\n" +
+                "- If an MCP API name (split on _ or camel case) matches the user's words, score that specialist 90-100. " +
+                "An API like Product_ForwardTimeline matches a request for product forward timeline.\n" +
+                "- A specialist that can technically query or search data is not a match unless those settings or MCP APIs describe this request.\n" +
                 "- Overlap with General Agent tools is not a reason to raise a specialist's score.\n" +
                 "- Score every listed skillKey. Do not invent keys.\n" +
                 "Return only JSON: {\"scores\":[{\"skillKey\":\"x\",\"score\":82,\"reason\":\"one short sentence\"}]}.";
         }
 
-        private static string BuildCatalogForLlm(int dataSourceId, List<TbSkillSetDto> catalog)
+        private static string BuildCatalogForLlm(
+            int dataSourceId,
+            List<TbSkillSetDto> catalog,
+            Dictionary<string, List<string>> mcpApis)
         {
             var sb = new StringBuilder();
             foreach (var a in catalog)
@@ -170,6 +180,11 @@ namespace App.BL.AIAgent.GenericAgent
                 sb.AppendLine("Display: " + (a.DisplayName ?? a.SkillKey ?? ""));
                 sb.AppendLine("Description: " + TrimTo(a.Description, 400));
                 sb.AppendLine("Tools: " + LoadToolSummary(dataSourceId, a.SkillKey));
+                var apis = mcpApis != null && mcpApis.TryGetValue(a.SkillKey, out var list) ? list : null;
+                sb.AppendLine("MCP APIs: " + (
+                    apis == null || apis.Count == 0
+                        ? "(none listed)"
+                        : string.Join(", ", apis.Take(MaxMcpApiNames))));
                 sb.AppendLine("Prompt: " + TrimTo(a.SystemPrompt, PromptExcerptChars));
                 sb.AppendLine();
             }
@@ -197,13 +212,10 @@ namespace App.BL.AIAgent.GenericAgent
             }
             try
             {
-                var mcps = dataSourceId > 0
-                    ? TbMcpBL.GetBySkillKeyWithLibraries(skillKey, dataSourceId)
-                    : TbMcpBL.GetBySkillKeyWithLibraries(skillKey);
-                foreach (var m in mcps ?? new List<App.BL.TenantBusiness.AppAgentMcpServerDto>())
+                foreach (var srv in LoadMcpServers(dataSourceId, skillKey))
                 {
-                    if (m == null || string.IsNullOrWhiteSpace(m.ServerName)) continue;
-                    var label = "mcp:" + m.ServerName.Trim();
+                    if (srv == null || string.IsNullOrWhiteSpace(srv.ServerName)) continue;
+                    var label = "mcp:" + srv.ServerName.Trim();
                     if (!names.Contains(label, StringComparer.OrdinalIgnoreCase))
                         names.Add(label);
                     if (names.Count >= MaxToolNames) break;
@@ -214,6 +226,194 @@ namespace App.BL.AIAgent.GenericAgent
                 SwallowLog.Write(ex, "Universal specialist MCP for score");
             }
             return names.Count == 0 ? "(none listed)" : string.Join(", ", names);
+        }
+
+        private static List<App.BL.TenantBusiness.AppAgentMcpServerDto> LoadMcpServers(int dataSourceId, string skillKey)
+        {
+            var list = new List<App.BL.TenantBusiness.AppAgentMcpServerDto>();
+            var seen = new HashSet<int>();
+            void Add(IEnumerable<App.BL.TenantBusiness.AppAgentMcpServerDto> rows)
+            {
+                foreach (var m in rows ?? new List<App.BL.TenantBusiness.AppAgentMcpServerDto>())
+                {
+                    if (m == null || seen.Contains(m.McpServerId)) continue;
+                    seen.Add(m.McpServerId);
+                    list.Add(m);
+                }
+            }
+            try
+            {
+                Add(dataSourceId > 0
+                    ? TbMcpBL.GetBySkillKey(skillKey, dataSourceId)
+                    : TbMcpBL.GetBySkillKey(skillKey));
+            }
+            catch (Exception ex) { SwallowLog.Write(ex, "Universal specialist MCP by skill"); }
+            try
+            {
+                Add(dataSourceId > 0
+                    ? TbMcpBL.GetBySkillKeyWithLibraries(skillKey, dataSourceId)
+                    : TbMcpBL.GetBySkillKeyWithLibraries(skillKey));
+            }
+            catch (Exception ex) { SwallowLog.Write(ex, "Universal specialist MCP by library"); }
+            return list;
+        }
+
+        private static async Task<Dictionary<string, List<string>>> LoadMcpApisByAgentAsync(
+            int dataSourceId,
+            List<TbSkillSetDto> catalog,
+            CancellationToken ct)
+        {
+            var map = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            if (catalog == null) return map;
+            List<App.BL.TenantBusiness.AppAgentToolCatalogDto> catalogRows;
+            try
+            {
+                catalogRows = dataSourceId > 0
+                    ? CatalogBL.GetAll(dataSourceId)
+                    : new List<App.BL.TenantBusiness.AppAgentToolCatalogDto>();
+            }
+            catch (Exception ex)
+            {
+                SwallowLog.Write(ex, "Universal specialist MCP catalog");
+                catalogRows = new List<App.BL.TenantBusiness.AppAgentToolCatalogDto>();
+            }
+
+            foreach (var agent in catalog)
+            {
+                var servers = LoadMcpServers(dataSourceId, agent.SkillKey);
+                var names = new List<string>();
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var srv in servers)
+                {
+                    var fromDb = catalogRows
+                        .Where(t => t.McpServerId == srv.McpServerId && !string.IsNullOrWhiteSpace(t.ToolName))
+                        .Select(t => t.ToolName.Trim())
+                        .ToList();
+                    if (fromDb.Count == 0)
+                    {
+                        try
+                        {
+                            var live = await McpConnectionHelper.ListCatalogToolsAsync(srv, ct).ConfigureAwait(false);
+                            if (live.Tools != null)
+                                fromDb = live.Tools
+                                    .Where(t => !string.IsNullOrWhiteSpace(t.ToolName))
+                                    .Select(t => t.ToolName.Trim())
+                                    .ToList();
+                        }
+                        catch (Exception ex)
+                        {
+                            SwallowLog.Write(ex, "Universal specialist live MCP tools");
+                        }
+                    }
+                    foreach (var n in fromDb)
+                    {
+                        if (seen.Add(n)) names.Add(n);
+                        if (names.Count >= MaxMcpApiNames) break;
+                    }
+                    if (names.Count >= MaxMcpApiNames) break;
+                }
+                map[agent.SkillKey] = names;
+            }
+            return map;
+        }
+
+        private static List<SpecialistHandoffCandidate> ApplyMcpApiBoost(
+            List<SpecialistHandoffCandidate> scored,
+            List<TbSkillSetDto> catalog,
+            Dictionary<string, List<string>> mcpApis,
+            string userMessage)
+        {
+            var byKey = (scored ?? new List<SpecialistHandoffCandidate>())
+                .ToDictionary(c => c.SkillKey, c => c, StringComparer.OrdinalIgnoreCase);
+            foreach (var agent in catalog)
+            {
+                mcpApis.TryGetValue(agent.SkillKey, out var apis);
+                var hit = BestMcpApiMatch(userMessage, apis);
+                if (hit.Score < GeneralAgentConstants.HandoffMinScore) continue;
+                var name = string.IsNullOrWhiteSpace(agent.DisplayName) ? agent.SkillKey : agent.DisplayName.Trim();
+                if (!byKey.TryGetValue(agent.SkillKey, out var row))
+                {
+                    row = new SpecialistHandoffCandidate
+                    {
+                        SkillKey = agent.SkillKey,
+                        Name = name,
+                        Description = agent.Description ?? "",
+                        Score = hit.Score,
+                        PhraseScore = hit.Score,
+                        Reason = hit.Reason
+                    };
+                    byKey[agent.SkillKey] = row;
+                }
+                else if (hit.Score > row.Score)
+                {
+                    row.Score = hit.Score;
+                    row.PhraseScore = hit.Score;
+                    row.Reason = hit.Reason;
+                }
+                else
+                    row.PhraseScore = Math.Max(row.PhraseScore, hit.Score);
+            }
+            return byKey.Values.ToList();
+        }
+
+        private static (int Score, string Reason) BestMcpApiMatch(string userMessage, List<string> apiNames)
+        {
+            if (string.IsNullOrWhiteSpace(userMessage) || apiNames == null || apiNames.Count == 0)
+                return (0, "");
+            var hay = " " + NormalizeWords(userMessage) + " ";
+            var best = 0;
+            var bestName = "";
+            foreach (var api in apiNames)
+            {
+                var parts = SplitApiName(api);
+                if (parts.Count < 2) continue;
+                var hits = parts.Count(p => hay.IndexOf(" " + p + " ", StringComparison.Ordinal) >= 0);
+                if (hits < 2) continue;
+                var score = 0;
+                for (var n = Math.Min(3, parts.Count); n >= 2; n--)
+                {
+                    for (var i = 0; i + n <= parts.Count; i++)
+                    {
+                        var phrase = " " + string.Join(" ", parts.Skip(i).Take(n)) + " ";
+                        if (hay.IndexOf(phrase, StringComparison.Ordinal) < 0) continue;
+                        score = Math.Max(score, n >= 3 ? 96 : 93);
+                    }
+                }
+                if (score == 0 && hits == parts.Count)
+                    score = 94;
+                else if (score == 0 && hits * 2 >= parts.Count)
+                    score = 88;
+                if (score > best)
+                {
+                    best = score;
+                    bestName = api;
+                }
+            }
+            if (best <= 0) return (0, "");
+            return (best, "MCP API " + bestName + " matches this request.");
+        }
+
+        private static List<string> SplitApiName(string name)
+        {
+            var list = new List<string>();
+            if (string.IsNullOrWhiteSpace(name)) return list;
+            var spaced = Regex.Replace(name, @"([a-z])([A-Z])", "$1 $2");
+            spaced = Regex.Replace(spaced, @"[_\-./]+", " ");
+            foreach (var p in Regex.Split(spaced.ToLowerInvariant(), @"[^a-z0-9]+"))
+            {
+                if (p.Length < 3) continue;
+                if (p == "get" || p == "set" || p == "list" || p == "find" || p == "search"
+                    || p == "query" || p == "tool" || p == "api" || p == "data")
+                    continue;
+                list.Add(p);
+            }
+            return list;
+        }
+
+        private static string NormalizeWords(string text)
+        {
+            var s = Regex.Replace((text ?? "").ToLowerInvariant(), @"[^a-z0-9\u4e00-\u9fff]+", " ");
+            return Regex.Replace(s, @"\s+", " ").Trim();
         }
 
         private sealed class ModelHit

@@ -69,6 +69,25 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             }
         }
 
+        public static void CopySession(string sourceChatSessionKey, string targetChatSessionKey)
+        {
+            if (string.IsNullOrWhiteSpace(sourceChatSessionKey) || string.IsNullOrWhiteSpace(targetChatSessionKey))
+                return;
+            var src = sourceChatSessionKey.Trim();
+            var dst = targetChatSessionKey.Trim();
+            if (string.Equals(src, dst, StringComparison.OrdinalIgnoreCase)) return;
+            if (TurnIntentBySession.TryGetValue(src, out var turn))
+                TurnIntentBySession[dst] = turn;
+            var prefix = src + "\u0001";
+            foreach (var kv in LimitBySessionDataset)
+            {
+                if (!kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+                var datasetName = kv.Key.Substring(prefix.Length);
+                if (string.IsNullOrWhiteSpace(datasetName)) continue;
+                LimitBySessionDataset[SessionDatasetKey(dst, datasetName)] = kv.Value;
+            }
+        }
+
         public static int? TryParseFromUserMessage(string userMessage)
         {
             if (string.IsNullOrWhiteSpace(userMessage)) return null;

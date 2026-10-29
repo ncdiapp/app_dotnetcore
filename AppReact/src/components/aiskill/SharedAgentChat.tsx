@@ -1422,19 +1422,21 @@ const SharedAgentChat: React.FC<Props> = ({
                     setCurrentTurnIndex(userTurns);
                     currentTurnIndexRef.current = userTurns;
                     const lastRestored = restoredMsgs[restoredMsgs.length - 1];
-                    if (
-                        autoRunPendingUserRef.current
+                    const lastIsHandoffSeed = lastRestored?.role === 'user'
+                        && !!(lastRestored.sourceAgent || '').trim()
+                        && (lastRestored.content || '').trim().length > 0;
+                    const shouldAutoRun = (autoRunPendingUserRef.current || lastIsHandoffSeed)
                         && !pendingFromStore
                         && !runSid
                         && lastRestored?.role === 'user'
-                        && (lastRestored.content || '').trim()
-                    ) {
-                        autoRunPendingUserRef.current = false;
-                        onAutoRunStartedRef.current?.();
+                        && (lastRestored.content || '').trim();
+                    if (shouldAutoRun) {
                         const historyBase = restoredMsgs.slice(0, -1);
                         const userMessage = lastRestored.content;
                         queueMicrotask(() => {
                             if (cancelled) return;
+                            autoRunPendingUserRef.current = false;
+                            onAutoRunStartedRef.current?.();
                             void runAgentTurnRef.current({
                                 userMessage,
                                 hideUserBubble: true,
@@ -1958,14 +1960,15 @@ const SharedAgentChat: React.FC<Props> = ({
                 proposal.targetSkillKey,
                 proposal.reason || '',
             );
+            const q = new URLSearchParams({
+                skillKey: created.TargetSkillKey,
+                chat: created.TargetSessionKey,
+                handoffRun: '1',
+            });
             addTabAndNavigate(
-                '/agent-chat',
+                `/agent-chat?${q.toString()}`,
                 created.TargetName || proposal.name || created.TargetSkillKey,
-                {
-                    skillKey: created.TargetSkillKey,
-                    chat: created.TargetSessionKey,
-                    handoffRun: '1',
-                },
+                {},
             );
         } catch (e: any) {
             setError(e?.message || 'Could not hand off to the Specialist.');
@@ -2000,13 +2003,14 @@ const SharedAgentChat: React.FC<Props> = ({
     };
 
     const openHandedOffChat = (marker: HandoffMarker) => {
+        const q = new URLSearchParams({
+            skillKey: marker.targetSkillKey,
+            chat: marker.targetSessionKey,
+        });
         addTabAndNavigate(
-            '/agent-chat',
+            `/agent-chat?${q.toString()}`,
             marker.targetName || marker.targetSkillKey,
-            {
-                skillKey: marker.targetSkillKey,
-                chat: marker.targetSessionKey,
-            },
+            {},
         );
     };
 

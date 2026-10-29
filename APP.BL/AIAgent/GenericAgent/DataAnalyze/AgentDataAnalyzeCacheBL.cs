@@ -293,6 +293,65 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
             AgentAiPolishCacheBL.ClearSession(key);
         }
 
+        /// <summary>
+        /// Copy cached datasets and last card panel into another chat (specialist handoff).
+        /// </summary>
+        public static IReadOnlyList<AgentCachedDataset> CopySession(string sourceChatSessionKey, string targetChatSessionKey)
+        {
+            if (string.IsNullOrWhiteSpace(sourceChatSessionKey) || string.IsNullOrWhiteSpace(targetChatSessionKey))
+                return Array.Empty<AgentCachedDataset>();
+            var src = sourceChatSessionKey.Trim();
+            var dst = targetChatSessionKey.Trim();
+            if (string.Equals(src, dst, StringComparison.OrdinalIgnoreCase))
+                return Array.Empty<AgentCachedDataset>();
+
+            var copied = new List<AgentCachedDataset>();
+            if (Sessions.TryGetValue(src, out var bag) && bag.Count > 0)
+            {
+                var targetBag = Sessions.GetOrAdd(dst, _ => new ConcurrentDictionary<string, AgentCachedDataset>(StringComparer.OrdinalIgnoreCase));
+                foreach (var kv in bag)
+                {
+                    var clone = CloneDataset(kv.Value);
+                    if (clone == null) continue;
+                    targetBag[clone.Name] = clone;
+                    copied.Add(clone);
+                }
+            }
+
+            if (CardRenders.TryGetValue(src, out var shot) && shot?.Rows != null && shot.Rows.Count > 0)
+            {
+                CardRenders[dst] = new CardRenderSnapshot
+                {
+                    Title = shot.Title ?? "",
+                    Rows = (JArray)shot.Rows.DeepClone()
+                };
+            }
+
+            AgentAiPolishCacheBL.CopySession(src, dst);
+            AgentDisplayRowLimitBL.CopySession(src, dst);
+            return copied;
+        }
+
+        private static AgentCachedDataset CloneDataset(AgentCachedDataset src)
+        {
+            if (src == null) return null;
+            return new AgentCachedDataset
+            {
+                Name = src.Name,
+                CachedAt = src.CachedAt,
+                SourceTool = src.SourceTool,
+                DisplayRowLimit = src.DisplayRowLimit,
+                Columns = src.Columns == null ? new List<AgentColumnDefinition>() : src.Columns.ToList(),
+                Rows = src.Rows == null ? new List<string[]>() : src.Rows.Select(r => r == null ? null : (string[])r.Clone()).ToList(),
+                NumericColumns = src.NumericColumns == null
+                    ? new Dictionary<int, double?[]>()
+                    : src.NumericColumns.ToDictionary(kv => kv.Key, kv => kv.Value == null ? null : (double?[])kv.Value.Clone()),
+                DateColumns = src.DateColumns == null
+                    ? new Dictionary<int, double?[]>()
+                    : src.DateColumns.ToDictionary(kv => kv.Key, kv => kv.Value == null ? null : (double?[])kv.Value.Clone())
+            };
+        }
+
         /// <summary>The card panel last shown in this chat. Export uses it instead of a rewritten summary.</summary>
         public static void RememberCardRender(string chatSessionKey, JArray rows, string title)
         {
