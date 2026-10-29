@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using App.BL.AIAgent.GenericAgent;
 using App.BL.AIAgent.GenericAgent.DataAnalyze;
@@ -144,6 +145,17 @@ namespace App.BL.AppBuilderAgent.Plugins
                         forceTop = true;
                         sqlToRun = AgentRowLimitConfirmBL.StripTopOrLimit(sql);
                         gatePath = "deterministicCap1000";
+                    }
+                    else if (AgentDisplayRowLimitBL.TryGetTurnRowIntent(sessionKey, out var userN) && userN > 0)
+                    {
+                        // User already said e.g. "show 100 images" — do not ask TOP 100 vs all.
+                        rowCap = (int)Math.Min(userN, totalCount);
+                        displayRowLimit = rowCap;
+                        forceTop = true;
+                        sqlToRun = AgentRowLimitConfirmBL.StripTopOrLimit(sql);
+                        AgentRowLimitConfirmBL.Mark(sessionKey, "top_" + userN.ToString(CultureInfo.InvariantCulture));
+                        hasChoice = true;
+                        gatePath = "turnIntentSkipAsk:" + userN;
                     }
                     else
                     {
