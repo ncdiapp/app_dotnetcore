@@ -8,6 +8,7 @@ namespace App.BL.AIAgent.GenericAgent
         public const string SkillKey = "__general_agent__";
         public const string LegacySkillKey = "__universal_agent__";
         public const string StayInGeneralMarker = "[stay_in_general]";
+        public const string HandoffConfirmContextKey = "confirm_specialist_handoff";
         public const int MaxSelectedSkills = 3;
 
         /// <summary>0–100. Specialist must score at least this to appear as a hand-off candidate. Tune here.</summary>

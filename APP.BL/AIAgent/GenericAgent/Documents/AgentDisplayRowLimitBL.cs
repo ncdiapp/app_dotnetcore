@@ -3,6 +3,10 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
 using Newtonsoft.Json.Linq;
 
 namespace App.BL.AIAgent.GenericAgent.Documents
@@ -88,13 +92,84 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             }
         }
 
+        /// <summary>
+        /// LLM extracts TOP N from this turn's user text. Regex is fallback if the model fails.
+        /// Layout like 4x5 / 4 per row is not a row limit.
+        /// </summary>
+        public static async Task ResolveTurnRowIntentAsync(
+            string chatSessionKey,
+            string userMessage,
+            Kernel kernel,
+            CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(chatSessionKey)) return;
+            var fromRegex = TryParseFromUserMessage(userMessage);
+            var fromLlm = await TryParseTopNWithLlmAsync(userMessage, kernel, ct).ConfigureAwait(false);
+            SetTurnRowIntent(chatSessionKey, fromLlm ?? fromRegex);
+        }
+
+        public static async Task<int?> TryParseTopNWithLlmAsync(
+            string userMessage,
+            Kernel kernel,
+            CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(userMessage) || kernel == null) return null;
+            try
+            {
+                var chat = kernel.GetRequiredService<IChatCompletionService>();
+                var history = new ChatHistory();
+                history.AddSystemMessage(
+                    "Extract how many rows/items/records the user wants fetched or shown this turn (SQL TOP N / LIMIT). " +
+                    "Return JSON only: {\"topN\": <positive integer>} or {\"topN\": null}. " +
+                    "Rules: " +
+                    "topN is the display/fetch count (e.g. show me 20 images → 20; 先给我50条 → 50; first twenty → 20). " +
+                    "Ignore card/grid layout (4x5, 4 per row, per page columns/rows) unless that number is clearly the item count. " +
+                    "If they want all rows, or there is no count, topN is null. " +
+                    "Do not invent a default like 100.");
+                history.AddUserMessage(userMessage.Trim());
+                var raw = await chat.GetChatMessageContentAsync(history, cancellationToken: ct).ConfigureAwait(false);
+                return ParseTopNJson(raw?.Content);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static int? ParseTopNJson(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            var raw = text.Trim();
+            var fence = Regex.Match(raw, @"```(?:json)?\s*([\s\S]*?)```", RegexOptions.IgnoreCase);
+            if (fence.Success) raw = fence.Groups[1].Value.Trim();
+            var start = raw.IndexOf('{');
+            var end = raw.LastIndexOf('}');
+            if (start < 0 || end <= start) return null;
+            try
+            {
+                var obj = JObject.Parse(raw.Substring(start, end - start + 1));
+                var tok = obj["topN"] ?? obj["TopN"] ?? obj["top_n"] ?? obj["n"];
+                if (tok == null || tok.Type == JTokenType.Null) return null;
+                if (!int.TryParse(tok.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n))
+                    return null;
+                if (n <= 0 || n > MaxTurnIntentRows) return null;
+                return n;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         public static int? TryParseFromUserMessage(string userMessage)
         {
             if (string.IsNullOrWhiteSpace(userMessage)) return null;
             var t = userMessage.Trim();
             var patterns = new[]
             {
-                @"(?i)\b(?:get|show|fetch|list|give\s+me|return|display)\s+(\d{1,6})\s+(?:latest|newest|recent|first|top)?",
+                @"(?i)\b(?:get|show|fetch|list|display|return)(?:\s+me)?\s+(\d{1,6})\b",
+                @"(?i)\bgive\s+me\s+(\d{1,6})\b",
+                @"(?i)\b(\d{1,6})\s+(?:images?|rows?|records?|items?|files?|cards?)\b",
                 @"(?i)\b(\d{1,6})\s+(?:latest|newest|recent|first)\b",
                 @"(?i)\btop\s+(\d{1,6})\b",
                 @"(?i)\bfirst\s+(\d{1,6})\b",

@@ -71,11 +71,8 @@ Do not call call_agent. Nothing switches until the user confirms the hand-off ca
         private static readonly string UniversalHandoffPreferHardRule = @"
 
 ## Specialist hand-off (platform hard rule — General Agent only)
-A scored shortlist of Specialist Agents may already be shown as hand-off cards (score >= "
-            + GeneralAgentConstants.HandoffMinScore + @", max "
-            + GeneralAgentConstants.HandoffMaxSuggestions + @").
-If cards are shown: do not call other tools for this task until the user confirms or declines. Do not claim the chat was switched. Do not call call_agent.
-If no card was shown, no Specialist reached the score threshold — follow Tools Prefer and do the work yourself.";
+The platform may pause for Specialist hand-off before tools run.
+If the user stayed in this chat, complete the request with tools. Do not call propose_specialist_handoff or call_agent.";
         /// <summary>
         /// Platform hard rule — always appended to Instructions. Not stored in AppAgentSkillSet;
         /// admins cannot turn it off. Prefer tools over model-invented data/UI/files.
@@ -180,10 +177,6 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 // Session fallback when tool dispatch loses AsyncLocal (row-limit ask_user).
                 boundChatKey = resolvedChatKey;
                 AgentHitlBridge.BindSession(boundChatKey, callbacks);
-                if (!string.IsNullOrWhiteSpace(resolvedChatKey))
-                    Documents.AgentDisplayRowLimitBL.SetTurnRowIntent(
-                        resolvedChatKey,
-                        Documents.AgentDisplayRowLimitBL.TryParseFromUserMessage(userMessage));
                 var context   = new AgentToolContext
                 {
                     ConnectionString = identity.HasValue ? identity.Value.CurrentUserDbConnectionString ?? "" : "",
@@ -239,30 +232,39 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 var kernel = KernelFactory.Build(identity);
                 kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks, enableThinkMode));
                 kernel.AutoFunctionInvocationFilters.Add(new GenericAgentPruneFilter(skillSet.MaxIterations, skillSet.MaxHistoryTokens));
+                if (!string.IsNullOrWhiteSpace(resolvedChatKey))
+                {
+                    try
+                    {
+                        await Documents.AgentDisplayRowLimitBL.ResolveTurnRowIntentAsync(
+                            resolvedChatKey, userMessage, kernel, ct).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception swallowed)
+                    {
+                        SwallowLog.Write(swallowed, "TOP N intent parse must not fail the run");
+                        Documents.AgentDisplayRowLimitBL.SetTurnRowIntent(
+                            resolvedChatKey,
+                            Documents.AgentDisplayRowLimitBL.TryParseFromUserMessage(userMessage));
+                    }
+                }
 
-                List<SpecialistHandoffCandidate> handoffShortlist = new List<SpecialistHandoffCandidate>();
                 if (isUniversal)
                 {
                     var skillPrompt = await BuildUniversalSkillPromptAsync(
                         dsId, userMessage, chatHistory, kernel, callbacks, ct).ConfigureAwait(false);
                     if (!string.IsNullOrWhiteSpace(skillPrompt))
                         systemPrompt = (systemPrompt ?? "") + "\n\n" + skillPrompt;
-                    try
-                    {
-                        handoffShortlist = await UniversalHandoffScoring.SelectAsync(
-                            dsId, userMessage, chatHistory, kernel, ct).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException) { throw; }
-                    catch (Exception swallowed)
-                    {
-                        SwallowLog.Write(swallowed, "Universal specialist scoring must not fail the run");
-                        handoffShortlist = new List<SpecialistHandoffCandidate>();
-                    }
-                    var specialistPrompt = BuildUniversalSpecialistPrompt(handoffShortlist);
                     systemPrompt = (systemPrompt ?? "") + "\n\n" + UniversalHandoffPreferHardRule;
-                    if (!string.IsNullOrWhiteSpace(specialistPrompt))
-                        systemPrompt += "\n\n" + specialistPrompt;
-                    await EmitHandoffShortlistAsync(handoffShortlist, callbacks).ConfigureAwait(false);
+                    var stayHere = await OfferSpecialistHandoffAsync(
+                        dsId, userMessage, chatHistory, kernel, callbacks, ct).ConfigureAwait(false);
+                    if (!stayHere)
+                    {
+                        runSw.Stop();
+                        log.Info($"[Agent] HANDOFF skip-run skill={skillKey} total={runSw.ElapsedMilliseconds}ms");
+                        await Safe(callbacks?.OnDone, "").ConfigureAwait(false);
+                        return;
+                    }
                 }
 
                 // Wrap AppAgentToolRegister rows as KernelFunctions (agent-owned + subscribed library tools).
@@ -310,14 +312,6 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     && !KernelHasFunction(kernel, "ask_user"))
                 {
                     kernel.Plugins.AddFromFunctions("hitl", new[] { CreateAskUserKernelFunction(context) });
-                }
-
-                if (isUniversal && !KernelHasFunction(kernel, "propose_specialist_handoff"))
-                {
-                    kernel.Plugins.AddFromFunctions("universal", new[]
-                    {
-                        CreateHandoffProposalKernelFunction(dsId, callbacks, handoffShortlist)
-                    });
                 }
 
                 // Connect MCP servers (agent-owned + subscribed library MCP servers)
@@ -583,6 +577,93 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 }).ConfigureAwait(false);
             }
             return sb.ToString();
+        }
+
+        /// <returns>True to run this General turn; false if the user handed off or the wait was cancelled.</returns>
+        private static async Task<bool> OfferSpecialistHandoffAsync(
+            int dataSourceId,
+            string userMessage,
+            List<JObject> chatHistory,
+            Kernel kernel,
+            GenericAgentCallbacks callbacks,
+            CancellationToken ct)
+        {
+            List<SpecialistHandoffCandidate> shortlist;
+            try
+            {
+                shortlist = await UniversalHandoffScoring.SelectAsync(
+                    dataSourceId, userMessage, chatHistory, kernel, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception swallowed)
+            {
+                SwallowLog.Write(swallowed, "Universal specialist scoring must not fail the run");
+                return true;
+            }
+            if (shortlist == null || shortlist.Count == 0) return true;
+
+            await EmitHandoffShortlistAsync(shortlist, callbacks).ConfigureAwait(false);
+
+            var onAsk = callbacks?.OnAskUser;
+            if (onAsk == null) return true;
+
+            var options = new List<LookupItemDto>();
+            foreach (var c in shortlist)
+            {
+                options.Add(new LookupItemDto
+                {
+                    Id = c.SkillKey,
+                    Display = string.IsNullOrWhiteSpace(c.Name) ? c.SkillKey : c.Name
+                });
+            }
+            options.Add(new LookupItemDto
+            {
+                Id = GeneralAgentConstants.StayInGeneralMarker,
+                Display = "Stay in this chat"
+            });
+
+            AgentAskUserResponse response;
+            try
+            {
+                response = await onAsk(new AgentAskUserEvent
+                {
+                    Prompt = "Hand off to a Specialist, or stay in General Agent?",
+                    Mode = "single_choice",
+                    Ui = "button_group",
+                    ContextKey = GeneralAgentConstants.HandoffConfirmContextKey,
+                    Options = options
+                }).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception swallowed)
+            {
+                SwallowLog.Write(swallowed, "Handoff HITL wait must not fail the run");
+                return true;
+            }
+
+            return IsStayInGeneralChoice(response);
+        }
+
+        private static bool IsStayInGeneralChoice(AgentAskUserResponse response)
+        {
+            if (response == null || response.Cancelled) return false;
+            if (response.SelectedIds != null)
+            {
+                foreach (var id in response.SelectedIds)
+                {
+                    if (string.IsNullOrWhiteSpace(id)) continue;
+                    if (id.IndexOf("stay_in_general", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return true;
+                    if (id.Equals("stay", StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+            var text = response.FreeText ?? "";
+            if (text.IndexOf("stay_in_general", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            if (text.IndexOf("stay in this chat", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            return false;
         }
 
         private static async Task EmitHandoffShortlistAsync(

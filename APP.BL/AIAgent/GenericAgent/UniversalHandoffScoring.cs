@@ -75,8 +75,8 @@ namespace App.BL.AIAgent.GenericAgent
             var mcpApis = await LoadMcpApisByAgentAsync(dataSourceId, catalog, ct).ConfigureAwait(false);
             var scored = await ScoreWithLlmAsync(dataSourceId, catalog, mcpApis, userMessage, chatHistory, kernel, ct)
                 .ConfigureAwait(false);
-            if (scored.Count == 0)
-                scored = FallbackByName(catalog, userMessage);
+            scored = MergeScores(scored, FallbackByName(catalog, userMessage));
+            scored = MergeScores(scored, FallbackByCatalog(dataSourceId, catalog, userMessage, chatHistory));
             scored = ApplyMcpApiBoost(scored, catalog, mcpApis, userMessage);
 
             return scored
@@ -163,6 +163,7 @@ namespace App.BL.AIAgent.GenericAgent
                 "An API like Product_ForwardTimeline matches a request for product forward timeline.\n" +
                 "- A specialist that can technically query or search data is not a match unless those settings or MCP APIs describe this request.\n" +
                 "- Overlap with General Agent tools is not a reason to raise a specialist's score.\n" +
+                "- If the user asks for the SQL, query, or statement that produced the current Result/card view, score a specialist whose tools or prompt are SQL/database work at 88-95. Do not leave every specialist below threshold just because General could recap the chat.\n" +
                 "- Score every listed skillKey. Do not invent keys.\n" +
                 "Return only JSON: {\"scores\":[{\"skillKey\":\"x\",\"score\":82,\"reason\":\"one short sentence\"}]}.";
         }
@@ -450,6 +451,79 @@ namespace App.BL.AIAgent.GenericAgent
                 map[key] = new ModelHit { Score = Clamp(score), Reason = TrimTo(reason, 220) };
             }
             return map;
+        }
+
+        private static List<SpecialistHandoffCandidate> MergeScores(
+            List<SpecialistHandoffCandidate> primary,
+            List<SpecialistHandoffCandidate> extra)
+        {
+            var byKey = (primary ?? new List<SpecialistHandoffCandidate>())
+                .ToDictionary(c => c.SkillKey, c => c, StringComparer.OrdinalIgnoreCase);
+            foreach (var row in extra ?? new List<SpecialistHandoffCandidate>())
+            {
+                if (row == null || string.IsNullOrWhiteSpace(row.SkillKey)) continue;
+                if (!byKey.TryGetValue(row.SkillKey, out var cur) || row.Score > cur.Score)
+                    byKey[row.SkillKey] = row;
+            }
+            return byKey.Values.ToList();
+        }
+
+        private static List<SpecialistHandoffCandidate> FallbackByCatalog(
+            int dataSourceId,
+            List<TbSkillSetDto> catalog,
+            string userMessage,
+            List<JObject> chatHistory)
+        {
+            var list = new List<SpecialistHandoffCandidate>();
+            var hay = NormalizeWords(userMessage + " " + BuildRecentPlain(chatHistory, 6));
+            if (string.IsNullOrWhiteSpace(hay)) return list;
+            var wantsSql = hay.IndexOf(" query ", StringComparison.Ordinal) >= 0
+                || hay.IndexOf(" sql ", StringComparison.Ordinal) >= 0
+                || hay.IndexOf(" select ", StringComparison.Ordinal) >= 0
+                || hay.IndexOf("query", StringComparison.Ordinal) >= 0
+                || hay.IndexOf("sql", StringComparison.Ordinal) >= 0;
+
+            foreach (var agent in catalog)
+            {
+                var name = string.IsNullOrWhiteSpace(agent.DisplayName) ? agent.SkillKey : agent.DisplayName.Trim();
+                var tools = LoadToolSummary(dataSourceId, agent.SkillKey) ?? "";
+                var blob = NormalizeWords(
+                    (agent.SkillKey ?? "") + " " + name + " " + (agent.Description ?? "") + " " + tools);
+                if (string.IsNullOrWhiteSpace(blob)) continue;
+
+                var score = 0;
+                var reason = "";
+                if (wantsSql
+                    && (blob.IndexOf("sql", StringComparison.Ordinal) >= 0
+                        || blob.IndexOf("database", StringComparison.Ordinal) >= 0
+                        || tools.IndexOf("execute_sql", StringComparison.OrdinalIgnoreCase) >= 0))
+                {
+                    score = 88;
+                    reason = "This request is about the SQL/query behind the current result.";
+                }
+
+                var userParts = hay.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                var hits = 0;
+                foreach (var p in userParts)
+                {
+                    if (p.Length < 4) continue;
+                    if (blob.IndexOf(p, StringComparison.Ordinal) >= 0) hits++;
+                }
+                if (hits >= 2)
+                    score = Math.Max(score, 86);
+
+                if (score < GeneralAgentConstants.HandoffMinScore) continue;
+                list.Add(new SpecialistHandoffCandidate
+                {
+                    SkillKey = agent.SkillKey,
+                    Name = name,
+                    Description = agent.Description ?? "",
+                    Reason = string.IsNullOrWhiteSpace(reason) ? TrimTo(agent.Description, 220) : reason,
+                    Score = score,
+                    LexicalScore = score
+                });
+            }
+            return list;
         }
 
         private static List<SpecialistHandoffCandidate> FallbackByName(List<TbSkillSetDto> catalog, string userMessage)

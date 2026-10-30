@@ -24,7 +24,7 @@ import { placeRender, renderKey } from './dataRender/placeRender';
 import { RenderBuilding, RenderChip } from './dataRender/RenderChrome';
 import { ReasoningLoopPanel, type ThinkingStep } from './dataRender/ReasoningLoopPanel';
 import { AgentMarkdown, FollowupChips, splitFollowups, type AgentFileLink } from './AgentMarkdown';
-import { GENERAL_AGENT_KEY, isGeneralAgentKey, STAY_IN_GENERAL_MARKER } from './generalAgent';
+import { GENERAL_AGENT_KEY, HANDOFF_CONFIRM_CONTEXT_KEY, isGeneralAgentKey, STAY_IN_GENERAL_MARKER } from './generalAgent';
 
 const SESSION_START = '[session_start]';
 const RUN_IN_PROGRESS = '[run_in_progress]';
@@ -1084,17 +1084,22 @@ const SharedAgentChat: React.FC<Props> = ({
                 const stepsForMsg = turn?.steps ? [...turn.steps] : [];
                 setMessages(msgs => {
                     const last = msgs[msgs.length - 1];
-                    if (last?.role === 'assistant' && last.isStreaming) {
-                        return [...msgs.slice(0, -1), {
-                            ...last,
-                            content: done.FinalResponse || last.content,
-                            isStreaming: false,
-                            thinking: last.thinking || undefined,
-                            toolSteps: stepsForMsg.length > 0 ? stepsForMsg : undefined,
-                            dataRenders: last.dataRenders,
-                        }];
+                    const incoming = (done.FinalResponse || '').trim();
+                    if (last?.role === 'assistant') {
+                        const already = (last.content || '').trim();
+                        const hasCards = (last.handoffProposals?.length ?? 0) > 0 || !!last.handoff;
+                        if (last.isStreaming || hasCards || (incoming.length > 0 && incoming === already)) {
+                            return [...msgs.slice(0, -1), {
+                                ...last,
+                                content: incoming || last.content,
+                                isStreaming: false,
+                                thinking: last.thinking || undefined,
+                                toolSteps: stepsForMsg.length > 0 ? (last.toolSteps ?? stepsForMsg) : last.toolSteps,
+                                dataRenders: last.dataRenders,
+                            }];
+                        }
                     }
-                    if (done.FinalResponse) {
+                    if (incoming) {
                         return [...msgs, {
                             role: 'assistant' as const,
                             content: done.FinalResponse,
@@ -1945,6 +1950,23 @@ const SharedAgentChat: React.FC<Props> = ({
         }
     };
 
+    const isHandoffGateAsk = (ask?: AskUserEvent | null) =>
+        (ask?.ContextKey || '').trim().toLowerCase() === HANDOFF_CONFIRM_CONTEXT_KEY;
+
+    const resolveHandoffGate = async (selectedId: string) => {
+        const ask = pendingAskUserRef.current;
+        const sid = sessionIdRef.current || genericAgentSvc.currentSessionId;
+        if (!sid || !isHandoffGateAsk(ask)) return;
+        await genericAgentSvc.ConfirmAskUser(sid, {
+            SessionId: sid,
+            Cancelled: false,
+            SkillKey: skillKeyRef.current,
+            ChatSessionKey: chatSessionKeyRef.current || genericAgentSvc.currentChatSessionKey || undefined,
+            SelectedIds: [selectedId],
+        });
+        setPendingAskUser(null);
+    };
+
     const confirmHandoff = async (proposal: HandoffProposal) => {
         const sessionKey = chatSessionKeyRef.current;
         if (!sessionKey) {
@@ -1960,6 +1982,7 @@ const SharedAgentChat: React.FC<Props> = ({
                 proposal.targetSkillKey,
                 proposal.reason || '',
             );
+            await resolveHandoffGate(proposal.targetSkillKey);
             const q = new URLSearchParams({
                 skillKey: created.TargetSkillKey,
                 chat: created.TargetSessionKey,
@@ -1978,14 +2001,8 @@ const SharedAgentChat: React.FC<Props> = ({
     };
 
     const stayInCurrentChat = async (messageIndex: number) => {
-        if (isRunningRef.current) return;
-        const original = [...messagesRef.current]
-            .reverse()
-            .find(m => m.role === 'user'
-                && (m.content || '').trim()
-                && (m.content || '').trim() !== SESSION_START
-                && !(m.content || '').includes(STAY_IN_GENERAL_MARKER))
-            ?.content?.trim() || '';
+        const gated = isHandoffGateAsk(pendingAskUserRef.current);
+        if (isRunningRef.current && !gated) return;
         setHandoffBusyKey('__stay__');
         setError(null);
         setMessages(prev => prev.map((row, idx) => (
@@ -1993,6 +2010,17 @@ const SharedAgentChat: React.FC<Props> = ({
         )));
         persistSnapshotToTab();
         try {
+            if (gated) {
+                await resolveHandoffGate(STAY_IN_GENERAL_MARKER);
+                return;
+            }
+            const original = [...messagesRef.current]
+                .reverse()
+                .find(m => m.role === 'user'
+                    && (m.content || '').trim()
+                    && (m.content || '').trim() !== SESSION_START
+                    && !(m.content || '').includes(STAY_IN_GENERAL_MARKER))
+                ?.content?.trim() || '';
             await runAgentTurn({
                 userMessage: `${STAY_IN_GENERAL_MARKER}\nUser declined specialist hand-off. Stay in this General Agent chat and complete the request:\n${original}`,
                 hideUserBubble: true,
@@ -2033,6 +2061,7 @@ const SharedAgentChat: React.FC<Props> = ({
         && askUi === 'button_group'
         && (pendingAskUser?.Options?.length ?? 0) > 0;
     const blocked = isRunning || !!pendingAskUser;
+    const handoffGate = isHandoffGateAsk(pendingAskUser);
     const skillLabel = isGeneralAgent ? 'General Agent' : (skillDisplayNames[skillKey] || skillKey || 'Agent');
     const hasRealUserTurn = messages.some(m =>
         m.role === 'user'
@@ -2314,7 +2343,7 @@ const SharedAgentChat: React.FC<Props> = ({
                                                         <button
                                                             type="button"
                                                             className={`px-2.5 py-1.5 rounded-[4px] text-xs shrink-0 ${theme.button_default}`}
-                                                            disabled={busy || isRunning || stayChosen}
+                                                            disabled={busy || stayChosen || (isRunning && !handoffGate)}
                                                             onClick={() => { void confirmHandoff(s); }}
                                                         >
                                                             {busy ? <i className="fa-solid fa-spinner fa-spin mr-1" aria-hidden /> : null}
@@ -2346,7 +2375,7 @@ const SharedAgentChat: React.FC<Props> = ({
                                                     <button
                                                         type="button"
                                                         className={`px-2.5 py-1.5 rounded-[4px] text-xs shrink-0 ${theme.button_default}`}
-                                                        disabled={!!handoffBusyKey || isRunning}
+                                                        disabled={!!handoffBusyKey || (isRunning && !handoffGate)}
                                                         onClick={() => { void stayInCurrentChat(i); }}
                                                     >
                                                         {handoffBusyKey === '__stay__' ? <i className="fa-solid fa-spinner fa-spin mr-1" aria-hidden /> : null}
@@ -2446,7 +2475,7 @@ const SharedAgentChat: React.FC<Props> = ({
                         </div>
                     )}
 
-                    {pendingAskUser && (
+                    {pendingAskUser && !handoffGate && (
                         <div className={`mx-2 p-3 rounded border ${theme.mainContentSection} flex flex-col gap-2`}>
                             <div className={`text-xs font-medium ${t('text_default')}`}>Question</div>
                             <div className={`text-xs ${theme.label} whitespace-pre-wrap`}>{sanitizeAgentDisplayText(pendingAskUser.Prompt)}</div>
