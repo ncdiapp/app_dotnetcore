@@ -41,10 +41,15 @@ const LandingPage: React.FC = () => {
     }
 
     const path = location.pathname;
-    if (path === '/home' || path.startsWith('/home/')) {
+    const isStaleSysAdminHome =
+      path === '/home' ||
+      path.startsWith('/home/') ||
+      ((path === '/company-security' || path.startsWith('/company-security/')) &&
+        activeTabKey === 'home-tab');
+    if (isStaleSysAdminHome && path !== landingTab.path) {
       navigate(landingTab.path, { replace: true });
     }
-  }, [userContext, location.pathname, navigate, dispatch, tabs]);
+  }, [userContext, location.pathname, navigate, dispatch, tabs, activeTabKey]);
 
   // Restore tabs from localStorage after session is restored
   useEffect(() => {
@@ -56,6 +61,19 @@ const LandingPage: React.FC = () => {
           const parsed = JSON.parse(stored);
           
           if (parsed.tabs && Array.isArray(parsed.tabs) && parsed.tabs.length > 0) {
+            if (isMasterSysAdminFromContext(userContext)) {
+              const landingTab = getDefaultAuthenticatedTab(userContext);
+              parsed.tabs = parsed.tabs.map((tab: Tab) => {
+                if (
+                  tab.tabKey === 'home-tab' &&
+                  (tab.path === '/home' || tab.path === '/company-security' || (tab.path || '').startsWith('/company-security/'))
+                ) {
+                  return { ...tab, path: landingTab.path, initialPath: landingTab.path, label: landingTab.label };
+                }
+                return tab;
+              });
+            }
+
             // Find tab matching current URL BEFORE restoring
             const currentPath = location.pathname;
             

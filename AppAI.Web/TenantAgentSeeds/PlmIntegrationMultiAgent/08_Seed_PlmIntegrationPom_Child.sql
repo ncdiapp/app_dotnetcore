@@ -4,9 +4,9 @@
 SET NOCOUNT ON;
 GO
 
-IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-pom')
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-pom')
 INSERT INTO dbo.AppAgentSkillSet
-    (SkillKey, DisplayName, Description, SystemPrompt, CapabilityFlags, IsActive, SortOrder, Version,
+    (AgentCode, DisplayName, Description, SystemPrompt, CapabilityFlags, IsActive, SortOrder, Version,
      MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize,
      MaxIterations, ExecutionMode, AgentUi)
 VALUES (
@@ -37,20 +37,22 @@ PREVIEW: Ask ROOT to confirm Proceed. EXECUTE ok: Mark wizard.pom=done
 );
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-pom')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-pom')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-multi-agent')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-pom' AND LibraryKey = N'platform-multi-agent')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-pom', N'platform-multi-agent');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-pom' AND sub.LibraryKey = N'platform-multi-agent')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-multi-agent' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-pom';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-pom')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-pom')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'integration-plm-import')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-pom' AND LibraryKey = N'integration-plm-import')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-pom', N'integration-plm-import');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-pom' AND sub.LibraryKey = N'integration-plm-import')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'integration-plm-import' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-pom';
 GO

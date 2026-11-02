@@ -42,20 +42,22 @@ WHERE SystemPrompt LIKE N'%test_plm_connection%';
 GO
 
 -- Orchestrator subscriptions to platform catalog libraries
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-database')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'platform-database')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-orchestrator', N'platform-database');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-orchestrator' AND sub.LibraryKey = N'platform-database')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-database' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-application')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'platform-application')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-orchestrator', N'platform-application');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-orchestrator' AND sub.LibraryKey = N'platform-application')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-application' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator';
 GO

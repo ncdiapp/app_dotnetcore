@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 using App.BL;
+using App.BL.AIAgent.GenericAgent;
 using DatabaseSchemaMrg;
 
 namespace App.BL.TenantBusiness
@@ -25,12 +26,16 @@ namespace App.BL.TenantBusiness
             {
                 var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
                 if (fixture == null) return result;
+                var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
+                if (agentId == null) return result;
 
-                var p = new List<DbParameter> { P(fixture, "@sk", skillKey ?? "") };
+                var p = new List<DbParameter> { P(fixture, "@id", agentId.Value) };
                 var dt = fixture.RetriveDataTable(
-                    $"SELECT TOP {limit} HistoryId, SkillKey, SystemPrompt, SavedAt, SavedBy " +
-                    "FROM dbo.AppAgentSkillSetHistory WHERE SkillKey = @sk " +
-                    "ORDER BY SavedAt DESC",
+                    $"SELECT TOP {limit} h.HistoryId, k.AgentCode AS SkillKey, h.SystemPrompt, h.SavedAt, h.SavedBy " +
+                    "FROM dbo.AppAgentSkillSetHistory h " +
+                    "INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = h.AgentID " +
+                    "WHERE h.AgentID = @id " +
+                    "ORDER BY h.SavedAt DESC",
                     p);
                 if (dt == null) return result;
                 foreach (DataRow row in dt.Rows)
@@ -55,18 +60,20 @@ namespace App.BL.TenantBusiness
             {
                 var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
                 if (fixture == null) return;
+                var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
+                if (agentId == null) return;
 
                 fixture.ExecuteNonQueryResult(
-                    "INSERT INTO dbo.AppAgentSkillSetHistory (SkillKey, SystemPrompt, SavedBy) " +
-                    "VALUES (@sk, @sp, @by)",
+                    "INSERT INTO dbo.AppAgentSkillSetHistory (AgentID, SystemPrompt, SavedBy) " +
+                    "VALUES (@id, @sp, @by)",
                     new List<DbParameter>
                     {
-                        P(fixture, "@sk", skillKey),
+                        P(fixture, "@id", agentId.Value),
                         P(fixture, "@sp", systemPrompt),
                         P(fixture, "@by", (object?)savedBy ?? DBNull.Value)
                     });
 
-                Prune(fixture, skillKey);
+                Prune(fixture, agentId.Value);
             }
             catch (Exception ex)
             {
@@ -74,17 +81,17 @@ namespace App.BL.TenantBusiness
             }
         }
 
-        private static void Prune(DatabaseFixture fixture, string skillKey)
+        private static void Prune(DatabaseFixture fixture, int agentId)
         {
             try
             {
                 fixture.ExecuteNonQueryResult(
                     "DELETE FROM dbo.AppAgentSkillSetHistory WHERE HistoryId IN (" +
-                    "  SELECT HistoryId FROM dbo.AppAgentSkillSetHistory WHERE SkillKey = @sk " +
+                    "  SELECT HistoryId FROM dbo.AppAgentSkillSetHistory WHERE AgentID = @id " +
                     "  ORDER BY SavedAt DESC OFFSET @keep ROWS)",
                     new List<DbParameter>
                     {
-                        P(fixture, "@sk",   skillKey),
+                        P(fixture, "@id",   agentId),
                         P(fixture, "@keep", MaxHistory)
                     });
             }

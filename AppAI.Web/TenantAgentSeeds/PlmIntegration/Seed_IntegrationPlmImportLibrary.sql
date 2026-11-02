@@ -742,12 +742,13 @@ VALUES (
 GO
 
 -- Optional: subscribe PLM Integration Orchestrator when present (idempotent).
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'integration-plm-import')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-orchestrator', N'integration-plm-import');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-orchestrator' AND sub.LibraryKey = N'integration-plm-import')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'integration-plm-import' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator';
 GO
 
 UPDATE dbo.AppAgentLibraryTool SET

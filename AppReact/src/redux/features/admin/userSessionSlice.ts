@@ -24,7 +24,7 @@ const initialState: UserSessionState = {
 // Login function
 export const login = createAsyncThunk<
   { userContext: any; enumDictionary: EnumDictionary | null },
-  { userName: string; password: string; callBack: () => void; preloadedResponse?: any },
+  { userName: string; password: string; callBack: (userContext?: any) => void; preloadedResponse?: any },
   { rejectValue: string }
 >(
   'userSession/login',
@@ -59,7 +59,8 @@ export const login = createAsyncThunk<
         localStorage.setItem('sessionId', resolvedContext.SessionId);
       }
 
-      callBack();
+      // Pass context here: Redux has not stored userContext yet (fulfilled runs after this thunk returns).
+      callBack(resolvedContext);
 
       return {
         userContext: resolvedContext,

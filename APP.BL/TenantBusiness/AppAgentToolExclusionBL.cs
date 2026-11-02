@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data.Common;
 using System.Linq;
 using App.BL;
+using App.BL.AIAgent.GenericAgent;
 
 namespace App.BL.TenantBusiness
 {
@@ -52,9 +53,11 @@ namespace App.BL.TenantBusiness
             if (string.IsNullOrWhiteSpace(skillKey)) return false;
 
             skillKey = skillKey.Trim();
+            var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
+            if (agentId == null) return false;
             fixture.ExecuteNonQueryResult(
-                "DELETE FROM dbo.AppAgentToolExclusion WHERE SkillKey=@SkillKey",
-                new List<DbParameter> { P(fixture, "@SkillKey", skillKey) });
+                "DELETE FROM dbo.AppAgentToolExclusion WHERE AgentID=@AgentID",
+                new List<DbParameter> { P(fixture, "@AgentID", agentId.Value) });
 
             foreach (var item in (items ?? Enumerable.Empty<AppAgentToolExclusionDto>())
                          .Where(i => !string.IsNullOrWhiteSpace(i?.LibraryKey) && !string.IsNullOrWhiteSpace(i?.ToolName))
@@ -62,10 +65,10 @@ namespace App.BL.TenantBusiness
                          .Select(g => g.First()))
             {
                 fixture.ExecuteNonQueryResult(
-                    "INSERT INTO dbo.AppAgentToolExclusion (SkillKey,LibraryKey,ToolName) VALUES (@SkillKey,@LibraryKey,@ToolName)",
+                    "INSERT INTO dbo.AppAgentToolExclusion (AgentID,LibraryKey,ToolName) VALUES (@AgentID,@LibraryKey,@ToolName)",
                     new List<DbParameter>
                     {
-                        P(fixture, "@SkillKey", skillKey),
+                        P(fixture, "@AgentID", agentId.Value),
                         P(fixture, "@LibraryKey", item.LibraryKey.Trim()),
                         P(fixture, "@ToolName", item.ToolName.Trim())
                     });
@@ -78,9 +81,11 @@ namespace App.BL.TenantBusiness
             var result = new List<AppAgentToolExclusionDto>();
             if (string.IsNullOrWhiteSpace(skillKey)) return result;
 
+            var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
+            if (agentId == null) return result;
             var dt = fixture.RetriveDataTable(
-                "SELECT LibraryKey,ToolName FROM dbo.AppAgentToolExclusion WHERE SkillKey=@SkillKey",
-                new List<DbParameter> { P(fixture, "@SkillKey", skillKey.Trim()) });
+                "SELECT LibraryKey,ToolName FROM dbo.AppAgentToolExclusion WHERE AgentID=@AgentID",
+                new List<DbParameter> { P(fixture, "@AgentID", agentId.Value) });
             if (dt == null) return result;
             foreach (System.Data.DataRow row in dt.Rows)
                 result.Add(new AppAgentToolExclusionDto(row["LibraryKey"] as string ?? "", row["ToolName"] as string ?? ""));

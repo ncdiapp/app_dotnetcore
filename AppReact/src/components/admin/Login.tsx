@@ -48,7 +48,7 @@ const Login: React.FC = () => {
     }
   }
 
-  const completeLogin = async () => {
+  const completeLogin = async (ctxFromLogin?: any) => {
     await getUserMenu();
     try {
       const userThemes = await refreshUserDefinedThemesCache();
@@ -56,9 +56,12 @@ const Login: React.FC = () => {
     } catch (error) {
       console.error('Failed to load user themes:', error);
     }
-    const ctx = store.getState().userSession.userContext;
+    const ctx = ctxFromLogin ?? store.getState().userSession.userContext;
     const landingTab = getDefaultAuthenticatedTab(ctx);
     dispatch(resetTabs(landingTab));
+    try {
+      localStorage.removeItem('tabsState');
+    } catch {}
     const back = takePostLoginPath();
     navigate(back ?? getDefaultAuthenticatedPath(ctx), { replace: true });
   };
@@ -116,7 +119,7 @@ const Login: React.FC = () => {
         dispatch(setUserContext(ctx));
         setPendingSessionId(null);
         setAvailableCompanies([]);
-        await completeLogin();
+        await completeLogin(ctx);
       } else {
         setLoginError('Session activation failed. Please log in again.');
         setPendingSessionId(null);

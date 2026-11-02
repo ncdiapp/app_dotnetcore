@@ -10,9 +10,9 @@
 -- NOTE: If you use PlmIntegrationMultiAgent pack, prefer that ROOT seed (call_agent DW child).
 -- Do not run this seed after MultiAgent 03 unless you intentionally want the single-agent playbooks.
 
-IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator')
 INSERT INTO dbo.AppAgentSkillSet
-    (SkillKey, DisplayName, Description, CapabilityFlags,
+    (AgentCode, DisplayName, Description, CapabilityFlags,
      MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize,
      MaxIterations, ExecutionMode, SystemPrompt)
 VALUES (
@@ -221,55 +221,59 @@ Repeatable menu: mode=single_choice ui=button_group layout=vertical optionsJson 
 - List menu choices as markdown numbers in Prompt (use optionsJson + ui=button_group).
 - Offer Skip Entity / apply-with-qc / InspectionAddon choice for TechPack.
 - Offer Force re-run completed-step buttons.'
-WHERE SkillKey = N'plm-integration-orchestrator';
+WHERE AgentCode = N'plm-integration-orchestrator';
 GO
 
 -- AllowAgentFirstTurn when column exists (idempotent)
 IF COL_LENGTH('dbo.AppAgentSkillSet', 'AllowAgentFirstTurn') IS NOT NULL
 UPDATE dbo.AppAgentSkillSet
 SET AllowAgentFirstTurn = 1
-WHERE SkillKey = N'plm-integration-orchestrator';
+WHERE AgentCode = N'plm-integration-orchestrator';
 GO
 
 IF COL_LENGTH('dbo.AppAgentSkillSet', 'AgentUi') IS NOT NULL
 UPDATE dbo.AppAgentSkillSet
 SET AgentUi = 1
-WHERE SkillKey = N'plm-integration-orchestrator';
+WHERE AgentCode = N'plm-integration-orchestrator';
 GO
 
 -- Library subscriptions
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'integration-plm-import')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'integration-plm-import')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-orchestrator', N'integration-plm-import');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-orchestrator' AND sub.LibraryKey = N'integration-plm-import')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'integration-plm-import' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-application')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'platform-application')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-orchestrator', N'platform-application');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-orchestrator' AND sub.LibraryKey = N'platform-application')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-application' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-database')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'platform-database')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-orchestrator', N'platform-database');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-orchestrator' AND sub.LibraryKey = N'platform-database')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-database' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-multi-agent')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'platform-multi-agent')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-orchestrator', N'platform-multi-agent');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-orchestrator' AND sub.LibraryKey = N'platform-multi-agent')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-multi-agent' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator';
 GO

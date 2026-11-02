@@ -470,8 +470,8 @@ namespace App.BL
                 "AppAgentToolDomain",
                 "AppAgentToolLibrary",
                 "AppAgentToolRegister",
-                "AppAgentLibrarySubscription",
                 "AppAgentSkillSet",
+                "AppAgentLibrarySubscription",
                 "AppAgentSkillSetHistory",
                 "AppAgentChildMapping",
             };
@@ -569,9 +569,9 @@ namespace App.BL
                 ("AppAgentToolDomain",          new[] { "DomainKey" }),
                 ("AppAgentToolLibrary",         new[] { "LibraryKey" }),
                 ("AppAgentToolRegister",        new[] { "SkillKey", "ToolName" }),
-                ("AppAgentLibrarySubscription", new[] { "SkillKey", "LibraryKey" }),
-                ("AppAgentSkillSet",            new[] { "SkillKey" }),
-                ("AppAgentChildMapping",        new[] { "ParentSkillKey", "ChildSkillKey" }),
+                ("AppAgentSkillSet",            new[] { "AgentCode" }),
+                ("AppAgentLibrarySubscription", new[] { "AgentID", "LibraryKey" }),
+                ("AppAgentChildMapping",        new[] { "ParentAgentId", "ChildAgentId" }),
             };
 
             // Load all tenant connections from AppMasterDB.
@@ -600,6 +600,9 @@ namespace App.BL
                     {
                         srcConn.Open();
                         dstConn.Open();
+
+                        var srcAgentIdToCode = LoadAgentIdToCode(srcConn);
+                        var dstAgentCodeToId = LoadAgentCodeToId(dstConn);
 
                         foreach (var (table, keyColumns) in agentTables)
                         {
@@ -639,6 +642,9 @@ namespace App.BL
 
                             foreach (var row in rows)
                             {
+                                if (!RemapPushedAgentIds(table, row, srcAgentIdToCode, dstAgentCodeToId))
+                                    continue;
+
                                 // Build WHERE NOT EXISTS predicate on key columns.
                                 var whereParts = new List<string>();
                                 foreach (var key in keyColumns)
@@ -652,6 +658,12 @@ namespace App.BL
                                 var insertCols = new List<string>();
                                 foreach (var col in row.Keys)
                                     if (targetCols.Contains(col)) insertCols.Add(col);
+                                // Target generates AgentID; FKs on other tables are remapped above.
+                                if (string.Equals(table, "AppAgentSkillSet", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    insertCols.RemoveAll(c => c.Equals("AgentID", StringComparison.OrdinalIgnoreCase));
+                                    hasIdentity = false;
+                                }
 
                                 string colList = string.Join(", ", insertCols.ConvertAll(c => $"[{c}]"));
                                 string paramList = string.Join(", ", insertCols.ConvertAll(c => $"@p_{c}"));
@@ -674,6 +686,9 @@ IF NOT EXISTS (SELECT 1 FROM dbo.[{table}] WHERE {whereClause})
                                     totalInserted += cmd.ExecuteNonQuery();
                                 }
                             }
+
+                            if (string.Equals(table, "AppAgentSkillSet", StringComparison.OrdinalIgnoreCase))
+                                dstAgentCodeToId = LoadAgentCodeToId(dstConn);
                         }
                     }
 
@@ -687,6 +702,57 @@ IF NOT EXISTS (SELECT 1 FROM dbo.[{table}] WHERE {whereClause})
             }
 
             return results;
+        }
+
+        private static Dictionary<int, string> LoadAgentIdToCode(SqlConnection conn)
+        {
+            var map = new Dictionary<int, string>();
+            if (!TableExists(conn, "AppAgentSkillSet")) return map;
+            using (var cmd = new SqlCommand("SELECT AgentID, AgentCode FROM dbo.AppAgentSkillSet", conn))
+            using (var rdr = cmd.ExecuteReader())
+                while (rdr.Read())
+                    map[rdr.GetInt32(0)] = rdr.GetString(1);
+            return map;
+        }
+
+        private static Dictionary<string, int> LoadAgentCodeToId(SqlConnection conn)
+        {
+            var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            if (!TableExists(conn, "AppAgentSkillSet")) return map;
+            using (var cmd = new SqlCommand("SELECT AgentID, AgentCode FROM dbo.AppAgentSkillSet", conn))
+            using (var rdr = cmd.ExecuteReader())
+                while (rdr.Read())
+                    map[rdr.GetString(1)] = rdr.GetInt32(0);
+            return map;
+        }
+
+        private static bool RemapPushedAgentIds(
+            string table,
+            Dictionary<string, object> row,
+            Dictionary<int, string> srcIdToCode,
+            Dictionary<string, int> dstCodeToId)
+        {
+            if (string.Equals(table, "AppAgentLibrarySubscription", StringComparison.OrdinalIgnoreCase))
+                return RemapId(row, "AgentID", srcIdToCode, dstCodeToId);
+            if (string.Equals(table, "AppAgentChildMapping", StringComparison.OrdinalIgnoreCase))
+                return RemapId(row, "ParentAgentId", srcIdToCode, dstCodeToId)
+                    && RemapId(row, "ChildAgentId", srcIdToCode, dstCodeToId);
+            return true;
+        }
+
+        private static bool RemapId(
+            Dictionary<string, object> row,
+            string column,
+            Dictionary<int, string> srcIdToCode,
+            Dictionary<string, int> dstCodeToId)
+        {
+            if (!row.TryGetValue(column, out var raw) || raw == null || raw == DBNull.Value)
+                return false;
+            var oldId = Convert.ToInt32(raw);
+            if (!srcIdToCode.TryGetValue(oldId, out var code)) return false;
+            if (!dstCodeToId.TryGetValue(code, out var newId)) return false;
+            row[column] = newId;
+            return true;
         }
 
         private static bool TableExists(SqlConnection conn, string tableName)

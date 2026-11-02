@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { shallowEqual, useSelector } from 'react-redux';
 import { RootState } from '../../redux/store';
-import { isMasterSysAdminFromContext } from '../../helper/adminPermissionHelper';
+import { getDefaultAuthenticatedPath, isMasterSysAdminFromContext } from '../../helper/adminPermissionHelper';
 import { dashboardService } from '../../webapi/dashboardsvc';
 import Dashboard from '../dashboard/Dashboard';
 import { BusyLoader } from '../common/BusyLoader';
@@ -82,7 +82,7 @@ const Home: React.FC = () => {
   }, [hasUserContext, isLoginFailed, defaultDesktopId]);
 
   if (isMasterSysAdminFromContext(userContext)) {
-    return <Navigate to="/company-security" replace />;
+    return <Navigate to={getDefaultAuthenticatedPath(userContext)} replace />;
   }
 
   if (loading) {

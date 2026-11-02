@@ -1,12 +1,12 @@
 -- TENANT seed — NOT a Flyway migration.
 -- Interactive skill: app-config-pack-orchestrator
 -- Requires: Seed_PlatformAppConfigPackLibrary.sql (ask_user is system built-in for Interactive).
--- IMPORTANT: Every UPDATE must include WHERE SkillKey = ... (never update all rows).
+-- IMPORTANT: Every UPDATE must include WHERE AgentCode = ... (never update all rows).
 -- ASCII-only prompting (avoid UTF-8 arrows/box-drawing — sqlcmd default code page mojibake).
 
-IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'app-config-pack-orchestrator')
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'app-config-pack-orchestrator')
 INSERT INTO dbo.AppAgentSkillSet
-    (SkillKey, DisplayName, Description, CapabilityFlags,
+    (AgentCode, DisplayName, Description, CapabilityFlags,
      MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize,
      MaxIterations, ExecutionMode, SystemPrompt)
 VALUES (
@@ -39,16 +39,17 @@ VALUES (
 );
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'app-config-pack-orchestrator')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'app-config-pack-orchestrator')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-app-config-pack')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'app-config-pack-orchestrator' AND LibraryKey = N'platform-app-config-pack')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'app-config-pack-orchestrator', N'platform-app-config-pack');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'app-config-pack-orchestrator' AND sub.LibraryKey = N'platform-app-config-pack')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-app-config-pack' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'app-config-pack-orchestrator';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'app-config-pack-orchestrator')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'app-config-pack-orchestrator')
 UPDATE dbo.AppAgentSkillSet
 SET DisplayName = N'App Config Pack Orchestrator',
     Description = N'Interactive agent: NL -> App Config Pack JSON -> validate/preview/execute.',
@@ -72,11 +73,11 @@ SET DisplayName = N'App Config Pack Orchestrator',
 - Do not call execute without validate + preview + confirm.
 - Do not DROP tables/columns or invent platform IDs.
 - Keep replies concise; use ask_user for choices.'
-WHERE SkillKey = N'app-config-pack-orchestrator';
+WHERE AgentCode = N'app-config-pack-orchestrator';
 GO
 
 IF COL_LENGTH('dbo.AppAgentSkillSet', 'AllowAgentFirstTurn') IS NOT NULL
 UPDATE dbo.AppAgentSkillSet
 SET AllowAgentFirstTurn = 1
-WHERE SkillKey = N'app-config-pack-orchestrator';
+WHERE AgentCode = N'app-config-pack-orchestrator';
 GO

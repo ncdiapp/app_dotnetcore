@@ -25,7 +25,7 @@ type ProvisionResult = {
   ErrorMessage?: string;
 };
 
-type MigrationResult = Record<string, number>;
+type MigrationResult = Record<string, number | string>;
 
 const emptyForm = (): ProvisionForm => ({
   CompanyName: '',
@@ -298,9 +298,19 @@ const TenantProvisioning: React.FC = () => {
             </div>
           )}
           {migrationResult && !migrationError && (
-            <div className="mt-3 p-3 rounded-md text-xs bg-green-50 border border-green-300">
-              <div className="font-semibold text-green-700 mb-2">
-                <i className="fa-solid fa-circle-check mr-1" />Migrations completed
+            <div className={`mt-3 p-3 rounded-md text-xs border ${
+              Object.values(migrationResult).some(v => String(v).startsWith('ERROR') || v === -1)
+                ? 'bg-red-50 border-red-300'
+                : 'bg-green-50 border-green-300'
+            }`}>
+              <div className={`font-semibold mb-2 ${
+                Object.values(migrationResult).some(v => String(v).startsWith('ERROR') || v === -1)
+                  ? 'text-red-700'
+                  : 'text-green-700'
+              }`}>
+                {Object.values(migrationResult).some(v => String(v).startsWith('ERROR') || v === -1)
+                  ? <><i className="fa-solid fa-circle-xmark mr-1" />Migrations failed on one or more tenants</>
+                  : <><i className="fa-solid fa-circle-check mr-1" />Migrations completed</>}
               </div>
               {Object.keys(migrationResult).length === 0 ? (
                 <div className="text-gray-500">No tenants found or no migrations pending.</div>
@@ -309,14 +319,16 @@ const TenantProvisioning: React.FC = () => {
                   <thead>
                     <tr className="text-left">
                       <th className="pr-4 pb-1 font-semibold">Tenant / Database</th>
-                      <th className="pb-1 font-semibold">Migrations Applied</th>
+                      <th className="pb-1 font-semibold">Result</th>
                     </tr>
                   </thead>
                   <tbody>
                     {Object.entries(migrationResult).map(([db, count]) => (
                       <tr key={db}>
-                        <td className="pr-4 py-0.5">{db}</td>
-                        <td className="py-0.5">{count}</td>
+                        <td className="pr-4 py-0.5 align-top">{db}</td>
+                        <td className={`py-0.5 whitespace-pre-wrap ${String(count).startsWith('ERROR') || count === -1 ? 'text-red-700' : ''}`}>
+                          {count === -1 ? 'ERROR (see server log)' : String(count)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

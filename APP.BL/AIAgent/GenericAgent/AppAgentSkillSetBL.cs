@@ -15,7 +15,7 @@ namespace App.BL.AIAgent.GenericAgent
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
 
         private const string SelectColsBase = @"
-            SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,Version,
+            AgentID,AgentCode AS SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,Version,
             MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations,ExecutionMode,AgentUi";
 
         public static List<AppAgentSkillSetDto> GetAllSkillSets(int dataSourceId)
@@ -26,7 +26,7 @@ namespace App.BL.AIAgent.GenericAgent
                 var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
                 if (fixture == null) return list;
                 var dt = fixture.RetriveDataTable(
-                    $"SELECT {SelectCols(fixture)} FROM dbo.AppAgentSkillSet ORDER BY SortOrder,SkillKey",
+                    $"SELECT {SelectCols(fixture)} FROM dbo.AppAgentSkillSet ORDER BY SortOrder,AgentCode",
                     new List<DbParameter>());
                 if (dt == null) return list;
                 foreach (DataRow row in dt.Rows)
@@ -45,7 +45,7 @@ namespace App.BL.AIAgent.GenericAgent
                 var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
                 if (fixture == null) return list;
                 var dt = fixture.RetriveDataTable(
-                    $"SELECT {SelectCols(fixture)} FROM dbo.AppAgentSkillSet WHERE SkillKey LIKE 'tmpl-%' AND IsActive = 0 ORDER BY SortOrder,SkillKey",
+                    $"SELECT {SelectCols(fixture)} FROM dbo.AppAgentSkillSet WHERE AgentCode LIKE 'tmpl-%' AND IsActive = 0 ORDER BY SortOrder,AgentCode",
                     new List<DbParameter>());
                 if (dt == null) return list;
                 foreach (DataRow row in dt.Rows)
@@ -62,16 +62,23 @@ namespace App.BL.AIAgent.GenericAgent
                 var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
                 if (fixture == null) return false;
 
-                // Snapshot current SystemPrompt into history before overwriting (update path only)
-                var existing = fixture.RetriveDataTable(
-                    "SELECT SystemPrompt FROM dbo.AppAgentSkillSet WHERE SkillKey = @SkillKey",
-                    new List<DbParameter> { BuildParam(fixture, "@SkillKey", dto.SkillKey) });
+                var code = (dto.AgentCode ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(code)) return false;
+
+                // Snapshot current SystemPrompt into history (update by AgentID only)
+                string existingSql = dto.AgentId > 0
+                    ? "SELECT SystemPrompt FROM dbo.AppAgentSkillSet WHERE AgentID = @AgentID"
+                    : "SELECT SystemPrompt FROM dbo.AppAgentSkillSet WHERE 1=0";
+                var existingParams = new List<DbParameter>();
+                if (dto.AgentId > 0)
+                    existingParams.Add(BuildParam(fixture, "@AgentID", dto.AgentId));
+                var existing = fixture.RetriveDataTable(existingSql, existingParams);
                 if (existing != null && existing.Rows.Count > 0)
                 {
                     var currentPrompt = existing.Rows[0]["SystemPrompt"] as string ?? "";
                     var newPrompt     = dto.SystemPrompt ?? "";
                     if (!string.Equals(currentPrompt, newPrompt, StringComparison.Ordinal))
-                        AppAgentSkillSetHistoryBL.Insert(dataSourceId, dto.SkillKey, currentPrompt);
+                        AppAgentSkillSetHistoryBL.Insert(dataSourceId, code, currentPrompt);
                 }
 
                 var hasFirstTurn = HasColumn(fixture, "AllowAgentFirstTurn");
@@ -93,17 +100,17 @@ namespace App.BL.AIAgent.GenericAgent
                 }
 
                 var sql = $@"
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = @SkillKey)
+IF @AgentID > 0 AND EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentID = @AgentID)
     UPDATE dbo.AppAgentSkillSet SET
-        DisplayName=@DisplayName, Description=@Description, SystemPrompt=@SystemPrompt,
+        AgentCode=@AgentCode, DisplayName=@DisplayName, Description=@Description, SystemPrompt=@SystemPrompt,
         CapabilityFlags=@CapabilityFlags, IsActive=@IsActive, SortOrder=@SortOrder,
         Version=@Version, MaxHistoryTokens=@MaxHistoryTokens, SummarizeThreshold=@SummarizeThreshold,
         MaxToolResultChars=@MaxToolResultChars, RecentWindowSize=@RecentWindowSize,
         MaxIterations=@MaxIterations, ExecutionMode=@ExecutionMode, AgentUi=@AgentUi{updateExtra}
-    WHERE SkillKey = @SkillKey
-ELSE
-    INSERT INTO dbo.AppAgentSkillSet (SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations,ExecutionMode,AgentUi{insertCols})
-    VALUES (@SkillKey,@DisplayName,@Description,@SystemPrompt,@CapabilityFlags,@IsActive,@SortOrder,@Version,@MaxHistoryTokens,@SummarizeThreshold,@MaxToolResultChars,@RecentWindowSize,@MaxIterations,@ExecutionMode,@AgentUi{insertVals})";
+    WHERE AgentID = @AgentID
+ELSE IF @AgentID <= 0
+    INSERT INTO dbo.AppAgentSkillSet (AgentCode,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations,ExecutionMode,AgentUi{insertCols})
+    VALUES (@AgentCode,@DisplayName,@Description,@SystemPrompt,@CapabilityFlags,@IsActive,@SortOrder,@Version,@MaxHistoryTokens,@SummarizeThreshold,@MaxToolResultChars,@RecentWindowSize,@MaxIterations,@ExecutionMode,@AgentUi{insertVals})";
                 fixture.ExecuteNonQueryResult(sql, BuildParams(fixture, dto, hasFirstTurn, hasThink));
                 return true;
             }
@@ -148,7 +155,7 @@ ELSE
                 }
                 var p = fixture.CreateParameter("@SkillKey"); p.Value = skillKey;
                 fixture.ExecuteNonQueryResult(
-                    "DELETE FROM dbo.AppAgentSkillSet WHERE SkillKey = @SkillKey",
+                    "DELETE FROM dbo.AppAgentSkillSet WHERE AgentCode = @SkillKey",
                     new List<DbParameter> { p });
                 return true;
             }
@@ -200,6 +207,8 @@ ELSE
 
         private static AppAgentSkillSetDto MapRow(DataRow row) => new AppAgentSkillSetDto
         {
+            AgentId            = ColInt(row, "AgentID", 0),
+            AgentCode          = row["SkillKey"] as string ?? "",
             SkillKey           = row["SkillKey"] as string ?? "",
             DisplayName        = row["DisplayName"] as string ?? "",
             Description        = row["Description"] as string ?? "",
@@ -228,25 +237,23 @@ ELSE
             try
             {
                 var dt = fixture.RetriveDataTable(
-                    "SELECT ParentSkillKey, ChildSkillKey FROM dbo.AppAgentChildMapping",
+                    "SELECT ParentAgentId, ChildAgentId FROM dbo.AppAgentChildMapping",
                     new List<DbParameter>());
                 if (dt == null || dt.Rows.Count == 0) return;
 
-                var childCount = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-                var usedByCount = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                var childCount = new Dictionary<int, int>();
+                var usedByCount = new Dictionary<int, int>();
                 foreach (DataRow row in dt.Rows)
                 {
-                    var parent = row["ParentSkillKey"] as string ?? "";
-                    var child = row["ChildSkillKey"] as string ?? "";
-                    if (!string.IsNullOrWhiteSpace(parent))
-                        childCount[parent] = childCount.TryGetValue(parent, out var pc) ? pc + 1 : 1;
-                    if (!string.IsNullOrWhiteSpace(child))
-                        usedByCount[child] = usedByCount.TryGetValue(child, out var uc) ? uc + 1 : 1;
+                    var parent = Convert.ToInt32(row["ParentAgentId"]);
+                    var child = Convert.ToInt32(row["ChildAgentId"]);
+                    childCount[parent] = childCount.TryGetValue(parent, out var pc) ? pc + 1 : 1;
+                    usedByCount[child] = usedByCount.TryGetValue(child, out var uc) ? uc + 1 : 1;
                 }
                 foreach (var dto in list)
                 {
-                    if (childCount.TryGetValue(dto.SkillKey, out var cc)) dto.ChildCount = cc;
-                    if (usedByCount.TryGetValue(dto.SkillKey, out var ub)) dto.UsedByCount = ub;
+                    if (childCount.TryGetValue(dto.AgentId, out var cc)) dto.ChildCount = cc;
+                    if (usedByCount.TryGetValue(dto.AgentId, out var ub)) dto.UsedByCount = ub;
                 }
             }
             catch (Exception ex) { Log.Warn(ex, nameof(EnrichChildCounts)); }
@@ -286,8 +293,9 @@ ELSE
         {
             var p = new List<DbParameter>();
             void Add(string n, object v) { var x = fixture.CreateParameter(n); x.Value = v ?? DBNull.Value; p.Add(x); }
-            Add("@SkillKey",           dto.SkillKey);
-            Add("@DisplayName",        string.IsNullOrEmpty(dto.DisplayName) ? dto.SkillKey : dto.DisplayName);
+            Add("@AgentID",            dto.AgentId);
+            Add("@AgentCode",          (dto.AgentCode ?? "").Trim());
+            Add("@DisplayName",        string.IsNullOrEmpty(dto.DisplayName) ? (dto.AgentCode ?? "") : dto.DisplayName);
             Add("@Description",        (object)dto.Description ?? DBNull.Value);
             Add("@SystemPrompt",       (object)dto.SystemPrompt ?? DBNull.Value);
             Add("@CapabilityFlags",    dto.CapabilityFlags);

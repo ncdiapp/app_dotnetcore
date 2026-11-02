@@ -105,7 +105,8 @@ ORDER BY m.McpServerId",
 SELECT m.McpServerId,m.SkillKey,m.ServerName,m.ServerType,m.ServerUrl,m.Command,m.IsActive,m.BearerTokenEnvVar,m.Headers,m.HeadersFromEnv
 FROM dbo.AppAgentMcpServer m
 INNER JOIN dbo.AppAgentLibrarySubscription s ON m.SkillKey=s.LibraryKey
-WHERE s.SkillKey=@SkillKey AND m.IsActive=1
+INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = s.AgentID
+WHERE k.AgentCode=@SkillKey AND m.IsActive=1
 ORDER BY m.McpServerId",
                 new List<DbParameter> { P(fixture, "@SkillKey", skillKey.Trim()) });
             return MapAll(dt);

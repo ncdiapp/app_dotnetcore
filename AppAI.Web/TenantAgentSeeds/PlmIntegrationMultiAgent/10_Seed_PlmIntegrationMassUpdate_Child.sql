@@ -7,9 +7,9 @@
 SET NOCOUNT ON;
 GO
 
-IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-massupdate')
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-massupdate')
 INSERT INTO dbo.AppAgentSkillSet
-    (SkillKey, DisplayName, Description, SystemPrompt, CapabilityFlags, IsActive, SortOrder, Version,
+    (AgentCode, DisplayName, Description, SystemPrompt, CapabilityFlags, IsActive, SortOrder, Version,
      MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize,
      MaxIterations, ExecutionMode, AgentUi)
 VALUES (
@@ -116,40 +116,44 @@ ROOT appends massupdate.doneIds from apply steps (massUpdateViewId / SearchViewI
 );
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-massupdate')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-massupdate')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-multi-agent')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-massupdate' AND LibraryKey = N'platform-multi-agent')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-massupdate', N'platform-multi-agent');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-massupdate' AND sub.LibraryKey = N'platform-multi-agent')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-multi-agent' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-massupdate';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-massupdate')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-massupdate')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'integration-plm-import')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-massupdate' AND LibraryKey = N'integration-plm-import')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-massupdate', N'integration-plm-import');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-massupdate' AND sub.LibraryKey = N'integration-plm-import')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'integration-plm-import' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-massupdate';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-massupdate')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-massupdate')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'agent-files')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-massupdate' AND LibraryKey = N'agent-files')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-massupdate', N'agent-files');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-massupdate' AND sub.LibraryKey = N'agent-files')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'agent-files' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-massupdate';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-massupdate')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-massupdate')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-database')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-massupdate' AND LibraryKey = N'platform-database')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-massupdate', N'platform-database');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-massupdate' AND sub.LibraryKey = N'platform-database')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-database' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-massupdate';
 GO
 
 UPDATE dbo.AppAgentSkillSet
@@ -157,6 +161,6 @@ SET SystemPrompt = REPLACE(
     SystemPrompt,
     N'"nextHint": "ROOT: confirm A/B1/B2/C"',
     N'"nextHint": "ROOT: Phase A succeeded (empty files is correct). ask_user [massupdate] Phase A checklist with recommendedOption A|B1|B2|C. Do not title Cancelled."')
-WHERE SkillKey = N'plm-integration-massupdate'
+WHERE AgentCode = N'plm-integration-massupdate'
   AND SystemPrompt LIKE N'%"nextHint": "ROOT: confirm A/B1/B2/C"%';
 GO

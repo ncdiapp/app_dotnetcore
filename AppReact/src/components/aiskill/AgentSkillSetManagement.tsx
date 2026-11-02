@@ -7,6 +7,7 @@ import {
     AppAgentSkillSetDto, AppAgentToolDomainDto, AppAgentToolLibraryDto, AppAgentPromptHistoryDto,
     AppAgentChildMappingDto,
     GenerateAgentResult, LibraryToolPreviewDto,
+    agentCodeOf,
 } from '../../webapi/agentSkillSetSvc';
 import AgentToolRegisterTab from './AgentToolRegisterTab';
 import AgentUiChatHost from './AgentUiChatHost';
@@ -41,7 +42,7 @@ function promptMentionsHeavyDbTools(prompt: string | null | undefined): boolean 
 
 
 const emptySkillSet = (): AppAgentSkillSetDto => ({
-    SkillKey: '', DisplayName: '', Description: '', SystemPrompt: '', CapabilityFlags: 3,
+    AgentId: 0, AgentCode: '', SkillKey: '', DisplayName: '', Description: '', SystemPrompt: '', CapabilityFlags: 3,
     IsActive: true, SortOrder: 0, Version: 1,
     MaxHistoryTokens: 80000, SummarizeThreshold: 60000, MaxToolResultChars: 4000, RecentWindowSize: 10, MaxIterations: 40,
     ExecutionMode: 'Interactive',
@@ -114,7 +115,7 @@ const AgentSkillSetManagement: React.FC = () => {
             return null;
         }
 
-        const fresh = list.find(x => x.SkillKey === skillKeyToKeep) ?? null;
+        const fresh = list.find(x => agentCodeOf(x) === skillKeyToKeep) ?? null;
         if (fresh) {
             setSelected(fresh);
             if (syncEditFromServer) {
@@ -176,7 +177,7 @@ const AgentSkillSetManagement: React.FC = () => {
 
     const selectAgentByKey = useCallback((skillKey: string, list?: AppAgentSkillSetDto[]) => {
         const source = list ?? agents;
-        const item = source.find(x => x.SkillKey === skillKey);
+        const item = source.find(x => agentCodeOf(x) === skillKey);
         if (!item) return;
         setSelected(item);
         setEditItem({
@@ -190,9 +191,9 @@ const AgentSkillSetManagement: React.FC = () => {
         setShowHistory(false);
         setEditorTab('prompt');
         setHeaderDetailsExpanded(true);
-        loadSubscriptions(item.SkillKey);
-        loadHistory(item.SkillKey);
-        loadUsedBy(item.SkillKey);
+        loadSubscriptions(agentCodeOf(item));
+        loadHistory(agentCodeOf(item));
+        loadUsedBy(agentCodeOf(item));
     }, [agents, loadUsedBy]);
 
     useEffect(() => {
@@ -234,7 +235,7 @@ const AgentSkillSetManagement: React.FC = () => {
             ]);
             const list = skillRes.Object ?? [];
             setMappings(mapRes.Object ?? []);
-            const keepKey = (selected?.SkillKey ?? editItem.SkillKey) || null;
+            const keepKey = agentCodeOf(selected) || agentCodeOf(editItem) || null;
             applyListAndKeepSelection(list, keepKey, !!keepKey);
             if (keepKey) loadUsedBy(keepKey);
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
@@ -252,6 +253,8 @@ const AgentSkillSetManagement: React.FC = () => {
     const update = (field: keyof AppAgentSkillSetDto, value: unknown) => {
         setEditItem(prev => {
             const next = { ...prev, [field]: value } as AppAgentSkillSetDto;
+            if (field === 'AgentCode') next.SkillKey = String(value ?? '');
+            if (field === 'SkillKey') next.AgentCode = String(value ?? '');
             if (field === 'ExecutionMode' && value !== 'Interactive') {
                 next.AllowAgentFirstTurn = false;
             }
@@ -269,17 +272,17 @@ const AgentSkillSetManagement: React.FC = () => {
 
     const childKeysForEdit = useMemo(
         () => mappings
-            .filter(m => m.ParentSkillKey === editItem.SkillKey)
+            .filter(m => m.ParentSkillKey === editItem.AgentCode)
             .slice()
             .sort((a, b) => {
-                const aa = agents.find(x => x.SkillKey === a.ChildSkillKey);
-                const bb = agents.find(x => x.SkillKey === b.ChildSkillKey);
+                const aa = agents.find(x => agentCodeOf(x) === a.ChildSkillKey);
+                const bb = agents.find(x => agentCodeOf(x) === b.ChildSkillKey);
                 const an = (a.ChildDisplayName || aa?.DisplayName || a.ChildSkillKey).toLowerCase();
                 const bn = (b.ChildDisplayName || bb?.DisplayName || b.ChildSkillKey).toLowerCase();
                 return an.localeCompare(bn) || a.ChildSkillKey.localeCompare(b.ChildSkillKey);
             })
             .map(m => m.ChildSkillKey),
-        [mappings, editItem.SkillKey, agents],
+        [mappings, editItem.AgentCode, agents],
     );
 
     const unregisteredCallAgentKeys = useMemo(() => {
@@ -325,17 +328,17 @@ const AgentSkillSetManagement: React.FC = () => {
     };
 
 const handleSave = async () => {
-        if (!editItem.SkillKey.trim()) { setError('Agent Code is required.'); return; }
-        const key = editItem.SkillKey.trim();
+        if (!editItem.AgentCode.trim()) { setError('Agent Code is required.'); return; }
+        const key = editItem.AgentCode.trim();
         dispatch(setIsBusy()); setError(null);
         try {
             await agentSkillSetSvc.UpsertSkillSet(editItem);
             if (subsChanged) {
-                await agentSkillSetSvc.SetSubscriptions(editItem.SkillKey, Array.from(subscribedKeys));
+                await agentSkillSetSvc.SetSubscriptions(editItem.AgentCode, Array.from(subscribedKeys));
                 setSubsChanged(false);
             }
             if (exclChanged) {
-                await agentSkillSetSvc.SetToolExclusions(editItem.SkillKey, Array.from(excluded).map(k => {
+                await agentSkillSetSvc.SetToolExclusions(editItem.AgentCode, Array.from(excluded).map(k => {
                     const [LibraryKey, ToolName] = k.split('\u0001');
                     return { LibraryKey, ToolName };
                 }));
@@ -358,7 +361,7 @@ const handleSave = async () => {
                 loadHistory(key);
                 loadUsedBy(key);
             } else {
-                setSelected({ ...editItem, SkillKey: key });
+                setSelected({ ...editItem, AgentCode: key, SkillKey: key });
             }
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
         finally { dispatch(setIsNotBusy()); }
@@ -369,7 +372,7 @@ const handleSave = async () => {
         dispatch(setIsBusy());
         setError(null);
         try {
-            const res = await agentSkillSetSvc.DeleteSkillSet(selected.SkillKey);
+            const res = await agentSkillSetSvc.DeleteSkillSet(selected.AgentCode);
             if (!res.IsSuccessful || res.Object === false) {
                 setError(res.ValidationResult?.Items?.[0]?.Message || 'Delete failed.');
                 setConfirmDelete(false);
@@ -398,7 +401,7 @@ const handleSave = async () => {
             ]);
             setMappings(mapRes.Object ?? []);
             const list = skillRes.Object ?? [];
-            const keepKey = selected?.SkillKey || editItem.SkillKey || null;
+            const keepKey = agentCodeOf(selected) || agentCodeOf(editItem) || null;
             if (keepKey) {
                 applyListAndKeepSelection(list, keepKey, true);
                 loadHistory(keepKey);
@@ -449,6 +452,7 @@ const handleSave = async () => {
         try {
             await agentSkillSetSvc.UpsertSkillSet({
                 ...editItem,
+                AgentCode:   fullKey,
                 SkillKey:    fullKey,
                 DisplayName: tmplName.trim() || editItem.DisplayName,
                 IsActive:    false,
@@ -515,9 +519,9 @@ const handleSave = async () => {
         }
         // ask_user is runtime-injected for Interactive — never register as a private BuiltIn.
         const skipPrivateBuiltIns = new Set(['ask_user']);
-        if (editItem.SkillKey.trim()) {
+        if (editItem.AgentCode.trim()) {
             try {
-                const existing = await agentSkillSetSvc.GetToolsBySkillKey(editItem.SkillKey);
+                const existing = await agentSkillSetSvc.GetToolsBySkillKey(editItem.AgentCode);
                 const askUserRows = (existing.Object ?? []).filter(t =>
                     (t.ToolName || '').toLowerCase() === 'ask_user');
                 await Promise.all(askUserRows.map(t => agentSkillSetSvc.DeleteTool(t.Id).catch(() => {})));
@@ -540,12 +544,12 @@ const handleSave = async () => {
                 setError(`Libraries were subscribed, but per-tool selection could not be applied: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
-        if (aiAcceptedBuiltIns.size > 0 && editItem.SkillKey.trim()) {
+        if (aiAcceptedBuiltIns.size > 0 && editItem.AgentCode.trim()) {
             const names = Array.from(aiAcceptedBuiltIns).filter(n => !skipPrivateBuiltIns.has(n.toLowerCase()));
             const newTools = allBuiltInTools
                 .filter(t => names.includes(t.ToolName))
                 .map(t => ({
-                    Id: 0, SkillKey: editItem.SkillKey, ToolName: t.ToolName,
+                    Id: 0, SkillKey: editItem.AgentCode, ToolName: t.ToolName,
                     Description: t.ToolDescription, ToolType: 'BuiltIn',
                     ToolConfig: t.ToolConfig ?? '', IsActive: true, SortOrder: 0,
                 }));
@@ -626,7 +630,7 @@ const handleSave = async () => {
                                         {templates.map(tmpl => (
                                             <button
                                                 type="button"
-                                                key={tmpl.SkillKey}
+                                                key={tmpl.AgentCode}
                                                 className={`w-full text-left px-3 py-1.5 text-xs hover:opacity-80 ${theme.label}`}
                                                 onClick={() => {
                                                     setEditItem({
@@ -664,7 +668,7 @@ const handleSave = async () => {
                                 </button>
                             )}
                             {selected && (
-                                <button type="button" className={btn} onClick={() => setTestSkillKey(selected.SkillKey)}>
+                                <button type="button" className={btn} onClick={() => setTestSkillKey(selected.AgentCode)}>
                                     <i className="fa-solid fa-play mr-1" />Run Test
                                 </button>
                             )}
@@ -673,7 +677,7 @@ const handleSave = async () => {
                             <AgentHierarchyPanel
                                 agents={agents}
                                 mappings={mappings}
-                                selectedSkillKey={selected?.SkillKey ?? (isEditing ? editItem.SkillKey || null : null)}
+                                selectedSkillKey={agentCodeOf(selected) || (isEditing ? editItem.AgentCode || null : null)}
                                 onSelect={selectAgentByKey}
                                 onDropOntoOrchestrator={handleDropOntoOrchestrator}
                                 theme={theme}
@@ -750,7 +754,7 @@ const handleSave = async () => {
                                             title={headerDetailsExpanded ? 'Collapse agent details' : 'Expand agent details'}
                                         >
                                             <span className={`text-sm font-semibold truncate ${theme.title}`}>
-                                                {editItem.DisplayName || editItem.SkillKey || 'New Agent'}
+                                                {editItem.DisplayName || editItem.AgentCode || 'New Agent'}
                                             </span>
                                             {isOrchestrator && (
                                                 <span className={`shrink-0 px-1.5 py-0.5 text-[10px] rounded border ${borderCls} ${theme.label}`} title="Orchestrator (Primary) Agent">Orchestrator</span>
@@ -768,7 +772,7 @@ const handleSave = async () => {
                                         </button>
                                         <div className="flex items-center gap-2 shrink-0">
                                             {isDirty && <span className={`text-xs ${theme.label}`}>Unsaved</span>}
-                                            {selected && !selected.SkillKey.startsWith('tmpl-') && (
+                                            {selected && !selected.AgentCode.startsWith('tmpl-') && (
                                                 <button type="button" className={btn} onClick={openSaveAsTemplate} title="Clone this agent as a reusable template">
                                                     <i className="fa-solid fa-star mr-1" />Save as Template
                                                 </button>
@@ -786,7 +790,7 @@ const handleSave = async () => {
                                         <div className={`px-3 pb-2 pt-1 border-t grid grid-cols-1 xl:grid-cols-2 gap-x-6 gap-y-1 ${borderCls}`}>
                                             <div className="flex items-center py-1">
                                                 <label className={lbl}>Agent Code *</label>
-                                                <input className={inp} value={editItem.SkillKey} onChange={e => update('SkillKey', e.target.value)} autoComplete="off" disabled={!!selected} />
+                                                <input className={inp} value={editItem.AgentCode} onChange={e => update('AgentCode', e.target.value)} autoComplete="off" disabled={!!selected} />
                                             </div>
                                             <div className="flex items-center py-1">
                                                 <label className={lbl}>Display Name</label>
@@ -926,7 +930,7 @@ const handleSave = async () => {
 
                                     {editorTab === 'child-agent' && (
                                         <AgentChildAgentTab
-                                            parentSkillKey={editItem.SkillKey}
+                                            parentSkillKey={editItem.AgentCode}
                                             allAgents={agents}
                                             mappings={mappings}
                                             onMappingsChanged={async () => {
@@ -950,9 +954,9 @@ const handleSave = async () => {
                                                 <button
                                                     type="button"
                                                     className={`${btn} flex items-center gap-1.5`}
-                                                    disabled={!editItem.SkillKey.trim()}
+                                                    disabled={!editItem.AgentCode.trim()}
                                                     onClick={() => setShowToolsModal(true)}
-                                                    title={editItem.SkillKey.trim() ? 'Manage private tools for this agent' : 'Save the agent first to manage its tools'}
+                                                    title={editItem.AgentCode.trim() ? 'Manage private tools for this agent' : 'Save the agent first to manage its tools'}
                                                 >
                                                     <i className="fa-solid fa-screwdriver-wrench" />Manage Agent Tools
                                                 </button>
@@ -1060,9 +1064,9 @@ const handleSave = async () => {
                                             <div className={`text-xs mb-2 ${theme.label}`}>
                                                 New Chat copies these files into that chat <span className="font-mono">source/</span> folder. Existing chats are not changed.
                                             </div>
-                                            {editItem.SkillKey.trim() ? (
+                                            {editItem.AgentCode.trim() ? (
                                                 <div className={`border rounded overflow-hidden h-1 flex-auto min-h-0 ${borderCls}`}>
-                                                    <GenericAgentFilesPanel skillKey={editItem.SkillKey.trim()} fileScope="defaultSource" />
+                                                    <GenericAgentFilesPanel skillKey={editItem.AgentCode.trim()} fileScope="defaultSource" />
                                                 </div>
                                             ) : (
                                                 <div className={`text-xs ${theme.label}`}>Save the agent first to manage default source files.</div>
@@ -1101,13 +1105,13 @@ const handleSave = async () => {
             </div>
 
             {/* Private Tools modal */}
-            {showToolsModal && editItem.SkillKey && (
+            {showToolsModal && editItem.AgentCode && (
                 <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50" onClick={e => { if (e.target === e.currentTarget) setShowToolsModal(false); }}>
                     <div className={`flex flex-col rounded shadow-2xl overflow-hidden ${theme.mainContentSection}`} style={{ width: '80vw', height: '80vh' }}>
                         <div className={`flex items-center px-4 py-2 border-b ${borderCls} ${theme.mainContentSection}`}>
                             <i className="fa-solid fa-screwdriver-wrench mr-2" />
                             <span className={`text-sm font-semibold ${theme.title} w-1 flex-auto`}>
-                                Private Tools — <span className="font-mono">{editItem.SkillKey}</span>
+                                Private Tools — <span className="font-mono">{editItem.AgentCode}</span>
                             </span>
                             <span className={`text-xs mr-4 opacity-50 ${theme.label}`}>Tools owned exclusively by this agent</span>
                             <button type="button" className={`${btn} ml-auto`} onClick={() => setShowToolsModal(false)}>
@@ -1115,7 +1119,7 @@ const handleSave = async () => {
                             </button>
                         </div>
                         <div className="w-full h-1 flex-auto overflow-hidden">
-                            <AgentToolRegisterTab selectedSkillKey={editItem.SkillKey} theme={theme} />
+                            <AgentToolRegisterTab selectedSkillKey={editItem.AgentCode} theme={theme} />
                         </div>
                     </div>
                 </div>
@@ -1266,7 +1270,7 @@ const handleSave = async () => {
                                             </div>
                                         ) : aiResult.RecommendedBuiltInToolNames.filter(n => n?.toLowerCase() !== 'ask_user').map(name => {
                                             const tool = allBuiltInTools.find(t => t.ToolName === name);
-                                            const disabled = !editItem.SkillKey.trim();
+                                            const disabled = !editItem.AgentCode.trim();
                                             return (
                                                 <label key={name} className={`flex items-center gap-2 px-2 py-0.5 text-xs cursor-pointer ${theme.label} ${disabled ? 'opacity-40' : ''}`}
                                                        title={disabled ? 'Save the agent first to register built-in tools' : undefined}>
@@ -1284,7 +1288,7 @@ const handleSave = async () => {
                                                 </label>
                                             );
                                         })}
-                                        {!editItem.SkillKey.trim() && (
+                                        {!editItem.AgentCode.trim() && (
                                             <div className={`text-xs opacity-40 ${theme.label} px-1 mt-0.5`}>
                                                 <i className="fa-solid fa-circle-info mr-1" />Save the agent first — built-in tools will register on next "Use this"
                                             </div>
@@ -1396,7 +1400,7 @@ const handleSave = async () => {
                     <div className={`p-6 rounded shadow-lg ${theme.mainContentSection} flex flex-col gap-4`} style={{ minWidth: 320 }}>
                         <div className={`text-sm font-semibold ${theme.title}`}>Confirm Delete</div>
                         <div className={`text-xs ${theme.label}`}>
-                            Delete agent &quot;{selected?.SkillKey}&quot;?
+                            Delete agent &quot;{agentCodeOf(selected)}&quot;?
                             {selected && (selected.ChildCount ?? 0) > 0 && (
                                 <div className="mt-2 opacity-80">Its Child-Agent links will be removed; Child-Agent definitions are kept.</div>
                             )}

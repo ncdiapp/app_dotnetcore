@@ -38,7 +38,7 @@ namespace App.BL.AIAgent.GenericAgent.Memory
         public static readonly string[] Categories = { "preference", "entity", "rule", "note" };
 
         private const string SelectColumns =
-            "FactId, UserId, SkillKey, Category, FactKey, FactValue, PreviousValue, Status, Source, Confidence, SourceSessionKey, UpdatedAt";
+            "f.FactId, f.UserId, k.AgentCode AS SkillKey, f.Category, f.FactKey, f.FactValue, f.PreviousValue, f.Status, f.Source, f.Confidence, f.SourceSessionKey, f.UpdatedAt";
 
         private static readonly Regex KeyCleaner = new(@"[^a-z0-9_]+", RegexOptions.Compiled);
 
@@ -63,13 +63,16 @@ namespace App.BL.AIAgent.GenericAgent.Memory
             {
                 var fixture = AgentMemoryDb.Fixture(dataSourceId);
                 if (fixture == null) return list;
+                var agentId = string.IsNullOrWhiteSpace(skillKey) ? (int?)null : AppAgentLookup.IdByCode(fixture, skillKey);
+                if (!string.IsNullOrWhiteSpace(skillKey) && agentId == null) return list;
                 var dt = fixture.RetriveDataTable(
-                    $@"SELECT {SelectColumns} FROM dbo.AppAgentMemoryFact
-                       WHERE UserId=@U AND IsActive=1
-                         AND (@S IS NULL OR SkillKey IS NULL OR SkillKey=@S)
-                         {(includePending ? "" : "AND Status=N'confirmed'")}
-                       ORDER BY UpdatedAt DESC",
-                    AgentMemoryDb.Params(fixture, ("@U", userId), ("@S", NullIfEmpty(skillKey))));
+                    $@"SELECT {SelectColumns} FROM dbo.AppAgentMemoryFact f
+                       LEFT JOIN dbo.AppAgentSkillSet k ON k.AgentID = f.AgentID
+                       WHERE f.UserId=@U AND f.IsActive=1
+                         AND (@S IS NULL OR f.AgentID IS NULL OR f.AgentID=@S)
+                         {(includePending ? "" : "AND f.Status=N'confirmed'")}
+                       ORDER BY f.UpdatedAt DESC",
+                    AgentMemoryDb.Params(fixture, ("@U", userId), ("@S", agentId)));
                 if (dt != null) foreach (DataRow row in dt.Rows) list.Add(Map(row));
             }
             catch (Exception ex)
@@ -126,10 +129,13 @@ namespace App.BL.AIAgent.GenericAgent.Memory
                 var fixture = AgentMemoryDb.Fixture(dataSourceId);
                 if (fixture == null) return FactWriteResult.Invalid;
 
+                var agentId = string.IsNullOrWhiteSpace(skillKey) ? (int?)null : AppAgentLookup.IdByCode(fixture, skillKey);
+                if (!string.IsNullOrWhiteSpace(skillKey) && agentId == null) return FactWriteResult.Invalid;
                 var existing = fixture.RetriveDataTable(
-                    $@"SELECT {SelectColumns} FROM dbo.AppAgentMemoryFact
-                       WHERE UserId=@U AND FactKey=@K AND ((SkillKey IS NULL AND @S IS NULL) OR SkillKey=@S)",
-                    AgentMemoryDb.Params(fixture, ("@U", userId), ("@K", k), ("@S", NullIfEmpty(skillKey))));
+                    $@"SELECT {SelectColumns} FROM dbo.AppAgentMemoryFact f
+                       LEFT JOIN dbo.AppAgentSkillSet k ON k.AgentID = f.AgentID
+                       WHERE f.UserId=@U AND f.FactKey=@K AND ((f.AgentID IS NULL AND @S IS NULL) OR f.AgentID=@S)",
+                    AgentMemoryDb.Params(fixture, ("@U", userId), ("@K", k), ("@S", agentId)));
 
                 if (existing != null && existing.Rows.Count > 0)
                 {
@@ -153,9 +159,9 @@ namespace App.BL.AIAgent.GenericAgent.Memory
 
                 fixture.ExecuteNonQueryResult(
                     @"INSERT INTO dbo.AppAgentMemoryFact
-                        (UserId, SkillKey, Category, FactKey, FactValue, Status, Source, Confidence, SourceSessionKey)
+                        (UserId, AgentID, Category, FactKey, FactValue, Status, Source, Confidence, SourceSessionKey)
                       VALUES (@U, @S, @C, @K, @V, @T, @R, @F, @SK)",
-                    AgentMemoryDb.Params(fixture, ("@U", userId), ("@S", NullIfEmpty(skillKey)), ("@C", NormalizeCategory(category)),
+                    AgentMemoryDb.Params(fixture, ("@U", userId), ("@S", agentId), ("@C", NormalizeCategory(category)),
                         ("@K", k), ("@V", v), ("@T", st), ("@R", NormalizeSource(source)), ("@F", confidence),
                         ("@SK", NullIfEmpty(sessionKey))));
                 return FactWriteResult.Added;
@@ -189,8 +195,8 @@ namespace App.BL.AIAgent.GenericAgent.Memory
 
         public static bool DeleteByKey(int userId, string skillKey, string key, int dataSourceId) =>
             Exec(dataSourceId,
-                "DELETE FROM dbo.AppAgentMemoryFact WHERE UserId=@U AND FactKey=@K AND ((SkillKey IS NULL AND @S IS NULL) OR SkillKey=@S OR SkillKey IS NULL)",
-                ("@U", userId), ("@K", NormalizeKey(key)), ("@S", NullIfEmpty(skillKey))) > 0;
+                "DELETE FROM dbo.AppAgentMemoryFact WHERE UserId=@U AND FactKey=@K AND ((AgentID IS NULL AND @S IS NULL) OR AgentID=@S OR AgentID IS NULL)",
+                ("@U", userId), ("@K", NormalizeKey(key)), ("@S", string.IsNullOrWhiteSpace(skillKey) ? null : AppAgentLookup.IdByCode(dataSourceId, skillKey))) > 0;
 
         /// <summary>"Forget everything" for one user.</summary>
         public static int DeleteAll(int userId, int dataSourceId) =>

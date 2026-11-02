@@ -66,7 +66,8 @@ public class AgentSkillSetController : SecureBaseController
     {
         var result = new OperationCallResult<List<AppAgentSkillSetDto>>();
         result.Object = AppAgentSkillSetBL.GetAllSkillSets(GetDsId())
-            .Where(a => a != null && !GeneralAgentConstants.IsGeneralAgentKey(a.SkillKey))
+            .Where(a => a != null && !GeneralAgentConstants.IsGeneralAgentKey(
+                string.IsNullOrWhiteSpace(a.AgentCode) ? a.SkillKey : a.AgentCode))
             .ToList();
         return result;
     }
@@ -75,14 +76,16 @@ public class AgentSkillSetController : SecureBaseController
     public OperationCallResult<bool> UpsertSkillSet([FromBody] AppAgentSkillSetDto dto)
     {
         var result = new OperationCallResult<bool>();
-        if (string.IsNullOrWhiteSpace(dto?.SkillKey))
+        var code = (dto?.AgentCode ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(code))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
                 typeof(AgentSkillSetController),
-                "SkillKey_Required", ValidationItemType.Error, "SkillKey is required."));
+                "AgentCode_Required", ValidationItemType.Error, "AgentCode is required."));
             return result;
         }
-        if (GeneralAgentConstants.IsGeneralAgentKey(dto.SkillKey))
+        dto.AgentCode = code;
+        if (GeneralAgentConstants.IsGeneralAgentKey(code))
         {
             result.ValidationResult.Items.Add(new ValidationItem(
                 typeof(AgentSkillSetController),

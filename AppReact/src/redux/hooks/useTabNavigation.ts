@@ -260,7 +260,7 @@ export const TabNavigationProvider: React.FC<{ children: ReactNode }> = ({ child
     const isMyApplications = reactPath === '/my-applications' || reactPath === 'my-applications';
     const homeTab = !isMyApplications ? tabs.find(tab => tab.tabKey === 'home-tab') : null;
     if (homeTab) {
-      // Default landing tab (e.g. SysAdmin Company and Users on home-tab)
+      // Default landing tab (e.g. SysAdmin Tenant Provisioning on home-tab)
       if (extractBaseRoutePath(homeTab.path) === targetBasePath) {
         activateTabFlushing(homeTab.tabKey);
         navigate(homeTab.path);

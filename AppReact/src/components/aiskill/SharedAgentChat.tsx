@@ -1241,8 +1241,9 @@ const SharedAgentChat: React.FC<Props> = ({
                 if (cancelled) return;
                 const map: Record<string, string> = {};
                 for (const s of res?.Object ?? []) {
-                    if (s?.SkillKey) map[s.SkillKey] = s.DisplayName || s.SkillKey;
-                    if (s?.SkillKey === skillKey) {
+                    const code = s?.AgentCode || s?.SkillKey;
+                    if (code) map[code] = s.DisplayName || code;
+                    if (code === skillKey) {
                         mode = s.ExecutionMode || 'Interactive';
                         allowFirstTurn = !!s.AllowAgentFirstTurn;
                     }

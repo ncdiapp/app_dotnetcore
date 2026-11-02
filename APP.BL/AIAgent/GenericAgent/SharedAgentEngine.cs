@@ -488,6 +488,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
 
         private static TbSkillSetDto BuildUniversalSkillSet() =>
             new TbSkillSetDto(
+                AgentId: 0,
                 SkillKey: GeneralAgentConstants.SkillKey,
                 DisplayName: "General Agent",
                 Description: "Built-in general agent",

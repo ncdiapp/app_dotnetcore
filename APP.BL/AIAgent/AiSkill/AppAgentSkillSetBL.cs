@@ -7,6 +7,7 @@ using App.BL;
 namespace App.BL.AIAgent.AiSkill
 {
     public sealed record AppAgentSkillSetDto(
+        int    AgentId,
         string SkillKey,
         string DisplayName,
         string Description,
@@ -79,7 +80,7 @@ namespace App.BL.AIAgent.AiSkill
         private static AppAgentSkillSetDto GetByKey(string skillKey, DatabaseSchemaMrg.DatabaseFixture fixture)
         {
             var dt = fixture.RetriveDataTable(
-                $"SELECT {BuildSelectCols(fixture)} FROM dbo.AppAgentSkillSet WHERE SkillKey=@SkillKey",
+                $"SELECT {BuildSelectCols(fixture)} FROM dbo.AppAgentSkillSet WHERE AgentCode=@SkillKey",
                 new List<DbParameter> { P(fixture, "@SkillKey", skillKey.Trim()) });
 
             if (dt == null || dt.Rows.Count == 0) return null;
@@ -111,17 +112,17 @@ namespace App.BL.AIAgent.AiSkill
             }
 
             var sql = $@"
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey=@SkillKey)
+IF @AgentID > 0 AND EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentID=@AgentID)
     UPDATE dbo.AppAgentSkillSet SET
-        DisplayName=@DisplayName, Description=@Description, SystemPrompt=@SystemPrompt,
+        AgentCode=@SkillKey, DisplayName=@DisplayName, Description=@Description, SystemPrompt=@SystemPrompt,
         CapabilityFlags=@CapabilityFlags, IsActive=@IsActive, SortOrder=@SortOrder,
         Version=@Version, MaxHistoryTokens=@MaxHistoryTokens, SummarizeThreshold=@SummarizeThreshold,
         MaxToolResultChars=@MaxToolResultChars, RecentWindowSize=@RecentWindowSize,
         MaxIterations=@MaxIterations, ExecutionMode=@ExecutionMode, AgentUi=@AgentUi{updateExtra}
-    WHERE SkillKey=@SkillKey
-ELSE
+    WHERE AgentID=@AgentID
+ELSE IF @AgentID <= 0
     INSERT INTO dbo.AppAgentSkillSet
-        (SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,
+        (AgentCode,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,
          Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations,ExecutionMode,AgentUi{insertCols})
     VALUES
         (@SkillKey,@DisplayName,@Description,@SystemPrompt,@CapabilityFlags,@IsActive,@SortOrder,
@@ -137,7 +138,7 @@ ELSE
             if (fixture == null) return false;
 
             fixture.ExecuteNonQueryResult(
-                "DELETE FROM dbo.AppAgentSkillSet WHERE SkillKey=@SkillKey",
+                "DELETE FROM dbo.AppAgentSkillSet WHERE AgentCode=@SkillKey",
                 new List<DbParameter> { P(fixture, "@SkillKey", skillKey.Trim()) });
             return true;
         }
@@ -154,7 +155,8 @@ ELSE
         private static AppAgentSkillSetDto Map(DataRow row)
         {
             return new AppAgentSkillSetDto(
-                SkillKey:            ColStr(row, "SkillKey"),
+                AgentId:             ColIntSafe(row, "AgentID", 0),
+                SkillKey:            ColStrSafe(row, "SkillKey", ColStrSafe(row, "AgentCode", "")),
                 DisplayName:         ColStr(row, "DisplayName"),
                 Description:         ColStr(row, "Description"),
                 SystemPrompt:        ColStr(row, "SystemPrompt"),
@@ -181,6 +183,7 @@ ELSE
         {
             var list = new List<DbParameter>
             {
+                P(f, "@AgentID",             d.AgentId),
                 P(f, "@SkillKey",            d.SkillKey),
                 P(f, "@DisplayName",         d.DisplayName),
                 P(f, "@Description",         d.Description),
@@ -207,7 +210,7 @@ ELSE
         private static string BuildSelectCols(DatabaseSchemaMrg.DatabaseFixture fixture)
         {
             var cols = @"
-            SkillKey, DisplayName, Description, SystemPrompt,
+            AgentID, AgentCode AS SkillKey, DisplayName, Description, SystemPrompt,
             CapabilityFlags, IsActive, SortOrder, Version,
             MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize, MaxIterations, ExecutionMode, AgentUi";
             if (HasColumn(fixture, "AllowAgentFirstTurn")) cols += ", AllowAgentFirstTurn";

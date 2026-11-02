@@ -11,6 +11,8 @@ namespace App.BL.AIAgent.GenericAgent
 {
     public sealed class AppAgentChildMappingDto
     {
+        public int    ParentAgentId  { get; set; }
+        public int    ChildAgentId   { get; set; }
         public string ParentSkillKey { get; set; } = "";
         public string ChildSkillKey  { get; set; } = "";
         public int    SortOrder      { get; set; }
@@ -62,11 +64,13 @@ namespace App.BL.AIAgent.GenericAgent
                 var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
                 if (fixture == null || !TableExists(fixture)) return list;
                 var dt = fixture.RetriveDataTable(@"
-SELECT m.ParentSkillKey, m.ChildSkillKey, m.SortOrder, m.CreatedAt, m.UpdatedAt,
+SELECT m.ParentAgentId, m.ChildAgentId, m.SortOrder, m.CreatedAt, m.UpdatedAt,
+       p.AgentCode AS ParentSkillKey, c.AgentCode AS ChildSkillKey,
        c.DisplayName AS ChildDisplayName, c.ExecutionMode AS ChildExecutionMode, c.IsActive AS ChildIsActive
 FROM dbo.AppAgentChildMapping m
-LEFT JOIN dbo.AppAgentSkillSet c ON c.SkillKey = m.ChildSkillKey
-ORDER BY m.ParentSkillKey, m.SortOrder, m.ChildSkillKey",
+LEFT JOIN dbo.AppAgentSkillSet p ON p.AgentID = m.ParentAgentId
+LEFT JOIN dbo.AppAgentSkillSet c ON c.AgentID = m.ChildAgentId
+ORDER BY p.AgentCode, m.SortOrder, c.AgentCode",
                     new List<DbParameter>());
                 if (dt == null) return list;
                 foreach (DataRow row in dt.Rows)
@@ -84,14 +88,18 @@ ORDER BY m.ParentSkillKey, m.SortOrder, m.ChildSkillKey",
             {
                 var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
                 if (fixture == null || !TableExists(fixture)) return list;
+                var parentId = AppAgentLookup.IdByCode(fixture, parentSkillKey);
+                if (parentId == null) return list;
                 var dt = fixture.RetriveDataTable(@"
-SELECT m.ParentSkillKey, m.ChildSkillKey, m.SortOrder, m.CreatedAt, m.UpdatedAt,
+SELECT m.ParentAgentId, m.ChildAgentId, m.SortOrder, m.CreatedAt, m.UpdatedAt,
+       p.AgentCode AS ParentSkillKey, c.AgentCode AS ChildSkillKey,
        c.DisplayName AS ChildDisplayName, c.ExecutionMode AS ChildExecutionMode, c.IsActive AS ChildIsActive
 FROM dbo.AppAgentChildMapping m
-LEFT JOIN dbo.AppAgentSkillSet c ON c.SkillKey = m.ChildSkillKey
-WHERE m.ParentSkillKey = @ParentSkillKey
-ORDER BY m.SortOrder, m.ChildSkillKey",
-                    new List<DbParameter> { P(fixture, "@ParentSkillKey", parentSkillKey.Trim()) });
+LEFT JOIN dbo.AppAgentSkillSet p ON p.AgentID = m.ParentAgentId
+LEFT JOIN dbo.AppAgentSkillSet c ON c.AgentID = m.ChildAgentId
+WHERE m.ParentAgentId = @ParentAgentId
+ORDER BY m.SortOrder, c.AgentCode",
+                    new List<DbParameter> { P(fixture, "@ParentAgentId", parentId.Value) });
                 if (dt == null) return list;
                 foreach (DataRow row in dt.Rows)
                     list.Add(MapRow(row));
@@ -108,12 +116,15 @@ ORDER BY m.SortOrder, m.ChildSkillKey",
             {
                 var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
                 if (fixture == null || !TableExists(fixture)) return list;
+                var childId = AppAgentLookup.IdByCode(fixture, childSkillKey);
+                if (childId == null) return list;
                 var dt = fixture.RetriveDataTable(@"
-SELECT ParentSkillKey
-FROM dbo.AppAgentChildMapping
-WHERE ChildSkillKey = @ChildSkillKey
-ORDER BY ParentSkillKey",
-                    new List<DbParameter> { P(fixture, "@ChildSkillKey", childSkillKey.Trim()) });
+SELECT p.AgentCode AS ParentSkillKey
+FROM dbo.AppAgentChildMapping m
+INNER JOIN dbo.AppAgentSkillSet p ON p.AgentID = m.ParentAgentId
+WHERE m.ChildAgentId = @ChildAgentId
+ORDER BY p.AgentCode",
+                    new List<DbParameter> { P(fixture, "@ChildAgentId", childId.Value) });
                 if (dt == null) return list;
                 foreach (DataRow row in dt.Rows)
                 {
@@ -133,13 +144,16 @@ ORDER BY ParentSkillKey",
             {
                 var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
                 if (fixture == null || !TableExists(fixture)) return false;
+                var parentId = AppAgentLookup.IdByCode(fixture, parentSkillKey);
+                var childId = AppAgentLookup.IdByCode(fixture, childSkillKey);
+                if (parentId == null || childId == null) return false;
                 var dt = fixture.RetriveDataTable(@"
 SELECT 1 AS x FROM dbo.AppAgentChildMapping
-WHERE ParentSkillKey = @ParentSkillKey AND ChildSkillKey = @ChildSkillKey",
+WHERE ParentAgentId = @ParentAgentId AND ChildAgentId = @ChildAgentId",
                     new List<DbParameter>
                     {
-                        P(fixture, "@ParentSkillKey", parentSkillKey.Trim()),
-                        P(fixture, "@ChildSkillKey", childSkillKey.Trim()),
+                        P(fixture, "@ParentAgentId", parentId.Value),
+                        P(fixture, "@ChildAgentId", childId.Value),
                     });
                 return dt != null && dt.Rows.Count > 0;
             }
@@ -190,28 +204,38 @@ WHERE ParentSkillKey = @ParentSkillKey AND ChildSkillKey = @ChildSkillKey",
                     ordered.Add(childKey);
                 }
 
+                var parentId = AppAgentLookup.IdByCode(fixture, parentSkillKey);
+                if (parentId == null)
+                {
+                    error = $"Orchestrator '{parentSkillKey}' does not exist.";
+                    return false;
+                }
+
+                var childIds = new List<int>();
                 foreach (var child in ordered)
                 {
-                    if (!SkillExists(fixture, child))
+                    var id = AppAgentLookup.IdByCode(fixture, child);
+                    if (id == null)
                     {
                         error = $"Child-Agent '{child}' does not exist.";
                         return false;
                     }
+                    childIds.Add(id.Value);
                 }
 
                 fixture.ExecuteNonQueryResult(
-                    "DELETE FROM dbo.AppAgentChildMapping WHERE ParentSkillKey = @ParentSkillKey",
-                    new List<DbParameter> { P(fixture, "@ParentSkillKey", parentSkillKey) });
+                    "DELETE FROM dbo.AppAgentChildMapping WHERE ParentAgentId = @ParentAgentId",
+                    new List<DbParameter> { P(fixture, "@ParentAgentId", parentId.Value) });
 
-                for (int i = 0; i < ordered.Count; i++)
+                for (int i = 0; i < childIds.Count; i++)
                 {
                     fixture.ExecuteNonQueryResult(@"
-INSERT INTO dbo.AppAgentChildMapping (ParentSkillKey, ChildSkillKey, SortOrder, CreatedAt, UpdatedAt)
-VALUES (@ParentSkillKey, @ChildSkillKey, @SortOrder, SYSUTCDATETIME(), SYSUTCDATETIME())",
+INSERT INTO dbo.AppAgentChildMapping (ParentAgentId, ChildAgentId, SortOrder, CreatedAt, UpdatedAt)
+VALUES (@ParentAgentId, @ChildAgentId, @SortOrder, SYSUTCDATETIME(), SYSUTCDATETIME())",
                         new List<DbParameter>
                         {
-                            P(fixture, "@ParentSkillKey", parentSkillKey),
-                            P(fixture, "@ChildSkillKey", ordered[i]),
+                            P(fixture, "@ParentAgentId", parentId.Value),
+                            P(fixture, "@ChildAgentId", childIds[i]),
                             P(fixture, "@SortOrder", i + 1),
                         });
                 }
@@ -275,13 +299,16 @@ VALUES (@ParentSkillKey, @ChildSkillKey, @SortOrder, SYSUTCDATETIME(), SYSUTCDAT
                     error = "AppAgentChildMapping table is missing.";
                     return false;
                 }
+                var parentId = AppAgentLookup.IdByCode(fixture, parentSkillKey);
+                var childId = AppAgentLookup.IdByCode(fixture, childSkillKey);
+                if (parentId == null || childId == null) return true;
                 fixture.ExecuteNonQueryResult(@"
 DELETE FROM dbo.AppAgentChildMapping
-WHERE ParentSkillKey = @ParentSkillKey AND ChildSkillKey = @ChildSkillKey",
+WHERE ParentAgentId = @ParentAgentId AND ChildAgentId = @ChildAgentId",
                     new List<DbParameter>
                     {
-                        P(fixture, "@ParentSkillKey", parentSkillKey.Trim()),
-                        P(fixture, "@ChildSkillKey", childSkillKey.Trim()),
+                        P(fixture, "@ParentAgentId", parentId.Value),
+                        P(fixture, "@ChildAgentId", childId.Value),
                     });
                 return true;
             }
@@ -300,23 +327,21 @@ WHERE ParentSkillKey = @ParentSkillKey AND ChildSkillKey = @ChildSkillKey",
             {
                 var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
                 if (fixture == null || !TableExists(fixture)) return;
+                var parentId = AppAgentLookup.IdByCode(fixture, parentSkillKey);
+                if (parentId == null) return;
                 fixture.ExecuteNonQueryResult(
-                    "DELETE FROM dbo.AppAgentChildMapping WHERE ParentSkillKey = @ParentSkillKey",
-                    new List<DbParameter> { P(fixture, "@ParentSkillKey", parentSkillKey.Trim()) });
+                    "DELETE FROM dbo.AppAgentChildMapping WHERE ParentAgentId = @ParentAgentId",
+                    new List<DbParameter> { P(fixture, "@ParentAgentId", parentId.Value) });
             }
             catch (Exception ex) { Log.Error(ex, nameof(DeleteLinksForParent)); }
         }
 
-        private static bool SkillExists(DatabaseFixture fixture, string skillKey)
-        {
-            var dt = fixture.RetriveDataTable(
-                "SELECT 1 AS x FROM dbo.AppAgentSkillSet WHERE SkillKey = @SkillKey",
-                new List<DbParameter> { P(fixture, "@SkillKey", skillKey) });
-            return dt != null && dt.Rows.Count > 0;
-        }
-
         private static AppAgentChildMappingDto MapRow(DataRow row) => new AppAgentChildMappingDto
         {
+            ParentAgentId = row.Table.Columns.Contains("ParentAgentId") && row["ParentAgentId"] != DBNull.Value
+                ? Convert.ToInt32(row["ParentAgentId"]) : 0,
+            ChildAgentId = row.Table.Columns.Contains("ChildAgentId") && row["ChildAgentId"] != DBNull.Value
+                ? Convert.ToInt32(row["ChildAgentId"]) : 0,
             ParentSkillKey = row["ParentSkillKey"] as string ?? "",
             ChildSkillKey = row["ChildSkillKey"] as string ?? "",
             SortOrder = row["SortOrder"] == DBNull.Value ? 0 : Convert.ToInt32(row["SortOrder"]),

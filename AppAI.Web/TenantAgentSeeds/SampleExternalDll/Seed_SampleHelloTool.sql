@@ -32,9 +32,9 @@ VALUES (
 );
 GO
 
--- Optional: subscribe a demo agent if present (adjust SkillKey as needed).
--- IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'your-skill-key')
--- AND NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibrarySubscription WHERE SkillKey = N'your-skill-key' AND LibraryKey = N'sample-agent-plugins')
--- INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
--- VALUES (N'your-skill-key', N'sample-agent-plugins');
+-- Optional: subscribe a demo agent if present (adjust AgentCode as needed).
+-- IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'your-agent-code')
+-- AND NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibrarySubscription sub INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID WHERE k.AgentCode = N'your-agent-code' AND sub.LibraryKey = N'sample-agent-plugins')
+-- INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+-- SELECT AgentID, N'sample-agent-plugins' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'your-agent-code';
 -- GO

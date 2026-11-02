@@ -24,10 +24,12 @@ public static class MigrationStartup
 
             if (configuration.GetValue<bool>("Migrations:RunOnStartup"))
             {
-                foreach (var (tenant, applied) in AppTenantMigrationRunnerBL.RunMigrationsOnAllTenants())
+                foreach (var (tenant, outcome) in AppTenantMigrationRunnerBL.RunMigrationsOnAllTenants())
                 {
-                    if (applied < 0) log.Error("Startup migration FAILED for tenant {0} (see the error logged above)", tenant);
-                    else if (applied > 0) log.Info("Startup migration: applied {0} script(s) to tenant {1}", applied, tenant);
+                    if (outcome != null && outcome.StartsWith("ERROR", StringComparison.OrdinalIgnoreCase))
+                        log.Error("Startup migration FAILED for tenant {0}: {1}", tenant, outcome);
+                    else if (int.TryParse(outcome, out var applied) && applied > 0)
+                        log.Info("Startup migration: applied {0} script(s) to tenant {1}", applied, tenant);
                 }
                 return;
             }

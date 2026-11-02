@@ -159,7 +159,7 @@ const tabnavSlice = createSlice({
         const isClosable = state.tabs[tabIndex].isClosable !== false; // Default to true
 
         // Prevent closing the last tab if it's the Home tab
-        if (state.tabs.length === 1 && (state.tabs[0].path === '/home' || state.tabs[0].path === '/company-security')) {
+        if (state.tabs.length === 1 && (state.tabs[0].path === '/home' || state.tabs[0].path === '/company-security' || state.tabs[0].path === '/tenant-provisioning')) {
           return;
         }
 
@@ -300,7 +300,7 @@ const tabnavSlice = createSlice({
       state.previousActiveTabKey = null;
       state.dictDataModelKeyAndCachedData = {};
     },
-    /** Align home-tab landing route (e.g. SysAdmin /company-security after session restore). */
+    /** Align home-tab landing route (e.g. SysAdmin /tenant-provisioning after session restore). */
     syncHomeTabLanding: (state, action: PayloadAction<{ path: string; label?: string }>) => {
       const homeTab = state.tabs.find((t) => t.tabKey === 'home-tab');
       if (!homeTab) return;

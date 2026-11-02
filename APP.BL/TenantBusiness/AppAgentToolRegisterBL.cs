@@ -112,7 +112,8 @@ SELECT t.LibraryToolId, t.LibraryKey, t.ToolName, t.ToolDescription, t.Parameter
        t.ToolType, t.ToolConfig, t.IsActive, 1 AS IsLibraryTool
 FROM dbo.AppAgentLibraryTool t
 INNER JOIN dbo.AppAgentLibrarySubscription s ON t.LibraryKey=s.LibraryKey
-WHERE s.SkillKey=@SkillKey AND t.IsActive=1
+INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = s.AgentID
+WHERE k.AgentCode=@SkillKey AND t.IsActive=1
 ORDER BY IsLibraryTool, ToolRegisterId",
                 new List<DbParameter> { P(fixture, "@SkillKey", skillKey.Trim()) });
 

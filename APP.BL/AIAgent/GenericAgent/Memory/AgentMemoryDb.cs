@@ -20,7 +20,7 @@ CREATE TABLE dbo.AppAgentMemoryFact
 (
     FactId           INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_AppAgentMemoryFact PRIMARY KEY,
     UserId           INT           NOT NULL,
-    SkillKey         NVARCHAR(100) NULL,
+    AgentID          INT           NULL,
     Category         NVARCHAR(30)  NOT NULL CONSTRAINT DF_AppAgentMemoryFact_Category DEFAULT N'note',
     FactKey          NVARCHAR(100) NOT NULL,
     FactValue        NVARCHAR(1000) NOT NULL,
@@ -32,15 +32,15 @@ CREATE TABLE dbo.AppAgentMemoryFact
     IsActive         BIT           NOT NULL CONSTRAINT DF_AppAgentMemoryFact_IsActive DEFAULT 1,
     UpdatedAt        DATETIME2     NOT NULL CONSTRAINT DF_AppAgentMemoryFact_UpdatedAt DEFAULT GETUTCDATE()
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_AppAgentMemoryFact_UserSkillKey' AND object_id = OBJECT_ID(N'dbo.AppAgentMemoryFact'))
-CREATE UNIQUE INDEX UX_AppAgentMemoryFact_UserSkillKey ON dbo.AppAgentMemoryFact (UserId, SkillKey, FactKey);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UX_AppAgentMemoryFact_UserAgentKey' AND object_id = OBJECT_ID(N'dbo.AppAgentMemoryFact'))
+CREATE UNIQUE INDEX UX_AppAgentMemoryFact_UserAgentKey ON dbo.AppAgentMemoryFact (UserId, AgentID, FactKey);
 
 IF OBJECT_ID(N'dbo.AppAgentEpisode', N'U') IS NULL
 CREATE TABLE dbo.AppAgentEpisode
 (
     EpisodeId      INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_AppAgentEpisode PRIMARY KEY,
     UserId         INT           NOT NULL,
-    SkillKey       NVARCHAR(100) NOT NULL,
+    AgentID        INT           NOT NULL,
     SessionKey     NVARCHAR(200) NULL,
     Summary        NVARCHAR(MAX) NOT NULL,
     Topics         NVARCHAR(500) NULL,
@@ -48,8 +48,8 @@ CREATE TABLE dbo.AppAgentEpisode
     EmbeddingModel NVARCHAR(80)  NULL,
     CreatedAt      DATETIME2     NOT NULL CONSTRAINT DF_AppAgentEpisode_CreatedAt DEFAULT GETUTCDATE()
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_AppAgentEpisode_UserSkill' AND object_id = OBJECT_ID(N'dbo.AppAgentEpisode'))
-CREATE INDEX IX_AppAgentEpisode_UserSkill ON dbo.AppAgentEpisode (UserId, SkillKey);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_AppAgentEpisode_UserAgent' AND object_id = OBJECT_ID(N'dbo.AppAgentEpisode'))
+CREATE INDEX IX_AppAgentEpisode_UserAgent ON dbo.AppAgentEpisode (UserId, AgentID);
 
 IF OBJECT_ID(N'dbo.AppGenericAgentSession', N'U') IS NOT NULL
 BEGIN

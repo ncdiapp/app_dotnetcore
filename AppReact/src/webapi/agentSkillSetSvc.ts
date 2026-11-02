@@ -2,7 +2,10 @@ import { endpoints } from './endpoints';
 import { getHeaders } from '../helper/apiServiceHelper';
 
 export interface AppAgentSkillSetDto {
-    SkillKey:           string;
+    AgentId?:           number;
+    AgentCode:          string;
+    /** Same as AgentCode; still returned by the API. */
+    SkillKey?:          string;
     DisplayName:        string;
     Description:        string;
     SystemPrompt:       string;
@@ -28,7 +31,18 @@ export interface AppAgentSkillSetDto {
     UsedByCount?:       number;
 }
 
+export function agentCodeOf(a: { AgentCode?: string; SkillKey?: string } | null | undefined): string {
+    return (a?.AgentCode || a?.SkillKey || '').trim();
+}
+
+export function normalizeAgent(dto: AppAgentSkillSetDto): AppAgentSkillSetDto {
+    const code = agentCodeOf(dto);
+    return { ...dto, AgentId: dto.AgentId ?? 0, AgentCode: code, SkillKey: code };
+}
+
 export interface AppAgentChildMappingDto {
+    ParentAgentId?: number;
+    ChildAgentId?: number;
     ParentSkillKey: string;
     ChildSkillKey: string;
     SortOrder: number;
@@ -169,12 +183,16 @@ class AgentSkillSetService {
     async GetAllSkillSets(): Promise<OperationResult<AppAgentSkillSetDto[]>> {
         const res = await fetch(`${BASE}/GetAllSkillSets`, { headers: getHeaders() });
         if (!res.ok) throw new Error(`GetAllSkillSets failed (${res.status})`);
-        return res.json();
+        const json = await res.json() as OperationResult<AppAgentSkillSetDto[]>;
+        json.Object = (json.Object ?? []).map(normalizeAgent);
+        return json;
     }
 
     async UpsertSkillSet(dto: AppAgentSkillSetDto): Promise<OperationResult<boolean>> {
+        const n = normalizeAgent(dto);
+        const { SkillKey: _omit, ...body } = n;
         const res = await fetch(`${BASE}/UpsertSkillSet`, {
-            method: 'POST', headers: getHeaders(), body: JSON.stringify(dto),
+            method: 'POST', headers: getHeaders(), body: JSON.stringify(body),
         });
         if (!res.ok) throw new Error(`UpsertSkillSet failed (${res.status})`);
         return res.json();
@@ -456,7 +474,9 @@ class AgentSkillSetService {
     async GetTemplates(): Promise<OperationResult<AppAgentSkillSetDto[]>> {
         const res = await fetch(`${BASE}/GetTemplates`, { headers: getHeaders() });
         if (!res.ok) throw new Error(`GetTemplates failed (${res.status})`);
-        return res.json();
+        const json = await res.json() as OperationResult<AppAgentSkillSetDto[]>;
+        json.Object = (json.Object ?? []).map(normalizeAgent);
+        return json;
     }
 
     // ── Prompt Version History ────────────────────────────────────────────

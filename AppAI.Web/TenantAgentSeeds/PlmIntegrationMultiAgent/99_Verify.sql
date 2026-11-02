@@ -33,17 +33,19 @@ PRINT '=== integration-plm-import tool count ===';
 SELECT COUNT(*) AS ToolCount FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import';
 
 PRINT '=== Orchestrator subscriptions (expect platform-database + platform-application) ===';
-SELECT LibraryKey FROM dbo.AppAgentLibrarySubscription
-WHERE SkillKey = N'plm-integration-orchestrator'
-ORDER BY LibraryKey;
+SELECT sub.LibraryKey
+FROM dbo.AppAgentLibrarySubscription sub
+INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+WHERE k.AgentCode = N'plm-integration-orchestrator'
+ORDER BY sub.LibraryKey;
 
 PRINT '=== Form layout HARD in import-dw / orchestrator prompts ===';
-SELECT SkillKey,
+SELECT AgentCode,
   CASE WHEN SystemPrompt LIKE N'%HARD: Form layout from PLM Tab Design%' OR SystemPrompt LIKE N'%HARD: import-dw Form layout%' THEN 1 ELSE 0 END AS HasFormLayoutHard
 FROM dbo.AppAgentSkillSet
-WHERE SkillKey IN (N'plm-integration-import-dw', N'plm-integration-orchestrator');
+WHERE AgentCode IN (N'plm-integration-import-dw', N'plm-integration-orchestrator');
 
-SELECT SkillKey, DisplayName, ExecutionMode, IsActive,
+SELECT AgentCode, DisplayName, ExecutionMode, IsActive,
        AllowAgentFirstTurn,
        LEN(SystemPrompt) AS PromptLen,
        CASE WHEN SystemPrompt LIKE N'%list_tenant_saas_applications%' THEN 1 ELSE 0 END AS HasSaasAppToolInPrompt,
@@ -59,39 +61,43 @@ SELECT SkillKey, DisplayName, ExecutionMode, IsActive,
        CASE WHEN SystemPrompt LIKE N'%plm-integration-massupdate%' THEN 1 ELSE 0 END AS HasMassUpdateChild,
        CASE WHEN SystemPrompt LIKE N'%ROOT local until Wave 2%' THEN 1 ELSE 0 END AS HasLegacySearchLocal
 FROM dbo.AppAgentSkillSet
-WHERE SkillKey IN (
+WHERE AgentCode IN (
   N'plm-integration-orchestrator', N'plm-integration-import-dw',
   N'plm-integration-entity', N'plm-integration-folder', N'plm-integration-image',
   N'plm-integration-color', N'plm-integration-pom',
   N'plm-integration-search', N'plm-integration-massupdate')
-ORDER BY SkillKey;
+ORDER BY AgentCode;
 
 PRINT '=== Active flags (expect ROOT=1, children=0) ===';
-SELECT SkillKey, IsActive FROM dbo.AppAgentSkillSet
-WHERE SkillKey IN (
+SELECT AgentCode, IsActive FROM dbo.AppAgentSkillSet
+WHERE AgentCode IN (
   N'plm-integration-orchestrator', N'plm-integration-import-dw',
   N'plm-integration-entity', N'plm-integration-folder', N'plm-integration-image',
   N'plm-integration-color', N'plm-integration-pom',
   N'plm-integration-search', N'plm-integration-massupdate')
-ORDER BY CASE WHEN SkillKey = N'plm-integration-orchestrator' THEN 0 ELSE 1 END, SkillKey;
+ORDER BY CASE WHEN AgentCode = N'plm-integration-orchestrator' THEN 0 ELSE 1 END, AgentCode;
 
 PRINT '=== Subscriptions ===';
-SELECT SkillKey, LibraryKey FROM dbo.AppAgentLibrarySubscription
-WHERE SkillKey IN (
+SELECT k.AgentCode, sub.LibraryKey
+FROM dbo.AppAgentLibrarySubscription sub
+INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+WHERE k.AgentCode IN (
   N'plm-integration-orchestrator', N'plm-integration-import-dw',
   N'plm-integration-entity', N'plm-integration-folder', N'plm-integration-image',
   N'plm-integration-color', N'plm-integration-pom',
   N'plm-integration-search', N'plm-integration-massupdate')
-ORDER BY SkillKey, LibraryKey;
+ORDER BY k.AgentCode, sub.LibraryKey;
 
 PRINT '=== Child mappings (Orchestrator → Child-Agent) ===';
 IF OBJECT_ID(N'dbo.AppAgentChildMapping', N'U') IS NULL
     SELECT 'MISSING' AS AppAgentChildMapping;
 ELSE
-    SELECT ParentSkillKey, ChildSkillKey, SortOrder
-    FROM dbo.AppAgentChildMapping
-    WHERE ParentSkillKey = N'plm-integration-orchestrator'
-    ORDER BY SortOrder, ChildSkillKey;
+    SELECT p.AgentCode AS ParentAgentCode, c.AgentCode AS ChildAgentCode, m.SortOrder
+    FROM dbo.AppAgentChildMapping m
+    INNER JOIN dbo.AppAgentSkillSet p ON p.AgentID = m.ParentAgentId
+    INNER JOIN dbo.AppAgentSkillSet c ON c.AgentID = m.ChildAgentId
+    WHERE p.AgentCode = N'plm-integration-orchestrator'
+    ORDER BY m.SortOrder, c.AgentCode;
 
 PRINT '=== Shared context table (platform; wizard durable scope = ChatSessionKey) ===';
 SELECT CASE WHEN OBJECT_ID(N'dbo.AppAgentSharedContext', N'U') IS NULL THEN 'MISSING' ELSE 'OK' END AS AppAgentSharedContext;

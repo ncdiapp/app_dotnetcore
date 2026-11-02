@@ -39,14 +39,16 @@ IF COL_LENGTH('dbo.AppGenericAgentSession', 'SummaryFingerprint') IS NULL
                 if (fixture == null) return null;
                 EnsureColumns(fixture);
 
+                var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
+                if (agentId == null) return null;
                 var dt = fixture.RetriveDataTable(
                     @"SELECT SummaryText, SummarizedTurnCount, SummaryFingerprint
                       FROM dbo.AppGenericAgentSession
-                      WHERE SessionKey=@K AND SkillKey=@S AND UserId=@U",
+                      WHERE SessionKey=@K AND AgentID=@S AND UserId=@U",
                     new List<DbParameter>
                     {
                         P(fixture, "@K", sessionKey.Trim()),
-                        P(fixture, "@S", skillKey.Trim()),
+                        P(fixture, "@S", agentId.Value),
                         P(fixture, "@U", userId)
                     });
                 if (dt == null || dt.Rows.Count == 0) return null;
@@ -91,17 +93,19 @@ IF COL_LENGTH('dbo.AppGenericAgentSession', 'SummaryFingerprint') IS NULL
                 if (fixture == null) return;
                 EnsureColumns(fixture);
 
+                var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
+                if (agentId == null) return;
                 fixture.ExecuteNonQueryResult(
                     @"UPDATE dbo.AppGenericAgentSession
                       SET SummaryText=@T, SummarizedTurnCount=@C, SummaryFingerprint=@F
-                      WHERE SessionKey=@K AND SkillKey=@S AND UserId=@U",
+                      WHERE SessionKey=@K AND AgentID=@S AND UserId=@U",
                     new List<DbParameter>
                     {
                         P(fixture, "@T", text),
                         P(fixture, "@C", turnCount),
                         P(fixture, "@F", fingerprint),
                         P(fixture, "@K", sessionKey.Trim()),
-                        P(fixture, "@S", skillKey.Trim()),
+                        P(fixture, "@S", agentId.Value),
                         P(fixture, "@U", userId)
                     });
             }

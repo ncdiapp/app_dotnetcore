@@ -3,6 +3,7 @@ import {
     agentSkillSetSvc,
     AppAgentChildMappingDto,
     AppAgentSkillSetDto,
+    agentCodeOf,
 } from '../../webapi/agentSkillSetSvc';
 import { Theme } from '../../redux/features/ui/theme/types';
 
@@ -46,8 +47,8 @@ const AgentChildAgentTab: React.FC<AgentChildAgentTabProps> = ({
     const children = useMemo(() => {
         const rows = mappings.filter(m => m.ParentSkillKey === parentSkillKey);
         return rows.sort((a, b) => {
-            const aa = allAgents.find(x => x.SkillKey === a.ChildSkillKey);
-            const bb = allAgents.find(x => x.SkillKey === b.ChildSkillKey);
+            const aa = allAgents.find(x => (x.AgentCode || x.SkillKey) === a.ChildSkillKey);
+            const bb = allAgents.find(x => (x.AgentCode || x.SkillKey) === b.ChildSkillKey);
             const an = (a.ChildDisplayName || aa?.DisplayName || a.ChildSkillKey).toLowerCase();
             const bn = (b.ChildDisplayName || bb?.DisplayName || b.ChildSkillKey).toLowerCase();
             const byName = an.localeCompare(bn);
@@ -60,7 +61,7 @@ const AgentChildAgentTab: React.FC<AgentChildAgentTabProps> = ({
 
     const agentByKey = useMemo(() => {
         const m = new Map<string, AppAgentSkillSetDto>();
-        allAgents.forEach(a => m.set(a.SkillKey, a));
+        allAgents.forEach(a => m.set(a.AgentCode || a.SkillKey || '', a));
         return m;
     }, [allAgents]);
 
@@ -72,18 +73,18 @@ const AgentChildAgentTab: React.FC<AgentChildAgentTabProps> = ({
     const pickerRows = useMemo(() => {
         const q = pickerSearch.trim().toLowerCase();
         return allAgents
-            .filter(a => !a.SkillKey.startsWith('tmpl-'))
-            .filter(a => a.SkillKey !== parentSkillKey)
-            .filter(a => !(hideAlreadyInTeam && childKeySet.has(a.SkillKey)))
+            .filter(a => !(a.AgentCode || a.SkillKey || '').startsWith('tmpl-'))
+            .filter(a => (a.AgentCode || a.SkillKey) !== parentSkillKey)
+            .filter(a => !(hideAlreadyInTeam && childKeySet.has(a.AgentCode || a.SkillKey || '')))
             .filter(a => {
                 if (!q) return true;
-                return `${a.SkillKey} ${a.DisplayName}`.toLowerCase().includes(q);
+                return `${a.AgentCode || a.SkillKey} ${a.DisplayName}`.toLowerCase().includes(q);
             })
             .slice()
             .sort((a, b) => {
-                const an = (a.DisplayName || a.SkillKey).toLowerCase();
-                const bn = (b.DisplayName || b.SkillKey).toLowerCase();
-                return an.localeCompare(bn) || a.SkillKey.localeCompare(b.SkillKey);
+                const an = (a.DisplayName || agentCodeOf(a)).toLowerCase();
+                const bn = (b.DisplayName || agentCodeOf(b)).toLowerCase();
+                return an.localeCompare(bn) || agentCodeOf(a).localeCompare(agentCodeOf(b));
             });
     }, [allAgents, parentSkillKey, hideAlreadyInTeam, childKeySet, pickerSearch]);
 
@@ -134,6 +135,7 @@ const AgentChildAgentTab: React.FC<AgentChildAgentTabProps> = ({
         onError(null);
         try {
             const dto: AppAgentSkillSetDto = {
+                AgentCode: code,
                 SkillKey: code,
                 DisplayName: createName.trim() || code,
                 Description: '',
@@ -249,21 +251,21 @@ const AgentChildAgentTab: React.FC<AgentChildAgentTabProps> = ({
                         </div>
                         <div className="w-full h-1 flex-auto overflow-auto px-2 pb-2" style={{ minHeight: 240 }}>
                             {pickerRows.map(a => (
-                                <label key={a.SkillKey} className={`flex items-center gap-2 px-2 py-1 text-xs cursor-pointer hover:opacity-80 ${theme.label}`}>
+                                <label key={agentCodeOf(a)} className={`flex items-center gap-2 px-2 py-1 text-xs cursor-pointer hover:opacity-80 ${theme.label}`}>
                                     <input
                                         type="checkbox"
-                                        disabled={childKeySet.has(a.SkillKey)}
-                                        checked={selectedKeys.has(a.SkillKey)}
+                                        disabled={childKeySet.has(agentCodeOf(a))}
+                                        checked={selectedKeys.has(agentCodeOf(a))}
                                         onChange={e => {
                                             setSelectedKeys(prev => {
                                                 const next = new Set(prev);
-                                                if (e.target.checked) next.add(a.SkillKey); else next.delete(a.SkillKey);
+                                                if (e.target.checked) next.add(agentCodeOf(a)); else next.delete(agentCodeOf(a));
                                                 return next;
                                             });
                                         }}
                                     />
-                                    <span className="font-semibold">{a.DisplayName || a.SkillKey}</span>
-                                    <span className="font-mono opacity-60">{a.SkillKey}</span>
+                                    <span className="font-semibold">{a.DisplayName || agentCodeOf(a)}</span>
+                                    <span className="font-mono opacity-60">{agentCodeOf(a)}</span>
                                     <span className="ml-auto opacity-50">{a.IsActive ? 'Active' : 'Inactive'} · {a.ExecutionMode === 'Deterministic' ? 'Det' : 'Int'}</span>
                                 </label>
                             ))}

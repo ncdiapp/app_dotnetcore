@@ -33,7 +33,7 @@ namespace App.BL.AIAgent.GenericAgent.Memory
         private static readonly string MemoryAgentCondition =
             $@"k.IsActive = 1 AND ((k.CapabilityFlags & {AgentMemoryInjector.InjectMemoryFlag}) <> 0
                 OR EXISTS (SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
-                           WHERE sub.SkillKey = k.SkillKey AND sub.LibraryKey = N'{AgentMemoryInjector.MemoryLibraryKey}'))";
+                           WHERE sub.AgentID = k.AgentID AND sub.LibraryKey = N'{AgentMemoryInjector.MemoryLibraryKey}'))";
 
         /// <summary>Chats of memory-enabled agents that went quiet and have turns not yet extracted.</summary>
         public static List<MemoryChatCandidate> FindReady(int dataSourceId, int idleMinutes, int batch)
@@ -44,9 +44,9 @@ namespace App.BL.AIAgent.GenericAgent.Memory
                 var fixture = AgentMemoryDb.Fixture(dataSourceId);
                 if (fixture == null) return list;
                 var dt = fixture.RetriveDataTable(
-                    $@"SELECT TOP ({Math.Clamp(batch, 1, 200)}) s.SessionKey, s.SkillKey, s.UserId, s.MessagesJson, s.ExtractedTurnCount
+                    $@"SELECT TOP ({Math.Clamp(batch, 1, 200)}) s.SessionKey, k.AgentCode AS SkillKey, s.UserId, s.MessagesJson, s.ExtractedTurnCount
                        FROM dbo.AppGenericAgentSession s
-                       JOIN dbo.AppAgentSkillSet k ON k.SkillKey = s.SkillKey AND {MemoryAgentCondition}
+                       JOIN dbo.AppAgentSkillSet k ON k.AgentID = s.AgentID AND {MemoryAgentCondition}
                        WHERE s.MessagesJson <> N'[]' AND s.MemoryOptOut = 0 AND s.ExtractRetryCount < {MaxRetries}
                          AND s.UpdatedAt < DATEADD(MINUTE, -@Idle, GETUTCDATE())
                          AND (s.ExtractedAt IS NULL OR s.UpdatedAt > s.ExtractedAt)
@@ -110,8 +110,8 @@ namespace App.BL.AIAgent.GenericAgent.Memory
                 var fixture = AgentMemoryDb.Fixture(dataSourceId);
                 if (fixture == null) return new MemorySessionState();
                 var dt = fixture.RetriveDataTable(
-                    "SELECT ExtractedTurnCount, MemoryOptOut FROM dbo.AppGenericAgentSession WHERE SessionKey=@K AND SkillKey=@S AND UserId=@U",
-                    AgentMemoryDb.Params(fixture, ("@K", sessionKey), ("@S", skillKey), ("@U", userId)));
+                    "SELECT ExtractedTurnCount, MemoryOptOut FROM dbo.AppGenericAgentSession WHERE SessionKey=@K AND AgentID=@S AND UserId=@U",
+                    AgentMemoryDb.Params(fixture, ("@K", sessionKey), ("@S", AppAgentLookup.IdByCode(fixture, skillKey) ?? 0), ("@U", userId)));
                 if (dt == null || dt.Rows.Count == 0) return new MemorySessionState();
                 return new MemorySessionState
                 {
@@ -128,16 +128,16 @@ namespace App.BL.AIAgent.GenericAgent.Memory
 
         public static bool SetOptOut(int dataSourceId, string sessionKey, string skillKey, int userId, bool optOut) =>
             Exec(dataSourceId,
-                "UPDATE dbo.AppGenericAgentSession SET MemoryOptOut=@O WHERE SessionKey=@K AND SkillKey=@S AND UserId=@U",
-                ("@O", optOut), ("@K", sessionKey), ("@S", skillKey), ("@U", userId)) > 0;
+                "UPDATE dbo.AppGenericAgentSession SET MemoryOptOut=@O WHERE SessionKey=@K AND AgentID=@S AND UserId=@U",
+                ("@O", optOut), ("@K", sessionKey), ("@S", AppAgentLookup.IdByCode(dataSourceId, skillKey) ?? 0), ("@U", userId)) > 0;
 
         /// <summary>The transcript was wiped (Clear conversation): forget how much of it had been processed.</summary>
         public static void ResetExtraction(int dataSourceId, string sessionKey, string skillKey, int userId) =>
             Exec(dataSourceId,
                 @"UPDATE dbo.AppGenericAgentSession
                   SET ExtractedAt = NULL, ExtractedTurnCount = 0, ExtractingAt = NULL, ExtractRetryCount = 0
-                  WHERE SessionKey=@K AND SkillKey=@S AND UserId=@U",
-                ("@K", sessionKey), ("@S", skillKey), ("@U", userId));
+                  WHERE SessionKey=@K AND AgentID=@S AND UserId=@U",
+                ("@K", sessionKey), ("@S", AppAgentLookup.IdByCode(dataSourceId, skillKey) ?? 0), ("@U", userId));
 
         public static bool SkillUsesMemory(int dataSourceId, string skillKey)
         {
@@ -146,7 +146,7 @@ namespace App.BL.AIAgent.GenericAgent.Memory
                 var fixture = AgentMemoryDb.Fixture(dataSourceId);
                 if (fixture == null) return false;
                 var dt = fixture.RetriveDataTable(
-                    $"SELECT k.SkillKey FROM dbo.AppAgentSkillSet k WHERE k.SkillKey=@S AND {MemoryAgentCondition}",
+                    $"SELECT k.AgentCode FROM dbo.AppAgentSkillSet k WHERE k.AgentCode=@S AND {MemoryAgentCondition}",
                     AgentMemoryDb.Params(fixture, ("@S", skillKey)));
                 return dt != null && dt.Rows.Count > 0;
             }

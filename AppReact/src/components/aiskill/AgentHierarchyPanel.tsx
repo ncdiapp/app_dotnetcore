@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { AppAgentChildMappingDto, AppAgentSkillSetDto } from '../../webapi/agentSkillSetSvc';
+import { AppAgentChildMappingDto, AppAgentSkillSetDto, agentCodeOf } from '../../webapi/agentSkillSetSvc';
 import { Theme } from '../../redux/features/ui/theme/types';
 
 export type AgentRoleFilter = 'all' | 'standalone-orchestrators' | 'child-agents';
@@ -20,13 +20,13 @@ type TreeRow =
     | { kind: 'child'; agent: AppAgentSkillSetDto; parentSkillKey: string };
 
 function agentName(a: AppAgentSkillSetDto): string {
-    return (a.DisplayName || a.SkillKey || '').trim();
+    return (a.DisplayName || a.AgentCode || a.SkillKey || '').trim();
 }
 
 function compareAgentName(a: AppAgentSkillSetDto, b: AppAgentSkillSetDto): number {
     const byName = agentName(a).localeCompare(agentName(b), undefined, { sensitivity: 'base' });
     if (byName !== 0) return byName;
-    return a.SkillKey.localeCompare(b.SkillKey);
+    return (a.AgentCode || a.SkillKey || '').localeCompare(b.AgentCode || b.SkillKey || '');
 }
 
 const AgentHierarchyPanel: React.FC<AgentHierarchyPanelProps> = ({
@@ -46,7 +46,7 @@ const AgentHierarchyPanel: React.FC<AgentHierarchyPanelProps> = ({
 
     const byKey = useMemo(() => {
         const m = new Map<string, AppAgentSkillSetDto>();
-        agents.forEach(a => m.set(a.SkillKey, a));
+        agents.forEach(a => m.set(a.AgentCode || a.SkillKey || '', a));
         return m;
     }, [agents]);
 
@@ -78,13 +78,13 @@ const AgentHierarchyPanel: React.FC<AgentHierarchyPanelProps> = ({
     const matchesFilters = (agent: AppAgentSkillSetDto) => {
         const q = search.trim().toLowerCase();
         if (q) {
-            const hay = `${agent.SkillKey} ${agent.DisplayName} ${agent.Description || ''}`.toLowerCase();
+            const hay = `${agentCodeOf(agent)} ${agent.DisplayName} ${agent.Description || ''}`.toLowerCase();
             if (!hay.includes(q)) return false;
         }
         if (statusFilter === 'active' && !agent.IsActive) return false;
         if (statusFilter === 'inactive' && agent.IsActive) return false;
-        const childCount = childrenByParent.get(agent.SkillKey)?.length ?? agent.ChildCount ?? 0;
-        const used = usedByCount.get(agent.SkillKey) ?? agent.UsedByCount ?? 0;
+        const childCount = childrenByParent.get(agentCodeOf(agent))?.length ?? agent.ChildCount ?? 0;
+        const used = usedByCount.get(agentCodeOf(agent)) ?? agent.UsedByCount ?? 0;
         // Standalone & Orchestrators: not a pure Child-Agent (used as child with no children of its own)
         if (roleFilter === 'standalone-orchestrators' && used > 0 && childCount <= 0) return false;
         if (roleFilter === 'child-agents' && used <= 0) return false;
@@ -93,7 +93,7 @@ const AgentHierarchyPanel: React.FC<AgentHierarchyPanelProps> = ({
 
     const topAgents = useMemo(
         () => agents
-            .filter(a => !a.SkillKey.startsWith('tmpl-'))
+            .filter(a => !agentCodeOf(a).startsWith('tmpl-'))
             .filter(matchesFilters)
             .slice()
             .sort(compareAgentName),
@@ -113,12 +113,12 @@ const AgentHierarchyPanel: React.FC<AgentHierarchyPanelProps> = ({
     const rows: TreeRow[] = [];
     for (const agent of topAgents) {
         rows.push({ kind: 'top', agent });
-        const kids = childrenByParent.get(agent.SkillKey) ?? [];
-        if (kids.length > 0 && expanded.has(agent.SkillKey)) {
+        const kids = childrenByParent.get(agentCodeOf(agent)) ?? [];
+        if (kids.length > 0 && expanded.has(agentCodeOf(agent))) {
             for (const link of kids) {
                 const child = byKey.get(link.ChildSkillKey);
                 if (!child) continue;
-                rows.push({ kind: 'child', agent: child, parentSkillKey: agent.SkillKey });
+                rows.push({ kind: 'child', agent: child, parentSkillKey: agentCodeOf(agent) });
             }
         }
     }
@@ -176,19 +176,19 @@ const AgentHierarchyPanel: React.FC<AgentHierarchyPanelProps> = ({
                 {rows.map(row => {
                     const agent = row.agent;
                     const isTop = row.kind === 'top';
-                    const childCount = childrenByParent.get(agent.SkillKey)?.length ?? 0;
+                    const childCount = childrenByParent.get(agentCodeOf(agent))?.length ?? 0;
                     const isOrch = isTop && childCount > 0;
-                    const used = usedByCount.get(agent.SkillKey) ?? 0;
-                    const selected = selectedSkillKey === agent.SkillKey;
+                    const used = usedByCount.get(agentCodeOf(agent)) ?? 0;
+                    const selected = selectedSkillKey === agentCodeOf(agent);
                     const inactive = !agent.IsActive;
                     return (
                         <div
-                            key={isTop ? `top:${agent.SkillKey}` : `child:${row.parentSkillKey}:${agent.SkillKey}`}
+                            key={isTop ? `top:${agentCodeOf(agent)}` : `child:${row.parentSkillKey}:${agentCodeOf(agent)}`}
                             draggable={isTop}
-                            onDragStart={isTop ? onDragStart(agent.SkillKey) : undefined}
+                            onDragStart={isTop ? onDragStart(agentCodeOf(agent)) : undefined}
                             onDragOver={isTop ? onDragOver : undefined}
-                            onDrop={isTop ? dropOnOrchestrator(agent.SkillKey) : undefined}
-                            onClick={() => onSelect(agent.SkillKey)}
+                            onDrop={isTop ? dropOnOrchestrator(agentCodeOf(agent)) : undefined}
+                            onClick={() => onSelect(agentCodeOf(agent))}
                             className={`flex items-center gap-2 py-1.5 cursor-pointer border-b text-xs ${borderCls} ${
                                 selected ? 'font-semibold' : 'hover:opacity-90'
                             } ${inactive ? 'opacity-55' : ''} ${theme.mainContentSection}`}
@@ -197,7 +197,7 @@ const AgentHierarchyPanel: React.FC<AgentHierarchyPanelProps> = ({
                                 paddingRight: 8,
                                 ...(selected ? { outline: '1px solid currentColor', outlineOffset: -1 } : {}),
                             }}
-                            title={agent.SkillKey}
+                            title={agentCodeOf(agent)}
                         >
                             {/* Fixed expand gutter */}
                             <div className="w-5 h-5 shrink-0 flex items-center justify-center">
@@ -205,10 +205,10 @@ const AgentHierarchyPanel: React.FC<AgentHierarchyPanelProps> = ({
                                     <button
                                         type="button"
                                         className={`w-5 h-5 rounded text-[10px] flex items-center justify-center ${theme.button_default}`}
-                                        onClick={e => toggleExpand(agent.SkillKey, e)}
-                                        title={expanded.has(agent.SkillKey) ? 'Collapse' : 'Expand Child-Agents'}
+                                        onClick={e => toggleExpand(agentCodeOf(agent), e)}
+                                        title={expanded.has(agentCodeOf(agent)) ? 'Collapse' : 'Expand Child-Agents'}
                                     >
-                                        <i className={`fa-solid fa-chevron-${expanded.has(agent.SkillKey) ? 'down' : 'right'}`} />
+                                        <i className={`fa-solid fa-chevron-${expanded.has(agentCodeOf(agent)) ? 'down' : 'right'}`} />
                                     </button>
                                 ) : null}
                             </div>
@@ -223,9 +223,9 @@ const AgentHierarchyPanel: React.FC<AgentHierarchyPanelProps> = ({
 
                             <div className="min-w-0 w-1 flex-auto">
                                 <div className={`truncate leading-tight ${inactive ? theme.label : theme.title}`}>
-                                    {agentName(agent) || agent.SkillKey}
+                                    {agentName(agent) || agentCodeOf(agent)}
                                 </div>
-                                <div className={`truncate leading-tight text-[10px] opacity-55 ${theme.label}`}>{agent.SkillKey}</div>
+                                <div className={`truncate leading-tight text-[10px] opacity-55 ${theme.label}`}>{agentCodeOf(agent)}</div>
                             </div>
 
                             <div className={`shrink-0 text-[10px] ${theme.label}`}>

@@ -39,7 +39,7 @@ const TabHeaders: React.FC = () => {
     e.stopPropagation();
     
     // Prevent closing the last tab if it's the Home tab
-    if (tabs.length === 1 && (tab.path === '/home' || tab.path === '/company-security')) {
+    if (tabs.length === 1 && (tab.path === '/home' || tab.path === '/company-security' || tab.path === '/tenant-provisioning')) {
       return;
     }
     

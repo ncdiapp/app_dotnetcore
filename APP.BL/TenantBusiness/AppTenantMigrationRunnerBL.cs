@@ -64,10 +64,17 @@ namespace App.BL
                         if ((int)check.ExecuteScalar() > 0) continue;
                     }
 
-                    // Execute every GO-separated batch in the script
-                    string sql = File.ReadAllText(scriptPath);
-                    foreach (var batch in SplitOnGo(sql))
-                        ExecuteBatch(batch, conn);
+                    try
+                    {
+                        string sql = File.ReadAllText(scriptPath);
+                        foreach (var batch in SplitOnGo(sql))
+                            ExecuteBatch(batch, conn);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new InvalidOperationException(
+                            $"Migration '{version}' failed: {ex.Message}", ex);
+                    }
 
                     // Record the applied version
                     using (var record = new SqlCommand(
@@ -88,10 +95,10 @@ namespace App.BL
         // Run pending migrations against every company-master tenant DB (IsCompanyMasterDb).
         // Satellite data sources (ERP / DataWS / PLM / …) are skipped — AppAI schema scripts
         // only belong on the tenant master database.
-        // Returns a map of DataSourceName → migrations applied (-1 on error).
-        public static Dictionary<string, int> RunMigrationsOnAllTenants()
+        // Returns a map of DataSourceName → "N" scripts applied, or "ERROR: …".
+        public static Dictionary<string, string> RunMigrationsOnAllTenants()
         {
-            var results = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var results = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var tenants = AppDataSourceRegisterBL.RetrieveAllAppDataSourceRegisterEntity();
 
             foreach (var tenant in tenants)
@@ -102,19 +109,19 @@ namespace App.BL
                 string key = tenant.DataSourceName ?? tenant.DataSourceId.ToString();
                 if (string.IsNullOrEmpty(tenant.ConnectionString))
                 {
-                    results[key] = 0;
+                    results[key] = "0";
                     continue;
                 }
 
                 try
                 {
                     string plain = AppConnectionStringEncryptionBL.Decrypt(tenant.ConnectionString);
-                    results[key] = RunPendingMigrations(plain);
+                    results[key] = RunPendingMigrations(plain).ToString();
                 }
                 catch (Exception ex)
                 {
                     NLog.LogManager.GetCurrentClassLogger().Error(ex, "Migration failed for tenant {0}", key);
-                    results[key] = -1;
+                    results[key] = "ERROR: " + ex.Message;
                 }
             }
 

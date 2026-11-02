@@ -65,10 +65,10 @@ export const isMasterSysAdminFromContext = (userContext: any): boolean => {
 
 /** Post-login / unknown-route landing path. SysAdmin has no tenant Desktop on Home. */
 export const getDefaultAuthenticatedPath = (userContext: any): string =>
-  isMasterSysAdminFromContext(userContext) ? '/company-security' : '/home';
+  isMasterSysAdminFromContext(userContext) ? '/tenant-provisioning' : '/home';
 
 export const getDefaultAuthenticatedTab = (userContext: any): { path: string; label: string } =>
   isMasterSysAdminFromContext(userContext)
-    ? { path: '/company-security', label: 'Company and Users' }
+    ? { path: '/tenant-provisioning', label: 'Tenant Provisioning' }
     : { path: '/home', label: 'Home' };
 

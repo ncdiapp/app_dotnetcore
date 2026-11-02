@@ -6,9 +6,9 @@
 SET NOCOUNT ON;
 GO
 
-IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-import-dw')
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw')
 INSERT INTO dbo.AppAgentSkillSet
-    (SkillKey, DisplayName, Description, SystemPrompt, CapabilityFlags, IsActive, SortOrder, Version,
+    (AgentCode, DisplayName, Description, SystemPrompt, CapabilityFlags, IsActive, SortOrder, Version,
      MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize,
      MaxIterations, ExecutionMode, AgentUi)
 VALUES (
@@ -1084,85 +1084,94 @@ Agent loads TabIds from `pdmTemplateTab` for TemplateId 3359 - user does **not**
 GO
 
 -- Library subscriptions (new tenant only; IF NOT EXISTS)
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-import-dw')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-multi-agent')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-import-dw' AND LibraryKey = N'platform-multi-agent')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-import-dw', N'platform-multi-agent');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-import-dw' AND sub.LibraryKey = N'platform-multi-agent')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-multi-agent' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-import-dw')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'agent-files')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-import-dw' AND LibraryKey = N'agent-files')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-import-dw', N'agent-files');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-import-dw' AND sub.LibraryKey = N'agent-files')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'agent-files' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-import-dw')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'agent-scripts')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-import-dw' AND LibraryKey = N'agent-scripts')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-import-dw', N'agent-scripts');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-import-dw' AND sub.LibraryKey = N'agent-scripts')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'agent-scripts' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-import-dw')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-database')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-import-dw' AND LibraryKey = N'platform-database')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-import-dw', N'platform-database');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-import-dw' AND sub.LibraryKey = N'platform-database')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-database' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-import-dw')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-application')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-import-dw' AND LibraryKey = N'platform-application')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-import-dw', N'platform-application');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-import-dw' AND sub.LibraryKey = N'platform-application')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-application' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-import-dw')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-memory')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-import-dw' AND LibraryKey = N'platform-memory')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-import-dw', N'platform-memory');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-import-dw' AND sub.LibraryKey = N'platform-memory')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-memory' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-import-dw')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-search')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-import-dw' AND LibraryKey = N'platform-search')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-import-dw', N'platform-search');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-import-dw' AND sub.LibraryKey = N'platform-search')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-search' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-import-dw')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-transaction')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-import-dw' AND LibraryKey = N'platform-transaction')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-import-dw', N'platform-transaction');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-import-dw' AND sub.LibraryKey = N'platform-transaction')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-transaction' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-import-dw')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'integration-plm-import')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-import-dw' AND LibraryKey = N'integration-plm-import')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-import-dw', N'integration-plm-import');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-import-dw' AND sub.LibraryKey = N'integration-plm-import')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'integration-plm-import' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-import-dw';
 GO
 
 -- Existing tenants: switch APPLY from LLM-walked tools to one BL runner
@@ -1171,7 +1180,7 @@ SET SystemPrompt = REPLACE(
     SystemPrompt,
     N'   - `PHASE=APPLY` - execute `executionPlan` in order with path-based tools only; stop on first failure; write `plm.integration.import-dw.outputs.apply`',
     N'   - `PHASE=APPLY` - call `apply_agent_output_plan` once; BL runs the whole plan and logs each step')
-WHERE SkillKey = N'plm-integration-import-dw'
+WHERE AgentCode = N'plm-integration-import-dw'
   AND SystemPrompt LIKE N'%PHASE=APPLY%execute `executionPlan`%'
   AND SystemPrompt NOT LIKE N'%apply_agent_output_plan%';
 GO
@@ -1186,7 +1195,7 @@ grids.dwTable = full physical DW name. grids.appTable = short shared name.
 Phase B: this pair is correct. Never return ok=false because APP name != DW segment.
 ok=true when run_agent_script exits 0 and output/{templateId}/1_PlmDw_Tables.sql plus 4_PlmDw_ImportBlueprint.json exist.
 '
-WHERE SkillKey = N'plm-integration-import-dw'
+WHERE AgentCode = N'plm-integration-import-dw'
   AND SystemPrompt NOT LIKE N'%HARD: BOM shared APP table names%';
 GO
 
@@ -1202,7 +1211,7 @@ Never return ok=false for resolving a DW table name before that script runs.
 Never return ok=false after the script exits 0 and output/{templateId}/1_ plus 4_ exist.
 If the script fails, copy the tool error (exit code / log tail). Do not invent a physical table mapping issue.
 '
-WHERE SkillKey = N'plm-integration-import-dw'
+WHERE AgentCode = N'plm-integration-import-dw'
   AND SystemPrompt NOT LIKE N'%HARD: Phase B must run the official generator%';
 GO
 
@@ -1213,7 +1222,7 @@ ok=true only from apply_agent_output_plan: ok=true AND executed==planned AND eve
 If the tool says Agent file not found or executed=0, FinalResponse ok=false and copy error.
 Never say 6/6 steps executed or imported successfully without that tool result.
 '
-WHERE SkillKey = N'plm-integration-import-dw'
+WHERE AgentCode = N'plm-integration-import-dw'
   AND SystemPrompt NOT LIKE N'%HARD: PHASE=APPLY never invent success%';
 GO
 
@@ -1225,7 +1234,7 @@ Never edit source/_gen_plmdw_import_sql.ps1.
 If run_agent_script fails, FinalResponse ok=false and copy the tool error/stderr. Do not write outputs.files or executionPlan for files that file_list does not show.
 Do not invent sizeBytes from source/PlmDw_*.sql templates.
 '
-WHERE SkillKey = N'plm-integration-import-dw'
+WHERE AgentCode = N'plm-integration-import-dw'
   AND SystemPrompt NOT LIKE N'%HARD: Phase B do not patch the official generator%';
 GO
 
@@ -1236,7 +1245,7 @@ Phase A checklist grid list (3161 Fabric BOM, 3163 Label BOM, 3165 Packaging, 7 
 Omitting grids[] makes the generator skip BOM colorway 5_ and 6_ SQL even when the template has Colorways.
 appTable = short shared name (Fabric_BOM_prod). dwTable = full physical PLM_DW_Grid_*_{id}.
 '
-WHERE SkillKey = N'plm-integration-import-dw'
+WHERE AgentCode = N'plm-integration-import-dw'
   AND SystemPrompt NOT LIKE N'%HARD: dwTabImportConfig.json must include grids%';
 GO
 
@@ -1247,7 +1256,7 @@ Do not hand-write a partial grids[]. Leave grids[] empty (generator discovers PL
 unitStructure.childUnits is empty by design. Agent APPLY (AppConfigPack) attaches gridBindings onto the parent Tab TX and bomColorwayPivotBindings grandchild + source ProductDesignColorGrid onto that Tab. Empty childUnits does not mean no GRID.
 3167 is Artwork_BOM_prod / parent Artworks 4246. ProductDesignColorGrid is only grid 7 / PLM_DW_Grid_ProductDesignColorGrid_7 / parent Colorways 4225.
 '
-WHERE SkillKey = N'plm-integration-import-dw'
+WHERE AgentCode = N'plm-integration-import-dw'
   AND SystemPrompt NOT LIKE N'%HARD: grids[] empty or official file%';
 GO
 
@@ -1256,7 +1265,7 @@ SET SystemPrompt = SystemPrompt + N'
 ## HARD: ProductDesignColorGrid is grid 7, never mash onto another gridId
 `ProductDesignColorGrid` physical DW table is `PLM_DW_Grid_ProductDesignColorGrid_7` (gridId 7, Colorways tab). Artwork BOM is grid 3167 / `PLM_DW_Grid_Artwork_BOM_prod_3167`. Never write `PLM_DW_Grid_ProductDesignColorGrid_3167` or any `PLM_DW_Grid_{sourceAppTable}_{otherGridId}`. grids[].dwTable must be the physical `PLM_DW_Grid_*_{that gridId}` name. The generator repairs a wrong name against sys.tables; do not invent the mash in config.
 '
-WHERE SkillKey = N'plm-integration-import-dw'
+WHERE AgentCode = N'plm-integration-import-dw'
   AND SystemPrompt NOT LIKE N'%HARD: ProductDesignColorGrid is grid 7%';
 GO
 
@@ -1269,7 +1278,7 @@ The only allowed omission is importStatus=Skipped with skipReason no DW when tha
 Never copy the first N rows of a truncated probe (template 3286 has 29 tabs; 8 is wrong).
 The official generator asserts against pdmTemplateTab and auto-adds missing Ready tabs from DW. If run_agent_script throws omitted tabs, fix config and rerun; do not patch the generator.
 '
-WHERE SkillKey = N'plm-integration-import-dw'
+WHERE AgentCode = N'plm-integration-import-dw'
   AND SystemPrompt NOT LIKE N'%HARD: importTabIds must cover every pdmTemplateTab%';
 GO
 
@@ -1284,7 +1293,7 @@ Do not put legacy monolith 3_PlmDw_ImportFromDW.sql in executionPlan when tabs/*
 APPLY BL rejects monolith when per-tab packages exist on disk. Assemble merges + filters to successful data tabs only.
 Partial success: apply.Ok=true with Error starting Partial success; ROOT still doneIds when assemble ok.
 '
-WHERE SkillKey = N'plm-integration-import-dw'
+WHERE AgentCode = N'plm-integration-import-dw'
   AND SystemPrompt NOT LIKE N'%HARD: per-tab import packages (continueOnError)%';
 GO
 
@@ -1296,7 +1305,7 @@ Build executionPlan ONLY for Failed tabIds: tabs/{tabId}/3_ImportFromDW.sql then
 Then one dw-blueprint-assemble step on 4_PlmDw_Assemble.json mode=Update (compat: 4_PlmDw_ImportBlueprint.json same shell).
 Call apply_agent_output_plan once with that planJson. Do not re-run 1_/2_/3_00 unless root missing.
 '
-WHERE SkillKey = N'plm-integration-import-dw'
+WHERE AgentCode = N'plm-integration-import-dw'
   AND SystemPrompt NOT LIKE N'%HARD: PHASE=APPLY_TABS retry failed tabs%';
 GO
 
@@ -1305,7 +1314,7 @@ SET SystemPrompt = SystemPrompt + N'
 ## HARD: APPLY overview chat format
 After Phase B ok: chat must show APPLY overview from 0_ExecutionPlan.suggested.json.applyOverview (Shared once / Per-tab packages N / Assemble once 4_PlmDw_Assemble.json). State Authoritative executionPlan = output/{templateId}/0_ExecutionPlan.suggested.json with stepCount. Do not summarize as only 4 steps pointing at a full monolith Blueprint Insert.
 '
-WHERE SkillKey = N'plm-integration-import-dw'
+WHERE AgentCode = N'plm-integration-import-dw'
   AND SystemPrompt NOT LIKE N'%HARD: APPLY overview chat format%';
 GO
 
@@ -1319,7 +1328,7 @@ APPLY BL rejects monolith when per-tab packages exist on disk. Assemble filters 
 Do not claim a single full 4_PlmDw_ImportBlueprint.json Insert for all tabs. That file is now an Assemble shell alias (small); per-tab TX/fields are under tabs/*/4_TabBlueprint.json.
 Do not put legacy monolith 3_PlmDw_ImportFromDW.sql in executionPlan when tabs/*/3_ exist.
 APPLY BL rejects monolith when per-tab packages exist on disk. Assemble merges + filters to successful data tabs only.')
-WHERE SkillKey = N'plm-integration-import-dw'
+WHERE AgentCode = N'plm-integration-import-dw'
   AND SystemPrompt LIKE N'%4_ kind=dw-blueprint-assemble mode=Update + optional 5_ BOM%';
 GO
 
@@ -1327,7 +1336,7 @@ UPDATE dbo.AppAgentSkillSet
 SET SystemPrompt = REPLACE(SystemPrompt,
     N'Then one dw-blueprint-assemble step on 4_PlmDw_ImportBlueprint.json mode=Update.',
     N'Then one dw-blueprint-assemble step on 4_PlmDw_Assemble.json mode=Update (compat: 4_PlmDw_ImportBlueprint.json same shell).')
-WHERE SkillKey = N'plm-integration-import-dw'
+WHERE AgentCode = N'plm-integration-import-dw'
   AND SystemPrompt LIKE N'%dw-blueprint-assemble step on 4_PlmDw_ImportBlueprint.json mode=Update.%';
 GO
 
@@ -1342,7 +1351,7 @@ After APPLY ok: do NOT tell ROOT/user to open Form Design or Reset & Auto Design
 If a tab has no pdmTabLayout cells: formLayout may be empty; BL falls back to full Auto Design for that TX (or grids-only hybrid).
 Required source helper: _plm_probe_tab_layout.sql (optional Phase A); generator loads Tab Design itself in Phase B.
 '
-WHERE SkillKey = N'plm-integration-import-dw'
+WHERE AgentCode = N'plm-integration-import-dw'
   AND SystemPrompt NOT LIKE N'%HARD: Form layout from PLM Tab Design%';
 GO
 

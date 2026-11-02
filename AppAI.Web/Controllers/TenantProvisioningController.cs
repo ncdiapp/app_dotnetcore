@@ -24,7 +24,7 @@ public class TenantProvisioningController : SecureBaseController
     // Runs any pending schema migrations against every company-master tenant DB (IsCompanyMasterDb).
     // Satellite data sources are skipped. Safe to call on every deployment — idempotent.
     [HttpPost]
-    public Dictionary<string, int> RunMigrations()
+    public Dictionary<string, string> RunMigrations()
     {
         RequireSysAdmin();
         return AppTenantMigrationRunnerBL.RunMigrationsOnAllTenants();

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 using App.BL;
+using App.BL.AIAgent.GenericAgent;
 
 namespace App.BL.TenantBusiness
 {
@@ -215,9 +216,14 @@ ELSE
             var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
             if (fixture == null) return new List<AppAgentLibrarySubscriptionDto>();
 
+            var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
+            if (agentId == null) return new List<AppAgentLibrarySubscriptionDto>();
             var dt = fixture.RetriveDataTable(
-                "SELECT SkillKey, LibraryKey FROM dbo.AppAgentLibrarySubscription WHERE SkillKey=@SkillKey",
-                new List<DbParameter> { P(fixture, "@SkillKey", skillKey) });
+                @"SELECT k.AgentCode AS SkillKey, s.LibraryKey
+                  FROM dbo.AppAgentLibrarySubscription s
+                  INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = s.AgentID
+                  WHERE s.AgentID=@AgentID",
+                new List<DbParameter> { P(fixture, "@AgentID", agentId.Value) });
 
             var result = new List<AppAgentLibrarySubscriptionDto>();
             if (dt == null) return result;
@@ -235,18 +241,20 @@ ELSE
             if (fixture == null) return false;
 
             // Delete existing, then insert new (simple and safe for small sets)
+            var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
+            if (agentId == null) return false;
             fixture.ExecuteNonQueryResult(
-                "DELETE FROM dbo.AppAgentLibrarySubscription WHERE SkillKey=@SkillKey",
-                new List<DbParameter> { P(fixture, "@SkillKey", skillKey) });
+                "DELETE FROM dbo.AppAgentLibrarySubscription WHERE AgentID=@AgentID",
+                new List<DbParameter> { P(fixture, "@AgentID", agentId.Value) });
 
             foreach (var key in libraryKeys ?? Array.Empty<string>())
             {
                 if (string.IsNullOrWhiteSpace(key)) continue;
                 fixture.ExecuteNonQueryResult(
-                    "INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey) VALUES (@SkillKey, @LibraryKey)",
+                    "INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey) VALUES (@AgentID, @LibraryKey)",
                     new List<DbParameter>
                     {
-                        P(fixture, "@SkillKey",   skillKey),
+                        P(fixture, "@AgentID",    agentId.Value),
                         P(fixture, "@LibraryKey", key)
                     });
             }

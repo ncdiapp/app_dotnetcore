@@ -7,9 +7,9 @@
 SET NOCOUNT ON;
 GO
 
-IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-search')
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-search')
 INSERT INTO dbo.AppAgentSkillSet
-    (SkillKey, DisplayName, Description, SystemPrompt, CapabilityFlags, IsActive, SortOrder, Version,
+    (AgentCode, DisplayName, Description, SystemPrompt, CapabilityFlags, IsActive, SortOrder, Version,
      MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize,
      MaxIterations, ExecutionMode, AgentUi)
 VALUES (
@@ -126,45 +126,49 @@ Write outputs.apply. FinalResponse mode=main|additional-view so ROOT appends sea
 );
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-search')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-search')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-multi-agent')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-search' AND LibraryKey = N'platform-multi-agent')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-search', N'platform-multi-agent');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-search' AND sub.LibraryKey = N'platform-multi-agent')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-multi-agent' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-search';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-search')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-search')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'integration-plm-import')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-search' AND LibraryKey = N'integration-plm-import')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-search', N'integration-plm-import');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-search' AND sub.LibraryKey = N'integration-plm-import')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'integration-plm-import' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-search';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-search')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-search')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'agent-files')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-search' AND LibraryKey = N'agent-files')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-search', N'agent-files');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-search' AND sub.LibraryKey = N'agent-files')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'agent-files' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-search';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-search')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-search')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-database')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-search' AND LibraryKey = N'platform-database')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-search', N'platform-database');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-search' AND sub.LibraryKey = N'platform-database')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-database' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-search';
 GO
 
 UPDATE dbo.AppAgentSkillSet
 SET MaxToolResultChars = 48000
-WHERE SkillKey IN (N'plm-integration-search', N'plm-integration-massupdate')
+WHERE AgentCode IN (N'plm-integration-search', N'plm-integration-massupdate')
   AND ISNULL(MaxToolResultChars, 0) < 48000;
 GO
 
@@ -176,7 +180,7 @@ Synthesize dataSet.queryText from selected JOIN plan + FieldMapping only.',
     N'Match source/7_PlmSearch_ImportBlueprint.example.json.
 MUST emit searchView.fields[] for EVERY visible pdmReferenceViewColumn on SearchTemplate.ReferenceViewID (map via FieldMapping). A views[] shell (name + referenceViewId) is NOT a substitute. criteriaFields[] from every active DCU. DataSet SELECT must include those columns plus ReferenceId (isTransRootId).
 Synthesize dataSet.queryText from selected JOIN plan + FieldMapping.AppColumnName only. Probe sys.columns on each FROM/JOIN APP table. JOIN ON ReferenceId never ReferenceBasicInfoID. Never use PLM DisplayText or pdm names (Style_Name, Enterprise, Sub_Category) as SQL columns.')
-WHERE SkillKey = N'plm-integration-search'
+WHERE AgentCode = N'plm-integration-search'
   AND SystemPrompt LIKE N'%Match source/7_PlmSearch_ImportBlueprint.example.json.
 Synthesize dataSet.queryText from selected JOIN plan + FieldMapping only.%';
 GO
@@ -186,7 +190,7 @@ SET SystemPrompt = REPLACE(
     SystemPrompt,
     N'Synthesize dataSet.queryText from selected JOIN plan + FieldMapping only.',
     N'Synthesize dataSet.queryText from selected JOIN plan + FieldMapping.AppColumnName only. Probe sys.columns on each FROM/JOIN APP table. JOIN ON ReferenceId never ReferenceBasicInfoID. Never use PLM DisplayText or pdm names (Style_Name, Enterprise, Sub_Category) as SQL columns.')
-WHERE SkillKey = N'plm-integration-search'
+WHERE AgentCode = N'plm-integration-search'
   AND SystemPrompt LIKE N'%Synthesize dataSet.queryText from selected JOIN plan + FieldMapping only.%';
 GO
 
@@ -202,6 +206,6 @@ True misses go in unmappedPlmFields (role=criteria|view) and are counted in cove
 FinalResponse counts must include criteriaEmitted, viewEmitted, coverageCriteriaTotal, coverageViewTotal.
 APPLY BL rejects coverage.mapped greater than emitted counts.
 '
-WHERE SkillKey = N'plm-integration-search'
+WHERE AgentCode = N'plm-integration-search'
   AND SystemPrompt NOT LIKE N'%HARD: coverage counts must equal emitted arrays%';
 GO

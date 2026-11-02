@@ -5,9 +5,9 @@
 SET NOCOUNT ON;
 GO
 
-IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-entity')
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-entity')
 INSERT INTO dbo.AppAgentSkillSet
-    (SkillKey, DisplayName, Description, SystemPrompt, CapabilityFlags, IsActive, SortOrder, Version,
+    (AgentCode, DisplayName, Description, SystemPrompt, CapabilityFlags, IsActive, SortOrder, Version,
      MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize,
      MaxIterations, ExecutionMode, AgentUi)
 VALUES (
@@ -41,41 +41,43 @@ PREVIEW: Ask ROOT to confirm Proceed. EXECUTE ok: Mark wizard.entity=done
 );
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-entity')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-entity')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-multi-agent')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-entity' AND LibraryKey = N'platform-multi-agent')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-entity', N'platform-multi-agent');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-entity' AND sub.LibraryKey = N'platform-multi-agent')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-multi-agent' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-entity';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-entity')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-entity')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'integration-plm-import')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-entity' AND LibraryKey = N'integration-plm-import')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-entity', N'integration-plm-import');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-entity' AND sub.LibraryKey = N'integration-plm-import')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'integration-plm-import' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-entity';
 GO
 
 -- Existing tenants: System Define execute now copies Plm_* tables first.
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-entity')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-entity')
 UPDATE dbo.AppAgentSkillSet
 SET SystemPrompt = REPLACE(SystemPrompt,
     N'- PREVIEW: preview_system_define_entity_import AND preview_user_define_entity_import
 - EXECUTE: execute_system_define_entity_import then poll get_plm_import_job until Completed/Failed/Cancelled; then execute_user_define_entity_import and poll the same way',
     N'- PREVIEW: preview_plm_table_export_plan, then preview_system_define_entity_import AND preview_user_define_entity_import
 - EXECUTE: execute_system_define_entity_import (BL copies Plm_* tables first, then writes AppEntityInfo) then poll get_plm_import_job until Completed/Failed/Cancelled; then execute_user_define_entity_import and poll the same way')
-WHERE SkillKey = N'plm-integration-entity'
+WHERE AgentCode = N'plm-integration-entity'
   AND SystemPrompt LIKE N'%PREVIEW: preview_system_define_entity_import AND preview_user_define_entity_import%';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-entity')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-entity')
 UPDATE dbo.AppAgentSkillSet
 SET SystemPrompt = REPLACE(SystemPrompt,
     N'System Define first, then User Define. If System job Failed: ok=false; do not start User Define.',
     N'System Define first (includes TableExport of DataSourceFrom=1 tables into tenant Plm_*), then User Define. If System job Failed: ok=false; do not start User Define. Do not skip table export — System Define metadata requires those Plm_* tables.')
-WHERE SkillKey = N'plm-integration-entity'
+WHERE AgentCode = N'plm-integration-entity'
   AND SystemPrompt LIKE N'%System Define first, then User Define%';
 GO

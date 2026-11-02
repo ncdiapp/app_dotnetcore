@@ -27,6 +27,10 @@ namespace APP.Components.EntityDto
 
     public class AppAgentSkillSetDto
     {
+        public int    AgentId             { get; set; }
+        /// <summary>Public agent code (column AgentCode).</summary>
+        public string AgentCode           { get; set; } = "";
+        /// <summary>Same as AgentCode. Kept for older clients.</summary>
         public string SkillKey            { get; set; } = "";
         public string DisplayName         { get; set; } = "";
         public string Description         { get; set; } = "";

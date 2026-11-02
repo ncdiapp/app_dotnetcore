@@ -6,9 +6,9 @@
 SET NOCOUNT ON;
 GO
 
-IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator')
 INSERT INTO dbo.AppAgentSkillSet
-    (SkillKey, DisplayName, Description, SystemPrompt, CapabilityFlags, IsActive, SortOrder, Version,
+    (AgentCode, DisplayName, Description, SystemPrompt, CapabilityFlags, IsActive, SortOrder, Version,
      MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize,
      MaxIterations, ExecutionMode, AgentUi, AllowAgentFirstTurn)
 VALUES (
@@ -388,58 +388,64 @@ GO
 
 
 -- Library subscriptions (idempotent)
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-multi-agent')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'platform-multi-agent')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-orchestrator', N'platform-multi-agent');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-orchestrator' AND sub.LibraryKey = N'platform-multi-agent')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-multi-agent' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'integration-plm-import')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'integration-plm-import')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-orchestrator', N'integration-plm-import');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-orchestrator' AND sub.LibraryKey = N'integration-plm-import')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'integration-plm-import' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-application')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'platform-application')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-orchestrator', N'platform-application');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-orchestrator' AND sub.LibraryKey = N'platform-application')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-application' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-database')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'platform-database')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-orchestrator', N'platform-database');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-orchestrator' AND sub.LibraryKey = N'platform-database')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-database' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-transaction')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'platform-transaction')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-orchestrator', N'platform-transaction');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-orchestrator' AND sub.LibraryKey = N'platform-transaction')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'platform-transaction' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator';
 GO
 
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'agent-files')
 AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'agent-files')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-orchestrator', N'agent-files');
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription sub
+    INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = sub.AgentID
+    WHERE k.AgentCode = N'plm-integration-orchestrator' AND sub.LibraryKey = N'agent-files')
+INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey)
+SELECT AgentID, N'agent-files' FROM dbo.AppAgentSkillSet WHERE AgentCode = N'plm-integration-orchestrator';
 GO
 
 -- Existing tenants: files on disk = Phase B success (do not Retry on BOM physical name)
@@ -452,7 +458,7 @@ That mapping is required (shared APP table). A locked previous Apply button is s
 Only Generation Error when those files are missing or run_agent_script failed.
 If the child says it failed while resolving a DW table name (Grid 3163 / Label and Packaging BOM) but never ran run_agent_script, that is a child process error: Retry Phase B. Do not treat it as a missing DW table.
 '
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: import-dw Phase B vs Apply%';
 GO
 
@@ -460,7 +466,7 @@ UPDATE dbo.AppAgentSkillSet
 SET SystemPrompt = REPLACE(SystemPrompt,
     N'If file_list shows output/{templateId}/1_PlmDw_Tables.sql and 4_PlmDw_ImportBlueprint.json exist (SizeBytes), Phase B succeeded. executionPlan listing paths is not enough.',
     N'If file_list shows output/{templateId}/1_PlmDw_Tables.sql and 4_PlmDw_Assemble.json (or compat 4_PlmDw_ImportBlueprint.json Assemble shell) exist (SizeBytes), Phase B succeeded. Prefer APPLY overview from 0_ExecutionPlan.suggested.json. executionPlan listing paths is not enough.')
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND SystemPrompt LIKE N'%4_PlmDw_ImportBlueprint.json exist (SizeBytes), Phase B succeeded.%';
 GO
 
@@ -468,7 +474,7 @@ UPDATE dbo.AppAgentSkillSet
 SET SystemPrompt = SystemPrompt + N'
 If the child says it failed while resolving a DW table name (Grid 3163 / Label and Packaging BOM) but never ran run_agent_script, that is a child process error: Retry Phase B. Do not treat it as a missing DW table.
 '
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND SystemPrompt LIKE N'%HARD: import-dw Phase B vs Apply%'
   AND SystemPrompt NOT LIKE N'%failed while resolving a DW table name%';
 GO
@@ -483,7 +489,7 @@ Phase B success requires file_list SizeBytes for 1_ and 4_. executionPlan listin
 If dw-blueprint summary has txInserted=0 on Insert, do not claim Transaction/Form were created.
 update_plm_wizard_progress rejects fake doneIds when apply failed.
 '
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: import-dw Apply success is outputs.apply only%';
 GO
 
@@ -495,7 +501,7 @@ When cursor is folder/image/color/pom and two or more of those steps are still p
 On that id: set each still-pending folder/image/color/pom to skipped, mode=repeatable, cursor=repeatable, persist wizard, then show the Repeatable imports menu in the same turn.
 Do not run those children. User can later pick Run a step skipped earlier.
 '
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: skip all skippable after Entity%';
 GO
 
@@ -507,7 +513,7 @@ SET SystemPrompt = REPLACE(
         N'Skip Folder / Image / Color / POM'),
     N'Skip to Template and Search import',
     N'Skip Folder / Image / Color / POM')
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND (
     SystemPrompt LIKE N'%Skip all remaining (Folder / Image / Color / POM)%'
     OR SystemPrompt LIKE N'%Skip to Template and Search import%'
@@ -519,7 +525,7 @@ SET SystemPrompt = SystemPrompt + N'
 ## HARD: Phase A checklist fields are select dropdowns
 ask_user Phase A checklist: every *Ok field and proceed/importMode MUST be type=select with non-empty options [{id,display}]. Empty options render as a text box. *Ok: OK|Revise. proceed: approve|revise|cancel. importMode: APPEND|REPLACE. Never type=text for *Ok.
 '
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: Phase A checklist fields are select dropdowns%';
 GO
 
@@ -543,7 +549,7 @@ SET SystemPrompt = REPLACE(
 ### massupdate (HARD GATES — child plm-integration-massupdate)
 - Ask SearchTemplateId + MassUpdateViewId. Phase A/B/APPLY via call_agent. outputsContextKey=plm.integration.massupdate.outputs.
 - Never run execute_search_massupdate_view on ROOT.')
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND SystemPrompt LIKE N'%ROOT local until Wave 2%';
 GO
 
@@ -555,7 +561,7 @@ Never ask for blueprintJson paste. Never run load_search_import_blueprint / exec
 APPLY must pass outputsContextKey plm.integration.search.outputs or plm.integration.massupdate.outputs.
 Missing SkillKey = STOP (Retry | Back). Never say sibling to the user.
 '
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: search and massupdate are children%';
 GO
 
@@ -564,7 +570,7 @@ SET SystemPrompt = REPLACE(
     SystemPrompt,
     N'Exact child SkillKeys: `plm-integration-import-dw`, `plm-integration-entity`, `plm-integration-folder`, `plm-integration-image`, `plm-integration-color`, `plm-integration-pom`.',
     N'Exact child SkillKeys: `plm-integration-import-dw`, `plm-integration-entity`, `plm-integration-folder`, `plm-integration-image`, `plm-integration-color`, `plm-integration-pom`, `plm-integration-search`, `plm-integration-massupdate`.')
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND SystemPrompt LIKE N'%, `plm-integration-pom`. Missing SkillKey%'
   AND SystemPrompt NOT LIKE N'%plm-integration-search%';
 GO
@@ -577,7 +583,7 @@ Next tool MUST be ask_user title [massupdate] Phase A checklist with recommended
 NEVER title [massupdate] Phase A Cancelled. NEVER write "MassUpdate setup was cancelled" or "How would you like to proceed". NEVER paste child JSON into Prompt.
 Option C or user cancel => [Menu] Repeatable imports.
 '
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: massupdate Phase A success is a checklist%';
 GO
 
@@ -588,7 +594,7 @@ tabTableMappingOk=ok only when Phase A lists every pdmTemplateTab (plmTabCount e
 skipNoDwOk documents tabs with no PLM_DW_Tab_* only. Do not approve a subset (for example 8 of 29).
 If child Phase B generator auto-fills omitted tabs, that is correct; Apply the full Blueprint. Do not APPLY a previous 8-tab Blueprint.
 '
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: import-dw all PLM tabs%';
 GO
 
@@ -602,7 +608,7 @@ When plm-integration-image PHASE=EXECUTE returns ok=true:
 4. Placement fail / SkillKey missing => leave image not done; Retry Placement | Back. Never invent success. Never run execute_plm_folder_placement on ROOT.
 5. Folder EXECUTE keeps runPlacement=false (no AppFile yet). Only PLACEMENT after Image fills AppFile.FolderID.
 '
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: Image EXECUTE then force Folder PLACEMENT%';
 GO
 
@@ -614,7 +620,7 @@ Tab data steps may have steps[].ok=false when continueOnError=true; that is Part
 Do NOT require every steps[].ok for import-dw when failed steps are continueOnError tab packages.
 If apply.Error starts with Partial success, show failed TabIds and offer Retry those tabs later; do not treat the whole Apply as hard failure.
 '
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: import-dw per-tab APPLY partial success%';
 GO
 
@@ -624,7 +630,7 @@ SET SystemPrompt = SystemPrompt + N'
 After import-dw APPLY with Partial success (or user asks to fix missing tab data): ask_user Retry failed tabs | Done.
 On Retry: call_agent plm-integration-import-dw PHASE=APPLY_TABS with templateId. Do not re-run full Phase B unless files missing.
 '
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: Retry failed Import DW tabs%';
 GO
 
@@ -642,7 +648,7 @@ SET SystemPrompt = REPLACE(
 - Image EXECUTE sets AppFile.FolderID NULL. Do NOT mark image=done on EXECUTE ok alone.
 - Same turn after image EXECUTE ok: write folder.inputs runPlacement=true then call_agent plm-integration-folder PHASE=PLACEMENT. Only placement ok => image=done + folder.placementDone=true then Confirm next Color.
 - Placement fail: leave image not done; Retry | Back. Never execute_plm_folder_placement on ROOT. Folder EXECUTE keeps runPlacement=false.')
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND SystemPrompt LIKE N'%After image succeeds: `write_shared_context` folder.inputs%'
   AND SystemPrompt NOT LIKE N'%HARD GATE — PLACEMENT mandatory before image=done%';
 GO
@@ -656,7 +662,7 @@ FORBIDDEN: plm.integration-entity or any call_agent key with a dot after plm (th
 Shared context only: plm.integration.entity.inputs / plm.integration.wizard / etc.
 If call_agent denied for a dotted name: retry immediately with the matching plm-integration-* SkillKey.
 '
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: call_agent SkillKey vs plm.integration.* context%';
 GO
 
@@ -667,6 +673,6 @@ After import-dw APPLY success: Form fields follow PLM Tab Design; child Grids si
 Phase A optional one-liner: formLayoutPreview (blockCount/fieldCount) if child returns it — do not paste formLayout JSON into ask_user.
 Phase B success still = files on disk (1_ + Assemble + tabs/*/4_). formLayout inside TabBlueprint is produced by the official generator.
 '
-WHERE SkillKey = N'plm-integration-orchestrator'
+WHERE AgentCode = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: import-dw Form layout (PLM Tab Design%';
 GO
