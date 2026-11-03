@@ -10,8 +10,6 @@ namespace App.BL.AIAgent.GenericAgent
 {
     internal sealed class AgentStepFilter : IFunctionInvocationFilter
     {
-        private static readonly NLog.Logger Log = NLog.LogManager.GetCurrentClassLogger();
-
         private readonly GenericAgentCallbacks _callbacks;
         private readonly bool _enableThinkMode;
 
@@ -23,8 +21,6 @@ namespace App.BL.AIAgent.GenericAgent
 
         public async Task OnFunctionInvocationAsync(FunctionInvocationContext ctx, Func<FunctionInvocationContext, Task> next)
         {
-            Log.Info($"[Agent] → {ctx.Function.Name}");
-
             var toolName = ctx.Function.Name ?? "";
             var isCallAgent = string.Equals(toolName, "call_agent", StringComparison.OrdinalIgnoreCase);
             var targetSkillKey = isCallAgent ? GetArgString(ctx.Arguments, "targetSkillKey", "TargetSkillKey") : null;
@@ -56,6 +52,7 @@ namespace App.BL.AIAgent.GenericAgent
                 IsSuccess   = true,
                 Details     = callDetails
             });
+            AgentLoopLog.Write("TOOL_IN", "name=" + toolName + " args=" + AgentLoopLog.OneLine(callDetails));
 
             var sw = Stopwatch.StartNew();
             bool ok = true;
@@ -71,8 +68,6 @@ namespace App.BL.AIAgent.GenericAgent
             finally
             {
                 sw.Stop();
-                var status = ok ? "done" : "FAILED";
-                Log.Info($"[Agent] ← {ctx.Function.Name} {status} in {sw.ElapsedMilliseconds}ms");
 
                 var resultText = ok ? TryGetResult(ctx) : null;
                 if (ok && (resultText == null || resultText == "null"))
@@ -106,6 +101,12 @@ namespace App.BL.AIAgent.GenericAgent
                         ? Truncate(resultText, 4000)
                         : ToolIoFormatter.FormatToolResultDetails(toolName, ctx.Arguments, resultText, effectiveOk)
                 });
+                AgentLoopLog.Write("TOOL_OUT",
+                    "name=" + toolName
+                    + " ms=" + sw.ElapsedMilliseconds
+                    + " ok=" + effectiveOk
+                    + " result=" + AgentLoopLog.OneLine(resultText)
+                    + " next=LLM");
             }
         }
 
@@ -127,7 +128,7 @@ namespace App.BL.AIAgent.GenericAgent
             {
                 if (args.TryGetValue(name, out var v) && v != null)
                 {
-                    var s = v as string ?? v.ToString();
+                    var s = ToolIoFormatter.ArgToString(v);
                     if (!string.IsNullOrWhiteSpace(s)) return s;
                 }
             }
@@ -137,7 +138,7 @@ namespace App.BL.AIAgent.GenericAgent
                 {
                     if (string.Equals(kv.Key, name, StringComparison.OrdinalIgnoreCase) && kv.Value != null)
                     {
-                        var s = kv.Value as string ?? kv.Value.ToString();
+                        var s = ToolIoFormatter.ArgToString(kv.Value);
                         if (!string.IsNullOrWhiteSpace(s)) return s;
                     }
                 }

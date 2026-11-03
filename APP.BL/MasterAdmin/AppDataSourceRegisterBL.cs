@@ -137,7 +137,8 @@ namespace App.BL
 
 
 
-                adapter.FetchEntity(aAppDataSourceRegisterEntity, rootPath);
+                if (!adapter.FetchEntity(aAppDataSourceRegisterEntity, rootPath))
+                    return null;
                 return aAppDataSourceRegisterEntity;
             }
         }

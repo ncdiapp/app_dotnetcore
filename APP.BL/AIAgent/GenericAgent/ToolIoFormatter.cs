@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using System.Text.Json;
 using Microsoft.SemanticKernel;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -92,6 +93,9 @@ namespace App.BL.AIAgent.GenericAgent
                 || string.Equals(n, "sql_query", StringComparison.OrdinalIgnoreCase);
         }
 
+        public static string ArgsAsOneLine(KernelArguments args)
+            => AgentLoopLog.OneLine(ArgsAsJson(args, excludeSql: false), 2500);
+
         private static string ExtractSql(KernelArguments args)
         {
             if (args == null) return null;
@@ -99,17 +103,16 @@ namespace App.BL.AIAgent.GenericAgent
             {
                 if (args.TryGetValue(key, out var v) && v != null)
                 {
-                    var s = (v as string ?? v.ToString())?.Trim();
+                    var s = ArgToString(v)?.Trim();
                     if (!string.IsNullOrEmpty(s) && LooksLikeSql(s))
                         return s;
                 }
             }
-            // Case-insensitive scan
             foreach (var kv in args)
             {
                 if (kv.Value == null) continue;
                 if (!IsSqlArgName(kv.Key)) continue;
-                var s = (kv.Value as string ?? kv.Value.ToString())?.Trim();
+                var s = ArgToString(kv.Value)?.Trim();
                 if (!string.IsNullOrEmpty(s) && LooksLikeSql(s))
                     return s;
             }
@@ -144,18 +147,17 @@ namespace App.BL.AIAgent.GenericAgent
                 if (excludeSql && IsSqlArgName(kv.Key)) continue;
                 try
                 {
-                    if (kv.Value is string s)
+                    var token = ToJToken(kv.Value);
+                    if (token != null && token.Type == JTokenType.String)
                     {
-                        // Nested JSON string → parse for pretty later
+                        var s = token.Value<string>() ?? "";
                         if ((s.StartsWith("{") || s.StartsWith("[")) && s.Length < MaxInputChars)
                         {
                             try { jo[kv.Key] = JToken.Parse(s); continue; }
                             catch { /* keep as string */ }
                         }
-                        jo[kv.Key] = s;
                     }
-                    else
-                        jo[kv.Key] = JToken.FromObject(kv.Value);
+                    jo[kv.Key] = token;
                 }
                 catch
                 {
@@ -196,6 +198,49 @@ namespace App.BL.AIAgent.GenericAgent
         {
             if (s == null || s.Length <= max) return s;
             return s.Substring(0, max) + "…";
+        }
+
+        public static string ArgToString(object value)
+        {
+            if (value == null) return null;
+            if (value is string s) return s;
+            if (value is JsonElement je)
+            {
+                return je.ValueKind == JsonValueKind.String ? je.GetString() : je.GetRawText();
+            }
+            return value.ToString();
+        }
+
+        /// <summary>SK/Gemini often pass System.Text.Json.JsonElement — unwrap so UI and logs show real strings.</summary>
+        public static JToken ToJToken(object value)
+        {
+            if (value == null) return JValue.CreateNull();
+            if (value is JToken jt) return jt;
+            if (value is JsonElement je) return JsonElementToJToken(je);
+            if (value is string s) return s;
+            try { return JToken.FromObject(value); }
+            catch { return new JValue(value.ToString()); }
+        }
+
+        private static JToken JsonElementToJToken(JsonElement je)
+        {
+            switch (je.ValueKind)
+            {
+                case JsonValueKind.String: return je.GetString() ?? "";
+                case JsonValueKind.True: return true;
+                case JsonValueKind.False: return false;
+                case JsonValueKind.Null:
+                case JsonValueKind.Undefined: return JValue.CreateNull();
+                case JsonValueKind.Number:
+                    if (je.TryGetInt64(out var l)) return l;
+                    if (je.TryGetDouble(out var d)) return d;
+                    return je.GetRawText();
+                case JsonValueKind.Object:
+                case JsonValueKind.Array:
+                    return JToken.Parse(je.GetRawText());
+                default:
+                    return je.GetRawText();
+            }
         }
     }
 }

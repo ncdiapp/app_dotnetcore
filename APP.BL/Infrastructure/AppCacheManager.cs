@@ -786,7 +786,17 @@ namespace App.BL
                 return;
             }
 
-            string decryptedConnStr = AppConnectionStringEncryptionBL.Decrypt(datasource.ConnectionString);
+            string encryptedConn;
+            try
+            {
+                encryptedConn = datasource.ConnectionString;
+            }
+            catch (SD.LLBLGen.Pro.ORMSupportClasses.ORMEntityOutOfSyncException)
+            {
+                Logger.Warn("Data source {0} entity out of sync — refetch skipped this cache fill", dataSourceRegisterId);
+                return;
+            }
+            string decryptedConnStr = AppConnectionStringEncryptionBL.Decrypt(encryptedConn);
             var fixture = new DatabaseFixture(decryptedConnStr, (EmSqlType)datasource.DataSourceType);
             var tableDict = SetupDataSourceDataBaseTable(dataSourceRegisterId, fixture);
 

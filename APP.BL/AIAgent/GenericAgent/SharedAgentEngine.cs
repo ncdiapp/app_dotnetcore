@@ -146,10 +146,10 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
         {
             var log = NLog.LogManager.GetCurrentClassLogger();
             var runSw = System.Diagnostics.Stopwatch.StartNew();
-            log.Info($"[Agent] START skill={skillKey}");
             var previousHitl = AgentHitlBridge.Current;
             AgentHitlBridge.Current = callbacks;
             string boundChatKey = null;
+            IDisposable agentLoopScope = null;
             try
             {
                 var dsId = identity.HasValue ? identity.Value.DataSourceId : 0;
@@ -162,6 +162,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                         : TbSkillBL.GetByKey(skillKey));
                 if (skillSet == null)
                 {
+                    AgentLoopLog.Write("RUN_ERROR", "Skill key not found: " + skillKey);
                     await Safe(callbacks?.OnError, $"Skill key not found: {skillKey}").ConfigureAwait(false);
                     return;
                 }
@@ -192,6 +193,8 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     WorkflowId       = string.IsNullOrEmpty(workflowId) ? Guid.NewGuid().ToString("N") : workflowId,
                     ChatSessionKey   = resolvedChatKey
                 };
+                agentLoopScope = AgentLoopLog.Begin(context.SessionId, skillKey, resolvedChatKey);
+                AgentLoopLog.Write("RUN_START", "");
 
                 if (companyId > 0 && !string.IsNullOrWhiteSpace(resolvedChatKey))
                 {
@@ -261,7 +264,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     if (!stayHere)
                     {
                         runSw.Stop();
-                        log.Info($"[Agent] HANDOFF skip-run skill={skillKey} total={runSw.ElapsedMilliseconds}ms");
+                        AgentLoopLog.Write("RUN_DONE", "ms=" + runSw.ElapsedMilliseconds + " reason=handoff-skip");
                         await Safe(callbacks?.OnDone, "").ConfigureAwait(false);
                         return;
                     }
@@ -364,6 +367,12 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                         canPersistSummary ? s => AgentSessionSummaryBL.Save(resolvedChatKey, skillKey, userId, dsId, s) : null)
                         .ConfigureAwait(false);
                     history.AddUserMessage(userMessage);
+                    AgentLoopLog.Write("LLM_IN",
+                        "user=\"" + AgentLoopLog.OneLine(userMessage, 500) + "\""
+                        + " hist=" + history.Count
+                        + " promptChars=" + (systemPrompt?.Length ?? 0)
+                        + " tools=" + AgentLoopLog.OneLine(ListKernelToolNames(kernel), 1500)
+                        + " promptHead=\"" + AgentLoopLog.OneLine(systemPrompt, 400) + "\"");
 
                     // Only enable auto tool calling when tools are actually registered;
                     // Gemini (and some other APIs) reject an empty tools array.
@@ -400,21 +409,16 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     {
                         OnIntermediateMessage = async msg =>
                         {
-                            if (!enableThinkMode || msg == null) return;
+                            if (msg == null) return;
+                            var hasTool = MessageHasFunctionCall(msg);
+                            // Tool decisions are logged in GenericAgentPruneFilter BEFORE the tool runs.
+                            // This callback often fires after TOOL_OUT — only log prose here.
+                            if (!hasTool)
+                                AgentLoopLog.Write("LLM_OUT", FormatLlmIntermediate(msg));
+
+                            if (!enableThinkMode) return;
                             var prose = (msg.Content ?? "").Trim();
                             if (string.IsNullOrEmpty(prose)) return;
-                            var hasTool = false;
-                            if (msg.Items != null)
-                            {
-                                foreach (var item in msg.Items)
-                                {
-                                    if (item is FunctionCallContent)
-                                    {
-                                        hasTool = true;
-                                        break;
-                                    }
-                                }
-                            }
                             if (!hasTool) return;
                             await Safe(callbacks?.OnStep, new AgentStepEvent
                             {
@@ -435,7 +439,8 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     }
 
                     runSw.Stop();
-                    log.Info($"[Agent] DONE skill={skillKey} total={runSw.ElapsedMilliseconds}ms");
+                    AgentLoopLog.Write("LLM_OUT", "next=FINAL text=" + AgentLoopLog.OneLine(fullResponse.ToString()));
+                    AgentLoopLog.Write("RUN_DONE", "ms=" + runSw.ElapsedMilliseconds);
                     await Safe(callbacks?.OnDone, fullResponse.ToString()).ConfigureAwait(false);
                 }
                 finally
@@ -452,7 +457,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
             catch (OperationCanceledException)
             {
                 runSw.Stop();
-                log.Info($"[Agent] STOPPED skill={skillKey} total={runSw.ElapsedMilliseconds}ms");
+                AgentLoopLog.Write("RUN_STOP", "ms=" + runSw.ElapsedMilliseconds);
                 await Safe(callbacks?.OnDone, "Stopped by user.").ConfigureAwait(false);
             }
             catch (Exception ex)
@@ -462,7 +467,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     || ex.GetBaseException() is OperationCanceledException)
                 {
                     runSw.Stop();
-                    log.Info($"[Agent] STOPPED skill={skillKey} total={runSw.ElapsedMilliseconds}ms");
+                    AgentLoopLog.Write("RUN_STOP", "ms=" + runSw.ElapsedMilliseconds);
                     await Safe(callbacks?.OnDone, "Stopped by user.").ConfigureAwait(false);
                     return;
                 }
@@ -473,10 +478,12 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     msg += " | " + httpOpEx.ResponseContent;
                 else if (ex.InnerException != null && ex.InnerException.Message != ex.Message)
                     msg += " — " + ex.InnerException.Message;
+                AgentLoopLog.Write("RUN_ERROR", AgentLoopLog.OneLine(msg));
                 await Safe(callbacks?.OnError, "Agent error: " + msg).ConfigureAwait(false);
             }
             finally
             {
+                agentLoopScope?.Dispose();
                 AgentHitlBridge.UnbindSession(boundChatKey);
                 AgentHitlBridge.Current = previousHitl;
             }
@@ -1356,6 +1363,57 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
             return preview + $"… [{omitted} chars truncated]";
         }
 
+        private static bool MessageHasFunctionCall(ChatMessageContent msg)
+        {
+            if (msg?.Items == null) return false;
+            foreach (var item in msg.Items)
+            {
+                if (item is FunctionCallContent) return true;
+            }
+            return false;
+        }
+
+        private static string FormatLlmIntermediate(ChatMessageContent msg)
+        {
+            var names = new List<string>();
+            var argsSb = new StringBuilder();
+            if (msg.Items != null)
+            {
+                foreach (var item in msg.Items)
+                {
+                    if (item is not FunctionCallContent fc) continue;
+                    var name = fc.FunctionName ?? "";
+                    names.Add(name);
+                    if (argsSb.Length > 0) argsSb.Append(' ');
+                    argsSb.Append(name).Append('=');
+                    argsSb.Append(AgentLoopLog.OneLine(SerializeKernelArgs(fc.Arguments), 1500));
+                }
+            }
+
+            var next = names.Count > 0
+                ? "next=TOOL name=" + string.Join(",", names)
+                : "next=TEXT";
+            return next
+                + " args=" + AgentLoopLog.OneLine(argsSb.ToString(), 2500)
+                + " content=" + AgentLoopLog.OneLine(msg.Content, 1500);
+        }
+
+        private static string SerializeKernelArgs(KernelArguments args)
+        {
+            if (args == null || args.Count == 0) return "{}";
+            try
+            {
+                var jo = new JObject();
+                foreach (var kv in args)
+                    jo[kv.Key] = ToolIoFormatter.ToJToken(kv.Value);
+                return jo.ToString(Newtonsoft.Json.Formatting.None);
+            }
+            catch
+            {
+                return args.ToString() ?? "{}";
+            }
+        }
+
         private static string TruncateThink(string s, int max)
         {
             if (string.IsNullOrEmpty(s) || s.Length <= max) return s ?? "";
@@ -1366,6 +1424,22 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
         {
             if (callback == null) return;
             try { await callback(arg).ConfigureAwait(false); } catch (Exception swallowed) { SwallowLog.Write(swallowed); }
+        }
+
+        private static string ListKernelToolNames(Kernel kernel)
+        {
+            if (kernel?.Plugins == null) return "";
+            var names = new List<string>();
+            foreach (var plugin in kernel.Plugins)
+            {
+                foreach (var fn in plugin)
+                {
+                    if (fn?.Name != null && names.IndexOf(fn.Name) < 0)
+                        names.Add(fn.Name);
+                }
+            }
+            names.Sort(StringComparer.OrdinalIgnoreCase);
+            return string.Join(",", names);
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -1392,6 +1466,11 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     throw new OperationCanceledException($"Agent stopped: reached {_maxIterations} tool-call iterations.");
 
                 PruneHistory(ctx.ChatHistory, _tokenBudget);
+                AgentLoopLog.SetSeq(ctx.RequestSequenceIndex);
+                var toolName = ctx.Function?.Name ?? "";
+                AgentLoopLog.Write("LLM_OUT",
+                    "next=TOOL name=" + toolName
+                    + " args=" + ToolIoFormatter.ArgsAsOneLine(ctx.Arguments));
                 await next(ctx).ConfigureAwait(false);
             }
 
@@ -1436,6 +1515,8 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     var body    = await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                     var patched = PatchFunctionRole(body);
                     request.Content = new StringContent(patched, Encoding.UTF8, "application/json");
+                    AgentLoopLog.Write("LLM_HTTP",
+                        "bytes=" + patched.Length + " body=" + AgentLoopLog.OneLine(patched));
                 }
 
                 var response = await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
@@ -1444,6 +1525,8 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 {
                     // Read body NOW — SK's ResponseHeadersRead streaming never reads it
                     var errBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                    AgentLoopLog.Write("LLM_HTTP",
+                        "status=" + (int)response.StatusCode + " body=" + AgentLoopLog.OneLine(errBody));
                     DiagLog.Error($"Gemini {(int)response.StatusCode}: {errBody}");
                     response.Content = new StringContent(errBody, Encoding.UTF8, "application/json");
                 }
