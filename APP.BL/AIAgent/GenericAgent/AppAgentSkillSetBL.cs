@@ -64,6 +64,25 @@ namespace App.BL.AIAgent.GenericAgent
 
                 var code = (dto.AgentCode ?? "").Trim();
                 if (string.IsNullOrWhiteSpace(code)) return false;
+                dto.AgentCode = code;
+
+                if (dto.AgentId <= 0 && FormAgentConstants.IsFormAgentKey(code))
+                    return false;
+
+                if (dto.AgentId > 0)
+                {
+                    var codeTable = fixture.RetriveDataTable(
+                        "SELECT AgentCode FROM dbo.AppAgentSkillSet WHERE AgentID = @AgentID",
+                        new List<DbParameter> { BuildParam(fixture, "@AgentID", dto.AgentId) });
+                    if (codeTable != null && codeTable.Rows.Count > 0)
+                    {
+                        var existingCode = codeTable.Rows[0]["AgentCode"] as string ?? "";
+                        if (FormAgentConstants.IsFormAgentKey(existingCode))
+                            dto.AgentCode = code = FormAgentConstants.SkillKey;
+                        else if (FormAgentConstants.IsFormAgentKey(code))
+                            return false;
+                    }
+                }
 
                 // Snapshot current SystemPrompt into history (update by AgentID only)
                 string existingSql = dto.AgentId > 0
@@ -138,6 +157,11 @@ ELSE IF @AgentID <= 0
             if (GeneralAgentConstants.IsGeneralAgentKey(skillKey))
             {
                 error = "General Agent is built in and cannot be deleted.";
+                return false;
+            }
+            if (FormAgentConstants.IsFormAgentKey(skillKey))
+            {
+                error = "App Form Agent is built in and cannot be deleted.";
                 return false;
             }
             try

@@ -44,6 +44,13 @@ namespace APP.Components.EntityDto
 
         public bool IsOpenCommunicationByDefault { get; set; }
 
+        public bool IsEnableTransactionAiAgent { get; set; }
+
+        public bool IsOpenAiAgentByDefault { get; set; }
+
+        /// <summary>Right or Bottom when AI is on and Communication is off. Communication dock wins when both are on.</summary>
+        public int? AiAgentDockPosition { get; set; }
+
        
         //public List<AppProjectWorkFlowActionExDto> WorkflowAutomationCommandList { get; set; }
 

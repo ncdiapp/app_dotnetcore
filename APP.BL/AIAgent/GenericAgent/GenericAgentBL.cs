@@ -23,7 +23,8 @@ namespace App.BL.AIAgent.GenericAgent
             AppClientIdentity?    identity,
             CancellationToken     ct,
             string                workflowId = null,
-            string                chatSessionKey = null)
+            string                chatSessionKey = null,
+            string                hostContextJson = null)
         {
             if (string.IsNullOrWhiteSpace(skillKey))
             {
@@ -44,7 +45,8 @@ namespace App.BL.AIAgent.GenericAgent
                     chatHistory ?? new List<JObject>(),
                     callbacks, identity, ct,
                     workflowId: workflowId,
-                    chatSessionKey: chatSessionKey).ConfigureAwait(false);
+                    chatSessionKey: chatSessionKey,
+                    hostContextJson: hostContextJson).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {

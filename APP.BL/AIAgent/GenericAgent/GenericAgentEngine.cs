@@ -23,7 +23,8 @@ namespace App.BL.AIAgent.GenericAgent
             AppClientIdentity? identity,
             CancellationToken ct,
             string workflowId = null,
-            string chatSessionKey = null) =>
+            string chatSessionKey = null,
+            string hostContextJson = null) =>
             SharedAgentEngine.RunAsync(
                 skillKey,
                 userMessage,
@@ -32,7 +33,8 @@ namespace App.BL.AIAgent.GenericAgent
                 identity,
                 ct,
                 workflowId,
-                chatSessionKey);
+                chatSessionKey,
+                hostContextJson);
 
         public static Task<string> CompleteOnceAsync(
             AppClientIdentity? identity,

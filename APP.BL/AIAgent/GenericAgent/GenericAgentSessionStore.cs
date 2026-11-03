@@ -29,6 +29,9 @@ namespace App.BL.AIAgent.GenericAgent
         private static readonly ConcurrentDictionary<string, TaskCompletionSource<AgentAskUserResponse>> PendingAskUser
             = new ConcurrentDictionary<string, TaskCompletionSource<AgentAskUserResponse>>();
 
+        private static readonly ConcurrentDictionary<string, TaskCompletionSource<string>> PendingHostTool
+            = new ConcurrentDictionary<string, TaskCompletionSource<string>>();
+
         public sealed class SessionData
         {
             public ConcurrentQueue<AgentEventDto> Events    = new ConcurrentQueue<AgentEventDto>();
@@ -174,6 +177,23 @@ namespace App.BL.AIAgent.GenericAgent
             var tcs = new TaskCompletionSource<AgentAskUserResponse>();
             PendingAskUser[sessionId] = tcs;
             return tcs;
+        }
+
+        public static TaskCompletionSource<string> RegisterHostTool(string sessionId)
+        {
+            var tcs = new TaskCompletionSource<string>();
+            PendingHostTool[sessionId] = tcs;
+            return tcs;
+        }
+
+        public static bool ConfirmHostTool(string sessionId, string resultJson)
+        {
+            if (PendingHostTool.TryRemove(sessionId, out var tcs))
+            {
+                tcs.TrySetResult(string.IsNullOrWhiteSpace(resultJson) ? "{\"ok\":false,\"error\":\"empty host result\"}" : resultJson);
+                return true;
+            }
+            return false;
         }
 
         public static bool ConfirmAskUser(string sessionId, AgentAskUserResponse response)

@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using APP.Components.Dto;
 using APP.Components.EntityDto;
 
 namespace App.BL.AIAgent.GenericAgent
@@ -34,6 +35,11 @@ namespace App.BL.AIAgent.GenericAgent
         /// Interactive only — Deterministic agents must not call ask_user.
         /// </summary>
         public Func<AgentAskUserEvent, Task<AgentAskUserResponse>> OnAskUser { get; set; }
+
+        /// <summary>
+        /// Blocks until the open transaction form runs a host tool and posts the JSON result.
+        /// </summary>
+        public Func<FormHostToolEvent, Task<string>> OnHostTool { get; set; }
 
         /// <summary>
         /// Optional: fire-and-continue UI payload for data_render (legacy).

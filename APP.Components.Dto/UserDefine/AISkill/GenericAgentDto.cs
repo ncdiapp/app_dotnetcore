@@ -30,6 +30,31 @@ namespace APP.Components.Dto
         /// Built client-side and passed back so the LLM has full context.
         /// </summary>
         public List<JObject> Messages { get; set; } = new List<JObject>();
+
+        /// <summary>
+        /// Current open form snapshot. Injected into this turn's system section only.
+        /// </summary>
+        public string HostContextJson { get; set; }
+    }
+
+    public class FormHostChatRequestDto
+    {
+        public int TransactionId { get; set; }
+        /// <summary>Master Detail root value, "list", or "new:{guid}".</summary>
+        public string Scope { get; set; }
+    }
+
+    public class FormHostToolEvent
+    {
+        public string RequestId { get; set; }
+        public string ToolName { get; set; }
+        public string ArgsJson { get; set; }
+    }
+
+    public class GenericAgentConfirmHostToolDto
+    {
+        public string SessionId { get; set; }
+        public string ResultJson { get; set; }
     }
 
     public class GenericAgentStartResultDto

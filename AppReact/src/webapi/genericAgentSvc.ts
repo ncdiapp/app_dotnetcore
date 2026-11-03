@@ -12,7 +12,9 @@ export interface GenericAgentRunDto {
         content: unknown;
         toolSteps?: Array<{ toolName: string; label?: string; args?: string; result?: string; isSuccess?: boolean; durationMs?: number }>;
         dataRenders?: DataRenderEvent[];
-    }>; 
+    }>;
+    /** Open form snapshot. Injected into this turn only. */
+    HostContextJson?: string;
 }
 
 export interface GenericAgentStartResult {
@@ -292,6 +294,7 @@ export interface GenericAgentEventHandlers {
     onStep: (step: { Type: string; ToolName?: string; Description: string; Details?: string; IsSuccess: boolean }) => void;
     onPlan: (plan: { PlanSummary: string }) => void;
     onAskUser?: (ask: AskUserEvent) => void;
+    onHostTool?: (evt: { RequestId?: string; ToolName?: string; ArgsJson?: string }) => Promise<unknown>;
     onDataRender?: (evt: DataRenderEvent) => void;
     onUiRender?: (evt: UiRenderEvent) => void;
     onDone: (done: { FinalResponse: string }) => void;
@@ -359,6 +362,28 @@ class GenericAgentService {
             headers: getHeaders(),
             body: JSON.stringify({ sessionId, confirmed }),
         }).catch(() => {});
+    }
+
+    async EnsureFormHostChat(transactionId: number, scope: string): Promise<string> {
+        const res = await fetch(`${BASE}/EnsureFormHostChat`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ TransactionId: transactionId, Scope: scope }),
+        });
+        const data = await res.json();
+        if (!res.ok || data?.ValidationResult?.IsValid === false) {
+            const msg = data?.ValidationResult?.Items?.[0]?.Message || 'Could not open the form agent chat.';
+            throw new Error(msg);
+        }
+        return String(data?.Object || '');
+    }
+
+    async ConfirmHostTool(sessionId: string, resultJson: string): Promise<void> {
+        await fetch(`${BASE}/ConfirmHostTool`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ SessionId: sessionId, ResultJson: resultJson }),
+        });
     }
 
     async ConfirmAskUser(sessionId: string, body: ConfirmAskUserDto): Promise<boolean> {
@@ -913,6 +938,7 @@ class GenericAgentService {
                         Step?: unknown;
                         Plan?: unknown;
                         AskUser?: AskUserEvent;
+                        HostTool?: { RequestId?: string; ToolName?: string; ArgsJson?: string };
                         DataRender?: DataRenderEvent;
                         UiRender?: UiRenderEvent;
                         Done?: { FinalResponse: string };
@@ -932,6 +958,13 @@ class GenericAgentService {
                     if (evt.EventType === 'step' && evt.Step) h.onStep(evt.Step as never);
                     if (evt.EventType === 'plan' && evt.Plan) h.onPlan(evt.Plan as never);
                     if (evt.EventType === 'ask_user' && evt.AskUser) h.onAskUser?.(evt.AskUser);
+                    if (evt.EventType === 'host_tool' && evt.HostTool) {
+                        const toolEvt = evt.HostTool;
+                        const reply = h.onHostTool
+                            ? await h.onHostTool(toolEvt).catch((err: unknown) => ({ ok: false, error: err instanceof Error ? err.message : String(err) }))
+                            : { ok: false, error: 'This tool only runs inside an open transaction form.' };
+                        await this.ConfirmHostTool(sessionId, JSON.stringify(reply ?? { ok: false }));
+                    }
                     if (evt.EventType === 'data_render' && evt.DataRender) h.onDataRender?.(evt.DataRender);
                     if (evt.EventType === 'ui_render' && evt.UiRender) {
                         if (h.onUiRender) h.onUiRender(evt.UiRender);

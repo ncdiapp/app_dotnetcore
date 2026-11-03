@@ -18,7 +18,17 @@ import { useTheme } from '../../redux/hooks/useTheme';
 import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
 import FlexGridAddOn from '../common/FlexGridAddOn';
 import RgbColorSwatch from '../common/RgbColorSwatch';
-import { useEnumValues } from '../../hooks/useEnumDictionary';
+import { useEnumEntry, useEnumValues } from '../../hooks/useEnumDictionary';
+import FormSidePanel from './FormAgent/FormSidePanel';
+import {
+  FormAgentHostContext,
+  LIST_COMMUNICATION_ROOT,
+  applySetFields,
+  applyUpdateGrid,
+  buildFormAgentContext,
+  describeFormAction,
+  type FormAgentHostSlots,
+} from './FormAgent/formAgentHost';
 import { fileThumbnailUrl, fileLatestUrl, downloadFileById } from '../../webapi/fileEndpoints';
 import { DataMap } from '@mescius/wijmo.grid';
 import { useSelector, Provider } from 'react-redux';
@@ -264,6 +274,9 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
     dictFieldEntityDataMap: {},
   });
 
+  const emMessageScopeTypeTransaction = useEnumEntry('EmAppMessgaeScopeType', 'Transaction') ?? 5;
+  const listAgentHostRef = useRef<FormAgentHostSlots>({});
+  const listAgentWaitRef = useRef<((value: unknown) => void) | null>(null);
   const emAppControlTypeEnum = useEnumValues('EmAppControlType');
   const emAppGrandChildEditModeEnum = useEnumValues('EmAppGrandChildEditMode');
   const transactionOrganizedTypeEnum = useEnumValues('EmTransactionOrganizedType');
@@ -1491,9 +1504,86 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
     dataModel.currentFormStructure?.IsDraft ?? dataModel.currentFormStructure?.isDraft
   );
   const showConfigurationButton = enableConfigurationMode && isAdminUser && !isDraft;
+  const listTransaction = dataModel.transactionExDto || dataModel.currentFormStructure;
+  const listCommunicationOn = Boolean(listTransaction?.IsNeedToSetComunication);
+  const listAiOn = Boolean(listTransaction?.OtherOptions?.IsEnableTransactionAiAgent);
+  const listSideOn = listCommunicationOn || listAiOn;
+  listAgentHostRef.current.getContext = () => buildFormAgentContext({
+    mode: 'list',
+    transaction: listTransaction,
+    formData: dataModel.currentFormData,
+  });
+  listAgentHostRef.current.describeAction = (args) => describeFormAction(listTransaction, args);
+  listAgentHostRef.current.setFields = async (args) => {
+    const next = applySetFields(dataModel.currentFormData, args, 'list');
+    setDataModel((prev) => ({ ...prev, currentFormData: next, listDataSource: prev.listDataSource }));
+    const cv = dataModel.listDataSource as any;
+    if (cv && Array.isArray(next.ListData)) {
+      cv.sourceCollection = next.ListData;
+      cv.refresh?.();
+    }
+    return { ok: true, saved: false };
+  };
+  const settleListAgent = (value: unknown) => {
+    const done = listAgentWaitRef.current;
+    listAgentWaitRef.current = null;
+    done?.(value);
+  };
+  listAgentHostRef.current.openLinkedSearch = (args) => new Promise((resolve) => {
+    const id = String(args?.linkedSearchId ?? '');
+    const linkedSearch = (listRootLinkedSearches || []).find((item: any) => String(item?.Id) === id);
+    if (!linkedSearch) {
+      resolve({ ok: false, error: 'Linked search was not found on this list.' });
+      return;
+    }
+    listAgentWaitRef.current = resolve;
+    handleListRootLinkedSearch(linkedSearch);
+  });
+  listAgentHostRef.current.openLinkTarget = (args) => new Promise((resolve) => {
+    const id = String(args?.linkTargetId ?? '');
+    const linkTarget = (listRootLinkTargets || []).find((item: any) => String(item?.Id) === id);
+    if (!linkTarget) {
+      resolve({ ok: false, error: 'Link target was not found on this list.' });
+      return;
+    }
+    listAgentWaitRef.current = resolve;
+    executeListRootUnitLinkTarget(linkTarget);
+  });
+  listAgentHostRef.current.runCommand = async (args) => {
+    const name = String(args?.commandName || '').toLowerCase();
+    const confirmed = String(args?.confirmed || '').toLowerCase() === 'true';
+    if ((name === 'save' || name === 'delete') && !confirmed) {
+      return { ok: false, error: 'Ask the user to confirm, then call run_command with confirmed=true.' };
+    }
+    if (name === 'save') {
+      await saveFormData();
+      return { ok: true };
+    }
+    if (name === 'refresh') {
+      loadData(true);
+      return { ok: true };
+    }
+    if (name === 'delete') {
+      deleteChild();
+      return { ok: true };
+    }
+    return { ok: false, error: 'Command was not found on this list.' };
+  };
+  listAgentHostRef.current.updateGrid = async (args) => {
+    const updated = applyUpdateGrid(dataModel.currentFormData, args, 'list');
+    setDataModel((prev) => ({ ...prev, currentFormData: updated }));
+    const cv = dataModel.listDataSource as any;
+    if (cv && Array.isArray(updated.ListData)) {
+      cv.sourceCollection = updated.ListData;
+      cv.refresh?.();
+    }
+    return { ok: true, saved: false };
+  };
 
   return (
-    <div className={`w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden ${theme.default}`}>
+    <FormAgentHostContext.Provider value={listAgentHostRef}>
+    <div className="w-full h-full flex flex-row overflow-hidden">
+    <div className={`w-1 flex-auto h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden ${theme.default}`}>
       {hideHeader ? (
         hostToolbarInParent ? null : (
         <div className={`flex items-center justify-end gap-2 px-2 py-1 shrink-0 ${theme.mainContentSection}`}>
@@ -2257,6 +2347,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
                     if (cv && typeof (cv as any).refresh === 'function') (cv as any).refresh();
                   }
                   setListRootSearchPopupState(null);
+                  settleListAgent({ ok: true, cancelled: false, selected: sel.length });
                 }}
               >
                 <i className="fa-solid fa-check mr-1" aria-hidden /> Confirm &amp; Close
@@ -2267,7 +2358,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
             <button
               type="button"
               className={`rounded-[4px] p-1.5 ${theme.button_default}`}
-              onClick={() => setListRootSearchPopupState(null)}
+              onClick={() => { setListRootSearchPopupState(null); settleListAgent({ ok: true, cancelled: true }); }}
               title="Close"
               aria-label="Close"
             >
@@ -2299,6 +2390,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
                     if (cv && typeof (cv as any).refresh === 'function') (cv as any).refresh();
                   }
                   setListRootLinkTargetPopupState(null);
+                  settleListAgent({ ok: true, cancelled: false });
                 }}
               >
                 <i className="fa-solid fa-check mr-1" aria-hidden /> Confirm &amp; Close
@@ -2309,7 +2401,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
             <button
               type="button"
               className={`rounded-[4px] p-1.5 ${theme.button_default}`}
-              onClick={() => setListRootLinkTargetPopupState(null)}
+              onClick={() => { setListRootLinkTargetPopupState(null); settleListAgent({ ok: true, opened: true }); }}
               title="Close"
               aria-label="Close"
             >
@@ -2413,6 +2505,21 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
         </div>
       )}
     </div>
+    {listSideOn && (
+      <div className={`shrink-0 h-full overflow-hidden border-l`} style={{ width: 420, minWidth: 300 }}>
+        <FormSidePanel
+          showMessages={listCommunicationOn}
+          showAgent={listAiOn}
+          transactionId={String(transactionId)}
+          messageRootId={LIST_COMMUNICATION_ROOT}
+          messageScopeType={emMessageScopeTypeTransaction}
+          chatScope="list"
+          initialTab={listAiOn && !listCommunicationOn ? 'ai' : 'messages'}
+        />
+      </div>
+    )}
+    </div>
+    </FormAgentHostContext.Provider>
   );
 };
 

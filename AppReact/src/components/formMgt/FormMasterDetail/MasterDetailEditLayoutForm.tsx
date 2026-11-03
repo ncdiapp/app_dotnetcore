@@ -8,7 +8,15 @@ import MasterDetailCanvasLayoutForm from './MasterDetailCanvasLayoutForm';
 import TransactionHeaderItem from './TransactionHeaderItem';
 import TransactionCrossHeaderItem from './TransactionCrossHeaderItem';
 import FormMainMenus from './FormMainMenus';
-import ConversationEditorEmbedded from '../../message/ConversationEditorEmbedded';
+import FormSidePanel from '../FormAgent/FormSidePanel';
+import {
+  FormAgentHostContext,
+  applySetFields,
+  applyUpdateGrid,
+  buildFormAgentContext,
+  describeFormAction,
+  type FormAgentHostSlots,
+} from '../FormAgent/formAgentHost';
 import {
   FormMasterDetailRuntimeConfigProvider,
   emptyFormMasterDetailRuntimeConfigApi,
@@ -139,16 +147,56 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
 
   // Spec (Angular): conversation can dock Right or Bottom; default dock is Right when not set.
   const isConversationEnabled = Boolean(transactionDto?.IsNeedToSetComunication);
+  const isAiEnabled = Boolean(transactionDto?.OtherOptions?.IsEnableTransactionAiAgent);
+  const isSidePanelEnabled = isConversationEnabled || isAiEnabled;
+  const aiDockPos: number | null =
+    typeof transactionDto?.OtherOptions?.AiAgentDockPosition === 'number'
+      ? transactionDto.OtherOptions.AiAgentDockPosition
+      : transactionDto?.OtherOptions?.AiAgentDockPosition
+        ? parseInt(String(transactionDto.OtherOptions.AiAgentDockPosition), 10)
+        : null;
+  const sideDockPos = isConversationEnabled ? conversationDockPos : aiDockPos;
   const dockBottomValue = emDockBottom ?? 3; // backend enum: Bottom=3
   const dockRightValue = emDockRight ?? 2; // backend enum: Right=2
 
-  const isNeedToShowBottomConversation = isConversationEnabled && conversationDockPos === dockBottomValue;
+  const isNeedToShowBottomConversation = isSidePanelEnabled && sideDockPos === dockBottomValue;
   const isNeedToShowRightConversation =
-    isConversationEnabled && !isNeedToShowBottomConversation && (conversationDockPos === null || conversationDockPos === dockRightValue);
+    isSidePanelEnabled && !isNeedToShowBottomConversation && (sideDockPos === null || sideDockPos === dockRightValue);
 
   // Right-side conversation (Angular parity: collapsible + resizable + open-by-default)
   const openConversationByDefault = Boolean(
-    transactionDto?.OtherOptions?.IsOpenCommunicationByDefault ?? transactionDto?.IsOpenCommunicationByDefault
+    (isConversationEnabled && (transactionDto?.OtherOptions?.IsOpenCommunicationByDefault ?? transactionDto?.IsOpenCommunicationByDefault))
+    || (isAiEnabled && transactionDto?.OtherOptions?.IsOpenAiAgentByDefault)
+  );
+  const hostSlotsRef = useRef<FormAgentHostSlots>({});
+  hostSlotsRef.current.getContext = () => buildFormAgentContext({
+    mode: 'master',
+    transaction: transactionDto,
+    formData: dataModel?.currentFormData,
+    openedFrom: controllerModel?.param2Obj ?? null,
+  });
+  hostSlotsRef.current.setFields = async (args) => {
+    const next = applySetFields(dataModel?.currentFormData, args, 'master');
+    onDataModelChange?.({ ...dataModel, currentFormData: next });
+    return { ok: true, saved: false };
+  };
+  hostSlotsRef.current.updateGrid = async (args) => {
+    const next = applyUpdateGrid(dataModel?.currentFormData, args, 'master');
+    onDataModelChange?.({ ...dataModel, currentFormData: next });
+    return { ok: true, saved: false };
+  };
+  hostSlotsRef.current.describeAction = (args) => describeFormAction(transactionDto, args);
+  const chatScope = runtimeTransactionRootValueId || `new:${controllerModel?.uiId || 'draft'}`;
+  const renderSidePanel = () => (
+    <FormSidePanel
+      showMessages={isConversationEnabled}
+      showAgent={isAiEnabled}
+      transactionId={runtimeTransactionId}
+      messageRootId={runtimeTransactionRootValueId}
+      messageScopeType={emMessageScopeTypeTransaction}
+      chatScope={chatScope}
+      initialTab={isAiEnabled && !isConversationEnabled ? 'ai' : 'messages'}
+    />
   );
   const rightConvStorageKeyBase = useMemo(
     () => `mdConvRight:${runtimeTransactionId || 'unknown'}`,
@@ -360,6 +408,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
       <FormMasterDetailRuntimeConfigProvider
         value={runtimeFieldConfigApi ?? emptyFormMasterDetailRuntimeConfigApi}
       >
+      <FormAgentHostContext.Provider value={hostSlotsRef}>
       <div className="w-full h-full flex flex-col">
         {/* Menu Bar - Desktop only - Hide in preview, file property edit, or isHideHeaderAndFooter (Angular: directivOutercontrol.isHideMasterDetailFormTopMenu) */}
         {menuVisible && (
@@ -479,12 +528,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
                       height: 'auto'
                     }}
                   >
-                    <ConversationEditorEmbedded
-                      scopeType={emMessageScopeTypeTransaction}
-                      transactionId={runtimeTransactionId}
-                      transactionRootValueId={runtimeTransactionRootValueId}
-                      defaultMessageSubject="New Form Message"
-                    />
+                    {renderSidePanel()}
                   </div>
                 </div>
               )}
@@ -529,12 +573,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
                     </div>
                     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
                       <div id="RightConversationContainer" className="flex h-full min-h-0 w-full flex-col">
-                        <ConversationEditorEmbedded
-                          scopeType={emMessageScopeTypeTransaction}
-                          transactionId={runtimeTransactionId}
-                          transactionRootValueId={runtimeTransactionRootValueId}
-                          defaultMessageSubject="New Form Message"
-                        />
+                        {renderSidePanel()}
                       </div>
                     </div>
                   </div>
@@ -548,9 +587,9 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
                       className={`w-[25px] px-1 py-2 text-xs rounded-[4px] ${theme.button_default}`}
                       style={{ writingMode: 'vertical-rl' as any }}
                       onClick={() => setIsRightConversationExpanded(true)}
-                      title="Conversation"
+                      title={isAiEnabled && !isConversationEnabled ? 'AI' : 'Conversation'}
                     >
-                      Conversation <i className="fa-solid fa-angle-double-left" aria-hidden="true" />
+                      {isAiEnabled && !isConversationEnabled ? 'AI' : 'Conversation'} <i className="fa-solid fa-angle-double-left" aria-hidden="true" />
                     </button>
                   ) : (
                     <button
@@ -570,6 +609,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
         </div>
         )}
       </div>
+      </FormAgentHostContext.Provider>
       </FormMasterDetailRuntimeConfigProvider>
     );
   }
@@ -579,6 +619,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
     <FormMasterDetailRuntimeConfigProvider
       value={runtimeFieldConfigApi ?? emptyFormMasterDetailRuntimeConfigApi}
     >
+    <FormAgentHostContext.Provider value={hostSlotsRef}>
     <div
       id={`MasterDetailEditLayoutForm${controllerModel.uiId}`}
       className="w-full h-full overflow-x-hidden"
@@ -614,17 +655,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
                 height: 'auto'
               }}
             >
-              <ConversationEditorEmbedded
-                scopeType={emMessageScopeTypeTransaction}
-                transactionId={String(transactionDto?.Id ?? transactionDto?.TransactionId ?? controllerModel?.transactionId ?? '')}
-                transactionRootValueId={String(
-                  transactionDto?.RootPrimaryKeyValue ??
-                    transactionDto?.TransactionRootValueId ??
-                    controllerModel?.rootPrimaryKeyValue ??
-                    ''
-                )}
-                defaultMessageSubject="New Form Message"
-              />
+              {renderSidePanel()}
             </div>
           </div>
         )}
@@ -685,6 +716,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
         </>
       )}
     </div>
+    </FormAgentHostContext.Provider>
     </FormMasterDetailRuntimeConfigProvider>
   );
 };

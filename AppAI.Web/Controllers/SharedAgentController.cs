@@ -89,6 +89,16 @@ public class SharedAgentController : SecureBaseController
         else
         {
             chatSessionKey = request.ChatSessionKey.Trim();
+            if (chatSessionKey.StartsWith(FormAgentConstants.ChatKeyPrefix, StringComparison.OrdinalIgnoreCase)
+                && !FormAgentConstants.IsFormHostChatKeyForUser(chatSessionKey, agentUserId))
+            {
+                result.ValidationResult.Items.Add(new ValidationItem(
+                    typeof(SharedAgentController), "GenericAgent_BadChat",
+                    ValidationItemType.Error, "Form chat does not belong to the signed-in user."));
+                return result;
+            }
+            if (FormAgentConstants.IsFormHostChatKeyForUser(chatSessionKey, agentUserId))
+                SessionBL.EnsureFormHostSession(chatSessionKey, agentUserId, agentDsId);
             if (agentUserId > 0 &&
                 !SessionBL.IsFixedKey(chatSessionKey, request.SkillKey.Trim(), agentUserId) &&
                 SessionBL.LoadBySessionKey(chatSessionKey, request.SkillKey.Trim(), agentUserId, agentDsId) == null)
@@ -226,6 +236,15 @@ public class SharedAgentController : SecureBaseController
                 return await tcs.Task.ConfigureAwait(false);
             },
 
+            OnHostTool = async hostEvent =>
+            {
+                GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "host_tool", HostTool = hostEvent });
+                var tcs = GenericAgentSessionStore.RegisterHostTool(sessionId);
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+                cts.Token.Register(() => tcs.TrySetResult("{\"ok\":false,\"cancelled\":true,\"error\":\"Host tool timed out.\"}"));
+                return await tcs.Task.ConfigureAwait(false);
+            },
+
             OnAskUser = async askEvent =>
             {
                 GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "ask_user", AskUser = askEvent });
@@ -333,7 +352,8 @@ public class SharedAgentController : SecureBaseController
                     request.Messages ?? new List<JObject>(),
                     callbacks, agentIdentity,
                     runCt,
-                    chatSessionKey: chatSessionKey).ConfigureAwait(false);
+                    chatSessionKey: chatSessionKey,
+                    hostContextJson: request.HostContextJson).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -482,6 +502,52 @@ public class SharedAgentController : SecureBaseController
                 ValidationItemType.Warning, "No pending schema confirmation found. It may have already resolved or timed out."));
 
         result.Object = found;
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<string> EnsureFormHostChat([FromBody] FormHostChatRequestDto request)
+    {
+        var result = new OperationCallResult<string>();
+        if (request == null || request.TransactionId <= 0 || string.IsNullOrWhiteSpace(request.Scope))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(SharedAgentController), "EnsureFormHostChat",
+                ValidationItemType.Error, "TransactionId and Scope are required."));
+            return result;
+        }
+        if (ServerContext.Instance.CurrnetClientIdentity is not AppClientIdentity ai || ai.UserId == null)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(SharedAgentController), "EnsureFormHostChat",
+                ValidationItemType.Error, "Sign in is required."));
+            return result;
+        }
+        var userId = Convert.ToInt32(ai.UserId);
+        var key = FormAgentConstants.MakeChatKey(userId, request.TransactionId, request.Scope);
+        if (!SessionBL.EnsureFormHostSession(key, userId, ai.DataSourceId))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(SharedAgentController), "EnsureFormHostChat",
+                ValidationItemType.Error, "App Form Agent is not installed for this tenant."));
+            return result;
+        }
+        result.Object = key;
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<bool> ConfirmHostTool([FromBody] GenericAgentConfirmHostToolDto request)
+    {
+        var result = new OperationCallResult<bool>();
+        if (string.IsNullOrWhiteSpace(request?.SessionId))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(SharedAgentController), "ConfirmHostTool",
+                ValidationItemType.Error, "SessionId is required."));
+            return result;
+        }
+        result.Object = GenericAgentSessionStore.ConfirmHostTool(request.SessionId, request.ResultJson);
         return result;
     }
 
@@ -1425,7 +1491,9 @@ public class SharedAgentController : SecureBaseController
             : SkillSetBL.GetAll();
 
         result.Object = agents
-            .Where(a => a != null && !GeneralAgentConstants.IsGeneralAgentKey(a.SkillKey))
+            .Where(a => a != null
+                && !GeneralAgentConstants.IsGeneralAgentKey(a.SkillKey)
+                && !FormAgentConstants.IsFormAgentKey(a.SkillKey))
             .Select(a => new ActiveAgentDto
         {
             SkillKey  = a.SkillKey,

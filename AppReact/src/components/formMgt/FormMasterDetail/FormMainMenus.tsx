@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { FormAgentHostContext } from '../FormAgent/formAgentHost';
 import { createPortal } from 'react-dom';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { useEnumValues } from '../../../hooks/useEnumDictionary';
@@ -820,6 +821,13 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
   };
   const handleCommandActionRef = useRef(handleCommandAction);
   handleCommandActionRef.current = handleCommandAction;
+  const formAgentHostRef = useContext(FormAgentHostContext);
+  const agentWaitRef = useRef<((value: unknown) => void) | null>(null);
+  const settleAgent = (value: unknown) => {
+    const done = agentWaitRef.current;
+    agentWaitRef.current = null;
+    done?.(value);
+  };
   
   // Handle Link Target
   const handleLinkTarget = (linkTarget: any) => {
@@ -1078,6 +1086,46 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
     });
   };
   
+  if (formAgentHostRef) {
+    formAgentHostRef.current.openLinkedSearch = (args) => new Promise((resolve) => {
+      const id = String(args?.linkedSearchId ?? '');
+      const list = rootUnit?.AppTransactionUnitLinkedSearchList || [];
+      const linkedSearch = list.find((item: any) => String(item?.Id) === id);
+      if (!linkedSearch) {
+        resolve({ ok: false, error: 'Linked search was not found on the root unit.' });
+        return;
+      }
+      agentWaitRef.current = resolve;
+      handleLinkedSearch(linkedSearch, String(args?.unitId || rootUnit?.Id || ''));
+    });
+    formAgentHostRef.current.openLinkTarget = (args) => new Promise((resolve) => {
+      const id = String(args?.linkTargetId ?? '');
+      const list = rootUnit?.AppFormLinkTargetList || [];
+      const linkTarget = list.find((item: any) => String(item?.Id) === id);
+      if (!linkTarget) {
+        resolve({ ok: false, error: 'Link target was not found on the root unit.' });
+        return;
+      }
+      agentWaitRef.current = resolve;
+      handleLinkTarget(linkTarget);
+    });
+    formAgentHostRef.current.runCommand = async (args) => {
+      const confirmed = String(args?.confirmed || '').toLowerCase() === 'true';
+      const name = String(args?.commandName || '').toLowerCase();
+      const cmd = (transactionDto?.CommandActionList || []).find((item: any) =>
+        String(item?.Id) === String(args?.commandId || '')
+        || String(item?.CommandName || item?.DisplayName || item?.Name || '').toLowerCase() === name);
+      const actionType = Number(cmd?.ActionType ?? (name === 'save' ? 49 : name === 'refresh' ? 50 : 0));
+      const needsConfirm = actionType === 49 || name === 'save' || name === 'delete';
+      if (needsConfirm && !confirmed) {
+        return { ok: false, error: 'Ask the user to confirm, then call run_command with confirmed=true.' };
+      }
+      if (!cmd && name !== 'save' && name !== 'refresh') return { ok: false, error: 'Command was not found.' };
+      handleCommandAction(Number(cmd?.Id || args?.commandId || 0), actionType);
+      return { ok: true, started: true };
+    };
+  }
+
   // Handle Report
   const handleReport = (_reportId: number) => {
     setTabPrintOpen(true);
@@ -2258,6 +2306,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
                     }
                   }
                   setSearchPopupState(null);
+                  settleAgent({ ok: true, cancelled: false, selected: sel.length });
                 }}
               >
                 <i className="fa-solid fa-check mr-1" aria-hidden /> Confirm &amp; Close
@@ -2268,7 +2317,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
             <button
               type="button"
               className={`rounded-[4px] p-1.5 ${theme.button_default}`}
-              onClick={() => setSearchPopupState(null)}
+              onClick={() => { setSearchPopupState(null); settleAgent({ ok: true, cancelled: true }); }}
               title="Close"
               aria-label="Close"
             >
@@ -2302,6 +2351,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
                     });
                   }
                   setLinkTargetPopupState(null);
+                  settleAgent({ ok: true, cancelled: false, selected: sel.length });
                 }}
               >
                 <i className="fa-solid fa-check mr-1" aria-hidden /> Confirm &amp; Close
@@ -2312,7 +2362,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
             <button
               type="button"
               className={`rounded-[4px] p-1.5 ${theme.button_default}`}
-              onClick={() => setLinkTargetPopupState(null)}
+              onClick={() => { setLinkTargetPopupState(null); settleAgent({ ok: true, opened: true }); }}
               title="Close"
               aria-label="Close"
             >

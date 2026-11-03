@@ -320,6 +320,8 @@ interface Props {
     /** After a confirmed hand-off, run the seeded user summary once. */
     autoRunPendingUser?: boolean;
     onAutoRunStarted?: () => void;
+    getHostContext?: () => string | undefined;
+    onHostTool?: (toolName: string, args: any) => Promise<unknown>;
 }
 
 const snippet = (s?: string | null, max = 300) =>
@@ -645,6 +647,8 @@ const SharedAgentChat: React.FC<Props> = ({
     onConversationChanged,
     autoRunPendingUser,
     onAutoRunStarted,
+    getHostContext,
+    onHostTool,
 }) => {
     const { addTabAndNavigate } = useTabNavigation();
     const { theme, t } = useTheme();
@@ -804,6 +808,10 @@ const SharedAgentChat: React.FC<Props> = ({
     }, [messages]);
     const onConversationChangedRef = useRef(onConversationChanged);
     onConversationChangedRef.current = onConversationChanged;
+    const getHostContextRef = useRef(getHostContext);
+    getHostContextRef.current = getHostContext;
+    const onHostToolRef = useRef(onHostTool);
+    onHostToolRef.current = onHostTool;
 
     useEffect(() => {
         const el = scrollRef.current;
@@ -1045,6 +1053,13 @@ const SharedAgentChat: React.FC<Props> = ({
         onPlan: (plan: PlanEvent) => {
             if (!mountedRef.current) return;
             setPendingPlan(plan);
+        },
+        onHostTool: async (evt: { RequestId?: string; ToolName?: string; ArgsJson?: string }) => {
+            const args = (() => {
+                try { return evt.ArgsJson ? JSON.parse(evt.ArgsJson) : {}; } catch { return {}; }
+            })();
+            if (!onHostToolRef.current) return { ok: false, error: 'This tool only runs inside an open transaction form.' };
+            return await onHostToolRef.current(String(evt.ToolName || ''), args);
         },
         onAskUser: (ask: AskUserEvent) => {
             if (!mountedRef.current) return;
@@ -1530,6 +1545,7 @@ const SharedAgentChat: React.FC<Props> = ({
                     SessionId: sessionIdRef.current ?? undefined,
                     ChatSessionKey: chatSessionKeyRef.current || undefined,
                     Messages: history,
+                    HostContextJson: getHostContextRef.current?.(),
                 },
                 buildLiveHandlers(turnIdx),
             );

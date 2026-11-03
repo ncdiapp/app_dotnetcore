@@ -2009,6 +2009,8 @@ namespace App.BL
         private static List<AppUserMessgeFollowupDto> GetFolowUpDtoListFromTransactionFormField(int? transactionId, string transactionRId, AppTransactionExDto transactionDto)
         {
             var aDtoList = new List<AppUserMessgeFollowupDto>();
+            if (string.Equals(transactionRId, "__list__", StringComparison.Ordinal))
+                return aDtoList;
             AppMasterDetailDto fromData = AppMasterDetailFormDataLoadBL.GetMasterDetailFormData(transactionId.Value, transactionRId);
 
             if (fromData != null)

@@ -49,6 +49,42 @@ IF COL_LENGTH('dbo.AppGenericAgentSession', 'AgentID') IS NOT NULL
         public static string MakeFixedKey(string skillKey, int userId) =>
             $"{skillKey}:{userId}";
 
+        /// <summary>
+        /// Insert an empty form-host chat row if missing. The key must already be
+        /// form-host:{userId}:... for this user.
+        /// </summary>
+        public static bool EnsureFormHostSession(string sessionKey, int userId, int dataSourceId)
+        {
+            if (!FormAgentConstants.IsFormHostChatKeyForUser(sessionKey, userId) || dataSourceId <= 0)
+                return false;
+            try
+            {
+                var fixture = Fixture(dataSourceId);
+                if (fixture == null) return false;
+                EnsureSchema(fixture);
+                if (!AppAgentLookup.TryResolveSessionAgentId(fixture, FormAgentConstants.SkillKey, out var agentId))
+                    return false;
+                if (agentId == null) return false;
+
+                var sql = @"
+IF NOT EXISTS (SELECT 1 FROM dbo.AppGenericAgentSession WHERE SessionKey=@K)
+    INSERT INTO dbo.AppGenericAgentSession (SessionKey, AgentID, UserId, MessagesJson, UpdatedAt)
+    VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
+                fixture.ExecuteNonQueryResult(sql, new List<DbParameter>
+                {
+                    P(fixture, "@K", sessionKey.Trim()),
+                    P(fixture, "@S", agentId),
+                    P(fixture, "@U", userId)
+                });
+                return true;
+            }
+            catch (Exception ex)
+            {
+                NLog.LogManager.GetCurrentClassLogger().Error(ex, nameof(EnsureFormHostSession));
+                return false;
+            }
+        }
+
         public static bool IsFixedKey(string sessionKey, string skillKey, int userId) =>
             string.Equals(sessionKey, MakeFixedKey(skillKey, userId), StringComparison.Ordinal);
 

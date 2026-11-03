@@ -78,6 +78,7 @@ const AgentChatList: React.FC<Props> = ({
     const btn = `px-3 py-2 text-sm rounded-[4px] ${theme.button_default}`;
     const iconBtn = `w-7 h-6 shrink-0 rounded-[4px] text-xs ${theme.button_default}`;
     const [query, setQuery] = useState('');
+    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
     const [menuKey, setMenuKey] = useState<string | null>(null);
     const [editingKey, setEditingKey] = useState<string | null>(null);
     const [draftTitle, setDraftTitle] = useState('');
@@ -110,6 +111,15 @@ const AgentChatList: React.FC<Props> = ({
     }, [chats, query]);
 
     const groups = useMemo(() => groupChats(filtered), [filtered]);
+    const searching = query.trim().length > 0;
+
+    const toggleGroup = (key: string) => {
+        setCollapsedGroups(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key); else next.add(key);
+            return next;
+        });
+    };
 
     const beginRename = (chat: GenericAgentChatSummary) => {
         setMenuKey(null);
@@ -193,12 +203,24 @@ const AgentChatList: React.FC<Props> = ({
                             : 'No chats match your search.'}
                     </div>
                 )}
-                {groups.map(g => (
+                {groups.map(g => {
+                    const groupCollapsed = !searching && collapsedGroups.has(g.key);
+                    return (
                     <div key={g.key} className="mt-4 first:mt-1">
-                        <div className={`px-2 pb-1.5 text-[11px] uppercase tracking-wide ${theme.label}`}>
-                            {g.label}
-                        </div>
-                        {g.items.map(chat => {
+                        <button
+                            type="button"
+                            className={`w-full px-2 pb-1.5 flex items-center gap-1.5 text-left ${theme.label}`}
+                            onClick={() => toggleGroup(g.key)}
+                            title={groupCollapsed ? `Expand ${g.label}` : `Collapse ${g.label}`}
+                        >
+                            <i
+                                className={`fa-solid ${groupCollapsed ? 'fa-chevron-right' : 'fa-chevron-down'} text-[10px] w-3 shrink-0`}
+                                aria-hidden
+                            />
+                            <span className="text-[11px] uppercase tracking-wide w-1 flex-auto truncate">{g.label}</span>
+                            <span className="text-[10px] opacity-60 shrink-0">{g.items.length}</span>
+                        </button>
+                        {!groupCollapsed && g.items.map(chat => {
                             const selected = chat.SessionKey === selectedSessionKey;
                             const title = genericAgentChatTitle(chat);
                             const editing = editingKey === chat.SessionKey;
@@ -305,7 +327,8 @@ const AgentChatList: React.FC<Props> = ({
                             );
                         })}
                     </div>
-                ))}
+                    );
+                })}
             </div>
         </div>
     );

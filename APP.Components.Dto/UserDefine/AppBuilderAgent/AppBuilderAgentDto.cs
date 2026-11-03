@@ -382,7 +382,7 @@ namespace APP.Components.EntityDto
     /// </summary>
     public class AgentEventDto
     {
-        /// <summary>EventType: "step" | "token" | "done" | "error" | "plan" | "schema" | "ask_user" | "data_render" | "ui_render"</summary>
+        /// <summary>EventType: "step" | "token" | "done" | "error" | "plan" | "schema" | "ask_user" | "data_render" | "ui_render" | "host_tool"</summary>
         public string EventType { get; set; }
         public AgentStepEvent Step  { get; set; }
         public string Token         { get; set; }
@@ -403,6 +403,9 @@ namespace APP.Components.EntityDto
 
         /// <summary>Populated when EventType = "ui_render". Result iframe HTML.</summary>
         public AgentUiRenderEvent UiRender { get; set; }
+
+        /// <summary>Populated when EventType = "host_tool". UI posts ConfirmHostTool.</summary>
+        public FormHostToolEvent HostTool { get; set; }
     }
 
     public class AgentPollResponseDto

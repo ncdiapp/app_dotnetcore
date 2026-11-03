@@ -12,6 +12,8 @@ interface Props {
   onConversationChanged?: () => void;
   autoRunPendingUser?: boolean;
   onAutoRunStarted?: () => void;
+  getHostContext?: () => string | undefined;
+  onHostTool?: (toolName: string, args: any) => Promise<unknown>;
 }
 
 /** Always Generic Chat. Extra panels come from subscribed tool libraries (see agentUiModules). */
@@ -25,6 +27,8 @@ const AgentUiChatHost: React.FC<Props> = ({
   onConversationChanged,
   autoRunPendingUser,
   onAutoRunStarted,
+  getHostContext,
+  onHostTool,
 }) => (
   <SharedAgentChat
     skillKey={skillKey}
@@ -36,6 +40,8 @@ const AgentUiChatHost: React.FC<Props> = ({
     onConversationChanged={onConversationChanged}
     autoRunPendingUser={autoRunPendingUser}
     onAutoRunStarted={onAutoRunStarted}
+    getHostContext={getHostContext}
+    onHostTool={onHostTool}
   />
 );
 

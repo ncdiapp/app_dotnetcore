@@ -386,6 +386,9 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
         CommunicationGroupByType: null as number | null,
         CommunicationToUserIdTransField: null as number | null,
         IsOpenCommunicationByDefault: false,
+        IsEnableTransactionAiAgent: false,
+        IsOpenAiAgentByDefault: false,
+        AiAgentDockPosition: null as number | null,
         // API properties (physical table block: Enable Publish Data To API)
         IsEnableSaveByApiCall: false,
         SaveByApiCallDataTransferId: null as number | null,
@@ -496,6 +499,9 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
                     CommunicationGroupByType: data.OtherOptions?.CommunicationGroupByType || null,
                     CommunicationToUserIdTransField: data.OtherOptions?.CommunicationToUserIdTransField || null,
                     IsOpenCommunicationByDefault: data.OtherOptions?.IsOpenCommunicationByDefault || false,
+                    IsEnableTransactionAiAgent: data.OtherOptions?.IsEnableTransactionAiAgent || false,
+                    IsOpenAiAgentByDefault: data.OtherOptions?.IsOpenAiAgentByDefault || false,
+                    AiAgentDockPosition: data.OtherOptions?.AiAgentDockPosition ?? null,
                     IsEnableSaveByApiCall: data.OtherOptions?.IsEnableSaveByApiCall || false,
                     SaveByApiCallDataTransferId: data.OtherOptions?.SaveByApiCallDataTransferId || null,
                     FolderUsageType: data.FolderUsageType ?? null,
@@ -638,6 +644,9 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
                     CommunicationGroupByType: data.OtherOptions?.CommunicationGroupByType || null,
                     CommunicationToUserIdTransField: data.OtherOptions?.CommunicationToUserIdTransField || null,
                     IsOpenCommunicationByDefault: data.OtherOptions?.IsOpenCommunicationByDefault || false,
+                    IsEnableTransactionAiAgent: data.OtherOptions?.IsEnableTransactionAiAgent || false,
+                    IsOpenAiAgentByDefault: data.OtherOptions?.IsOpenAiAgentByDefault || false,
+                    AiAgentDockPosition: data.OtherOptions?.AiAgentDockPosition ?? null,
                     IsEnableSaveByApiCall: data.OtherOptions?.IsEnableSaveByApiCall || false,
                     SaveByApiCallDataTransferId: data.OtherOptions?.SaveByApiCallDataTransferId || null,
                     FolderUsageType: data.FolderUsageType ?? null,
@@ -811,6 +820,9 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
                     CommunicationGroupByType: formData.CommunicationGroupByType,
                     CommunicationToUserIdTransField: formData.CommunicationToUserIdTransField,
                     IsOpenCommunicationByDefault: formData.IsOpenCommunicationByDefault,
+                    IsEnableTransactionAiAgent: formData.IsEnableTransactionAiAgent,
+                    IsOpenAiAgentByDefault: formData.IsOpenAiAgentByDefault,
+                    AiAgentDockPosition: formData.AiAgentDockPosition,
                     IsEnableSaveByApiCall: formData.IsEnableSaveByApiCall,
                     SaveByApiCallDataTransferId: formData.SaveByApiCallDataTransferId,
                     ApiIntegrationTransactionCrudType: formData.ApiIntegrationTransactionCrudType,
@@ -999,6 +1011,9 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
                     CommunicationGroupByType: formData.CommunicationGroupByType,
                     CommunicationToUserIdTransField: formData.CommunicationToUserIdTransField,
                     IsOpenCommunicationByDefault: formData.IsOpenCommunicationByDefault,
+                    IsEnableTransactionAiAgent: formData.IsEnableTransactionAiAgent,
+                    IsOpenAiAgentByDefault: formData.IsOpenAiAgentByDefault,
+                    AiAgentDockPosition: formData.AiAgentDockPosition,
                     IsEnableSaveByApiCall: formData.IsEnableSaveByApiCall,
                     SaveByApiCallDataTransferId: formData.SaveByApiCallDataTransferId,
                     ApiIntegrationTransactionCrudType: formData.ApiIntegrationTransactionCrudType,
@@ -1662,6 +1677,9 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
                                 CommunicationGroupByType: savedData.OtherOptions?.CommunicationGroupByType || null,
                                 CommunicationToUserIdTransField: savedData.OtherOptions?.CommunicationToUserIdTransField || null,
                                 IsOpenCommunicationByDefault: savedData.OtherOptions?.IsOpenCommunicationByDefault || false,
+                                IsEnableTransactionAiAgent: savedData.OtherOptions?.IsEnableTransactionAiAgent || false,
+                                IsOpenAiAgentByDefault: savedData.OtherOptions?.IsOpenAiAgentByDefault || false,
+                                AiAgentDockPosition: savedData.OtherOptions?.AiAgentDockPosition ?? null,
                                 IsEnableSaveByApiCall: savedData.OtherOptions?.IsEnableSaveByApiCall || false,
                                 SaveByApiCallDataTransferId: savedData.OtherOptions?.SaveByApiCallDataTransferId || null,
                                 FolderUsageType: savedData.FolderUsageType ?? null,
@@ -1849,6 +1867,9 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
                     CommunicationGroupByType: formData.CommunicationGroupByType,
                     CommunicationToUserIdTransField: formData.CommunicationToUserIdTransField,
                     IsOpenCommunicationByDefault: formData.IsOpenCommunicationByDefault,
+                    IsEnableTransactionAiAgent: formData.IsEnableTransactionAiAgent,
+                    IsOpenAiAgentByDefault: formData.IsOpenAiAgentByDefault,
+                    AiAgentDockPosition: formData.AiAgentDockPosition,
                     IsEnableSaveByApiCall: formData.IsEnableSaveByApiCall,
                     SaveByApiCallDataTransferId: formData.SaveByApiCallDataTransferId,
                     ApiIntegrationTransactionCrudType: formData.ApiIntegrationTransactionCrudType,
@@ -1901,6 +1922,9 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
                     CommunicationGroupByType: data.OtherOptions?.CommunicationGroupByType ?? null,
                     CommunicationToUserIdTransField: data.OtherOptions?.CommunicationToUserIdTransField ?? null,
                     IsOpenCommunicationByDefault: data.OtherOptions?.IsOpenCommunicationByDefault || false,
+                    IsEnableTransactionAiAgent: data.OtherOptions?.IsEnableTransactionAiAgent || false,
+                    IsOpenAiAgentByDefault: data.OtherOptions?.IsOpenAiAgentByDefault || false,
+                    AiAgentDockPosition: data.OtherOptions?.AiAgentDockPosition ?? null,
                     IsEnableSaveByApiCall: data.OtherOptions?.IsEnableSaveByApiCall || false,
                     SaveByApiCallDataTransferId: data.OtherOptions?.SaveByApiCallDataTransferId ?? null,
                     FolderUsageType: data.FolderUsageType ?? null,
@@ -1979,6 +2003,7 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
     // Show Main Properties for both branches: physical table (Block A) or non-physical e.g. Rest API (Block B)
     const shouldShowMainProperties = isCreateNewItem || !!transactionData;
     const isMasterDetail = formData.TransactionOrganizedType === 1;
+    const isListEdit = formData.TransactionOrganizedType === 3;
     // Include creation-type prop so UI hides/shows correctly before first save
     const isApiIntegrationTransaction = Boolean(
         transactionData?.OtherOptions?.IsApiIntegrationTransaction || isCreateApiDataModel
@@ -2476,8 +2501,8 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
                                         </div>
                                     </div>
 
-                                    {/* Section 3: Communication Settings - MasterDetail only */}
-                                    {isMasterDetail && (
+                                    {/* Section 3: Communication Settings - Master Detail and List Edit */}
+                                    {(isMasterDetail || isListEdit) && (
                                     <div className={`p-3 border rounded-lg ${theme.mainContentSection} flex-none ${formData.IsNeedToSetComunication ? 'min-w-[400px]' : 'min-w-[200px]'}`}>
                                         <div className={`flex gap-4 ${formData.IsNeedToSetComunication ? '' : 'justify-start'}`}>
                                             {/* Column 1: Communication Toggles */}
@@ -2544,6 +2569,7 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
                                                             </select>
                                                         </div>
                                                     </div>
+                                                    {isMasterDetail && (
                                                     <div className="flex items-center">
                                                         <div className={`text-xs w-[140px] ${theme.label}`}>
                                                             User List Field
@@ -2563,7 +2589,58 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
                                                             </select>
                                                         </div>
                                                     </div>
+                                                    )}
                                                 </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    )}
+                                    {(isMasterDetail || isListEdit) && (
+                                    <div className={`p-3 border rounded-lg ${theme.mainContentSection} flex-none min-w-[220px]`}>
+                                        <div className="space-y-2">
+                                            <label className="flex items-center gap-1.5 text-xs h-[26px] whitespace-nowrap">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={formData.IsEnableTransactionAiAgent}
+                                                    onChange={(e) => handleFieldChange('IsEnableTransactionAiAgent', e.target.checked)}
+                                                    className="rounded"
+                                                />
+                                                <span>Enable AI Agent</span>
+                                            </label>
+                                            {formData.IsEnableTransactionAiAgent && (
+                                                <>
+                                                    <label className="flex items-center gap-1.5 text-xs h-[26px] whitespace-nowrap">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={formData.IsOpenAiAgentByDefault}
+                                                            onChange={(e) => handleFieldChange('IsOpenAiAgentByDefault', e.target.checked)}
+                                                            className="rounded"
+                                                        />
+                                                        <span>Open AI Agent By Default</span>
+                                                    </label>
+                                                    {!formData.IsNeedToSetComunication && (
+                                                        <div className="flex items-center">
+                                                            <div className={`text-xs w-[140px] ${theme.label}`}>Dock Position</div>
+                                                            <select
+                                                                value={formData.AiAgentDockPosition || ''}
+                                                                onChange={(e) => handleFieldChange('AiAgentDockPosition', e.target.value ? parseInt(e.target.value) : null)}
+                                                                className={`w-[200px] px-2 py-1 text-xs border rounded ${theme.inputBox || theme.mainContentSection}`}
+                                                            >
+                                                                <option value="">Right</option>
+                                                                {conversationDockPositionOptions.map(opt => (
+                                                                    <option key={opt.Id} value={opt.Id}>{opt.Display}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        className={`px-3 py-1.5 text-xs rounded-[4px] ${theme.button_default}`}
+                                                        onClick={() => addTabAndNavigate('/agent-skill-management', 'App Form Agent', { skillKey: 'app-transaction-form-agent' })}
+                                                    >
+                                                        Configure Form Agent
+                                                    </button>
+                                                </>
                                             )}
                                         </div>
                                     </div>

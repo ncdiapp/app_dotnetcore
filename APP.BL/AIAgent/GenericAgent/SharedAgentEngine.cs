@@ -142,7 +142,8 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
             AppClientIdentity?    identity,
             CancellationToken     ct,
             string                workflowId = null,
-            string                chatSessionKey = null)
+            string                chatSessionKey = null,
+            string                hostContextJson = null)
         {
             var log = NLog.LogManager.GetCurrentClassLogger();
             var runSw = System.Diagnostics.Stopwatch.StartNew();
@@ -169,6 +170,20 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
 
                 // Hard rule: always inject (not editable via SkillSet UI / migrations).
                 var systemPrompt = (skillSet.SystemPrompt ?? "") + ToolsPreferHardRule;
+                var hasFormHost = !string.IsNullOrWhiteSpace(hostContextJson);
+                if (hasFormHost)
+                {
+                    systemPrompt += @"
+
+## Open transaction form
+The user is editing an open transaction form. The JSON below is the current form, its values, and the actions within two clicks. Answer questions about this form from that JSON. Call get_form_state when the grid sample is truncated or the user may have edited the form since this turn started.
+Do not call ask_user with contextKey confirm_kpi_dashboard. If the user asked to compare, rank, chart, or pick the best rows, call data_analyze and render_interactive. If they only asked to show data, use a table or cards.
+Field and grid writes use set_fields and update_grid and show on the form immediately. Do not save unless the user asked to save, and then confirm with ask_user first. Save, delete, and server commands use run_command only after that confirmation. Refresh may use run_command without asking.
+Linked Search and Link Target open the existing popup via open_linked_search and open_link_target. Wait for the user to confirm. Do not invent rows that the popup did not return.
+A render button click arrives as a user message. If the user picked a row or a file, write it onto the form with set_fields or update_grid.
+
+" + hostContextJson.Trim();
+                }
 
                 var userId    = identity.HasValue && identity.Value.UserId != null                      ? Convert.ToInt32(identity.Value.UserId)                      : 0;
                 var companyId = identity.HasValue && identity.Value.CurrentWorkingCompanyId != null     ? Convert.ToInt32(identity.Value.CurrentWorkingCompanyId)      : 0;
@@ -293,7 +308,7 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                             .ToList();
                     }
                 }
-                if (HasNamedTool(toolRows, DataAnalyzeToolName))
+                if (!hasFormHost && HasNamedTool(toolRows, DataAnalyzeToolName))
                 {
                     if (systemPrompt.IndexOf("## Analysis path (platform hard rule", StringComparison.OrdinalIgnoreCase) < 0)
                         systemPrompt += AnalysisPathHardRule;

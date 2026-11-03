@@ -19,6 +19,7 @@ import GenericAgentFilesPanel from './GenericAgentFilesPanel';
 import AgentHierarchyPanel from './AgentHierarchyPanel';
 import AgentChildAgentTab from './AgentChildAgentTab';
 import { GENERAL_AGENT_KEY, isGeneralAgentKey } from './generalAgent';
+import { FORM_AGENT_SKILL_KEY } from '../formMgt/FormAgent/formAgentHost';
 
 type Tab = 'skills' | 'libraries';
 type EditorTab = 'prompt' | 'child-agent' | 'tools' | 'files' | 'limits';
@@ -285,7 +286,8 @@ const AgentSkillSetManagement: React.FC = () => {
             ]);
             const list = skillRes.Object ?? [];
             setMappings(mapRes.Object ?? []);
-            const keepKey = agentCodeOf(selected) || agentCodeOf(editItem) || null;
+            const requested = new URLSearchParams(window.location.search).get('skillKey');
+            const keepKey = agentCodeOf(selected) || agentCodeOf(editItem) || requested || null;
             applyListAndKeepSelection(list, keepKey, !!keepKey);
             if (keepKey) loadUsedBy(keepKey);
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
@@ -381,6 +383,10 @@ const AgentSkillSetManagement: React.FC = () => {
 const handleSave = async () => {
         if (!editItem.AgentCode.trim()) { setError('Agent Code is required.'); return; }
         const key = editItem.AgentCode.trim();
+        if (!selected && key.toLowerCase() === FORM_AGENT_SKILL_KEY) {
+            setError('app-transaction-form-agent is reserved for the App Form Agent.');
+            return;
+        }
         dispatch(setIsBusy()); setError(null);
         try {
             if (isGeneralAgentKey(key)) {
@@ -430,7 +436,7 @@ const handleSave = async () => {
     };
 
     const handleDelete = async () => {
-        if (!selected || isGeneralAgentKey(selected.AgentCode)) return;
+        if (!selected || isGeneralAgentKey(selected.AgentCode) || selected.AgentCode?.toLowerCase() === FORM_AGENT_SKILL_KEY) return;
         dispatch(setIsBusy());
         setError(null);
         try {
@@ -729,7 +735,7 @@ const handleSave = async () => {
                                     </div>
                                 )}
                             </div>
-                            {selected && !isGeneralAgentKey(selected.AgentCode) && (
+                            {selected && !isGeneralAgentKey(selected.AgentCode) && selected.AgentCode?.toLowerCase() !== FORM_AGENT_SKILL_KEY && (
                                 <button type="button" className={btn} onClick={() => setConfirmDelete(true)}>
                                     <i className="fa-solid fa-trash mr-1" />Delete
                                 </button>
