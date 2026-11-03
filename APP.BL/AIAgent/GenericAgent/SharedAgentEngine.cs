@@ -272,6 +272,10 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
 
                 // Wrap AppAgentToolRegister rows as KernelFunctions (agent-owned + subscribed library tools).
                 // PromptHint rows gate prompt inject only — not registered as callable KernelFunctions.
+                HashSet<string> generalAllow = null;
+                if (isUniversal && dsId > 0)
+                    generalAllow = App.BL.TenantBusiness.AppGeneralAgentToolBL.TryLoadKeySet(dsId);
+
                 var toolRows = isUniversal
                     ? (dsId > 0 ? TbToolBL.GetAllActiveLibraryTools(dsId) : TbToolBL.GetAllActiveLibraryTools())
                     : (dsId > 0 ? TbToolBL.GetBySkillKeyWithLibraries(skillKey, dsId) : TbToolBL.GetBySkillKeyWithLibraries(skillKey));
@@ -282,6 +286,12 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     toolRows = toolRows
                         .Where(r => r != null && !string.Equals(r.ToolName, "call_agent", StringComparison.OrdinalIgnoreCase))
                         .ToList();
+                    if (generalAllow != null)
+                    {
+                        toolRows = toolRows
+                            .Where(r => generalAllow.Contains(App.BL.TenantBusiness.AppGeneralAgentToolBL.Key(r.SkillKey, r.ToolName)))
+                            .ToList();
+                    }
                 }
                 if (HasNamedTool(toolRows, DataAnalyzeToolName))
                 {
@@ -346,9 +356,17 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                     try
                     {
                         var excludedMcp = App.BL.TenantBusiness.AppAgentToolExclusionBL.ExcludedNamesForLibrary(exclusions, srv.SkillKey);
+                        HashSet<string> allowedMcp = null;
                         if (isUniversal)
+                        {
                             excludedMcp.Add("call_agent");
-                        var (client, plugin) = await CreateMcpPluginAsync(srv, skillSet.MaxToolResultChars, excludedMcp, context, ct).ConfigureAwait(false);
+                            if (generalAllow != null)
+                            {
+                                allowedMcp = NamesForLibrary(generalAllow, srv.SkillKey);
+                                if (allowedMcp.Count == 0) continue;
+                            }
+                        }
+                        var (client, plugin) = await CreateMcpPluginAsync(srv, skillSet.MaxToolResultChars, excludedMcp, context, ct, allowedMcp).ConfigureAwait(false);
                         mcpClients.Add(client);
                         kernel.Plugins.Add(plugin);
                     }
@@ -1091,8 +1109,21 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
         // MCP plugin factory (McpClient + StreamableHttp → KernelPlugin)
         // ─────────────────────────────────────────────────────────────────────
 
+        private static HashSet<string> NamesForLibrary(HashSet<string> allow, string libraryKey)
+        {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var prefix = App.BL.TenantBusiness.AppGeneralAgentToolBL.Key(libraryKey, "");
+            foreach (var k in allow)
+            {
+                if (k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    names.Add(k.Substring(prefix.Length));
+            }
+            return names;
+        }
+
         private static async Task<(McpClient Client, KernelPlugin Plugin)> CreateMcpPluginAsync(
-            TbMcpDto server, int maxChars, HashSet<string> excludedTools, AgentToolContext context, CancellationToken ct)
+            TbMcpDto server, int maxChars, HashSet<string> excludedTools, AgentToolContext context, CancellationToken ct,
+            HashSet<string> allowedTools = null)
         {
             McpConnectionHelper.EnsureAllowed(server);
             // The in-house gateway is called as the signed-in user, never with a shared stored credential.
@@ -1105,8 +1136,10 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
             var tools     = await client.ListToolsAsync(cancellationToken: ct).ConfigureAwait(false);
 
             var cap       = maxChars > 0 ? maxChars : DefaultMaxToolResultChars;
-            var functions = tools.Where(t => excludedTools == null || !excludedTools.Contains(t.Name))
-                                 .Select(t => BuildMcpKernelFunction(client, t, cap, context)).ToArray();
+            var functions = tools
+                .Where(t => allowedTools == null || allowedTools.Contains(t.Name))
+                .Where(t => excludedTools == null || !excludedTools.Contains(t.Name))
+                .Select(t => BuildMcpKernelFunction(client, t, cap, context)).ToArray();
             var plugin    = KernelPluginFactory.CreateFromFunctions(McpPluginName(server.ServerName), functions);
             return (client, plugin);
         }

@@ -624,7 +624,7 @@ const isSystemBuiltInTool = (toolName: string) => /^ask_user$/i.test(toolName ||
 
 const toolTooltip = (toolName: string, args?: string | null, skillNames?: Record<string, string>, label?: string) => {
     if (isSystemBuiltInTool(toolName)) {
-        return 'ask_user — system built-in (auto-injected for Interactive agents). No library subscription or private tool registration needed.';
+        return 'ask_user — system built-in (auto-injected for Interactive agents). No tool set subscription or private tool registration needed.';
     }
     let key = extractCallAgentKeyFromLabel(label);
     if (!key && /^call_agent$/i.test(toolName))
@@ -2923,7 +2923,7 @@ const SharedAgentChat: React.FC<Props> = ({
                                                         {isSystemBuiltInTool(toolName) && (
                                                             <span
                                                                 className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 opacity-70 border ${regionBorder} ${theme.label}`}
-                                                                title="System built-in — auto-injected; no library or private tool needed"
+                                                                title="System built-in — auto-injected; no tool set or private tool needed"
                                                             >
                                                                 built-in
                                                             </span>

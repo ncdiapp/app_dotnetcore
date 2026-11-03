@@ -132,7 +132,7 @@ const AgentLibraryTab: React.FC = () => {
     };
 
     const saveLib = async () => {
-        if (!editLib.LibraryKey.trim()) { setError('Library Key is required.'); return; }
+        if (!editLib.LibraryKey.trim()) { setError('Tool Set Key is required.'); return; }
         dispatch(setIsBusy()); setError(null);
         try {
             await agentSkillSetSvc.UpsertLibrary(editLib);
@@ -267,10 +267,10 @@ const AgentLibraryTab: React.FC = () => {
 
             {/* Middle: Library list */}
             <div className={`shrink-0 flex flex-col overflow-hidden rounded ${theme.mainContentSection}`} style={{ width: libsCollapsed ? COLLAPSED_PX : midWidthPx }}>
-                {libsCollapsed ? collapsedStrip('fa-book', 'Libraries', () => setLibsCollapsed(false)) : (<>
+                {libsCollapsed ? collapsedStrip('fa-book', 'Tool Sets', () => setLibsCollapsed(false)) : (<>
                 <div className={`px-2 py-1 border-b border-gray-200 ${theme.title}`}>
                     <div className="flex items-center text-xs font-semibold">
-                        <i className="fa-solid fa-book mr-1 opacity-60" /><span className="flex-auto">Libraries</span>
+                        <i className="fa-solid fa-book mr-1 opacity-60" /><span className="flex-auto">Tool Sets</span>
                         <button className="opacity-60 hover:opacity-100 px-1" title="Collapse panel" onClick={() => setLibsCollapsed(true)}>
                             <i className="fa-solid fa-angles-left" />
                         </button>
@@ -299,7 +299,7 @@ const AgentLibraryTab: React.FC = () => {
                 <div className="w-full h-1 flex-auto overflow-hidden">
                     {selectedDomain ? (
                         <FlexGrid className="w-full h-full" itemsSource={libsCV} isReadOnly headersVisibility="Column" selectionChanged={onLibSelectionChanged}>
-                            <FlexGridColumn header="Library Key" binding="LibraryKey" width={200} />
+                            <FlexGridColumn header="Tool Set Key" binding="LibraryKey" width={200} />
                             <FlexGridColumn header="Tools" binding="ToolCount" width={50} />
                             <FlexGridColumn header="Active" binding="IsActive" width={55} />
                             <FlexGridColumn header="" binding="" width="*" />
@@ -331,7 +331,7 @@ const AgentLibraryTab: React.FC = () => {
 
                 {rightMode === 'none' && (
                     <div className="h-full flex items-center justify-center">
-                        <span className={`text-sm ${theme.label}`}>Select a library, or click + New</span>
+                        <span className={`text-sm ${theme.label}`}>Select a tool set, or click + New</span>
                     </div>
                 )}
 
@@ -350,7 +350,7 @@ const AgentLibraryTab: React.FC = () => {
                             <button
                                 type="button"
                                 className="opacity-60 hover:opacity-100 px-2"
-                                title={focusMode ? 'Restore Domains and Libraries panels' : 'Collapse Domains and Libraries panels for more space'}
+                                title={focusMode ? 'Restore Domains and Tool Sets panels' : 'Collapse Domains and Tool Sets panels for more space'}
                                 onClick={() => { setDomainsCollapsed(!focusMode); setLibsCollapsed(!focusMode); }}
                             >
                                 <i className={`fa-solid ${focusMode ? 'fa-compress' : 'fa-expand'}`} />
@@ -409,12 +409,12 @@ const AgentLibraryTab: React.FC = () => {
                 <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 z-50" onClick={() => !libDirty && setShowLibModal(false)}>
                     <div className={`rounded-lg shadow-xl ${theme.mainContentSection} flex flex-col overflow-hidden`} style={{ width: 480 }} onClick={e => e.stopPropagation()}>
                         <div className={`px-4 py-3 text-sm font-semibold border-b border-gray-200 ${theme.title} flex items-center justify-between`}>
-                            <span><i className="fa-solid fa-book mr-2 opacity-70" />{editLib.LibraryKey ? `Edit: ${editLib.LibraryKey}` : 'New Library'}</span>
+                            <span><i className="fa-solid fa-book mr-2 opacity-70" />{editLib.LibraryKey ? `Edit: ${editLib.LibraryKey}` : 'New Tool Set'}</span>
                             <button className="opacity-50 hover:opacity-100 text-lg leading-none" onClick={() => setShowLibModal(false)}>×</button>
                         </div>
                         <div className="p-4 flex flex-col gap-3">
                             <div className="flex items-center">
-                                <label className={lbl}>Library Key *</label>
+                                <label className={lbl}>Tool Set Key *</label>
                                 <input className={inp} value={editLib.LibraryKey} onChange={e => updateLib('LibraryKey', e.target.value)} placeholder="e.g. shopify-products" autoComplete="off" autoFocus />
                             </div>
                             <div className="flex items-center">
@@ -424,7 +424,7 @@ const AgentLibraryTab: React.FC = () => {
                                 </select>
                             </div>
                             <div className="flex items-center">
-                                <label className={lbl}>Library Name</label>
+                                <label className={lbl}>Tool Set Name</label>
                                 <input className={inp} value={editLib.LibraryName} onChange={e => updateLib('LibraryName', e.target.value)} autoComplete="off" />
                             </div>
                             <div className="flex items-start">
@@ -450,7 +450,7 @@ const AgentLibraryTab: React.FC = () => {
                 <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 z-50">
                     <div className={`p-6 rounded shadow-lg ${theme.mainContentSection} flex flex-col gap-4`} style={{ minWidth: 320 }}>
                         <div className={`text-sm font-semibold ${theme.title}`}>Delete Domain</div>
-                        <div className={`text-xs ${theme.label}`}>Delete domain "{selectedDomain?.DomainKey}"? This will not delete its libraries.</div>
+                        <div className={`text-xs ${theme.label}`}>Delete domain "{selectedDomain?.DomainKey}"? This will not delete its tool sets.</div>
                         <div className="flex gap-2">
                             <button className={btn} onClick={deleteDomain}>Delete</button>
                             <button className={btn} onClick={() => setConfirmDeleteDomain(false)}>Cancel</button>
@@ -463,8 +463,8 @@ const AgentLibraryTab: React.FC = () => {
             {confirmDeleteLib && (
                 <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 z-50">
                     <div className={`p-6 rounded shadow-lg ${theme.mainContentSection} flex flex-col gap-4`} style={{ minWidth: 320 }}>
-                        <div className={`text-sm font-semibold ${theme.title}`}>Delete Library</div>
-                        <div className={`text-xs ${theme.label}`}>Delete library "{selectedLib?.LibraryKey}"? All tools in this library will also be deleted.</div>
+                        <div className={`text-sm font-semibold ${theme.title}`}>Delete Tool Set</div>
+                        <div className={`text-xs ${theme.label}`}>Delete tool set "{selectedLib?.LibraryKey}"? All tools in this tool set will also be deleted.</div>
                         <div className="flex gap-2">
                             <button className={btn} onClick={deleteLib}>Delete</button>
                             <button className={btn} onClick={() => setConfirmDeleteLib(false)}>Cancel</button>

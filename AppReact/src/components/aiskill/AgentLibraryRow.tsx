@@ -21,6 +21,8 @@ interface Props {
     filesUi?: boolean;
     /** Tools this agent does not use, keyed "libraryKey\u0001toolName" */
     excluded: Set<string>;
+    /** When set, checkboxes are an allowlist (General Agent) instead of subscribe + exclude. */
+    allowlist?: Set<string>;
     /** tools is every tool currently listed, so the first tick can subscribe the library and leave the others off. */
     onToggleTool: (toolName: string, use: boolean, tools: AgentLibraryToolPick[]) => void;
 }
@@ -34,7 +36,7 @@ interface McpState {
 
 // One library row in the agent's Tools tab. The library checkbox selects or clears every tool.
 // Tool checkboxes stay enabled when the library is off; ticking one selects that tool and the library.
-const AgentLibraryRow: React.FC<Props> = ({ theme, library, subscribed, onToggle, filesUi, excluded, onToggleTool }) => {
+const AgentLibraryRow: React.FC<Props> = ({ theme, library, subscribed, onToggle, filesUi, excluded, allowlist, onToggleTool }) => {
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [loaded, setLoaded] = useState(false);
@@ -99,11 +101,15 @@ const AgentLibraryRow: React.FC<Props> = ({ theme, library, subscribed, onToggle
         }
     };
 
-    // A tool is used when it is active, the library is selected, and this agent has not excluded it.
-    const isExcluded = (toolName: string) => excluded.has(`${library.LibraryKey}\u0001${toolName}`);
+    const toolKey = (toolName: string) => `${library.LibraryKey}\u0001${toolName}`;
+    const isExcluded = (toolName: string) => excluded.has(toolKey(toolName));
     const usedInfo = (toolName: string, toolActive: boolean): { used: boolean; tip: string } => {
-        if (!toolActive) return { used: false, tip: 'Not used — inactive in the library' };
-        if (!subscribed || isExcluded(toolName)) return { used: false, tip: 'Tick to use this tool. The library is selected automatically.' };
+        if (!toolActive) return { used: false, tip: 'Not used — inactive in the tool set' };
+        if (allowlist) {
+            if (!allowlist.has(toolKey(toolName))) return { used: false, tip: 'Tick to expose this tool to General Agent.' };
+            return { used: true, tip: 'Exposed to General Agent (untick to remove)' };
+        }
+        if (!subscribed || isExcluded(toolName)) return { used: false, tip: 'Tick to use this tool. The tool set is selected automatically.' };
         return { used: true, tip: 'Used by this agent (untick to exclude)' };
     };
     const toolCheckbox = (toolName: string, toolActive: boolean) => (
@@ -118,7 +124,9 @@ const AgentLibraryRow: React.FC<Props> = ({ theme, library, subscribed, onToggle
     );
 
     const activePicks = toPicks(tools, servers).filter(p => p.active);
-    const anyToolSelected = activePicks.some(p => subscribed && !isExcluded(p.name));
+    const anyToolSelected = allowlist
+        ? activePicks.some(p => allowlist.has(toolKey(p.name)))
+        : activePicks.some(p => subscribed && !isExcluded(p.name));
     const libraryChecked = loaded && activePicks.length > 0 ? anyToolSelected : subscribed;
 
     const usedToolCount = tools.filter(t => usedInfo(t.ToolName, t.IsActive).used).length;
@@ -130,7 +138,7 @@ const AgentLibraryRow: React.FC<Props> = ({ theme, library, subscribed, onToggle
                 <button
                     type="button"
                     className="w-4 shrink-0 opacity-70 hover:opacity-100"
-                    title={open ? 'Hide tools' : 'Show tools in this library'}
+                    title={open ? 'Hide tools' : 'Show tools in this tool set'}
                     onClick={toggleOpen}
                 >
                     <i className={`fa-solid ${open ? 'fa-square-minus' : 'fa-square-plus'}`} />
@@ -139,7 +147,7 @@ const AgentLibraryRow: React.FC<Props> = ({ theme, library, subscribed, onToggle
                     <input
                         type="checkbox"
                         checked={libraryChecked}
-                        title={libraryChecked ? 'Uncheck all tools in this library' : 'Check all tools in this library'}
+                        title={libraryChecked ? 'Uncheck all tools in this tool set' : 'Check all tools in this tool set'}
                         onChange={e => { void handleLibraryChange(e.target.checked); }}
                     />
                     <span className="font-mono font-semibold">{library.LibraryKey}</span>
@@ -154,7 +162,7 @@ const AgentLibraryRow: React.FC<Props> = ({ theme, library, subscribed, onToggle
                     {loading && <div className="py-0.5 opacity-60"><i className="fa-solid fa-spinner fa-spin mr-1" />Loading…</div>}
                     {error && <div className="py-0.5 text-red-600">{error}</div>}
                     {loaded && tools.length === 0 && servers.length === 0 && (
-                        <div className="py-0.5 opacity-60">This library has no tools or MCP servers.</div>
+                        <div className="py-0.5 opacity-60">This tool set has no tools or MCP servers.</div>
                     )}
 
                     {tools.length > 0 && (
@@ -178,13 +186,15 @@ const AgentLibraryRow: React.FC<Props> = ({ theme, library, subscribed, onToggle
                     {servers.length > 0 && (
                         <div className="py-0.5">
                             <div className="opacity-60 mb-0.5">
-                                MCP servers — {subscribed ? `${activeServerCount} of ${servers.length} connected for this agent` : 'none selected'}
+                                MCP servers — {(allowlist ? anyToolSelected : subscribed) ? `${activeServerCount} of ${servers.length} connected for this agent` : 'none selected'}
                             </div>
                             {servers.map(s => {
-                                const serverUsed = subscribed && s.server.IsActive;
+                                const serverUsed = s.server.IsActive && (allowlist
+                                    ? (s.tools ? s.tools.some(n => usedInfo(n, true).used) : libraryChecked)
+                                    : subscribed);
                                 return (
                                     <div key={s.server.McpServerId} className="py-px">
-                                            <div className="flex items-center gap-1.5" title={serverUsed ? 'Connected for this agent' : 'Not used — tick the library or a tool to connect'}>
+                                            <div className="flex items-center gap-1.5" title={serverUsed ? 'Connected for this agent' : 'Not used — tick the tool set or a tool to connect'}>
                                             <i className={`fa-solid fa-plug ${serverUsed ? 'text-green-600' : 'opacity-40'}`} />
                                             <span className="font-mono">{s.server.ServerName}</span>
                                             <span className="opacity-50 truncate">{s.server.ServerUrl}</span>

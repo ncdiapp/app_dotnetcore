@@ -13,6 +13,8 @@ export interface AgentHierarchyPanelProps {
     onDropOntoOrchestrator: (parentSkillKey: string, childSkillKey: string) => void;
     theme: Theme;
     borderCls: string;
+    /** Built-in rows shown above the tree (e.g. General Agent). Not draggable. */
+    pinnedAgents?: AppAgentSkillSetDto[];
 }
 
 type TreeRow =
@@ -37,6 +39,7 @@ const AgentHierarchyPanel: React.FC<AgentHierarchyPanelProps> = ({
     onDropOntoOrchestrator,
     theme,
     borderCls,
+    pinnedAgents = [],
 }) => {
     const [search, setSearch] = useState('');
     const [roleFilter, setRoleFilter] = useState<AgentRoleFilter>('standalone-orchestrators');
@@ -170,7 +173,39 @@ const AgentHierarchyPanel: React.FC<AgentHierarchyPanelProps> = ({
                 </div>
             </div>
             <div className="w-full h-1 flex-auto overflow-auto">
-                {rows.length === 0 && (
+                {pinnedAgents.filter(a => {
+                    const q = search.trim().toLowerCase();
+                    if (!q) return true;
+                    return `${agentCodeOf(a)} ${a.DisplayName} ${a.Description || ''}`.toLowerCase().includes(q);
+                }).map(agent => {
+                    const selected = selectedSkillKey === agentCodeOf(agent);
+                    return (
+                        <div
+                            key={`pinned:${agentCodeOf(agent)}`}
+                            onClick={() => onSelect(agentCodeOf(agent))}
+                            className={`flex items-center gap-2 py-1.5 cursor-pointer border-b text-xs ${borderCls} ${
+                                selected ? 'font-semibold' : 'hover:opacity-90'
+                            } ${theme.mainContentSection}`}
+                            style={{
+                                paddingLeft: 8,
+                                paddingRight: 8,
+                                ...(selected ? { outline: '1px solid currentColor', outlineOffset: -1 } : {}),
+                            }}
+                            title={agentCodeOf(agent)}
+                        >
+                            <div className="w-5 h-5 shrink-0" />
+                            <i className={`fa-solid fa-globe w-4 text-center text-[12px] shrink-0 ${theme.title}`} aria-hidden />
+                            <div className="min-w-0 w-1 flex-auto">
+                                <div className={`truncate leading-tight ${theme.title}`}>
+                                    {agentName(agent) || agentCodeOf(agent)}
+                                </div>
+                                <div className={`truncate leading-tight text-[10px] opacity-55 ${theme.label}`}>Built-in</div>
+                            </div>
+                            <span className={`shrink-0 px-1 py-0.5 rounded border text-[10px] ${borderCls} ${theme.label}`}>General</span>
+                        </div>
+                    );
+                })}
+                {rows.length === 0 && pinnedAgents.length === 0 && (
                     <div className={`px-3 py-4 text-xs ${theme.label}`}>No agents match filters.</div>
                 )}
                 {rows.map(row => {

@@ -128,7 +128,7 @@ const UiTemplateContentEditor: React.FC<Props> = ({
 
     const handleSave = async () => {
         if (!currentTool) {
-            setError(`Tool ${toolName} not found in library ${libraryKey}.`);
+            setError(`Tool ${toolName} not found in tool set ${libraryKey}.`);
             return;
         }
         dispatch(setIsBusy());
@@ -251,7 +251,7 @@ const UiTemplateContentEditor: React.FC<Props> = ({
 
                 {!currentTool && (
                     <div className={`px-4 py-2 text-xs text-orange-600 shrink-0`}>
-                        Tool <span className="font-mono">{toolName}</span> is missing from this library. Seed/migrate platform-ui-render first.
+                        Tool <span className="font-mono">{toolName}</span> is missing from this tool set. Seed/migrate platform-ui-render first.
                     </div>
                 )}
 

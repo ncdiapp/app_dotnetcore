@@ -24,6 +24,8 @@ using CatalogDto   = App.BL.TenantBusiness.AppAgentToolCatalogDto;
 using ToolCatalogRetrieval = App.BL.TenantBusiness.ToolCatalogRetrieval;
 using ExclusionBL  = App.BL.TenantBusiness.AppAgentToolExclusionBL;
 using ExclusionDto = App.BL.TenantBusiness.AppAgentToolExclusionDto;
+using GenToolBL    = App.BL.TenantBusiness.AppGeneralAgentToolBL;
+using GenToolDto   = App.BL.TenantBusiness.AppGeneralAgentToolDto;
 using DomainDto    = App.BL.TenantBusiness.AppAgentToolDomainDto;
 using LibraryDto   = App.BL.TenantBusiness.AppAgentToolLibraryDto;
 using SubDto       = App.BL.TenantBusiness.AppAgentLibrarySubscriptionDto;
@@ -515,6 +517,22 @@ public class AgentSkillSetController : SecureBaseController
         return result;
     }
 
+    [HttpGet]
+    public OperationCallResult<List<GenToolDto>> GetGeneralAgentTools()
+    {
+        var result = new OperationCallResult<List<GenToolDto>>();
+        result.Object = GenToolBL.GetAll(GetDsId());
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<bool> SetGeneralAgentTools([FromBody] SetGeneralAgentToolsRequest req)
+    {
+        var result = new OperationCallResult<bool>();
+        result.Object = GenToolBL.ReplaceAll(GetDsId(), req?.Tools ?? new List<GenToolDto>());
+        return result;
+    }
+
     public class SetToolExclusionsRequest
     {
         public string SkillKey { get; set; } = "";
@@ -597,7 +615,7 @@ public class AgentSkillSetController : SecureBaseController
             // ask_user is injected at runtime — never offer it as a pickable tool.
             fullCatalog = CatalogBL.GetAll(dsId).Where(t => !autoInjectedBuiltIns.Contains(t.ToolName ?? "")).ToList();
             foreach (var s in CatalogBL.GetUnsyncedMcpServers(dsId))
-                warnings.Add($"MCP server {s} has not been synced, so its tools cannot be recommended. Open Tool Libraries › MCP Servers and click Sync tools.");
+                warnings.Add($"MCP server {s} has not been synced, so its tools cannot be recommended. Open Tool Sets › MCP Servers and click Sync tools.");
         }
         catch (Exception ex)
         {
@@ -827,6 +845,11 @@ public sealed class SetSubscriptionsRequest
 {
     public string SkillKey { get; set; }
     public List<string> LibraryKeys { get; set; }
+}
+
+public sealed class SetGeneralAgentToolsRequest
+{
+    public List<GenToolDto> Tools { get; set; }
 }
 
 public sealed class GenerateAgentRequest

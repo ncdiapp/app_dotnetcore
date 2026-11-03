@@ -18,6 +18,7 @@ import AiRecommendedTools, { recommendedToolKey } from './AiRecommendedTools';
 import GenericAgentFilesPanel from './GenericAgentFilesPanel';
 import AgentHierarchyPanel from './AgentHierarchyPanel';
 import AgentChildAgentTab from './AgentChildAgentTab';
+import { GENERAL_AGENT_KEY, isGeneralAgentKey } from './generalAgent';
 
 type Tab = 'skills' | 'libraries';
 type EditorTab = 'prompt' | 'child-agent' | 'tools' | 'files' | 'limits';
@@ -40,6 +41,14 @@ function promptMentionsHeavyDbTools(prompt: string | null | undefined): boolean 
     return p.includes('execute_sql') || p.includes('stored_procedure_execute');
 }
 
+
+const generalAgentFixture = (): AppAgentSkillSetDto => ({
+    AgentId: 0, AgentCode: GENERAL_AGENT_KEY, SkillKey: GENERAL_AGENT_KEY,
+    DisplayName: 'General Agent', Description: 'Built-in general assistant. Choose which Tool Set tools it may call.',
+    SystemPrompt: '', CapabilityFlags: 0, IsActive: true, SortOrder: -1, Version: 1,
+    MaxHistoryTokens: 80000, SummarizeThreshold: 60000, MaxToolResultChars: 4000, RecentWindowSize: 10, MaxIterations: 40,
+    ExecutionMode: 'Interactive', AgentUi: 1, AllowAgentFirstTurn: false, EnableThinkMode: false,
+});
 
 const emptySkillSet = (): AppAgentSkillSetDto => ({
     AgentId: 0, AgentCode: '', SkillKey: '', DisplayName: '', Description: '', SystemPrompt: '', CapabilityFlags: 3,
@@ -107,12 +116,25 @@ const AgentSkillSetManagement: React.FC = () => {
     // Tools the agent does not use from subscribed libraries, keyed "libraryKey\u0001toolName"
     const [excluded, setExcluded] = useState<Set<string>>(new Set());
     const [exclChanged, setExclChanged] = useState(false);
+    const [allowedKeys, setAllowedKeys] = useState<Set<string>>(new Set());
+    const [allowChanged, setAllowChanged] = useState(false);
 
     const applyListAndKeepSelection = useCallback((list: AppAgentSkillSetDto[], skillKeyToKeep: string | null | undefined, syncEditFromServer: boolean) => {
         setAgents(list);
 
         if (!skillKeyToKeep) {
             return null;
+        }
+
+        if (isGeneralAgentKey(skillKeyToKeep)) {
+            const fresh = generalAgentFixture();
+            setSelected(fresh);
+            if (syncEditFromServer) {
+                setEditItem(fresh);
+                setIsEditing(true);
+                setIsDirty(false);
+            }
+            return fresh;
         }
 
         const fresh = list.find(x => agentCodeOf(x) === skillKeyToKeep) ?? null;
@@ -162,6 +184,16 @@ const AgentSkillSetManagement: React.FC = () => {
         } catch { /* non-critical */ }
     };
 
+    const loadGeneralAllow = async () => {
+        try {
+            const res = await agentSkillSetSvc.GetGeneralAgentTools();
+            setAllowedKeys(new Set((res.Object ?? []).map(t => `${t.LibraryKey}\u0001${t.ToolName}`)));
+            setAllowChanged(false);
+        } catch {
+            setAllowedKeys(new Set());
+        }
+    };
+
     const loadSubscriptions = async (skillKey: string) => {
         try {
             const subRes = await agentSkillSetSvc.GetSubscriptions(skillKey);
@@ -176,6 +208,24 @@ const AgentSkillSetManagement: React.FC = () => {
     };
 
     const selectAgentByKey = useCallback((skillKey: string, list?: AppAgentSkillSetDto[]) => {
+        if (isGeneralAgentKey(skillKey)) {
+            const item = generalAgentFixture();
+            setSelected(item);
+            setEditItem(item);
+            setIsEditing(true);
+            setIsDirty(false);
+            setTestSkillKey(null);
+            setSubsChanged(false);
+            setExclChanged(false);
+            setAllowChanged(false);
+            setShowHistory(false);
+            setEditorTab('tools');
+            setHeaderDetailsExpanded(false);
+            setUsedByParents([]);
+            setPromptHistory([]);
+            void loadGeneralAllow();
+            return;
+        }
         const source = list ?? agents;
         const item = source.find(x => agentCodeOf(x) === skillKey);
         if (!item) return;
@@ -309,6 +359,7 @@ const AgentSkillSetManagement: React.FC = () => {
     };
 
     const handleDropOntoOrchestrator = async (parentSkillKey: string, childSkillKey: string) => {
+        if (isGeneralAgentKey(parentSkillKey) || isGeneralAgentKey(childSkillKey)) return;
         setError(null);
         dispatch(setIsBusy());
         try {
@@ -332,6 +383,17 @@ const handleSave = async () => {
         const key = editItem.AgentCode.trim();
         dispatch(setIsBusy()); setError(null);
         try {
+            if (isGeneralAgentKey(key)) {
+                await agentSkillSetSvc.SetGeneralAgentTools(Array.from(allowedKeys).map(k => {
+                    const [LibraryKey, ToolName] = k.split('\u0001');
+                    return { LibraryKey, ToolName };
+                }));
+                setAllowChanged(false);
+                setIsDirty(false);
+                setSelected(generalAgentFixture());
+                setEditItem(generalAgentFixture());
+                return;
+            }
             await agentSkillSetSvc.UpsertSkillSet(editItem);
             if (subsChanged) {
                 await agentSkillSetSvc.SetSubscriptions(editItem.AgentCode, Array.from(subscribedKeys));
@@ -368,7 +430,7 @@ const handleSave = async () => {
     };
 
     const handleDelete = async () => {
-        if (!selected) return;
+        if (!selected || isGeneralAgentKey(selected.AgentCode)) return;
         dispatch(setIsBusy());
         setError(null);
         try {
@@ -404,9 +466,13 @@ const handleSave = async () => {
             const keepKey = agentCodeOf(selected) || agentCodeOf(editItem) || null;
             if (keepKey) {
                 applyListAndKeepSelection(list, keepKey, true);
-                loadHistory(keepKey);
-                loadSubscriptions(keepKey);
-                loadUsedBy(keepKey);
+                if (isGeneralAgentKey(keepKey)) {
+                    await loadGeneralAllow();
+                } else {
+                    loadHistory(keepKey);
+                    loadSubscriptions(keepKey);
+                    loadUsedBy(keepKey);
+                }
             } else {
                 setAgents(list);
                 if (isEditing) {
@@ -541,7 +607,7 @@ const handleSave = async () => {
                 });
                 setExclChanged(true);
             } catch (e: unknown) {
-                setError(`Libraries were subscribed, but per-tool selection could not be applied: ${e instanceof Error ? e.message : String(e)}`);
+                setError(`Tool sets were subscribed, but per-tool selection could not be applied: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
         if (aiAcceptedBuiltIns.size > 0 && editItem.AgentCode.trim()) {
@@ -584,13 +650,14 @@ const handleSave = async () => {
     const promptChars = (editItem.SystemPrompt || '').length;
     const isOrchestrator = childKeysForEdit.length > 0;
     const isChildAgent = usedByParents.length > 0 || (editItem.UsedByCount ?? 0) > 0;
+    const editingGeneral = isGeneralAgentKey(editItem.AgentCode);
 
     return (
         <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
             <div className={`flex items-center gap-1 px-3 py-2 mb-1 mx-2 ${theme.mainContentSection}`}>
                 <span className={`text-md font-semibold mr-3 ${theme.title}`}>Agent Management</span>
                 <button type="button" className={tabCls('skills')} onClick={() => setActiveTab('skills')}>Agent Setting</button>
-                <button type="button" className={tabCls('libraries')} onClick={() => setActiveTab('libraries')}>Tool Libraries</button>
+                <button type="button" className={tabCls('libraries')} onClick={() => setActiveTab('libraries')}>Tool Sets</button>
             </div>
             {error && (
                 <div className={`px-3 py-1 text-xs mx-2 mb-1 rounded border ${theme.mainContentSection} ${theme.label} ${borderCls}`}>
@@ -662,7 +729,7 @@ const handleSave = async () => {
                                     </div>
                                 )}
                             </div>
-                            {selected && (
+                            {selected && !isGeneralAgentKey(selected.AgentCode) && (
                                 <button type="button" className={btn} onClick={() => setConfirmDelete(true)}>
                                     <i className="fa-solid fa-trash mr-1" />Delete
                                 </button>
@@ -682,6 +749,7 @@ const handleSave = async () => {
                                 onDropOntoOrchestrator={handleDropOntoOrchestrator}
                                 theme={theme}
                                 borderCls={borderCls}
+                                pinnedAgents={[generalAgentFixture()]}
                             />
                         </div>
                     </div>
@@ -759,6 +827,9 @@ const handleSave = async () => {
                                             {isOrchestrator && (
                                                 <span className={`shrink-0 px-1.5 py-0.5 text-[10px] rounded border ${borderCls} ${theme.label}`} title="Orchestrator (Primary) Agent">Orchestrator</span>
                                             )}
+                                            {editingGeneral && (
+                                                <span className={`shrink-0 px-1.5 py-0.5 text-[10px] rounded border ${borderCls} ${theme.label}`}>Built-in</span>
+                                            )}
                                             {isChildAgent && (
                                                 <span className={`shrink-0 px-1.5 py-0.5 text-[10px] rounded border ${borderCls} ${theme.label}`} title="Child-Agent">
                                                     Child-Agent{usedByParents.length ? ` · ${usedByParents.length}` : ''}
@@ -772,7 +843,7 @@ const handleSave = async () => {
                                         </button>
                                         <div className="flex items-center gap-2 shrink-0">
                                             {isDirty && <span className={`text-xs ${theme.label}`}>Unsaved</span>}
-                                            {selected && !selected.AgentCode.startsWith('tmpl-') && (
+                                            {selected && !selected.AgentCode.startsWith('tmpl-') && !editingGeneral && (
                                                 <button type="button" className={btn} onClick={openSaveAsTemplate} title="Clone this agent as a reusable template">
                                                     <i className="fa-solid fa-star mr-1" />Save as Template
                                                 </button>
@@ -786,7 +857,7 @@ const handleSave = async () => {
                                         </div>
                                     </div>
 
-                                    {headerDetailsExpanded && (
+                                    {headerDetailsExpanded && !editingGeneral && (
                                         <div className={`px-3 pb-2 pt-1 border-t grid grid-cols-1 xl:grid-cols-2 gap-x-6 gap-y-1 ${borderCls}`}>
                                             <div className="flex items-center py-1">
                                                 <label className={lbl}>Agent Code *</label>
@@ -858,11 +929,11 @@ const handleSave = async () => {
                                     )}
 
                                     <div className={`flex items-center gap-1 px-3 pb-2 ${headerDetailsExpanded ? '' : 'pt-1'}`}>
-                                        <button type="button" className={editorTabCls('prompt')} onClick={() => selectEditorTab('prompt')}>Prompt</button>
-                                        <button type="button" className={editorTabCls('child-agent')} onClick={() => selectEditorTab('child-agent')}>Child-Agent</button>
+                                        {!editingGeneral && <button type="button" className={editorTabCls('prompt')} onClick={() => selectEditorTab('prompt')}>Prompt</button>}
+                                        {!editingGeneral && <button type="button" className={editorTabCls('child-agent')} onClick={() => selectEditorTab('child-agent')}>Child-Agent</button>}
                                         <button type="button" className={editorTabCls('tools')} onClick={() => selectEditorTab('tools')}>Tools</button>
-                                        <button type="button" className={editorTabCls('files')} onClick={() => selectEditorTab('files')}>Files</button>
-                                        <button type="button" className={editorTabCls('limits')} onClick={() => selectEditorTab('limits')}>Limits</button>
+                                        {!editingGeneral && <button type="button" className={editorTabCls('files')} onClick={() => selectEditorTab('files')}>Files</button>}
+                                        {!editingGeneral && <button type="button" className={editorTabCls('limits')} onClick={() => selectEditorTab('limits')}>Limits</button>}
                                     </div>
                                 </div>
 
@@ -951,6 +1022,8 @@ const handleSave = async () => {
                                     {editorTab === 'tools' && (
                                         <div className="w-full h-full min-h-0 flex flex-col overflow-hidden px-3 py-2">
                                             <div className={`shrink-0 flex items-center gap-2 flex-wrap pb-2 mb-2 border-b ${borderCls}`}>
+                                                {!editingGeneral && (
+                                                    <>
                                                 <button
                                                     type="button"
                                                     className={`${btn} flex items-center gap-1.5`}
@@ -962,13 +1035,19 @@ const handleSave = async () => {
                                                 </button>
                                                 <span className={`text-xs opacity-50 ${theme.label}`}>Private tools</span>
                                                 <span className={`text-xs opacity-30 ${theme.label}`}>|</span>
+                                                    </>
+                                                )}
                                                 <span className={`text-xs font-semibold ${theme.title}`}>
-                                                    <i className="fa-solid fa-book mr-1" />Libraries
-                                                    <span className={`ml-1 font-normal ${theme.label}`}>({subscribedKeys.size} subscribed)</span>
+                                                    <i className="fa-solid fa-book mr-1" />Tool Sets
+                                                    <span className={`ml-1 font-normal ${theme.label}`}>
+                                                        {editingGeneral
+                                                            ? `(${allowedKeys.size} exposed)`
+                                                            : `(${subscribedKeys.size} subscribed)`}
+                                                    </span>
                                                 </span>
                                                 <input
                                                     className={`${inp} max-w-xs`}
-                                                    placeholder="Search libraries..."
+                                                    placeholder="Search tool sets..."
                                                     value={libSearch}
                                                     onChange={e => setLibSearch(e.target.value)}
                                                 />
@@ -992,7 +1071,23 @@ const handleSave = async () => {
                                                     setExcluded(nextExcluded);
                                                     setSubsChanged(true); setExclChanged(true); setIsDirty(true);
                                                 };
+                                                const applyAllow = (next: Set<string>) => {
+                                                    setAllowedKeys(next);
+                                                    setAllowChanged(true);
+                                                    setIsDirty(true);
+                                                };
                                                 const toggleLib = (libraryKey: string, checked: boolean, picks: { name: string; active: boolean }[]) => {
+                                                    if (editingGeneral) {
+                                                        const prefix = `${libraryKey}\u0001`;
+                                                        const next = new Set(allowedKeys);
+                                                        if (checked) {
+                                                            for (const p of picks) if (p.active) next.add(prefix + p.name);
+                                                        } else {
+                                                            for (const k of Array.from(next)) if (k.startsWith(prefix)) next.delete(k);
+                                                        }
+                                                        applyAllow(next);
+                                                        return;
+                                                    }
                                                     const nextExcluded = new Set(excluded);
                                                     const prefix = `${libraryKey}\u0001`;
                                                     if (picks.length === 0) {
@@ -1008,6 +1103,13 @@ const handleSave = async () => {
                                                     applyLibraryTools(libraryKey, checked, nextExcluded);
                                                 };
                                                 const toggleTool = (libraryKey: string, toolName: string, use: boolean, picks: { name: string; active: boolean }[]) => {
+                                                    if (editingGeneral) {
+                                                        const next = new Set(allowedKeys);
+                                                        const k = `${libraryKey}\u0001${toolName}`;
+                                                        if (use) next.add(k); else next.delete(k);
+                                                        applyAllow(next);
+                                                        return;
+                                                    }
                                                     const prefix = `${libraryKey}\u0001`;
                                                     const wasSubscribed = subscribedKeys.has(libraryKey);
                                                     const nextExcluded = new Set(excluded);
@@ -1023,14 +1125,20 @@ const handleSave = async () => {
                                                     const anyUsed = picks.some(p => p.active && !nextExcluded.has(prefix + p.name));
                                                     applyLibraryTools(libraryKey, use || anyUsed, nextExcluded);
                                                 };
+                                                const libHasAllow = (libraryKey: string) => {
+                                                    const prefix = `${libraryKey}\u0001`;
+                                                    for (const k of allowedKeys) if (k.startsWith(prefix)) return true;
+                                                    return false;
+                                                };
                                                 const libRow = (l: AppAgentToolLibraryDto) => (
                                                     <AgentLibraryRow
                                                         key={l.LibraryKey}
                                                         theme={theme}
                                                         library={l}
-                                                        subscribed={subscribedKeys.has(l.LibraryKey)}
+                                                        subscribed={editingGeneral ? libHasAllow(l.LibraryKey) : subscribedKeys.has(l.LibraryKey)}
                                                         onToggle={(checked, picks) => toggleLib(l.LibraryKey, checked, picks)}
-                                                        excluded={excluded}
+                                                        excluded={editingGeneral ? new Set() : excluded}
+                                                        allowlist={editingGeneral ? allowedKeys : undefined}
                                                         onToggleTool={(toolName, use, picks) => toggleTool(l.LibraryKey, toolName, use, picks)}
                                                         filesUi={chatModulesFromLibraries([l.LibraryKey]).has('files')}
                                                     />
@@ -1048,13 +1156,13 @@ const handleSave = async () => {
                                                             ))}
                                                             {ungrouped.map(libRow)}
                                                             {filtered.length === 0 && (
-                                                                <div className={`px-2 py-3 text-xs ${theme.label}`}>No libraries match search.</div>
+                                                                <div className={`px-2 py-3 text-xs ${theme.label}`}>No tool sets match search.</div>
                                                             )}
                                                         </div>
                                                     </div>
                                                 );
                                             })() : (
-                                                <div className={`text-xs ${theme.label}`}>No tool libraries available.</div>
+                                                <div className={`text-xs ${theme.label}`}>No tool sets available.</div>
                                             )}
                                         </div>
                                     )}
@@ -1183,7 +1291,7 @@ const handleSave = async () => {
                                 <div className="px-4 py-3 flex flex-col gap-2">
                                     <p className={`text-xs opacity-60 ${theme.label}`}>
                                         Describe what this agent should do. The AI will generate the system prompt
-                                        and recommend relevant tool libraries and built-in tools.
+                                        and recommend relevant tool sets and built-in tools.
                                     </p>
                                     <textarea
                                         className={`w-full px-2 py-1.5 text-xs border ${theme.inputBox} focus:outline-none resize-none font-mono`}
@@ -1237,10 +1345,10 @@ const handleSave = async () => {
 
                                     <div className="flex flex-col gap-1">
                                         <div className={`text-xs font-semibold ${theme.title}`}>
-                                            <i className="fa-solid fa-book mr-1" />Recommended Tool Libraries:
+                                            <i className="fa-solid fa-book mr-1" />Recommended Tool Sets:
                                         </div>
                                         {aiResult.RecommendedLibraryKeys.length === 0 ? (
-                                            <div className={`text-xs opacity-40 ${theme.label} px-1`}>No matching libraries found in the catalog</div>
+                                            <div className={`text-xs opacity-40 ${theme.label} px-1`}>No matching tool sets found in the catalog</div>
                                         ) : aiResult.RecommendedLibraryKeys.map(key => {
                                             const lib = allLibraries.find(l => l.LibraryKey === key);
                                             return (
@@ -1296,7 +1404,7 @@ const handleSave = async () => {
                                     </div>
 
                                     <div className={`text-xs opacity-40 ${theme.label} border-t border-gray-100 pt-2`}>
-                                        <i className="fa-solid fa-server mr-1" />MCP servers live in Tool Libraries › MCP Servers. Register a server there and click Sync tools so its tools can be recommended here.
+                                        <i className="fa-solid fa-server mr-1" />MCP servers live in Tool Sets › MCP Servers. Register a server there and click Sync tools so its tools can be recommended here.
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2 px-4 py-2 border-t border-gray-200">

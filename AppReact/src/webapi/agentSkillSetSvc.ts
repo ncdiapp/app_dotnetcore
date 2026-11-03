@@ -114,6 +114,12 @@ export interface AppAgentToolExclusionDto {
     ToolName:   string;
 }
 
+/** Tool explicitly exposed to the built-in General Agent. */
+export interface AppGeneralAgentToolDto {
+    LibraryKey: string;
+    ToolName:   string;
+}
+
 export interface AppAgentLibraryToolDto {
     Id:                 number;
     LibraryKey:         string;
@@ -416,6 +422,20 @@ class AgentSkillSetService {
             method: 'POST', headers: getHeaders(), body: JSON.stringify({ SkillKey: skillKey, Exclusions: exclusions }),
         });
         if (!res.ok) throw new Error(`SetToolExclusions failed (${res.status})`);
+        return res.json();
+    }
+
+    async GetGeneralAgentTools(): Promise<OperationResult<AppGeneralAgentToolDto[]>> {
+        const res = await fetch(`${BASE}/GetGeneralAgentTools`, { headers: getHeaders() });
+        if (!res.ok) throw new Error(`GetGeneralAgentTools failed (${res.status})`);
+        return res.json();
+    }
+
+    async SetGeneralAgentTools(tools: AppGeneralAgentToolDto[]): Promise<OperationResult<boolean>> {
+        const res = await fetch(`${BASE}/SetGeneralAgentTools`, {
+            method: 'POST', headers: getHeaders(), body: JSON.stringify({ Tools: tools }),
+        });
+        if (!res.ok) throw new Error(`SetGeneralAgentTools failed (${res.status})`);
         return res.json();
     }
 
