@@ -32,9 +32,19 @@ namespace App.BL.AIAgent.GenericAgent
         private const int AutoTitleMax = 80;
         private const int RenameTitleMax = 200;
 
+        /// <summary>NULL AgentID = built-in General Agent (not in AppAgentSkillSet).</summary>
+        private const string AgentIdMatch = "((@S IS NULL AND AgentID IS NULL) OR AgentID=@S)";
+        private const string AgentIdMatchS = "((@S IS NULL AND s.AgentID IS NULL) OR s.AgentID=@S)";
+
         private const string EnsureDisplayTitleSql = @"
 IF COL_LENGTH('dbo.AppGenericAgentSession', 'DisplayTitle') IS NULL
-    ALTER TABLE dbo.AppGenericAgentSession ADD DisplayTitle NVARCHAR(200) NULL";
+    ALTER TABLE dbo.AppGenericAgentSession ADD DisplayTitle NVARCHAR(200) NULL;
+IF COL_LENGTH('dbo.AppGenericAgentSession', 'AgentID') IS NOT NULL
+   AND EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID(N'dbo.AppGenericAgentSession')
+          AND name = N'AgentID' AND is_nullable = 0)
+    ALTER TABLE dbo.AppGenericAgentSession ALTER COLUMN AgentID INT NULL";
 
         public static string MakeFixedKey(string skillKey, int userId) =>
             $"{skillKey}:{userId}";
@@ -50,8 +60,7 @@ IF COL_LENGTH('dbo.AppGenericAgentSession', 'DisplayTitle') IS NULL
                 var fixture = Fixture(dataSourceId);
                 if (fixture == null) return null;
                 EnsureSchema(fixture);
-                var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
-                if (agentId == null) return null;
+                if (!AppAgentLookup.TryResolveSessionAgentId(fixture, skillKey, out var agentId)) return null;
 
                 var key = Guid.NewGuid().ToString("D");
                 const string sql = @"
@@ -61,7 +70,7 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
                 fixture.ExecuteNonQueryResult(sql, new List<DbParameter>
                 {
                     P(fixture, "@K", key),
-                    P(fixture, "@S", agentId.Value),
+                    P(fixture, "@S", agentId),
                     P(fixture, "@U", userId)
                 });
                 return key;
@@ -83,23 +92,25 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
                 var fixture = Fixture(dataSourceId);
                 if (fixture == null) return list;
                 EnsureSchema(fixture);
-                var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
-                if (agentId == null) return list;
+                if (!AppAgentLookup.TryResolveSessionAgentId(fixture, skillKey, out var agentId)) return list;
 
                 if (take <= 0 || take > 200) take = 50;
-                var fixedKey = MakeFixedKey(skillKey.Trim(), userId);
+                var skill = skillKey.Trim();
+                var fixedKey = MakeFixedKey(skill, userId);
 
                 var dt = fixture.RetriveDataTable(
-                    @"SELECT TOP (@Take) s.SessionKey, k.AgentCode AS SkillKey, s.MessagesJson, s.DisplayTitle, s.UpdatedAt
+                    $@"SELECT TOP ({take}) s.SessionKey,
+                            ISNULL(k.AgentCode, @FallbackSkill) AS SkillKey,
+                            s.MessagesJson, s.DisplayTitle, s.UpdatedAt
                       FROM dbo.AppGenericAgentSession s
-                      INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = s.AgentID
-                      WHERE s.AgentID=@SkillKey AND s.UserId=@UserId
+                      LEFT JOIN dbo.AppAgentSkillSet k ON k.AgentID = s.AgentID
+                      WHERE {AgentIdMatchS} AND s.UserId=@UserId
                       ORDER BY s.UpdatedAt DESC",
                     new List<DbParameter>
                     {
-                        P(fixture, "@Take", take),
-                        P(fixture, "@SkillKey", agentId.Value),
-                        P(fixture, "@UserId", userId)
+                        P(fixture, "@S", agentId),
+                        P(fixture, "@UserId", userId),
+                        P(fixture, "@FallbackSkill", skill)
                     });
 
                 if (dt == null) return list;
@@ -138,19 +149,19 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
                 var fixture = Fixture(dataSourceId);
                 if (fixture == null) return null;
                 EnsureSchema(fixture);
-                var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
-                if (agentId == null) return null;
+                if (!AppAgentLookup.TryResolveSessionAgentId(fixture, skillKey, out var agentId)) return null;
 
                 var dt = fixture.RetriveDataTable(
-                    @"SELECT s.SessionKey, k.AgentCode AS SkillKey, s.MessagesJson, s.DisplayTitle
+                    $@"SELECT s.SessionKey, ISNULL(k.AgentCode, @FallbackSkill) AS SkillKey, s.MessagesJson, s.DisplayTitle
                       FROM dbo.AppGenericAgentSession s
-                      INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = s.AgentID
-                      WHERE s.SessionKey=@K AND s.AgentID=@S AND s.UserId=@U",
+                      LEFT JOIN dbo.AppAgentSkillSet k ON k.AgentID = s.AgentID
+                      WHERE s.SessionKey=@K AND {AgentIdMatchS} AND s.UserId=@U",
                     new List<DbParameter>
                     {
                         P(fixture, "@K", sessionKey.Trim()),
-                        P(fixture, "@S", agentId.Value),
-                        P(fixture, "@U", userId)
+                        P(fixture, "@S", agentId),
+                        P(fixture, "@U", userId),
+                        P(fixture, "@FallbackSkill", skillKey.Trim())
                     });
 
                 if (dt == null || dt.Rows.Count == 0) return null;
@@ -593,8 +604,7 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
                 var fixture = Fixture(dataSourceId);
                 if (fixture == null) return;
                 EnsureSchema(fixture);
-                var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
-                if (agentId == null) return;
+                if (!AppAgentLookup.TryResolveSessionAgentId(fixture, skillKey, out var agentId)) return;
 
                 var key = string.IsNullOrWhiteSpace(sessionKey)
                     ? MakeFixedKey(skillKey.Trim(), userId)
@@ -607,11 +617,11 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
                     if (existing == null) return;
                 }
 
-                const string sql = @"
+                var sql = $@"
 IF EXISTS (SELECT 1 FROM dbo.AppGenericAgentSession WHERE SessionKey=@K)
     UPDATE dbo.AppGenericAgentSession
     SET MessagesJson=@J, AgentID=@S, UserId=@U, UpdatedAt=GETUTCDATE()
-    WHERE SessionKey=@K AND AgentID=@S AND UserId=@U
+    WHERE SessionKey=@K AND {AgentIdMatch} AND UserId=@U
 ELSE
     INSERT INTO dbo.AppGenericAgentSession (SessionKey, AgentID, UserId, MessagesJson, UpdatedAt)
     VALUES (@K, @S, @U, @J, GETUTCDATE())";
@@ -620,7 +630,7 @@ ELSE
                 {
                     P(fixture, "@K", key),
                     P(fixture, "@J", json),
-                    P(fixture, "@S", agentId.Value),
+                    P(fixture, "@S", agentId),
                     P(fixture, "@U", userId)
                 });
             }
@@ -712,16 +722,15 @@ ELSE
             {
                 var fixture = GetFixture();
                 if (fixture == null) return false;
-                var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
-                if (agentId == null) return false;
+                if (!AppAgentLookup.TryResolveSessionAgentId(fixture, skillKey, out var agentId)) return false;
                 var n = fixture.ExecuteNonQueryResult(
-                    @"UPDATE dbo.AppGenericAgentSession
+                    $@"UPDATE dbo.AppGenericAgentSession
                       SET MessagesJson=N'[]', UpdatedAt=GETUTCDATE()
-                      WHERE SessionKey=@K AND AgentID=@S AND UserId=@U",
+                      WHERE SessionKey=@K AND {AgentIdMatch} AND UserId=@U",
                     new List<DbParameter>
                     {
                         P(fixture, "@K", sessionKey.Trim()),
-                        P(fixture, "@S", agentId.Value),
+                        P(fixture, "@S", agentId),
                         P(fixture, "@U", userId)
                     });
                 if (n > 0)
@@ -749,14 +758,13 @@ ELSE
             {
                 var fixture = GetFixture();
                 if (fixture == null) return false;
-                var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
-                if (agentId == null) return false;
+                if (!AppAgentLookup.TryResolveSessionAgentId(fixture, skillKey, out var agentId)) return false;
                 var n = fixture.ExecuteNonQueryResult(
-                    "DELETE FROM dbo.AppGenericAgentSession WHERE SessionKey=@K AND AgentID=@S AND UserId=@U",
+                    $"DELETE FROM dbo.AppGenericAgentSession WHERE SessionKey=@K AND {AgentIdMatch} AND UserId=@U",
                     new List<DbParameter>
                     {
                         P(fixture, "@K", sessionKey.Trim()),
-                        P(fixture, "@S", agentId.Value),
+                        P(fixture, "@S", agentId),
                         P(fixture, "@U", userId)
                     });
                 if (n > 0)
@@ -789,17 +797,16 @@ ELSE
                 var fixture = GetFixture();
                 if (fixture == null) return false;
                 EnsureSchema(fixture);
-                var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
-                if (agentId == null) return false;
+                if (!AppAgentLookup.TryResolveSessionAgentId(fixture, skillKey, out var agentId)) return false;
                 var n = fixture.ExecuteNonQueryResult(
-                    @"UPDATE dbo.AppGenericAgentSession
+                    $@"UPDATE dbo.AppGenericAgentSession
                       SET DisplayTitle=@T, UpdatedAt=GETUTCDATE()
-                      WHERE SessionKey=@K AND AgentID=@S AND UserId=@U",
+                      WHERE SessionKey=@K AND {AgentIdMatch} AND UserId=@U",
                     new List<DbParameter>
                     {
                         P(fixture, "@T", next),
                         P(fixture, "@K", sessionKey.Trim()),
-                        P(fixture, "@S", agentId.Value),
+                        P(fixture, "@S", agentId),
                         P(fixture, "@U", userId)
                     });
                 return n > 0;
@@ -824,17 +831,16 @@ ELSE
                 var fixture = GetFixture();
                 if (fixture == null) return;
                 EnsureSchema(fixture);
-                var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
-                if (agentId == null) return;
+                if (!AppAgentLookup.TryResolveSessionAgentId(fixture, skillKey, out var agentId)) return;
 
                 var dt = fixture.RetriveDataTable(
-                    @"SELECT DisplayTitle, MessagesJson
+                    $@"SELECT DisplayTitle, MessagesJson
                       FROM dbo.AppGenericAgentSession
-                      WHERE SessionKey=@K AND AgentID=@S AND UserId=@U",
+                      WHERE SessionKey=@K AND {AgentIdMatch} AND UserId=@U",
                     new List<DbParameter>
                     {
                         P(fixture, "@K", sessionKey.Trim()),
-                        P(fixture, "@S", agentId.Value),
+                        P(fixture, "@S", agentId),
                         P(fixture, "@U", userId)
                     });
                 if (dt == null || dt.Rows.Count == 0) return;
@@ -846,15 +852,15 @@ ELSE
                 if (string.IsNullOrWhiteSpace(title)) return;
 
                 fixture.ExecuteNonQueryResult(
-                    @"UPDATE dbo.AppGenericAgentSession
+                    $@"UPDATE dbo.AppGenericAgentSession
                       SET DisplayTitle=@T
-                      WHERE SessionKey=@K AND AgentID=@S AND UserId=@U
+                      WHERE SessionKey=@K AND {AgentIdMatch} AND UserId=@U
                         AND (DisplayTitle IS NULL OR LTRIM(RTRIM(DisplayTitle)) = N'')",
                     new List<DbParameter>
                     {
                         P(fixture, "@T", title),
                         P(fixture, "@K", sessionKey.Trim()),
-                        P(fixture, "@S", agentId.Value),
+                        P(fixture, "@S", agentId),
                         P(fixture, "@U", userId)
                     });
             }

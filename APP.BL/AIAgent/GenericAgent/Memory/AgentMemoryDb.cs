@@ -40,7 +40,7 @@ CREATE TABLE dbo.AppAgentEpisode
 (
     EpisodeId      INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_AppAgentEpisode PRIMARY KEY,
     UserId         INT           NOT NULL,
-    AgentID        INT           NOT NULL,
+    AgentID        INT           NULL,
     SessionKey     NVARCHAR(200) NULL,
     Summary        NVARCHAR(MAX) NOT NULL,
     Topics         NVARCHAR(500) NULL,
@@ -50,6 +50,13 @@ CREATE TABLE dbo.AppAgentEpisode
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_AppAgentEpisode_UserAgent' AND object_id = OBJECT_ID(N'dbo.AppAgentEpisode'))
 CREATE INDEX IX_AppAgentEpisode_UserAgent ON dbo.AppAgentEpisode (UserId, AgentID);
+
+IF OBJECT_ID(N'dbo.AppAgentEpisode', N'U') IS NOT NULL
+   AND EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID(N'dbo.AppAgentEpisode')
+          AND name = N'AgentID' AND is_nullable = 0)
+    ALTER TABLE dbo.AppAgentEpisode ALTER COLUMN AgentID INT NULL;
 
 IF OBJECT_ID(N'dbo.AppGenericAgentSession', N'U') IS NOT NULL
 BEGIN

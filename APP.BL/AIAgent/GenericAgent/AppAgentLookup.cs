@@ -28,6 +28,19 @@ namespace App.BL.AIAgent.GenericAgent
             }
         }
 
+        /// <summary>
+        /// Specialist chats store AppAgentSkillSet.AgentID.
+        /// Built-in General Agent is not a SkillSet row; session AgentID is NULL.
+        /// </summary>
+        public static bool TryResolveSessionAgentId(DatabaseFixture fixture, string skillKey, out int? agentId)
+        {
+            agentId = null;
+            if (fixture == null || string.IsNullOrWhiteSpace(skillKey)) return false;
+            if (GeneralAgentConstants.IsGeneralAgentKey(skillKey)) return true;
+            agentId = IdByCode(fixture, skillKey);
+            return agentId.HasValue;
+        }
+
         public static int? IdByCode(int dataSourceId, string agentCode)
         {
             if (dataSourceId <= 0) return null;

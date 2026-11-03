@@ -39,16 +39,15 @@ IF COL_LENGTH('dbo.AppGenericAgentSession', 'SummaryFingerprint') IS NULL
                 if (fixture == null) return null;
                 EnsureColumns(fixture);
 
-                var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
-                if (agentId == null) return null;
+                if (!AppAgentLookup.TryResolveSessionAgentId(fixture, skillKey, out var agentId)) return null;
                 var dt = fixture.RetriveDataTable(
                     @"SELECT SummaryText, SummarizedTurnCount, SummaryFingerprint
                       FROM dbo.AppGenericAgentSession
-                      WHERE SessionKey=@K AND AgentID=@S AND UserId=@U",
+                      WHERE SessionKey=@K AND ((@S IS NULL AND AgentID IS NULL) OR AgentID=@S) AND UserId=@U",
                     new List<DbParameter>
                     {
                         P(fixture, "@K", sessionKey.Trim()),
-                        P(fixture, "@S", agentId.Value),
+                        P(fixture, "@S", agentId),
                         P(fixture, "@U", userId)
                     });
                 if (dt == null || dt.Rows.Count == 0) return null;
@@ -93,19 +92,18 @@ IF COL_LENGTH('dbo.AppGenericAgentSession', 'SummaryFingerprint') IS NULL
                 if (fixture == null) return;
                 EnsureColumns(fixture);
 
-                var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
-                if (agentId == null) return;
+                if (!AppAgentLookup.TryResolveSessionAgentId(fixture, skillKey, out var agentId)) return;
                 fixture.ExecuteNonQueryResult(
                     @"UPDATE dbo.AppGenericAgentSession
                       SET SummaryText=@T, SummarizedTurnCount=@C, SummaryFingerprint=@F
-                      WHERE SessionKey=@K AND AgentID=@S AND UserId=@U",
+                      WHERE SessionKey=@K AND ((@S IS NULL AND AgentID IS NULL) OR AgentID=@S) AND UserId=@U",
                     new List<DbParameter>
                     {
                         P(fixture, "@T", text),
                         P(fixture, "@C", turnCount),
                         P(fixture, "@F", fingerprint),
                         P(fixture, "@K", sessionKey.Trim()),
-                        P(fixture, "@S", agentId.Value),
+                        P(fixture, "@S", agentId),
                         P(fixture, "@U", userId)
                     });
             }

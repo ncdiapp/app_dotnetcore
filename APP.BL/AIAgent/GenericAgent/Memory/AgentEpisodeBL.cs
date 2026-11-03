@@ -35,13 +35,12 @@ namespace App.BL.AIAgent.GenericAgent.Memory
             {
                 var fixture = AgentMemoryDb.Fixture(dataSourceId);
                 if (fixture == null) return false;
-                var agentId = AppAgentLookup.IdByCode(fixture, skillKey);
-                if (agentId == null) return false;
+                if (!AppAgentLookup.TryResolveSessionAgentId(fixture, skillKey, out var agentId)) return false;
                 fixture.ExecuteNonQueryResult(
                     @"INSERT INTO dbo.AppAgentEpisode (UserId, AgentID, SessionKey, Summary, Topics, Embedding, EmbeddingModel)
                       VALUES (@U, @S, @K, @M, @T, CONVERT(VARBINARY(MAX), @E), @EM)",
                     AgentMemoryDb.Params(fixture,
-                        ("@U", userId), ("@S", agentId.Value), ("@K", sessionKey), ("@M", summary.Trim()),
+                        ("@U", userId), ("@S", agentId), ("@K", sessionKey), ("@M", summary.Trim()),
                         ("@T", Truncate(topics, 500)),
                         ("@E", embedding == null ? null : EmbeddingClient.ToBytes(embedding.Vector)),
                         ("@EM", embedding?.Model)));
@@ -96,19 +95,20 @@ namespace App.BL.AIAgent.GenericAgent.Memory
                 var fixture = AgentMemoryDb.Fixture(dataSourceId);
                 if (fixture == null) return list;
                 int? agentId = null;
-                if (!string.IsNullOrWhiteSpace(skillKey))
-                {
-                    agentId = AppAgentLookup.IdByCode(fixture, skillKey);
-                    if (agentId == null) return list;
-                }
+                var filterAgent = !string.IsNullOrWhiteSpace(skillKey);
+                if (filterAgent && !AppAgentLookup.TryResolveSessionAgentId(fixture, skillKey, out agentId))
+                    return list;
                 var vec = withVectors ? ", e.Embedding, e.EmbeddingModel" : "";
                 var dt = fixture.RetriveDataTable(
-                    $@"SELECT TOP ({RecallPool}) e.EpisodeId, k.AgentCode AS SkillKey, e.SessionKey, e.Summary, e.Topics, e.CreatedAt{vec}
+                    $@"SELECT TOP ({RecallPool}) e.EpisodeId,
+                              ISNULL(k.AgentCode, N'{GeneralAgentConstants.SkillKey}') AS SkillKey,
+                              e.SessionKey, e.Summary, e.Topics, e.CreatedAt{vec}
                        FROM dbo.AppAgentEpisode e
-                       INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = e.AgentID
-                       WHERE e.UserId=@U AND (@S IS NULL OR e.AgentID=@S)
+                       LEFT JOIN dbo.AppAgentSkillSet k ON k.AgentID = e.AgentID
+                       WHERE e.UserId=@U
+                         AND (@Filter = 0 OR ((@S IS NULL AND e.AgentID IS NULL) OR e.AgentID=@S))
                        ORDER BY e.CreatedAt DESC",
-                    AgentMemoryDb.Params(fixture, ("@U", userId), ("@S", agentId)));
+                    AgentMemoryDb.Params(fixture, ("@U", userId), ("@S", agentId), ("@Filter", filterAgent ? 1 : 0)));
                 if (dt == null) return list;
                 foreach (DataRow row in dt.Rows)
                 {

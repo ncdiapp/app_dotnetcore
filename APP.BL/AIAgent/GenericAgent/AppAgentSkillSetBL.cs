@@ -135,6 +135,11 @@ ELSE IF @AgentID <= 0
                 return false;
             }
             skillKey = skillKey.Trim();
+            if (GeneralAgentConstants.IsGeneralAgentKey(skillKey))
+            {
+                error = "General Agent is built in and cannot be deleted.";
+                return false;
+            }
             try
             {
                 var usedBy = AppAgentChildMappingBL.GetUsedByParents(dataSourceId, skillKey);
