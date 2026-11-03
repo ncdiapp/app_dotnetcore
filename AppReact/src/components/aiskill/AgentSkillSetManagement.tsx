@@ -1127,7 +1127,7 @@ const handleSave = async () => {
                                                 };
                                                 const libHasAllow = (libraryKey: string) => {
                                                     const prefix = `${libraryKey}\u0001`;
-                                                    for (const k of allowedKeys) if (k.startsWith(prefix)) return true;
+                                                    for (const k of Array.from(allowedKeys)) if (k.startsWith(prefix)) return true;
                                                     return false;
                                                 };
                                                 const libRow = (l: AppAgentToolLibraryDto) => (

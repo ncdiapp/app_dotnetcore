@@ -19,8 +19,8 @@ BEGIN
 
     CREATE TABLE #WantedGeneralAgentTool
     (
-        LibraryKey NVARCHAR(100) NOT NULL,
-        ToolName   NVARCHAR(200) NOT NULL,
+        LibraryKey NVARCHAR(100) COLLATE DATABASE_DEFAULT NOT NULL,
+        ToolName   NVARCHAR(200) COLLATE DATABASE_DEFAULT NOT NULL,
         PRIMARY KEY (LibraryKey, ToolName)
     );
 
@@ -67,9 +67,11 @@ BEGIN
     SELECT w.LibraryKey, w.ToolName
     FROM #WantedGeneralAgentTool w
     INNER JOIN dbo.AppAgentToolLibrary l
-        ON l.LibraryKey = w.LibraryKey AND l.IsActive = 1
+        ON l.LibraryKey = w.LibraryKey COLLATE DATABASE_DEFAULT AND l.IsActive = 1
     INNER JOIN dbo.AppAgentLibraryTool t
-        ON t.LibraryKey = w.LibraryKey AND t.ToolName = w.ToolName AND t.IsActive = 1;
+        ON t.LibraryKey = w.LibraryKey COLLATE DATABASE_DEFAULT
+       AND t.ToolName = w.ToolName COLLATE DATABASE_DEFAULT
+       AND t.IsActive = 1;
 
     IF OBJECT_ID(N'dbo.AppAgentToolCatalog', N'U') IS NOT NULL
         EXEC(N'
@@ -77,12 +79,14 @@ BEGIN
         SELECT w.LibraryKey, w.ToolName
         FROM #WantedGeneralAgentTool w
         INNER JOIN dbo.AppAgentToolLibrary l
-            ON l.LibraryKey = w.LibraryKey AND l.IsActive = 1
+            ON l.LibraryKey = w.LibraryKey COLLATE DATABASE_DEFAULT AND l.IsActive = 1
         INNER JOIN dbo.AppAgentToolCatalog c
-            ON c.LibraryKey = w.LibraryKey AND c.ToolName = w.ToolName
+            ON c.LibraryKey = w.LibraryKey COLLATE DATABASE_DEFAULT
+           AND c.ToolName = w.ToolName COLLATE DATABASE_DEFAULT
         WHERE NOT EXISTS (
             SELECT 1 FROM dbo.AppGeneralAgentTool g
-            WHERE g.LibraryKey = w.LibraryKey AND g.ToolName = w.ToolName
+            WHERE g.LibraryKey = w.LibraryKey COLLATE DATABASE_DEFAULT
+              AND g.ToolName = w.ToolName COLLATE DATABASE_DEFAULT
         );');
 
     DROP TABLE #WantedGeneralAgentTool;
