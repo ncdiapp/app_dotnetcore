@@ -4,6 +4,7 @@ import ConversationEditorEmbedded from '../../message/ConversationEditorEmbedded
 import AgentUiChatHost from '../../aiskill/AgentUiChatHost';
 import { genericAgentSvc } from '../../../webapi/genericAgentSvc';
 import { FORM_AGENT_SKILL_KEY, FormAgentHostContext } from './formAgentHost';
+import { FormGroupDockSlotContext, formGroupDockShowsNav } from './formGroupDock';
 
 type TabId = 'messages' | 'ai';
 
@@ -15,6 +16,7 @@ interface Props {
   messageScopeType?: number | null;
   chatScope: string;
   initialTab?: TabId;
+  onHidePanel?: () => void;
 }
 
 const FormSidePanel: React.FC<Props> = ({
@@ -25,9 +27,14 @@ const FormSidePanel: React.FC<Props> = ({
   messageScopeType,
   chatScope,
   initialTab,
+  onHidePanel,
 }) => {
-  const { theme } = useTheme();
+  const { theme, t } = useTheme();
   const hostRef = useContext(FormAgentHostContext);
+  const formGroupDockEl = useContext(FormGroupDockSlotContext);
+  const hostHeaderCls = formGroupDockShowsNav(formGroupDockEl)
+    ? `flex shrink-0 items-center gap-1 px-2 py-1 text-xs border-b ${theme.mainHeader}`
+    : `flex items-center gap-1 px-2 h-10 flex-shrink-0 box-border border-b ${t('border_mainContentSection')} ${theme.mainContentSection}`;
   const [tab, setTab] = useState<TabId>(initialTab || (showMessages ? 'messages' : 'ai'));
   const [chatKey, setChatKey] = useState<string | null>(null);
   const storageKey = `formSideTab:${transactionId || 'unknown'}`;
@@ -59,12 +66,25 @@ const FormSidePanel: React.FC<Props> = ({
   const showMessagesPane = showMessages && (!both || tab === 'messages');
   const showAgentPane = showAgent && (!both || tab === 'ai');
 
+  const hideBtn = onHidePanel ? (
+    <button
+      type="button"
+      className={`ml-auto w-6 h-6 shrink-0 rounded-[4px] text-xs ${theme.button_default}`}
+      title="Collapse panel"
+      aria-label="Collapse panel"
+      onClick={onHidePanel}
+    >
+      <i className="fa-solid fa-angles-right" aria-hidden />
+    </button>
+  ) : null;
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
       {both && (
-        <div className={`flex shrink-0 gap-1 border-b px-2 py-1 ${theme.mainContentSection}`}>
-          <button type="button" className={`px-2 py-1 text-xs rounded-[4px] ${tab === 'messages' ? theme.button_default : theme.label}`} onClick={() => setTab('messages')}>Messages</button>
-          <button type="button" className={`px-2 py-1 text-xs rounded-[4px] ${tab === 'ai' ? theme.button_default : theme.label}`} onClick={() => setTab('ai')}>Assistant</button>
+        <div className={hostHeaderCls}>
+          <button type="button" className={`px-2 py-1 text-xs rounded-[4px] ${tab === 'messages' ? `${theme.tab_active} font-medium` : theme.tab}`} onClick={() => setTab('messages')}>Conversation</button>
+          <button type="button" className={`px-2 py-1 text-xs rounded-[4px] ${tab === 'ai' ? `${theme.tab_active} font-medium` : theme.tab}`} onClick={() => setTab('ai')}>Assistant</button>
+          {hideBtn}
         </div>
       )}
       {showMessagesPane && messageScopeType != null && (
@@ -74,6 +94,9 @@ const FormSidePanel: React.FC<Props> = ({
             transactionId={transactionId}
             transactionRootValueId={messageRootId || ''}
             defaultMessageSubject="New Form Message"
+            onHidePanel={!both ? onHidePanel : undefined}
+            hostHeaderClassName={!both && onHidePanel ? hostHeaderCls : undefined}
+            hideTitleHeader={both}
           />
         </div>
       )}
@@ -85,6 +108,7 @@ const FormSidePanel: React.FC<Props> = ({
               chatSessionKey={chatKey}
               showChatListButton={false}
               squareChrome
+              onHidePanel={both ? undefined : onHidePanel}
               getHostContext={() => {
                 const ctx = hostRef?.current.getContext?.();
                 return ctx == null ? undefined : JSON.stringify(ctx);

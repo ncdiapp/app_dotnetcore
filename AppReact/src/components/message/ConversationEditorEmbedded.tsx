@@ -15,6 +15,9 @@ type ConversationEditorEmbeddedProps = {
   transactionRootValueId: string;
   defaultMessageSubject?: string;
   className?: string;
+  onHidePanel?: () => void;
+  hostHeaderClassName?: string;
+  hideTitleHeader?: boolean;
 };
 
 function asString(v: unknown): string {
@@ -65,7 +68,10 @@ const ConversationEditorEmbedded: React.FC<ConversationEditorEmbeddedProps> = ({
   transactionId,
   transactionRootValueId,
   defaultMessageSubject,
-  className
+  className,
+  onHidePanel,
+  hostHeaderClassName,
+  hideTitleHeader
 }) => {
   const { theme, t } = useTheme();
   const { addTabAndNavigate } = useTabNavigation();
@@ -795,11 +801,24 @@ const ConversationEditorEmbedded: React.FC<ConversationEditorEmbeddedProps> = ({
   return (
     <div className={`flex h-full min-h-0 w-full flex-col ${className ?? ''}`}>
       <div
-        className={`flex h-full min-h-0 w-full flex-col overflow-hidden rounded border ${theme.mainContentSection} ${t('border_mainContentSection')}`}
+        className={`flex h-full min-h-0 w-full flex-col overflow-hidden ${hostHeaderClassName || hideTitleHeader ? theme.mainContentSection : `rounded border ${theme.mainContentSection} ${t('border_mainContentSection')}`}`}
       >
-        <div className={`shrink-0 px-3 py-2 border-b ${t('border_mainContentSection')}`}>
-          <div className={`text-sm font-semibold ${theme.title}`}>Conversation</div>
+        {!hideTitleHeader ? (
+        <div className={hostHeaderClassName ?? `shrink-0 px-3 py-2 border-b ${t('border_mainContentSection')}`}>
+          <div className={hostHeaderClassName ? `text-xs ${theme.label}` : `text-sm font-semibold ${theme.title}`}>Conversation</div>
+          {onHidePanel ? (
+            <button
+              type="button"
+              className={`ml-auto w-6 h-6 shrink-0 rounded-[4px] text-xs ${theme.button_default}`}
+              title="Collapse panel"
+              aria-label="Collapse panel"
+              onClick={onHidePanel}
+            >
+              <i className="fa-solid fa-angles-right" aria-hidden />
+            </button>
+          ) : null}
         </div>
+        ) : null}
 
         {error ? <div className="shrink-0 px-3 py-2 text-xs text-red-600">{error}</div> : null}
 

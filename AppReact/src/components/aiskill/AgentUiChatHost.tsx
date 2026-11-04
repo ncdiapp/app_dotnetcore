@@ -15,6 +15,7 @@ interface Props {
   getHostContext?: () => string | undefined;
   onHostTool?: (toolName: string, args: any) => Promise<unknown>;
   squareChrome?: boolean;
+  onHidePanel?: () => void;
 }
 
 /** Always Generic Chat. Extra panels come from subscribed tool libraries (see agentUiModules). */
@@ -31,6 +32,7 @@ const AgentUiChatHost: React.FC<Props> = ({
   getHostContext,
   onHostTool,
   squareChrome,
+  onHidePanel,
 }) => (
   <SharedAgentChat
     skillKey={skillKey}
@@ -45,6 +47,7 @@ const AgentUiChatHost: React.FC<Props> = ({
     getHostContext={getHostContext}
     onHostTool={onHostTool}
     squareChrome={squareChrome}
+    onHidePanel={onHidePanel}
   />
 );
 

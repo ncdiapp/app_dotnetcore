@@ -20,6 +20,7 @@ import FlexGridAddOn from '../common/FlexGridAddOn';
 import RgbColorSwatch from '../common/RgbColorSwatch';
 import { useEnumEntry, useEnumValues } from '../../hooks/useEnumDictionary';
 import FormSidePanel from './FormAgent/FormSidePanel';
+import { FormAgentResultSlotContext } from './FormAgent/formGroupDock';
 import {
   FormAgentHostContext,
   LIST_COMMUNICATION_ROOT,
@@ -276,6 +277,8 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
 
   const emMessageScopeTypeTransaction = useEnumEntry('EmAppMessgaeScopeType', 'Transaction') ?? 5;
   const listAgentHostRef = useRef<FormAgentHostSlots>({});
+  const [resultSlotEl, setResultSlotEl] = useState<HTMLDivElement | null>(null);
+  const [listSideExpanded, setListSideExpanded] = useState(true);
   const listAgentWaitRef = useRef<((value: unknown) => void) | null>(null);
   const emAppControlTypeEnum = useEnumValues('EmAppControlType');
   const emAppGrandChildEditModeEnum = useEnumValues('EmAppGrandChildEditMode');
@@ -1582,8 +1585,9 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
 
   return (
     <FormAgentHostContext.Provider value={listAgentHostRef}>
+    <FormAgentResultSlotContext.Provider value={resultSlotEl}>
     <div className="w-full h-full flex flex-row overflow-hidden">
-    <div className={`w-1 flex-auto h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden ${theme.default}`}>
+    <div ref={setResultSlotEl} className={`relative w-1 flex-auto h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden ${theme.default}`}>
       {hideHeader ? (
         hostToolbarInParent ? null : (
         <div className={`flex items-center justify-end gap-2 px-2 py-1 shrink-0 ${theme.mainContentSection}`}>
@@ -2505,7 +2509,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
         </div>
       )}
     </div>
-    {listSideOn && (
+    {listSideOn && listSideExpanded && (
       <div className={`shrink-0 h-full overflow-hidden border-l`} style={{ width: 420, minWidth: 300 }}>
         <FormSidePanel
           showMessages={listCommunicationOn}
@@ -2515,10 +2519,26 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
           messageScopeType={emMessageScopeTypeTransaction}
           chatScope="list"
           initialTab={listAiOn && !listCommunicationOn ? 'ai' : 'messages'}
+          onHidePanel={() => setListSideExpanded(false)}
         />
       </div>
     )}
+    {listSideOn && !listSideExpanded && (
+      <div className={`shrink-0 h-full w-[27px] border-l px-[1px] py-[1px] ${theme.mainContentSection}`}>
+        <button
+          type="button"
+          className={`w-[25px] px-1 py-2 text-xs rounded-[4px] ${theme.button_default}`}
+          style={{ writingMode: 'vertical-rl', height: '9rem' }}
+          onClick={() => setListSideExpanded(true)}
+          title="Show panel"
+          aria-label="Show panel"
+        >
+          Show panel <i className="fa-solid fa-angle-double-left" aria-hidden="true" />
+        </button>
+      </div>
+    )}
     </div>
+    </FormAgentResultSlotContext.Provider>
     </FormAgentHostContext.Provider>
   );
 };

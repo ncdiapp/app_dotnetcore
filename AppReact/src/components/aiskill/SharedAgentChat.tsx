@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import type { RootState } from '../../redux/store';
@@ -25,6 +26,7 @@ import { RenderBuilding, RenderChip } from './dataRender/RenderChrome';
 import { ReasoningLoopPanel, type ThinkingStep } from './dataRender/ReasoningLoopPanel';
 import { AgentMarkdown, FollowupChips, splitFollowups, type AgentFileLink } from './AgentMarkdown';
 import { GENERAL_AGENT_KEY, HANDOFF_CONFIRM_CONTEXT_KEY, isGeneralAgentKey, STAY_IN_GENERAL_MARKER } from './generalAgent';
+import { FormAgentResultSlotContext, FormGroupDockSlotContext, formGroupDockShowsNav } from '../formMgt/FormAgent/formGroupDock';
 
 const SESSION_START = '[session_start]';
 const RUN_IN_PROGRESS = '[run_in_progress]';
@@ -324,6 +326,7 @@ interface Props {
     onHostTool?: (toolName: string, args: any) => Promise<unknown>;
     /** Form dock: square panel chrome. Full Agent Chat page stays rounded. */
     squareChrome?: boolean;
+    onHidePanel?: () => void;
 }
 
 const snippet = (s?: string | null, max = 300) =>
@@ -652,6 +655,7 @@ const SharedAgentChat: React.FC<Props> = ({
     getHostContext,
     onHostTool,
     squareChrome,
+    onHidePanel,
 }) => {
     const { addTabAndNavigate } = useTabNavigation();
     const { theme, t } = useTheme();
@@ -673,7 +677,14 @@ const SharedAgentChat: React.FC<Props> = ({
     const [askFreeText, setAskFreeText] = useState('');
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [sidebarOpen, setSidebarOpen] = useState(() => !squareChrome);
+    const [dockSection, setDockSection] = useState<'chat' | 'tools' | 'files'>('chat');
+    const [dockFullscreen, setDockFullscreen] = useState(false);
+    const [filesDot, setFilesDot] = useState(false);
+    const [overlayMax, setOverlayMax] = useState(false);
+    const resultSlotEl = useContext(FormAgentResultSlotContext);
+    const formGroupDockEl = useContext(FormGroupDockSlotContext);
+    const wasRunningRef = useRef(false);
     const [toolsWidth, setToolsWidth] = useState(288);
     const [renderWidth, setRenderWidth] = useState<number | null>(() => {
         const stored = Number(localStorage.getItem('agentRenderPanelPx'));
@@ -780,11 +791,13 @@ const SharedAgentChat: React.FC<Props> = ({
                 next.add('files');
                 return next;
             });
-            setRightTab('files');
-            setSidebarOpen(true);
+            if (!squareChrome || dockFullscreen) {
+                setRightTab('files');
+                setSidebarOpen(true);
+            }
             return;
         }
-    }, [messages]);
+    }, [messages, squareChrome, dockFullscreen]);
 
     useEffect(() => {
         if (!liveResultOpen.current) {
@@ -803,12 +816,14 @@ const SharedAgentChat: React.FC<Props> = ({
                 autoOpenedRender.current = key;
                 setOpenRenderKey(key);
                 setOpenRender(placed.panel);
-                setRightTab('result');
-                setSidebarOpen(true);
+                if (!squareChrome || dockFullscreen) {
+                    setRightTab('result');
+                    setSidebarOpen(true);
+                }
                 return;
             }
         }
-    }, [messages]);
+    }, [messages, squareChrome, dockFullscreen]);
     const onConversationChangedRef = useRef(onConversationChanged);
     onConversationChangedRef.current = onConversationChanged;
     const getHostContextRef = useRef(getHostContext);
@@ -869,6 +884,35 @@ const SharedAgentChat: React.FC<Props> = ({
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
     }, [resultFullscreen]);
+
+    useEffect(() => {
+        if (squareChrome && wasRunningRef.current && !isRunning) {
+            for (let i = messages.length - 1; i >= 0; i--) {
+                if (messages[i].role !== 'assistant') continue;
+                if (exportFileLinks(messages[i].toolSteps).length > 0) {
+                    setFilesDot(true);
+                    break;
+                }
+            }
+        }
+        wasRunningRef.current = isRunning;
+    }, [isRunning, messages, squareChrome]);
+
+    useEffect(() => {
+        if (!squareChrome || dockFullscreen || !openRender) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== 'Escape') return;
+            setOpenRender(null);
+            setOpenRenderKey(null);
+            setOverlayMax(false);
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [squareChrome, dockFullscreen, openRender]);
+
+    useEffect(() => {
+        if (!openRender) setOverlayMax(false);
+    }, [openRender]);
 
     const buildSnapshot = (): GenericAgentChatUiSnapshot => ({
         skillKey: skillKeyRef.current,
@@ -2104,6 +2148,20 @@ const SharedAgentChat: React.FC<Props> = ({
         'What should I tell you to get started?',
     ];
 
+    const formDock = !!squareChrome;
+    const formDockHeaderCls = formGroupDockShowsNav(formGroupDockEl)
+        ? `flex shrink-0 items-center gap-1 px-2 py-1 text-xs border-b ${theme.mainHeader}`
+        : `flex items-center gap-1 px-2 h-10 flex-shrink-0 box-border border-b ${t('border_mainContentSection')} ${theme.mainContentSection}`;
+    const dockTabCls = (on: boolean) =>
+        `px-2 py-1 text-xs rounded-[4px] ${on ? `${theme.tab_active} font-medium` : theme.tab}`;
+    const dockCompact = formDock && !dockFullscreen;
+    const showChatColumn = !dockCompact || dockSection === 'chat';
+    const showDockSectionPanel = dockCompact && dockSection !== 'chat';
+    const showSideRail = (!formDock && sidebarOpen) || (formDock && dockFullscreen);
+    const lastTurnSteps = allActivities[allActivities.length - 1]?.steps ?? [];
+    const filesPulse = isRunning && lastTurnSteps.some(s =>
+        /file|write|export|document/i.test(s.toolName)
+        || /relativePath/.test(`${s.args || ''}${s.result || ''}`));
     const windowCard = `flex flex-col overflow-hidden min-w-0 min-h-0 ${squareChrome ? 'rounded-none' : 'rounded-[8px] shadow-sm'} ${theme.mainContentSection}`;
 
     useEffect(() => {
@@ -2176,10 +2234,68 @@ const SharedAgentChat: React.FC<Props> = ({
     }
 
     return (
-        <div ref={chatRootRef} className="w-full h-full flex flex-row overflow-hidden">
+        <div
+            ref={chatRootRef}
+            className={`w-full h-full flex flex-row overflow-hidden${formDock && dockFullscreen ? ` fixed inset-0 z-[11000] p-2 ${theme.default}` : ''}`}
+        >
             {/* ── Left: chat ── */}
-            <div className={`w-1 flex-auto border ${regionBorder} ${windowCard}`}>
-                <div className={`flex items-center gap-1 px-2 py-1.5 border-b shrink-0 ${regionBorder}`}>
+            {showChatColumn && (
+            <div className={`w-1 flex-auto min-w-0 ${formDock ? '' : `border ${regionBorder}`} ${windowCard}`}>
+                <div className={formDock ? formDockHeaderCls : `flex items-center gap-1 px-2 py-1.5 border-b shrink-0 ${regionBorder}`}>
+                    {formDock ? (
+                        <>
+                            <button
+                                type="button"
+                                className={dockTabCls(dockSection === 'chat' && dockCompact)}
+                                onClick={() => { setDockFullscreen(false); setDockSection('chat'); }}
+                            >
+                                Chat
+                            </button>
+                            <button
+                                type="button"
+                                className={`px-2 py-1 text-xs rounded-[4px] ${dockTabCls(dockSection === 'tools' && dockCompact)}${isRunning ? ' animate-pulse' : ''}`}
+                                onClick={() => { setDockFullscreen(false); setDockSection('tools'); setRightTab('tools'); }}
+                            >
+                                Tools
+                            </button>
+                            {uiModules.has('files') && (
+                                <button
+                                    type="button"
+                                    className={`relative px-2 py-1 text-xs rounded-[4px] ${dockTabCls(dockSection === 'files' && dockCompact)}${filesPulse ? ' animate-pulse' : ''}`}
+                                    onClick={() => { setDockFullscreen(false); setDockSection('files'); setRightTab('files'); setFilesDot(false); }}
+                                >
+                                    Files
+                                    {filesDot && !filesPulse && (
+                                        <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-blue-500" aria-hidden />
+                                    )}
+                                </button>
+                            )}
+                            <div className="ml-auto flex items-center gap-1 shrink-0">
+                                {(messages.length > 0 || pendingAskUser) && (
+                                    <button
+                                        type="button"
+                                        className={`w-6 h-6 rounded-[4px] text-xs ${theme.button_default}`}
+                                        onClick={() => { void handleClear(); }}
+                                        title="Clear conversation"
+                                    >
+                                        <i className="fa-solid fa-rotate-left" aria-hidden />
+                                    </button>
+                                )}
+                                {onHidePanel && !dockFullscreen && (
+                                    <button
+                                        type="button"
+                                        className={`w-6 h-6 rounded-[4px] text-xs ${theme.button_default}`}
+                                        title="Collapse panel"
+                                        aria-label="Collapse panel"
+                                        onClick={onHidePanel}
+                                    >
+                                        <i className="fa-solid fa-angles-right" aria-hidden />
+                                    </button>
+                                )}
+                            </div>
+                        </>
+                    ) : (
+                        <>
                     {showChatListButton && (
                         <button
                             type="button"
@@ -2217,15 +2333,17 @@ const SharedAgentChat: React.FC<Props> = ({
                                 <i className="fa-solid fa-rotate-left" aria-hidden />
                             </button>
                         )}
-                        <button
-                            type="button"
-                            className={`w-6 h-6 rounded-[4px] text-xs ${theme.button_default}${sidebarOpen ? ' font-medium' : ' opacity-70'}`}
-                            onClick={() => setSidebarOpen(o => !o)}
-                            title="Tool activity"
-                        >
-                            <i className="fa-solid fa-timeline" aria-hidden />
-                        </button>
+                            <button
+                                type="button"
+                                className={`w-6 h-6 rounded-[4px] text-xs ${theme.button_default}${sidebarOpen ? ' font-medium' : ' opacity-70'}`}
+                                onClick={() => setSidebarOpen(o => !o)}
+                                title="Tool activity"
+                            >
+                                <i className="fa-solid fa-timeline" aria-hidden />
+                            </button>
                     </div>
+                        </>
+                    )}
                 </div>
                 <div ref={scrollRef} className="w-full h-1 flex-auto overflow-auto px-6 py-4 flex flex-col">
                     {showWelcome && (
@@ -2442,7 +2560,14 @@ const SharedAgentChat: React.FC<Props> = ({
                                                     <RenderChip
                                                         event={placed.panel}
                                                         open={openRenderKey === key}
-                                                        onOpen={() => { setOpenRenderKey(key); setOpenRender(placed.panel!); setRightTab('result'); setSidebarOpen(true); }}
+                                                        onOpen={() => {
+                                                            setOpenRenderKey(key);
+                                                            setOpenRender(placed.panel!);
+                                                            if (!formDock || dockFullscreen) {
+                                                                setRightTab('result');
+                                                                setSidebarOpen(true);
+                                                            }
+                                                        }}
                                                     />
                                                 )}
                                             </React.Fragment>
@@ -2709,8 +2834,9 @@ const SharedAgentChat: React.FC<Props> = ({
                     <p className={`hidden md:block text-center text-xs mt-2 ${theme.label}`}>The agent can be wrong about people, places, and facts.</p>
                 </div>
             </div>
+            )}
 
-            {sidebarOpen && (
+            {showSideRail && (
                 <div
                     role="separator"
                     aria-orientation="vertical"
@@ -2719,10 +2845,10 @@ const SharedAgentChat: React.FC<Props> = ({
                     onPointerDown={startToolsResize}
                 />
             )}
-            {sidebarOpen && (
+            {(showSideRail || showDockSectionPanel) && (
                 <div
                     data-agent-side-panel
-                    style={resultFullscreen ? undefined : {
+                    style={resultFullscreen || showDockSectionPanel ? undefined : {
                         width: openRender ? (renderWidth ?? Math.max(280, Math.round(((chatRootRef.current?.clientWidth ?? 900) - 8) / 2))) : toolsWidth,
                         maxWidth: '100%',
                         minWidth: 0,
@@ -2730,14 +2856,56 @@ const SharedAgentChat: React.FC<Props> = ({
                     className={
                         resultFullscreen
                             ? `fixed inset-0 z-[12000] border flex flex-col min-w-0 min-h-0 overflow-hidden shadow-xl ${regionBorder} ${theme.mainContentSection}`
-                            : `shrink-0 border flex flex-col min-w-0 min-h-0 overflow-hidden ${regionBorder} ${windowCard}`
+                            : `${showDockSectionPanel ? 'w-1 flex-auto' : 'shrink-0'} flex flex-col min-w-0 min-h-0 overflow-hidden ${formDock && !dockFullscreen ? '' : `border ${regionBorder}`} ${windowCard}`
                     }
                     role={resultFullscreen ? 'dialog' : undefined}
                     aria-modal={resultFullscreen ? true : undefined}
                     aria-label={resultFullscreen ? 'Result full screen' : undefined}
                 >
                     {!resultFullscreen && (
-                    <div className={`flex items-center gap-1 px-2 py-1.5 border-b ${regionBorder}`}>
+                    <div className={formDock ? formDockHeaderCls : `flex items-center gap-1 px-2 py-1.5 border-b ${regionBorder}`}>
+                        {showDockSectionPanel ? (
+                            <>
+                                <button
+                                    type="button"
+                                    className={dockTabCls(false)}
+                                    onClick={() => setDockSection('chat')}
+                                >
+                                    Chat
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`px-2 py-1 text-xs rounded-[4px] ${dockTabCls(dockSection === 'tools')}${isRunning ? ' animate-pulse' : ''}`}
+                                    onClick={() => { setDockSection('tools'); setRightTab('tools'); }}
+                                >
+                                    Tools
+                                </button>
+                                {uiModules.has('files') && (
+                                    <button
+                                        type="button"
+                                        className={`relative px-2 py-1 text-xs rounded-[4px] ${dockTabCls(dockSection === 'files')}${filesPulse ? ' animate-pulse' : ''}`}
+                                        onClick={() => { setDockSection('files'); setRightTab('files'); setFilesDot(false); }}
+                                    >
+                                        Files
+                                        {filesDot && !filesPulse && (
+                                            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-blue-500" aria-hidden />
+                                        )}
+                                    </button>
+                                )}
+                                {onHidePanel && !dockFullscreen && (
+                                    <button
+                                        type="button"
+                                        className={`ml-auto w-6 h-6 rounded-[4px] text-xs ${theme.button_default}`}
+                                        title="Collapse panel"
+                                        aria-label="Collapse panel"
+                                        onClick={onHidePanel}
+                                    >
+                                        <i className="fa-solid fa-angles-right" aria-hidden />
+                                    </button>
+                                )}
+                            </>
+                        ) : (
+                        <>
                         <button
                             type="button"
                             className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'tools' ? ' font-medium' : ' opacity-70'}`}
@@ -2784,6 +2952,7 @@ const SharedAgentChat: React.FC<Props> = ({
                                     <i className="fa-solid fa-expand" aria-hidden />
                                 </button>
                             )}
+                            {!(formDock && dockFullscreen) && (
                             <button
                                 type="button"
                                 className="text-xs opacity-50 hover:opacity-100 px-1"
@@ -2792,11 +2961,14 @@ const SharedAgentChat: React.FC<Props> = ({
                             >
                                 <i className="fa-solid fa-xmark" />
                             </button>
+                            )}
                         </div>
+                        </>
+                        )}
                     </div>
                     )}
 
-                    {rightTab === 'result' && openRender ? (
+                    {rightTab === 'result' && openRender && !dockCompact ? (
                         <div className="w-full h-1 flex-auto overflow-hidden min-w-0 min-h-0 max-w-full p-2 box-border">
                             <ResultChrome
                                 event={openRender}
@@ -2985,6 +3157,83 @@ const SharedAgentChat: React.FC<Props> = ({
                     )}
                 </div>
             )}
+            {formDock && !dockFullscreen && openRender && resultSlotEl
+                ? createPortal(
+                    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/20">
+                        <div
+                            role="dialog"
+                            aria-label="Result"
+                            className={`flex flex-col overflow-hidden border shadow-xl ${regionBorder} ${theme.mainContentSection} ${
+                                overlayMax ? 'w-full h-full' : 'w-[min(960px,calc(100%-2rem))] h-[min(80%,calc(100%-2rem))]'
+                            }`}
+                        >
+                            <div className={`flex items-center gap-1 px-2 py-1.5 border-b shrink-0 ${regionBorder}`}>
+                                <span className={`text-xs font-medium ${t('text_default')}`}>Result</span>
+                                <div className="ml-auto flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        className={`rounded-[4px] p-1.5 text-xs ${theme.button_default}`}
+                                        title={overlayMax ? 'Restore' : 'Full screen'}
+                                        onClick={() => setOverlayMax(v => !v)}
+                                    >
+                                        <i className={`fa-solid ${overlayMax ? 'fa-compress' : 'fa-expand'}`} aria-hidden />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="text-xs opacity-50 hover:opacity-100 px-1"
+                                        title="Close"
+                                        onClick={() => { setOpenRender(null); setOpenRenderKey(null); setOverlayMax(false); }}
+                                    >
+                                        <i className="fa-solid fa-xmark" />
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="w-full h-1 flex-auto overflow-hidden min-w-0 min-h-0 p-2 box-border">
+                                <ResultChrome
+                                    event={openRender}
+                                    skillKey={skillKey}
+                                    sessionKey={fileSessionKey}
+                                    disabled={blocked}
+                                    fullscreen={overlayMax}
+                                    onExitFullscreen={() => setOverlayMax(false)}
+                                    onCloseFullscreen={() => { setOpenRender(null); setOpenRenderKey(null); setOverlayMax(false); }}
+                                >
+                                    {(filteredEvent) => (
+                                        isInteractiveDashboard(filteredEvent) ? (
+                                            <InteractiveDashboardPanel
+                                                event={filteredEvent}
+                                                disabled={blocked}
+                                                onAction={(actionId, selectionJson) => handleDataRenderAction(filteredEvent, actionId, selectionJson)}
+                                            />
+                                        ) : isInteractivePage(filteredEvent) ? (
+                                            <InteractivePagePanel
+                                                event={filteredEvent}
+                                                disabled={blocked}
+                                                onAction={(actionId, selectionJson) => handleDataRenderAction(filteredEvent, actionId, selectionJson)}
+                                            />
+                                        ) : hasUiHtml(filteredEvent) ? (
+                                            <UiRenderFrame
+                                                event={filteredEvent}
+                                                skillKey={skillKey}
+                                                sessionKey={fileSessionKey}
+                                                disabled={blocked}
+                                                onAction={(actionId, selectionJson) => handleDataRenderAction(filteredEvent, actionId, selectionJson)}
+                                            />
+                                        ) : (
+                                            <DataRenderPanel
+                                                event={filteredEvent}
+                                                disabled={blocked}
+                                                onAction={(actionId, selectionJson) => handleDataRenderAction(filteredEvent, actionId, selectionJson)}
+                                            />
+                                        )
+                                    )}
+                                </ResultChrome>
+                            </div>
+                        </div>
+                    </div>,
+                    resultSlotEl,
+                )
+                : null}
             {saveSkillOpen && (
                 <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/30 px-4">
                     <div className={`w-full ${saveSkillPhase === 'choose' ? 'max-w-lg' : 'max-w-3xl'} max-h-[86vh] flex flex-col rounded-[8px] border shadow-xl ${regionBorder} ${theme.mainContentSection}`}>

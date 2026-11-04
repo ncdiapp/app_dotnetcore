@@ -10,7 +10,7 @@ import TransactionHeaderItem from './TransactionHeaderItem';
 import TransactionCrossHeaderItem from './TransactionCrossHeaderItem';
 import FormMainMenus from './FormMainMenus';
 import FormSidePanel from '../FormAgent/FormSidePanel';
-import { FormGroupDockSlotContext } from '../FormAgent/formGroupDock';
+import { FormAgentResultSlotContext, FormGroupDockSlotContext } from '../FormAgent/formGroupDock';
 import {
   FormAgentHostContext,
   applySetFields,
@@ -64,6 +64,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
 }) => {
   const { theme, t } = useTheme();
   const formGroupDockEl = useContext(FormGroupDockSlotContext);
+  const [resultSlotEl, setResultSlotEl] = useState<HTMLDivElement | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [isMobileMenuVisible, setIsMobileMenuVisible] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -199,6 +200,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
       messageScopeType={emMessageScopeTypeTransaction}
       chatScope={chatScope}
       initialTab={isAiEnabled && !isConversationEnabled ? 'ai' : 'messages'}
+      onHidePanel={() => setIsRightConversationExpanded(false)}
     />
   );
   const rightConvStorageKeyBase = useMemo(
@@ -208,6 +210,8 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
   const [isRightConversationExpanded, setIsRightConversationExpanded] = useState<boolean>(openConversationByDefault);
   const [rightConversationWidth, setRightConversationWidth] = useState<number>(420);
   const [isResizingRightConversation, setIsResizingRightConversation] = useState(false);
+  const rightConversationWidthRef = useRef(rightConversationWidth);
+  rightConversationWidthRef.current = rightConversationWidth;
 
   useEffect(() => {
     if (!isNeedToShowRightConversation) return;
@@ -238,35 +242,33 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
     }
   }, [isNeedToShowRightConversation, isRightConversationExpanded, rightConversationWidth, rightConvStorageKeyBase]);
 
-  const startResizeRightConversation = useCallback((e: React.MouseEvent) => {
+  const startResizeRightConversation = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    const handle = e.currentTarget;
+    const startX = e.clientX;
+    const startW = rightConversationWidthRef.current;
+    const row = handle.closest('.flex-row') as HTMLElement | null;
+    const rowWidth = row?.getBoundingClientRect().width ?? window.innerWidth;
+    const maxWidth = Math.max(300, Math.min(900, rowWidth - 180));
     setIsResizingRightConversation(true);
+    try { handle.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+
+    const onMove = (ev: PointerEvent) => {
+      const next = startW + (startX - ev.clientX);
+      setRightConversationWidth(Math.min(Math.max(next, 300), maxWidth));
+    };
+    const onUp = () => {
+      setIsResizingRightConversation(false);
+      try { handle.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onUp);
+    };
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onUp);
   }, []);
-
-  useEffect(() => {
-    if (!isResizingRightConversation) return;
-
-    const handleMove = (ev: MouseEvent) => {
-      const host = mainContainerRef.current;
-      if (!host) return;
-      const rect = host.getBoundingClientRect();
-      const pointerX = ev.clientX;
-      const nextWidthRaw = rect.right - pointerX;
-      const maxWidth = Math.max(300, Math.min(900, rect.width - 180));
-      const nextWidth = Math.min(Math.max(nextWidthRaw, 300), maxWidth);
-      setRightConversationWidth(nextWidth);
-    };
-
-    const handleUp = () => setIsResizingRightConversation(false);
-
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleUp);
-    return () => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleUp);
-    };
-  }, [isResizingRightConversation]);
   
   // If enum is not loaded yet, return loading state
   if (!layoutTypeEnum) {
@@ -412,8 +414,9 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
         value={runtimeFieldConfigApi ?? emptyFormMasterDetailRuntimeConfigApi}
       >
       <FormAgentHostContext.Provider value={hostSlotsRef}>
+      <FormAgentResultSlotContext.Provider value={resultSlotEl}>
       <div className="w-full h-full flex flex-row min-h-0">
-      <div className="w-1 flex-auto h-full min-w-0 flex flex-col">
+      <div ref={setResultSlotEl} className="relative w-1 flex-auto h-full min-w-0 flex flex-col">
         {/* Menu Bar - Desktop only - Hide in preview, file property edit, or isHideHeaderAndFooter (Angular: directivOutercontrol.isHideMasterDetailFormTopMenu) */}
         {menuVisible && (
           <div className={`h-10 flex-shrink-0 border-b ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
@@ -558,8 +561,8 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
                       aria-orientation="vertical"
                       aria-label="Drag to resize conversation panel"
                       title="Drag to resize"
-                      onMouseDown={startResizeRightConversation}
-                      className="group absolute left-0 top-0 bottom-0 z-10 flex w-4 -ml-2 cursor-col-resize items-center justify-center select-none touch-none"
+                      onPointerDown={startResizeRightConversation}
+                      className="group absolute left-0 top-0 bottom-0 z-20 flex w-1.5 cursor-col-resize items-center justify-center select-none touch-none"
                     >
                       {/* Track: subtle strip on hover / while dragging */}
                       <div
@@ -586,40 +589,27 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
                       </div>
                     </div>
                   </div>
-                ) : null}
-
-                {/* Collapse/Expand strip (far right) */}
+                ) : (
                 <div className={`shrink-0 h-full w-[27px] border-l ${t('border_mainContentSection')} px-[1px] py-[1px]`}>
-                  {!isRightConversationExpanded ? (
-                    <button
-                      type="button"
-                      className={`w-[25px] px-1 py-2 text-xs rounded-[4px] ${theme.button_default}`}
-                      style={{ writingMode: 'vertical-rl', height: '9rem' }}
-                      onClick={() => setIsRightConversationExpanded(true)}
-                      title="Show panel"
-                      aria-label="Show panel"
-                    >
-                      Show panel <i className="fa-solid fa-angle-double-left" aria-hidden="true" />
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className={`w-[25px] px-1 py-2 text-xs rounded-[4px] ${theme.button_default}`}
-                      style={{ writingMode: 'vertical-rl', height: '9rem' }}
-                      onClick={() => setIsRightConversationExpanded(false)}
-                      title="Hide panel"
-                      aria-label="Hide panel"
-                    >
-                      Hide panel <i className="fa-solid fa-angle-double-right" aria-hidden="true" />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className={`w-[25px] px-1 py-2 text-xs rounded-[4px] ${theme.button_default}`}
+                    style={{ writingMode: 'vertical-rl', height: '9rem' }}
+                    onClick={() => setIsRightConversationExpanded(true)}
+                    title="Show panel"
+                    aria-label="Show panel"
+                  >
+                    Show panel <i className="fa-solid fa-angle-double-left" aria-hidden="true" />
+                  </button>
                 </div>
+                )}
               </>
             ) : null;
               if (!dock) return null;
               return formGroupDockEl ? createPortal(dock, formGroupDockEl) : dock;
             })()}
       </div>
+      </FormAgentResultSlotContext.Provider>
       </FormAgentHostContext.Provider>
       </FormMasterDetailRuntimeConfigProvider>
     );

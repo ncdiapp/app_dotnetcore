@@ -765,7 +765,11 @@ const TransactionFormGroup: React.FC = () => {
           )}
         </div>
       </div>
-      <div ref={setFormGroupDockEl} className="h-full shrink-0 flex min-h-0" />
+      <div
+        ref={setFormGroupDockEl}
+        data-form-group-nav={navigationObj && navigationObj.itemCount > 1 ? '1' : '0'}
+        className="h-full shrink-0 flex min-h-0"
+      />
       </div>
       </FormGroupDockSlotContext.Provider>
     </div>
