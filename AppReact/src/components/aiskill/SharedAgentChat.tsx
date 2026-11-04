@@ -322,6 +322,8 @@ interface Props {
     onAutoRunStarted?: () => void;
     getHostContext?: () => string | undefined;
     onHostTool?: (toolName: string, args: any) => Promise<unknown>;
+    /** Form dock: square panel chrome. Full Agent Chat page stays rounded. */
+    squareChrome?: boolean;
 }
 
 const snippet = (s?: string | null, max = 300) =>
@@ -649,6 +651,7 @@ const SharedAgentChat: React.FC<Props> = ({
     onAutoRunStarted,
     getHostContext,
     onHostTool,
+    squareChrome,
 }) => {
     const { addTabAndNavigate } = useTabNavigation();
     const { theme, t } = useTheme();
@@ -2101,7 +2104,7 @@ const SharedAgentChat: React.FC<Props> = ({
         'What should I tell you to get started?',
     ];
 
-    const windowCard = `flex flex-col overflow-hidden min-w-0 min-h-0 rounded-[8px] shadow-sm ${theme.mainContentSection}`;
+    const windowCard = `flex flex-col overflow-hidden min-w-0 min-h-0 ${squareChrome ? 'rounded-none' : 'rounded-[8px] shadow-sm'} ${theme.mainContentSection}`;
 
     useEffect(() => {
         const ta = composerRef.current;

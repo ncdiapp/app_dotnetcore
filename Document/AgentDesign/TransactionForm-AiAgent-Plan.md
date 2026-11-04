@@ -1,6 +1,6 @@
 # Transaction Form AI Agent — Design Plan
 
-**Status:** Implementation started (2026-11-03). Apply migration `V070__AppFormAgent_xhu.sql` before using the agent.  
+**Status:** Implementation started (2026-11-03). Dock chat chrome and full-height dock agreed 2026-11-04. Apply migration `V070__AppFormAgent_xhu.sql` before using the agent.  
 **Date:** 2026-11-03  
 **Scope:** Master Detail and List Edit transaction forms. One shared Specialist. First delivery includes the AI panel, List Edit Communication, host tools, and seeded libraries.
 
@@ -34,7 +34,27 @@ Flags live on `TransactionOptionDto` (`APP.Components.Dto/UserDefine/AppTrans/Tr
 - `IsOpenAiAgentByDefault`
 - `AiAgentDockPosition` — used only when AI is on and Communication is off. Right or Bottom. Default Right.
 
-The shell stays the right or bottom dock already used by `MasterDetailEditLayoutForm.tsx` (collapse and width unchanged). List Edit gets the same shell on `FormListEdit.tsx`.
+The right dock is a full-height column. On a transaction form group it lines up with the record navigation bar (First / Prev / Next / Last), not with the form toolbar. On a form opened by itself it lines up with that form's toolbar. List Edit uses the same full-height column on `FormListEdit.tsx`.
+
+Embedded in that dock, the chat is one column. The full-page Agent Chat stays left conversation and right tool rail.
+
+```text
+1. The form dock defaults to the conversation and the composer, using the full dock width. Buttons at the top act as sections and show one at a time: Chat, Tools, Files. Hide Files when that agent has no file tools. The full-page Agent Chat stays left conversation, right tool rail.
+
+2. The Tools button pulses slowly while a tool is running. It does not keep a dot after the run. Tool calls are listed in the Tools section. Expand a row to see arguments and the result.
+
+3. While files are being generated, the Files button pulses. When generation finishes, the pulse stops and a dot stays on the Files button. Opening Files clears the dot.
+
+4. The Result open button stays in the conversation. Clicking it opens a window. A newly produced result opens that window automatically.
+
+5. The result window covers the form body and is centered. It does not cover the conversation dock. It can go full screen, shrink back to that size, and close. Clicking outside it does not close it. Esc closes it.
+
+6. Choosing a row or a card in the result window sends that choice back to the agent, which then writes a field or a grid.
+
+7. ask_user stays in the conversation. It is not shown in the result window.
+
+8. The dock has a full-screen button. Full screen uses the same layout as the full-page Agent Chat: conversation on the left, tool rail on the right. An open result moves into the right-hand Result tab and no longer covers the form. Leaving full screen returns to one section at a time.
+```
 
 - Communication only: the current message panel.
 - AI only: Agent Chat in that panel.

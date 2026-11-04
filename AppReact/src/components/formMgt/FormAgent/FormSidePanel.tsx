@@ -64,7 +64,7 @@ const FormSidePanel: React.FC<Props> = ({
       {both && (
         <div className={`flex shrink-0 gap-1 border-b px-2 py-1 ${theme.mainContentSection}`}>
           <button type="button" className={`px-2 py-1 text-xs rounded-[4px] ${tab === 'messages' ? theme.button_default : theme.label}`} onClick={() => setTab('messages')}>Messages</button>
-          <button type="button" className={`px-2 py-1 text-xs rounded-[4px] ${tab === 'ai' ? theme.button_default : theme.label}`} onClick={() => setTab('ai')}>AI</button>
+          <button type="button" className={`px-2 py-1 text-xs rounded-[4px] ${tab === 'ai' ? theme.button_default : theme.label}`} onClick={() => setTab('ai')}>Assistant</button>
         </div>
       )}
       {showMessagesPane && messageScopeType != null && (
@@ -84,6 +84,7 @@ const FormSidePanel: React.FC<Props> = ({
               skillKey={FORM_AGENT_SKILL_KEY}
               chatSessionKey={chatKey}
               showChatListButton={false}
+              squareChrome
               getHostContext={() => {
                 const ctx = hostRef?.current.getContext?.();
                 return ctx == null ? undefined : JSON.stringify(ctx);

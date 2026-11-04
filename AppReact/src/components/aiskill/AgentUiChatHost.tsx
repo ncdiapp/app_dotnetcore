@@ -14,6 +14,7 @@ interface Props {
   onAutoRunStarted?: () => void;
   getHostContext?: () => string | undefined;
   onHostTool?: (toolName: string, args: any) => Promise<unknown>;
+  squareChrome?: boolean;
 }
 
 /** Always Generic Chat. Extra panels come from subscribed tool libraries (see agentUiModules). */
@@ -29,6 +30,7 @@ const AgentUiChatHost: React.FC<Props> = ({
   onAutoRunStarted,
   getHostContext,
   onHostTool,
+  squareChrome,
 }) => (
   <SharedAgentChat
     skillKey={skillKey}
@@ -42,6 +44,7 @@ const AgentUiChatHost: React.FC<Props> = ({
     onAutoRunStarted={onAutoRunStarted}
     getHostContext={getHostContext}
     onHostTool={onHostTool}
+    squareChrome={squareChrome}
   />
 );
 

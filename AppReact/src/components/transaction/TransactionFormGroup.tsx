@@ -6,6 +6,7 @@ import { useTabDataAutoCache } from '../../redux/hooks/useTabNavigation';
 import { updateCurrentTabLabel, getCurrentActiveTab, getDataModelFromCache } from '../../redux/features/ui/navigation/tabnavSlice';
 import { tabRoutePathsMatch } from '../../helper/navigationHelper';
 import FormMasterDetail, { type TemplateHeaderEmbeddedForm } from '../formMgt/FormMasterDetail';
+import { FormGroupDockSlotContext } from '../formMgt/FormAgent/formGroupDock';
 import AppSearch from '../search/AppSearch';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import {
@@ -207,6 +208,7 @@ const TransactionFormGroup: React.FC = () => {
   const [selecedDataRow, setSelecedDataRow] = useState<any>(null);
   const [navigationObj, setNavigationObj] = useState<NavigationObj | null>(null);
   const [isHideLeftMenu, setIsHideLeftMenu] = useState(false);
+  const [formGroupDockEl, setFormGroupDockEl] = useState<HTMLDivElement | null>(null);
   const [headerForms, setHeaderForms] = useState<EmbeddedFormConfig[]>([]);
   const [headerVisibility, setHeaderVisibility] = useState<number>(EmAppTemplateHeaderVisibility.Show);
   const [headerSearches, setHeaderSearches] = useState<EmbeddedSearchConfig[]>([]);
@@ -674,6 +676,8 @@ const TransactionFormGroup: React.FC = () => {
         </button>
       )}
 
+      <FormGroupDockSlotContext.Provider value={formGroupDockEl}>
+      <div className="h-full w-1 flex-auto min-h-0 flex flex-row overflow-hidden">
       <div className="h-full w-1 flex-auto min-h-0 flex flex-col overflow-hidden">
         {navigationObj && navigationObj.itemCount > 1 && (
           <div className={`flex items-center justify-center gap-1 px-2 py-1 text-xs border-b ${theme.mainHeader}`}>
@@ -761,6 +765,9 @@ const TransactionFormGroup: React.FC = () => {
           )}
         </div>
       </div>
+      <div ref={setFormGroupDockEl} className="h-full shrink-0 flex min-h-0" />
+      </div>
+      </FormGroupDockSlotContext.Provider>
     </div>
   );
 };

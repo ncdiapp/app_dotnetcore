@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, useContext } from 'react';
+import { createPortal } from 'react-dom';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { useEnumEntry, useEnumValues } from '../../../hooks/useEnumDictionary';
 import MasterDetailFlexLayoutForm from './MasterDetailFlexLayoutForm';
@@ -9,6 +10,7 @@ import TransactionHeaderItem from './TransactionHeaderItem';
 import TransactionCrossHeaderItem from './TransactionCrossHeaderItem';
 import FormMainMenus from './FormMainMenus';
 import FormSidePanel from '../FormAgent/FormSidePanel';
+import { FormGroupDockSlotContext } from '../FormAgent/formGroupDock';
 import {
   FormAgentHostContext,
   applySetFields,
@@ -61,6 +63,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
   onTemplateHeaderContainerReady,
 }) => {
   const { theme, t } = useTheme();
+  const formGroupDockEl = useContext(FormGroupDockSlotContext);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [isMobileMenuVisible, setIsMobileMenuVisible] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -409,7 +412,8 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
         value={runtimeFieldConfigApi ?? emptyFormMasterDetailRuntimeConfigApi}
       >
       <FormAgentHostContext.Provider value={hostSlotsRef}>
-      <div className="w-full h-full flex flex-col">
+      <div className="w-full h-full flex flex-row min-h-0">
+      <div className="w-1 flex-auto h-full min-w-0 flex flex-col">
         {/* Menu Bar - Desktop only - Hide in preview, file property edit, or isHideHeaderAndFooter (Angular: directivOutercontrol.isHideMasterDetailFormTopMenu) */}
         {menuVisible && (
           <div className={`h-10 flex-shrink-0 border-b ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
@@ -471,9 +475,9 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
           className={`w-full h-1 flex-auto p-1 ${theme.mainContentSection}`}
           style={{ height: menuVisible ? 'calc(100% - 40px)' : '100%' }}
         >
-          <div className="w-full h-full flex">
+          <div className="w-full h-full">
             {/* Main scroll area */}
-            <div className="w-1 flex-auto min-w-0 h-full overflow-auto">
+            <div className="w-full min-w-0 h-full overflow-auto">
               {/* Template Header Container (for dynamic content) */}
               <div
                 id={`TemplateHeaderContainer${controllerModel.uiId}`}
@@ -533,9 +537,14 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
                 </div>
               )}
             </div>
+          </div>
+        </div>
+        )}
+      </div>
 
-            {/* Right Conversation (default, collapsible + resizable like Angular RightBox) */}
-            {isNeedToShowRightConversation && !controllerModel.isTemplateHeader ? (
+            {/* Right dock. Inside a form group it is portaled up beside the record navigation bar. */}
+            {(() => {
+              const dock = isNeedToShowRightConversation && !controllerModel.isTemplateHeader && !isTemplateHeaderCollapsed ? (
               <>
                 {isRightConversationExpanded ? (
                   <div
@@ -585,29 +594,31 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
                     <button
                       type="button"
                       className={`w-[25px] px-1 py-2 text-xs rounded-[4px] ${theme.button_default}`}
-                      style={{ writingMode: 'vertical-rl' as any }}
+                      style={{ writingMode: 'vertical-rl', height: '9rem' }}
                       onClick={() => setIsRightConversationExpanded(true)}
-                      title={isAiEnabled && !isConversationEnabled ? 'AI' : 'Conversation'}
+                      title="Show panel"
+                      aria-label="Show panel"
                     >
-                      {isAiEnabled && !isConversationEnabled ? 'AI' : 'Conversation'} <i className="fa-solid fa-angle-double-left" aria-hidden="true" />
+                      Show panel <i className="fa-solid fa-angle-double-left" aria-hidden="true" />
                     </button>
                   ) : (
                     <button
                       type="button"
                       className={`w-[25px] px-1 py-2 text-xs rounded-[4px] ${theme.button_default}`}
-                      style={{ writingMode: 'vertical-rl' as any }}
+                      style={{ writingMode: 'vertical-rl', height: '9rem' }}
                       onClick={() => setIsRightConversationExpanded(false)}
-                      title="Hide Conversation"
+                      title="Hide panel"
+                      aria-label="Hide panel"
                     >
-                      Hide Conversation <i className="fa-solid fa-angle-double-right" aria-hidden="true" />
+                      Hide panel <i className="fa-solid fa-angle-double-right" aria-hidden="true" />
                     </button>
                   )}
                 </div>
               </>
-            ) : null}
-          </div>
-        </div>
-        )}
+            ) : null;
+              if (!dock) return null;
+              return formGroupDockEl ? createPortal(dock, formGroupDockEl) : dock;
+            })()}
       </div>
       </FormAgentHostContext.Provider>
       </FormMasterDetailRuntimeConfigProvider>
