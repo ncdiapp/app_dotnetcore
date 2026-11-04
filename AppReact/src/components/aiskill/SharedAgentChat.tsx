@@ -2155,6 +2155,14 @@ const SharedAgentChat: React.FC<Props> = ({
     const dockTabCls = (on: boolean) =>
         `px-2 py-1 text-xs rounded-[4px] ${on ? `${theme.tab_active} font-medium` : theme.tab}`;
     const dockCompact = formDock && !dockFullscreen;
+    const dockMsgCls = dockCompact ? 'text-xs leading-5' : 'text-sm leading-6';
+    const dockScrollCls = dockCompact ? 'px-2 py-2' : 'px-6 py-4';
+    const dockListGap = dockCompact ? 'gap-2' : 'gap-3';
+    const dockComposerWrap = dockCompact ? 'px-2 pb-2 pt-1 shrink-0 w-full' : 'px-6 pb-2 pt-1 shrink-0 w-full max-w-3xl mx-auto';
+    const dockComposerBox = dockCompact
+        ? `relative min-h-[52px] px-2.5 pt-1.5 pb-1.5 rounded-[8px] border ${theme.inputBox}`
+        : `relative min-h-[100px] px-3 pt-2 pb-2 rounded-[8px] border ${theme.inputBox}`;
+    const dockIconBtn = dockCompact ? 'w-6 h-6 rounded-[4px] text-xs' : 'w-8 h-8 rounded-[4px] text-sm';
     const showChatColumn = !dockCompact || dockSection === 'chat';
     const showDockSectionPanel = dockCompact && dockSection !== 'chat';
     const showSideRail = (!formDock && sidebarOpen) || (formDock && dockFullscreen);
@@ -2345,17 +2353,17 @@ const SharedAgentChat: React.FC<Props> = ({
                         </>
                     )}
                 </div>
-                <div ref={scrollRef} className="w-full h-1 flex-auto overflow-auto px-6 py-4 flex flex-col">
+                <div ref={scrollRef} className={`w-full h-1 flex-auto overflow-auto flex flex-col ${dockScrollCls}`}>
                     {showWelcome && (
-                        <div className="w-full max-w-3xl mx-auto h-1 flex-auto flex flex-col items-center justify-center gap-6 py-8">
-                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl ${theme.button_default}`}>
+                        <div className={`w-full max-w-3xl mx-auto h-1 flex-auto flex flex-col items-center justify-center ${dockCompact ? 'gap-3 py-4' : 'gap-6 py-8'}`}>
+                            <div className={`${dockCompact ? 'w-9 h-9 rounded-xl text-sm' : 'w-14 h-14 rounded-2xl text-xl'} flex items-center justify-center ${theme.button_default}`}>
                                 <i className="fa-solid fa-robot" aria-hidden />
                             </div>
                             <div className="text-center">
-                                <div className={`text-xl font-medium ${t('text_default')}`}>
+                                <div className={`${dockCompact ? 'text-sm' : 'text-xl'} font-medium ${t('text_default')}`}>
                                     {greetingWord}{firstName ? `, ${firstName}` : ''}
                                 </div>
-                                <div className={`mt-2 text-sm ${theme.label}`}>
+                                <div className={`mt-2 ${dockCompact ? 'text-xs' : 'text-sm'} ${theme.label}`}>
                                     {skillLabel} is ready. Pick a starting point or type below.
                                 </div>
                             </div>
@@ -2364,7 +2372,7 @@ const SharedAgentChat: React.FC<Props> = ({
                                     <button
                                         key={prompt}
                                         type="button"
-                                        className={`text-left px-3 py-2.5 text-sm leading-relaxed rounded-[8px] border ${theme.mainContentSection} ${t('text_mainContentSection')} ${regionBorder}`}
+                                        className={`text-left px-3 py-2.5 ${dockCompact ? 'text-xs' : 'text-sm'} leading-relaxed rounded-[8px] border ${theme.mainContentSection} ${t('text_mainContentSection')} ${regionBorder}`}
                                         onClick={() => { void runAgentTurn({ userMessage: prompt }); }}
                                     >
                                         {prompt}
@@ -2373,7 +2381,7 @@ const SharedAgentChat: React.FC<Props> = ({
                             </div>
                         </div>
                     )}
-                    <div className="w-full flex flex-col gap-3">
+                    <div className={`w-full flex flex-col ${dockListGap}`}>
                     {!showWelcome && messages.map((m, i) => {
                         const split = m.role === 'assistant'
                             ? splitFollowups(sanitizeAgentDisplayText(m.content), m.isStreaming)
@@ -2414,8 +2422,8 @@ const SharedAgentChat: React.FC<Props> = ({
                             {showBubble && (
                                     <div className={
                                         m.role === 'user'
-                                            ? `px-3 py-2 rounded-tl-[8px] rounded-tr-[8px] rounded-bl-[8px] rounded-br-none border text-sm leading-6 ${t('text_default')} ${regionBorder}`
-                                            : `w-full text-sm leading-6 ${t('text_default')}`
+                                            ? `${dockCompact ? 'px-2.5 py-1.5 rounded-[6px]' : 'px-3 py-2 rounded-tl-[8px] rounded-tr-[8px] rounded-bl-[8px] rounded-br-none'} border ${dockMsgCls} ${t('text_default')} ${regionBorder}`
+                                            : `w-full ${dockMsgCls} ${t('text_default')}`
                                     }>
                                         {(m.askUserSummary || m.askUserAnswer) && (
                                             <div className={`text-xs mb-1 ${theme.label}`}>
@@ -2425,6 +2433,7 @@ const SharedAgentChat: React.FC<Props> = ({
                                         {m.role === 'assistant' && !m.askUserSummary ? (
                                             <AgentMarkdown
                                                 content={split.body}
+                                                className={dockMsgCls}
                                                 fileLinks={exportFileLinks(m.toolSteps)}
                                                 onFileDownload={(path) => {
                                                     if (fileSessionKey) void genericAgentSvc.DownloadAgentFile(skillKey, fileSessionKey, path);
@@ -2795,12 +2804,12 @@ const SharedAgentChat: React.FC<Props> = ({
                     </div>
                 </div>
 
-                <div className="px-6 pb-2 pt-1 shrink-0 w-full max-w-3xl mx-auto">
-                    <div className={`relative min-h-[100px] px-3 pt-2 pb-2 rounded-[8px] border ${theme.inputBox}${composerFocus ? ' ring-1' : ''}`}>
+                <div className={dockComposerWrap}>
+                    <div className={`${dockComposerBox}${composerFocus ? ' ring-1' : ''}`}>
                     <textarea
                         ref={composerRef}
-                        className={`w-full px-0 py-1 text-sm leading-6 bg-transparent border-0 focus:outline-none resize-none ${isRunning || pendingAskUser ? 'pr-20' : 'pr-12'}`}
-                        rows={2}
+                        className={`w-full px-0 py-1 ${dockMsgCls} bg-transparent border-0 focus:outline-none resize-none ${isRunning || pendingAskUser ? 'pr-16' : 'pr-10'}`}
+                        rows={dockCompact ? 1 : 2}
                         value={input}
                         placeholder="Type your request here..."
                         onChange={e => setInput(e.target.value)}
@@ -2809,11 +2818,11 @@ const SharedAgentChat: React.FC<Props> = ({
                         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                         disabled={blocked}
                     />
-                    <div className="absolute bottom-2 right-2 flex items-center gap-1">
+                    <div className={`absolute ${dockCompact ? 'bottom-1.5 right-1.5' : 'bottom-2 right-2'} flex items-center gap-1`}>
                     {(isRunning || pendingAskUser) && (
                         <button
                             type="button"
-                            className={`w-8 h-8 rounded-[4px] text-sm ${theme.button_default}`}
+                            className={`${dockIconBtn} ${theme.button_default}`}
                             onClick={() => { void handleStop(); }}
                             title="Stop current agent run"
                         >
@@ -2822,7 +2831,7 @@ const SharedAgentChat: React.FC<Props> = ({
                     )}
                     <button
                         type="button"
-                        className={`w-8 h-8 rounded-[4px] text-sm ${theme.button_default}`}
+                        className={`${dockIconBtn} ${theme.button_default}`}
                         onClick={handleSend}
                         disabled={blocked || !input.trim()}
                         title="Send"
@@ -2831,7 +2840,7 @@ const SharedAgentChat: React.FC<Props> = ({
                     </button>
                     </div>
                     </div>
-                    <p className={`hidden md:block text-center text-xs mt-2 ${theme.label}`}>The agent can be wrong about people, places, and facts.</p>
+                    <p className={`${dockCompact ? 'hidden' : 'hidden md:block'} text-center text-xs mt-2 ${theme.label}`}>The agent can be wrong about people, places, and facts.</p>
                 </div>
             </div>
             )}

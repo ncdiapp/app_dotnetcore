@@ -1518,7 +1518,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
   });
   listAgentHostRef.current.describeAction = (args) => describeFormAction(listTransaction, args);
   listAgentHostRef.current.setFields = async (args) => {
-    const next = applySetFields(dataModel.currentFormData, args, 'list');
+    const { next } = applySetFields(dataModel.currentFormData, args, 'list', listTransaction);
     setDataModel((prev) => ({ ...prev, currentFormData: next, listDataSource: prev.listDataSource }));
     const cv = dataModel.listDataSource as any;
     if (cv && Array.isArray(next.ListData)) {

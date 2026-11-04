@@ -206,7 +206,7 @@ export const AgentMarkdown: React.FC<{
 
     return (
         <div
-            className={`agent-md text-sm leading-6 ${className || ''}`}
+            className={`agent-md ${className || 'text-sm leading-6'}`}
             onClick={e => {
                 const a = (e.target as HTMLElement).closest('a[data-agent-file]');
                 if (!a) return;
@@ -226,11 +226,10 @@ export const AgentMarkdown: React.FC<{
                     );
                 }
                 if (b.type === 'h') {
-                    const size = 'text-sm';
                     return (
                         <div
                             key={idx}
-                            className={`mb-2 font-medium leading-6 ${size}`}
+                            className="mb-2 font-medium"
                             dangerouslySetInnerHTML={{ __html: formatInline(b.text, fileLinks) }}
                         />
                     );

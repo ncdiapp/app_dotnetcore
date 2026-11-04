@@ -10,7 +10,7 @@ import TransactionHeaderItem from './TransactionHeaderItem';
 import TransactionCrossHeaderItem from './TransactionCrossHeaderItem';
 import FormMainMenus from './FormMainMenus';
 import FormSidePanel from '../FormAgent/FormSidePanel';
-import { FormAgentResultSlotContext, FormGroupDockSlotContext } from '../FormAgent/formGroupDock';
+import { FormAgentResultSlotContext, FormGroupAgentHostsContext, FormGroupDockSlotContext } from '../FormAgent/formGroupDock';
 import {
   FormAgentHostContext,
   applySetFields,
@@ -64,6 +64,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
 }) => {
   const { theme, t } = useTheme();
   const formGroupDockEl = useContext(FormGroupDockSlotContext);
+  const formGroupAgentHostsRef = useContext(FormGroupAgentHostsContext);
   const [resultSlotEl, setResultSlotEl] = useState<HTMLDivElement | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [isMobileMenuVisible, setIsMobileMenuVisible] = useState(false);
@@ -173,16 +174,21 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
     || (isAiEnabled && transactionDto?.OtherOptions?.IsOpenAiAgentByDefault)
   );
   const hostSlotsRef = useRef<FormAgentHostSlots>({});
-  hostSlotsRef.current.getContext = () => buildFormAgentContext({
-    mode: 'master',
-    transaction: transactionDto,
-    formData: dataModel?.currentFormData,
-    openedFrom: controllerModel?.param2Obj ?? null,
+  hostSlotsRef.current.getContext = () => ({
+    formRole: controllerModel.isTemplateHeader ? 'header' : 'main',
+    formName: transactionDto?.TransactionName ?? controllerModel?.TemplateHeaderName ?? null,
+    transactionId: runtimeTransactionId,
+    ...(buildFormAgentContext({
+      mode: 'master',
+      transaction: transactionDto,
+      formData: dataModel?.currentFormData,
+      openedFrom: controllerModel?.param2Obj ?? null,
+    }) as object),
   });
   hostSlotsRef.current.setFields = async (args) => {
-    const next = applySetFields(dataModel?.currentFormData, args, 'master');
+    const { next, applied, missed } = applySetFields(dataModel?.currentFormData, args, 'master', transactionDto);
     onDataModelChange?.({ ...dataModel, currentFormData: next });
-    return { ok: true, saved: false };
+    return { ok: applied.length > 0, saved: false, applied, missed };
   };
   hostSlotsRef.current.updateGrid = async (args) => {
     const next = applyUpdateGrid(dataModel?.currentFormData, args, 'master');
@@ -190,8 +196,26 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
     return { ok: true, saved: false };
   };
   hostSlotsRef.current.describeAction = (args) => describeFormAction(transactionDto, args);
+  const formGroupHostKey = `${controllerModel.isTemplateHeader ? 'header' : 'main'}:${runtimeTransactionId}:${controllerModel.uiId}`;
+  useEffect(() => {
+    if (!formGroupAgentHostsRef) return;
+    formGroupAgentHostsRef.current.set(formGroupHostKey, {
+      key: formGroupHostKey,
+      role: controllerModel.isTemplateHeader ? 'header' : 'main',
+      name: String(transactionDto?.TransactionName ?? controllerModel?.TemplateHeaderName ?? ''),
+      slots: hostSlotsRef.current,
+    });
+    return () => {
+      formGroupAgentHostsRef.current.delete(formGroupHostKey);
+    };
+  }, [formGroupAgentHostsRef, formGroupHostKey, controllerModel.isTemplateHeader, transactionDto?.TransactionName, controllerModel?.TemplateHeaderName]);
   const chatScope = runtimeTransactionRootValueId || `new:${controllerModel?.uiId || 'draft'}`;
-  const renderSidePanel = () => (
+  const [isBottomConversationExpanded, setIsBottomConversationExpanded] = useState(true);
+  const [bottomConversationHeight, setBottomConversationHeight] = useState(280);
+  const [isResizingBottomConversation, setIsResizingBottomConversation] = useState(false);
+  const bottomConversationHeightRef = useRef(280);
+  bottomConversationHeightRef.current = bottomConversationHeight;
+  const renderSidePanel = (placement: 'right' | 'bottom' = 'right') => (
     <FormSidePanel
       showMessages={isConversationEnabled}
       showAgent={isAiEnabled}
@@ -200,7 +224,10 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
       messageScopeType={emMessageScopeTypeTransaction}
       chatScope={chatScope}
       initialTab={isAiEnabled && !isConversationEnabled ? 'ai' : 'messages'}
-      onHidePanel={() => setIsRightConversationExpanded(false)}
+      dockPlacement={placement}
+      onHidePanel={placement === 'bottom'
+        ? () => setIsBottomConversationExpanded(false)
+        : () => setIsRightConversationExpanded(false)}
     />
   );
   const rightConvStorageKeyBase = useMemo(
@@ -241,6 +268,61 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
       // ignore storage errors
     }
   }, [isNeedToShowRightConversation, isRightConversationExpanded, rightConversationWidth, rightConvStorageKeyBase]);
+
+  const bottomConvStorageKey = useMemo(
+    () => `mdConvBottom:${runtimeTransactionId || 'unknown'}`,
+    [runtimeTransactionId]
+  );
+
+  useEffect(() => {
+    if (!isNeedToShowBottomConversation) return;
+    try {
+      const savedH = localStorage.getItem(`${bottomConvStorageKey}:height`);
+      const parsed = savedH ? parseInt(savedH, 10) : NaN;
+      if (!Number.isNaN(parsed) && parsed >= 160) {
+        setBottomConversationHeight(Math.min(Math.max(parsed, 160), 700));
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [bottomConvStorageKey, isNeedToShowBottomConversation]);
+
+  useEffect(() => {
+    if (!isNeedToShowBottomConversation) return;
+    try {
+      localStorage.setItem(`${bottomConvStorageKey}:height`, String(bottomConversationHeight));
+    } catch {
+      /* ignore */
+    }
+  }, [bottomConversationHeight, bottomConvStorageKey, isNeedToShowBottomConversation]);
+
+  const startResizeBottomConversation = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const handle = e.currentTarget;
+    const startY = e.clientY;
+    const startH = bottomConversationHeightRef.current;
+    const host = mainContainerRef.current;
+    const hostH = host?.getBoundingClientRect().height ?? window.innerHeight;
+    const maxH = Math.max(160, Math.min(700, hostH - 120));
+    setIsResizingBottomConversation(true);
+    try { handle.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+
+    const onMove = (ev: PointerEvent) => {
+      const next = startH + (startY - ev.clientY);
+      setBottomConversationHeight(Math.min(Math.max(next, 160), maxH));
+    };
+    const onUp = () => {
+      setIsResizingBottomConversation(false);
+      try { handle.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onUp);
+    };
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onUp);
+  }, []);
 
   const startResizeRightConversation = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -390,10 +472,6 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
   };
 
 
-  const bottomBoxMaxWidth = transactionDto?.ForeignAppFormExDto?.DefaultWidth 
-    ? `${parseInt(transactionDto.ForeignAppFormExDto.DefaultWidth.trim()) || 1000}px`
-    : '1000px';
-
   // Template header collapse state: when this form is a group template header ("Style Header"),
   // clicking the header band collapses/expands its body.
   const templateHeaderSectionId = `MasterDetailEditLayoutForm${controllerModel.uiId}`;
@@ -475,12 +553,12 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
         <div
           ref={mainContainerRef}
           id={`MasterDetailEditLayoutForm${controllerModel.uiId}`}
-          className={`w-full h-1 flex-auto p-1 ${theme.mainContentSection}`}
+          className={`w-full h-1 flex-auto p-1 min-h-0 flex flex-col ${theme.mainContentSection}`}
           style={{ height: menuVisible ? 'calc(100% - 40px)' : '100%' }}
         >
-          <div className="w-full h-full">
+          <div className="w-full h-1 flex-auto min-h-0 flex flex-col">
             {/* Main scroll area */}
-            <div className="w-full min-w-0 h-full overflow-auto">
+            <div className="w-full min-w-0 h-1 flex-auto overflow-auto">
               {/* Template Header Container (for dynamic content) */}
               <div
                 id={`TemplateHeaderContainer${controllerModel.uiId}`}
@@ -523,23 +601,53 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
                 {renderLayout()}
               </div>
 
-              {/* Bottom Conversation Container */}
-              {isNeedToShowBottomConversation && !controllerModel.isTemplateHeader && (
-                <div className="w-full h-auto p-1">
-                  <div
-                    id="BottomConversationContainer"
-                    className="w-full"
-                    style={{
-                      maxWidth: bottomBoxMaxWidth,
-                      minWidth: '300px',
-                      height: 'auto'
-                    }}
-                  >
-                    {renderSidePanel()}
-                  </div>
-                </div>
-              )}
             </div>
+            {isNeedToShowBottomConversation && !controllerModel.isTemplateHeader && isBottomConversationExpanded && (
+              <div
+                id="BottomConversationContainer"
+                className={`relative shrink-0 w-full flex flex-col overflow-hidden border-t ${t('border_mainContentSection')}`}
+                style={{ height: `${bottomConversationHeight}px`, minHeight: 160 }}
+              >
+                <div
+                  role="separator"
+                  aria-orientation="horizontal"
+                  aria-label="Drag to resize bottom panel"
+                  title="Drag to resize"
+                  onPointerDown={startResizeBottomConversation}
+                  className="group absolute left-0 right-0 top-0 z-20 flex h-1.5 cursor-row-resize items-center justify-center select-none touch-none"
+                >
+                  <div
+                    className={`pointer-events-none absolute inset-x-0 top-1/2 h-3 -translate-y-1/2 rounded-sm transition-opacity ${
+                      isResizingBottomConversation
+                        ? `opacity-100 ${t('bg_menu_default')}`
+                        : `opacity-0 group-hover:opacity-100 ${t('bg_menu_default')}`
+                    }`}
+                    aria-hidden
+                  />
+                  <div
+                    className={`pointer-events-none w-[min(200px,45vw)] h-2 rounded-full border ${t('border_mainContentSection')} ${theme.menu_default} shadow-sm transition-[opacity,box-shadow] group-hover:border-2 group-hover:shadow-md ${
+                      isResizingBottomConversation
+                        ? 'border-2 opacity-100 shadow-md'
+                        : 'opacity-80 group-hover:opacity-100'
+                    }`}
+                    aria-hidden
+                  />
+                </div>
+                {renderSidePanel('bottom')}
+              </div>
+            )}
+            {isNeedToShowBottomConversation && !controllerModel.isTemplateHeader && !isBottomConversationExpanded && (
+              <button
+                type="button"
+                className={`shrink-0 w-full h-8 flex items-center justify-between px-2 text-xs border-t ${t('border_mainContentSection')} ${theme.mainHeader}`}
+                onClick={() => setIsBottomConversationExpanded(true)}
+                title="Expand panel"
+                aria-label="Expand panel"
+              >
+                <span>{isConversationEnabled && isAiEnabled ? 'Conversation / Assistant' : isAiEnabled ? 'Assistant' : 'Conversation'}</span>
+                <i className="fa-solid fa-chevron-up" aria-hidden />
+              </button>
+            )}
           </div>
         </div>
         )}
@@ -644,20 +752,12 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
           {renderLayout()}
         </div>
 
-        {/* Bottom Conversation Container - Mobile */}
         {isNeedToShowBottomConversation && (
-          <div className="w-full h-auto p-1">
-            <div
-              id="BottomConversationContainer"
-              className="w-full"
-              style={{
-                maxWidth: bottomBoxMaxWidth,
-                minWidth: '300px',
-                height: 'auto'
-              }}
-            >
-              {renderSidePanel()}
-            </div>
+          <div
+            id="BottomConversationContainer"
+            className={`w-full h-[240px] min-h-[160px] mt-1 flex flex-col overflow-hidden border-t ${t('border_mainContentSection')}`}
+          >
+            {renderSidePanel('bottom')}
           </div>
         )}
       </div>

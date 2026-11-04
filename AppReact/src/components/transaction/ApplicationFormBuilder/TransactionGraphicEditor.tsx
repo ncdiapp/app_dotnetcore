@@ -2626,7 +2626,7 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
                                                                 onChange={(e) => handleFieldChange('AiAgentDockPosition', e.target.value ? parseInt(e.target.value) : null)}
                                                                 className={`w-[200px] px-2 py-1 text-xs border rounded ${theme.inputBox || theme.mainContentSection}`}
                                                             >
-                                                                <option value="">Right</option>
+                                                                <option value="">Select...</option>
                                                                 {conversationDockPositionOptions.map(opt => (
                                                                     <option key={opt.Id} value={opt.Id}>{opt.Display}</option>
                                                                 ))}

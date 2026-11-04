@@ -3,8 +3,8 @@ import { useTheme } from '../../../redux/hooks/useTheme';
 import ConversationEditorEmbedded from '../../message/ConversationEditorEmbedded';
 import AgentUiChatHost from '../../aiskill/AgentUiChatHost';
 import { genericAgentSvc } from '../../../webapi/genericAgentSvc';
-import { FORM_AGENT_SKILL_KEY, FormAgentHostContext } from './formAgentHost';
-import { FormGroupDockSlotContext, formGroupDockShowsNav } from './formGroupDock';
+import { FORM_AGENT_SKILL_KEY, FormAgentHostContext, type FormAgentHostSlots } from './formAgentHost';
+import { FormGroupAgentHostsContext, FormGroupDockSlotContext, formGroupDockShowsNav } from './formGroupDock';
 
 type TabId = 'messages' | 'ai';
 
@@ -17,6 +17,7 @@ interface Props {
   chatScope: string;
   initialTab?: TabId;
   onHidePanel?: () => void;
+  dockPlacement?: 'right' | 'bottom';
 }
 
 const FormSidePanel: React.FC<Props> = ({
@@ -28,10 +29,18 @@ const FormSidePanel: React.FC<Props> = ({
   chatScope,
   initialTab,
   onHidePanel,
+  dockPlacement = 'right',
 }) => {
   const { theme, t } = useTheme();
   const hostRef = useContext(FormAgentHostContext);
+  const formGroupAgentHostsRef = useContext(FormGroupAgentHostsContext);
   const formGroupDockEl = useContext(FormGroupDockSlotContext);
+  const listFormHosts = (): Array<{ key: string; role: string; name?: string; slots: FormAgentHostSlots }> => {
+    const map = formGroupAgentHostsRef?.current;
+    if (map && map.size > 0) return Array.from(map.values());
+    if (hostRef?.current) return [{ key: 'local', role: 'main', slots: hostRef.current }];
+    return [];
+  };
   const hostHeaderCls = formGroupDockShowsNav(formGroupDockEl)
     ? `flex shrink-0 items-center gap-1 px-2 py-1 text-xs border-b ${theme.mainHeader}`
     : `flex items-center gap-1 px-2 h-10 flex-shrink-0 box-border border-b ${t('border_mainContentSection')} ${theme.mainContentSection}`;
@@ -63,8 +72,10 @@ const FormSidePanel: React.FC<Props> = ({
   }, [showAgent, transactionId, chatScope]);
 
   const both = showMessages && showAgent;
+  const isBottom = dockPlacement === 'bottom';
   const showMessagesPane = showMessages && (!both || tab === 'messages');
   const showAgentPane = showAgent && (!both || tab === 'ai');
+  const showHostHeader = both || (isBottom && !!onHidePanel);
 
   const hideBtn = onHidePanel ? (
     <button
@@ -74,16 +85,22 @@ const FormSidePanel: React.FC<Props> = ({
       aria-label="Collapse panel"
       onClick={onHidePanel}
     >
-      <i className="fa-solid fa-angles-right" aria-hidden />
+      <i className={`fa-solid ${isBottom ? 'fa-chevron-down' : 'fa-angles-right'}`} aria-hidden />
     </button>
   ) : null;
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-      {both && (
+      {showHostHeader && (
         <div className={hostHeaderCls}>
-          <button type="button" className={`px-2 py-1 text-xs rounded-[4px] ${tab === 'messages' ? `${theme.tab_active} font-medium` : theme.tab}`} onClick={() => setTab('messages')}>Conversation</button>
-          <button type="button" className={`px-2 py-1 text-xs rounded-[4px] ${tab === 'ai' ? `${theme.tab_active} font-medium` : theme.tab}`} onClick={() => setTab('ai')}>Assistant</button>
+          {both ? (
+            <>
+              <button type="button" className={`px-2 py-1 text-xs rounded-[4px] ${tab === 'messages' ? `${theme.tab_active} font-medium` : theme.tab}`} onClick={() => setTab('messages')}>Conversation</button>
+              <button type="button" className={`px-2 py-1 text-xs rounded-[4px] ${tab === 'ai' ? `${theme.tab_active} font-medium` : theme.tab}`} onClick={() => setTab('ai')}>Assistant</button>
+            </>
+          ) : (
+            <span className={`text-xs ${theme.label}`}>{showMessages ? 'Conversation' : 'Assistant'}</span>
+          )}
           {hideBtn}
         </div>
       )}
@@ -94,9 +111,9 @@ const FormSidePanel: React.FC<Props> = ({
             transactionId={transactionId}
             transactionRootValueId={messageRootId || ''}
             defaultMessageSubject="New Form Message"
-            onHidePanel={!both ? onHidePanel : undefined}
-            hostHeaderClassName={!both && onHidePanel ? hostHeaderCls : undefined}
-            hideTitleHeader={both}
+            onHidePanel={!both && !isBottom ? onHidePanel : undefined}
+            hostHeaderClassName={!both && !isBottom && onHidePanel ? hostHeaderCls : undefined}
+            hideTitleHeader={both || isBottom}
           />
         </div>
       )}
@@ -108,21 +125,52 @@ const FormSidePanel: React.FC<Props> = ({
               chatSessionKey={chatKey}
               showChatListButton={false}
               squareChrome
-              onHidePanel={both ? undefined : onHidePanel}
+              onHidePanel={both || isBottom ? undefined : onHidePanel}
               getHostContext={() => {
-                const ctx = hostRef?.current.getContext?.();
-                return ctx == null ? undefined : JSON.stringify(ctx);
+                const hosts = listFormHosts();
+                if (hosts.length === 0) return undefined;
+                if (hosts.length === 1) {
+                  const ctx = hosts[0].slots.getContext?.();
+                  return ctx == null ? undefined : JSON.stringify(ctx);
+                }
+                return JSON.stringify({
+                  mode: 'transactionFormGroup',
+                  forms: hosts.map((h) => ({
+                    formRole: h.role,
+                    formName: h.name,
+                    ...(typeof h.slots.getContext?.() === 'object' && h.slots.getContext?.() != null
+                      ? (h.slots.getContext() as object)
+                      : {}),
+                  })),
+                });
               }}
               onHostTool={async (toolName, args) => {
-                const slots = hostRef?.current;
-                if (!slots) return { ok: false, error: 'This tool only runs inside an open transaction form.' };
-                if (toolName === 'get_form_state') return { ok: true, form: slots.getContext?.() ?? null };
-                if (toolName === 'describe_action') return slots.describeAction?.(args) ?? { ok: false, error: 'describe_action is not available.' };
-                if (toolName === 'set_fields') return slots.setFields?.(args) ?? { ok: false, error: 'set_fields is not available.' };
-                if (toolName === 'update_grid') return slots.updateGrid?.(args) ?? { ok: false, error: 'update_grid is not available.' };
-                if (toolName === 'open_linked_search') return slots.openLinkedSearch?.(args) ?? { ok: false, error: 'open_linked_search is not available on this form.' };
-                if (toolName === 'open_link_target') return slots.openLinkTarget?.(args) ?? { ok: false, error: 'open_link_target is not available on this form.' };
-                if (toolName === 'run_command') return slots.runCommand?.(args) ?? { ok: false, error: 'run_command is not available on this form.' };
+                const hosts = listFormHosts();
+                if (hosts.length === 0) return { ok: false, error: 'This tool only runs inside an open transaction form.' };
+                const callAll = async (fn: (slots: FormAgentHostSlots) => Promise<unknown> | unknown) => {
+                  const results = [];
+                  for (const h of hosts) {
+                    results.push({ formRole: h.role, formName: h.name, ...(await Promise.resolve(fn(h.slots)) as any) });
+                  }
+                  return { ok: results.some((r: any) => r?.ok === true), results };
+                };
+                if (toolName === 'get_form_state') {
+                  if (hosts.length === 1) return { ok: true, form: hosts[0].slots.getContext?.() ?? null };
+                  return { ok: true, forms: hosts.map((h) => ({ formRole: h.role, formName: h.name, form: h.slots.getContext?.() ?? null })) };
+                }
+                if (toolName === 'set_fields') return callAll((s) => s.setFields?.(args) ?? { ok: false, error: 'set_fields is not available.' });
+                if (toolName === 'update_grid') return callAll((s) => s.updateGrid?.(args) ?? { ok: false, error: 'update_grid is not available.' });
+                if (toolName === 'describe_action') {
+                  for (const h of hosts) {
+                    const r: any = h.slots.describeAction?.(args);
+                    if (r?.ok) return r;
+                  }
+                  return { ok: false, error: 'Action not found on this form group.' };
+                }
+                const primary = hosts.find((h) => h.role === 'main')?.slots ?? hosts[0].slots;
+                if (toolName === 'open_linked_search') return primary.openLinkedSearch?.(args) ?? { ok: false, error: 'open_linked_search is not available on this form.' };
+                if (toolName === 'open_link_target') return primary.openLinkTarget?.(args) ?? { ok: false, error: 'open_link_target is not available on this form.' };
+                if (toolName === 'run_command') return primary.runCommand?.(args) ?? { ok: false, error: 'run_command is not available on this form.' };
                 return { ok: false, error: `${toolName} is not a form host tool.` };
               }}
             />

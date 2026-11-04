@@ -6,7 +6,7 @@ import { useTabDataAutoCache } from '../../redux/hooks/useTabNavigation';
 import { updateCurrentTabLabel, getCurrentActiveTab, getDataModelFromCache } from '../../redux/features/ui/navigation/tabnavSlice';
 import { tabRoutePathsMatch } from '../../helper/navigationHelper';
 import FormMasterDetail, { type TemplateHeaderEmbeddedForm } from '../formMgt/FormMasterDetail';
-import { FormGroupDockSlotContext } from '../formMgt/FormAgent/formGroupDock';
+import { FormGroupAgentHostsContext, FormGroupDockSlotContext, type FormGroupAgentHostEntry } from '../formMgt/FormAgent/formGroupDock';
 import AppSearch from '../search/AppSearch';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import {
@@ -18,6 +18,7 @@ import {
   EmAppTemplateHeaderVisibility,
   findLinkTargetInList,
   isCreateLikeLinkTarget,
+  isTemplateHeaderLinkTarget,
   parseRouteParam2,
   preferFormGroupMainItemLinkTarget,
   cacheFormGroupSession,
@@ -209,6 +210,7 @@ const TransactionFormGroup: React.FC = () => {
   const [navigationObj, setNavigationObj] = useState<NavigationObj | null>(null);
   const [isHideLeftMenu, setIsHideLeftMenu] = useState(false);
   const [formGroupDockEl, setFormGroupDockEl] = useState<HTMLDivElement | null>(null);
+  const formGroupAgentHostsRef = useRef<Map<string, FormGroupAgentHostEntry>>(new Map());
   const [headerForms, setHeaderForms] = useState<EmbeddedFormConfig[]>([]);
   const [headerVisibility, setHeaderVisibility] = useState<number>(EmAppTemplateHeaderVisibility.Show);
   const [headerSearches, setHeaderSearches] = useState<EmbeddedSearchConfig[]>([]);
@@ -431,7 +433,16 @@ const TransactionFormGroup: React.FC = () => {
       setCreateMainForms([]);
       setCreateMainSearches([]);
 
-      const effectiveLinkTarget = linkTarget;
+      let effectiveLinkTarget = linkTarget;
+      if (
+        isTemplateHeaderLinkTarget(effectiveLinkTarget) ||
+        effectiveLinkTarget.isTemplateHeader
+      ) {
+        effectiveLinkTarget =
+          preferFormGroupMainItemLinkTarget(linkTargetList, effectiveLinkTarget) ||
+          linkTargetList[0] ||
+          effectiveLinkTarget;
+      }
 
       if (effectiveLinkTarget.SourceConditionViewColumnId) {
         const cond = row.DictViewColumnIDKeyValue?.[effectiveLinkTarget.SourceConditionViewColumnId];
@@ -505,6 +516,7 @@ const TransactionFormGroup: React.FC = () => {
       buildNavigationObj,
       buildSearchEmbedded,
       dispatch,
+      linkTargetList,
       sessionData?.searchResultRowList,
       sessionKey,
       templateHeaderList,
@@ -526,7 +538,7 @@ const TransactionFormGroup: React.FC = () => {
 
     let initial =
       findLinkTargetInList(sessionData.linkTargetDto, linkTargetList) ||
-      sessionData.linkTargetDto ||
+      preferFormGroupMainItemLinkTarget(linkTargetList, sessionData.linkTargetDto) ||
       linkTargetList[0];
     let row = sessionData.selecedDataRow;
 
@@ -676,6 +688,7 @@ const TransactionFormGroup: React.FC = () => {
         </button>
       )}
 
+      <FormGroupAgentHostsContext.Provider value={formGroupAgentHostsRef}>
       <FormGroupDockSlotContext.Provider value={formGroupDockEl}>
       <div className="h-full w-1 flex-auto min-h-0 flex flex-row overflow-hidden">
       <div className="h-full w-1 flex-auto min-h-0 flex flex-col overflow-hidden">
@@ -772,6 +785,7 @@ const TransactionFormGroup: React.FC = () => {
       />
       </div>
       </FormGroupDockSlotContext.Provider>
+      </FormGroupAgentHostsContext.Provider>
     </div>
   );
 };
