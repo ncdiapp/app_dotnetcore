@@ -1,4 +1,4 @@
--- merge file
+-- merge file V039__AgentToolCatalog.sql
 -- V039: Unified, searchable tool catalog used by "AI Generate Agent Design".
 -- One row per tool from every source (built-in / library / MCP / REST ...). Library tools are synced from
 -- AppAgentLibraryTool; MCP tools are synced from the live server ("Sync tools").
