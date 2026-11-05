@@ -204,6 +204,38 @@ namespace App.BL.AIAgent.GenericAgent
             return grids.Count == 1 ? grids[0] : null;
         }
 
+        static AppTransactionUnitExDto ResolveAnyUnit(AppTransactionExDto tx, string rawUnitId)
+        {
+            if (tx == null || string.IsNullOrWhiteSpace(rawUnitId)) return null;
+            var n = Norm(rawUnitId);
+            var root = RootUnit(tx);
+            if (root != null && (string.Equals(root.Id?.ToString(), rawUnitId.Trim(), StringComparison.OrdinalIgnoreCase)
+                || Norm(root.Id) == n
+                || Norm(root.UnitDisplayName) == n
+                || n == "header"
+                || n == "root"))
+                return root;
+
+            var units = tx.DictAllTransactionUnitIdExDto?.Values;
+            if (units == null) return root;
+            var byId = units.FirstOrDefault(u => string.Equals(u?.Id?.ToString(), rawUnitId.Trim(), StringComparison.OrdinalIgnoreCase) || Norm(u?.Id) == n);
+            if (byId != null) return byId;
+            return units.FirstOrDefault(u =>
+            {
+                var name = Norm(u?.UnitDisplayName);
+                var table = Norm(u?.DataBaseTableName);
+                return name == n || table == n || (!string.IsNullOrEmpty(name) && (name.Contains(n) || n.Contains(name)));
+            });
+        }
+
+        static bool IsOneToOneUnit(AppTransactionExDto tx, AppTransactionUnitExDto unit)
+        {
+            if (unit?.Id == null) return false;
+            var rootId = RootUnit(tx)?.Id;
+            if (rootId != null && unit.Id.ToString() == rootId.ToString()) return true;
+            return unit.IsMasterSiblingUnit == true;
+        }
+
         static List<AppTransactionFieldExDto> OneToOneFields(AppTransactionExDto tx)
         {
             var root = RootUnit(tx);
@@ -497,6 +529,8 @@ namespace App.BL.AIAgent.GenericAgent
             if (form.ListData == null) form.ListData = new List<AppChildDataDto>();
             if (tool == "get_form_state")
             {
+                var slice = RequestedFields(args, fields);
+                if (slice.Error != null) return Fail(slice.Error);
                 var take = ArgInt(args, "take", 20);
                 var match = ArgObject(args, "match");
                 var mappedMatch = match.Count == 0 ? null : MapPatch(match, fields, lookups);
@@ -507,7 +541,7 @@ namespace App.BL.AIAgent.GenericAgent
                     ["saved"] = false,
                     ["rowCount"] = form.ListData.Count,
                     ["matched"] = rows.Count,
-                    ["rows"] = RowsJson(form.ListData, rows)
+                    ["rows"] = RowsJson(form.ListData, rows, slice.Fields)
                 };
             }
             if (tool == "set_fields" || (tool == "update_grid" && ArgString(args, "op") != "add" && ArgString(args, "op") != "delete"))
@@ -632,14 +666,34 @@ namespace App.BL.AIAgent.GenericAgent
             var unitId = ArgString(args, "unitId");
             if (string.IsNullOrWhiteSpace(unitId))
             {
-                var values = new JObject();
-                foreach (var pair in form.DictOneToOneFields ?? new Dictionary<string, object>())
-                    values[pair.Key] = pair.Value == null ? JValue.CreateNull() : JToken.FromObject(pair.Value);
-                return new JObject { ["ok"] = true, ["saved"] = false, ["values"] = values };
+                var rootFields = RootUnit(tx)?.AppTransactionFieldList;
+                var slice = RequestedFields(args, rootFields);
+                if (slice.Error != null) return Fail(slice.Error);
+                return new JObject
+                {
+                    ["ok"] = true,
+                    ["saved"] = false,
+                    ["values"] = CatalogValues(form.DictOneToOneFields, slice.Fields)
+                };
             }
-            var unit = ResolveGridUnit(tx, unitId);
-            if (unit == null) return Fail("Grid unit was not found.");
+            var oneUnit = ResolveAnyUnit(tx, unitId);
+            if (oneUnit != null && IsOneToOneUnit(tx, oneUnit))
+            {
+                var slice = RequestedFields(args, oneUnit.AppTransactionFieldList);
+                if (slice.Error != null) return Fail(slice.Error);
+                return new JObject
+                {
+                    ["ok"] = true,
+                    ["saved"] = false,
+                    ["unitId"] = oneUnit.Id == null ? JValue.CreateNull() : JToken.FromObject(oneUnit.Id),
+                    ["values"] = CatalogValues(DictForOneToOne(form, tx, oneUnit), slice.Fields)
+                };
+            }
+            var unit = ResolveGridUnit(tx, unitId) ?? (oneUnit != null && !IsOneToOneUnit(tx, oneUnit) ? oneUnit : null);
+            if (unit == null) return Fail("Unit was not found. Use unitId or the unit name from HostContextJson.");
             var fields = unit.AppTransactionFieldList.Where(f => f != null && !string.IsNullOrWhiteSpace(f.DataBaseFieldName)).ToList();
+            var gridSlice = RequestedFields(args, fields);
+            if (gridSlice.Error != null) return Fail(gridSlice.Error);
             var buckets = ResolveGridBuckets(form, tx, unit, ArgString(args, "parentRowKey"));
             var all = buckets.SelectMany(b => b).ToList();
             var match = ArgObject(args, "match");
@@ -654,8 +708,22 @@ namespace App.BL.AIAgent.GenericAgent
                 ["rowCount"] = all.Count,
                 ["matched"] = hits.Count,
                 ["truncated"] = all.Count > hits.Count,
-                ["rows"] = RowsJson(all, hits)
+                ["rows"] = RowsJson(all, hits, gridSlice.Fields)
             };
+        }
+
+        static Dictionary<string, object> DictForOneToOne(AppMasterDetailDto form, AppTransactionExDto tx, AppTransactionUnitExDto unit)
+        {
+            var rootId = RootUnit(tx)?.Id;
+            if (unit?.Id != null && rootId != null && unit.Id.ToString() != rootId.ToString())
+            {
+                var key = unit.Id.ToString();
+                if (form.DictSiblingOneToOneFields != null
+                    && form.DictSiblingOneToOneFields.TryGetValue(key, out var sibling)
+                    && sibling != null)
+                    return sibling;
+            }
+            return form.DictOneToOneFields ?? new Dictionary<string, object>();
         }
 
         static void SetOneToOne(AppMasterDetailDto form, AppTransactionExDto tx, AppTransactionFieldExDto field, object value)
@@ -779,18 +847,108 @@ namespace App.BL.AIAgent.GenericAgent
             return index.ToString(CultureInfo.InvariantCulture);
         }
 
-        static JArray RowsJson(List<AppChildDataDto> rows, List<int> hits)
+        sealed class FieldSlice
+        {
+            public List<AppTransactionFieldExDto> Fields = new List<AppTransactionFieldExDto>();
+            public string Error;
+        }
+
+        static FieldSlice RequestedFields(JObject args, IEnumerable<AppTransactionFieldExDto> fields)
+        {
+            var all = (fields ?? Enumerable.Empty<AppTransactionFieldExDto>())
+                .Where(f => f != null && !string.IsNullOrWhiteSpace(f.DataBaseFieldName))
+                .ToList();
+            var names = ArgNameList(args, "fields");
+            if (names.Count == 0)
+                return new FieldSlice { Error = "Pass fields as a JSON array of the db names or labels you need from HostContextJson. Do not request the whole unit." };
+            var picked = new List<AppTransactionFieldExDto>();
+            foreach (var name in names)
+            {
+                var field = MatchField(all, name);
+                if (field == null) continue;
+                if (picked.Any(f => string.Equals(f.DataBaseFieldName, field.DataBaseFieldName, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                picked.Add(field);
+            }
+            if (picked.Count == 0)
+                return new FieldSlice { Error = "Could not map fields onto this unit. Use db names from HostContextJson." };
+            return new FieldSlice { Fields = picked };
+        }
+
+        static List<string> ArgNameList(JObject args, string name)
+        {
+            var list = new List<string>();
+            if (args == null) return list;
+            var token = args[name] ?? args[char.ToUpperInvariant(name[0]) + name.Substring(1)];
+            if (token == null || token.Type == JTokenType.Null) return list;
+            if (token.Type == JTokenType.String)
+            {
+                var text = token.ToString().Trim();
+                if (text.Length == 0) return list;
+                try { token = JToken.Parse(text); }
+                catch
+                {
+                    list.AddRange(text.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim()).Where(s => s.Length > 0));
+                    return list;
+                }
+            }
+            if (token is JArray array)
+            {
+                foreach (var item in array)
+                {
+                    if (item == null || item.Type == JTokenType.Null) continue;
+                    var text = item.Type == JTokenType.String ? item.ToString().Trim() : item.ToString(Newtonsoft.Json.Formatting.None);
+                    if (text.Length > 0) list.Add(text);
+                }
+                return list;
+            }
+            if (token is JObject obj)
+            {
+                list.AddRange(obj.Properties().Select(p => p.Name).Where(n => !string.IsNullOrWhiteSpace(n)));
+            }
+            return list;
+        }
+
+        static List<string> CatalogDbNames(IEnumerable<AppTransactionFieldExDto> fields)
+        {
+            return (fields ?? Enumerable.Empty<AppTransactionFieldExDto>())
+                .Where(f => f != null && !string.IsNullOrWhiteSpace(f.DataBaseFieldName))
+                .Select(f => f.DataBaseFieldName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        static JObject CatalogValues(Dictionary<string, object> dict, IEnumerable<AppTransactionFieldExDto> fields)
+        {
+            var values = new JObject();
+            var src = dict ?? new Dictionary<string, object>();
+            foreach (var db in CatalogDbNames(fields))
+            {
+                string matchKey = null;
+                foreach (var key in src.Keys)
+                {
+                    if (string.Equals(key, db, StringComparison.OrdinalIgnoreCase))
+                    {
+                        matchKey = key;
+                        break;
+                    }
+                }
+                if (matchKey == null) continue;
+                var val = src[matchKey];
+                values[db] = val == null ? JValue.CreateNull() : JToken.FromObject(val);
+            }
+            return values;
+        }
+
+        static JArray RowsJson(List<AppChildDataDto> rows, List<int> hits, IEnumerable<AppTransactionFieldExDto> fields)
         {
             var arr = new JArray();
             foreach (var i in hits)
             {
                 var row = rows[i];
                 var obj = new JObject { ["rowKey"] = RowKey(row, i) };
-                if (row.DictOneToOneFields != null)
-                {
-                    foreach (var pair in row.DictOneToOneFields)
-                        obj[pair.Key] = pair.Value == null ? JValue.CreateNull() : JToken.FromObject(pair.Value);
-                }
+                var values = CatalogValues(row?.DictOneToOneFields, fields);
+                foreach (var prop in values.Properties()) obj[prop.Name] = prop.Value;
                 arr.Add(obj);
             }
             return arr;

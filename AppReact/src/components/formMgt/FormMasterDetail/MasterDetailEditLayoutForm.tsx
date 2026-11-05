@@ -173,24 +173,16 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
     || (isAiEnabled && transactionDto?.OtherOptions?.IsOpenAiAgentByDefault)
   );
   const hostTransaction = transactionExDto || transactionDto || dataModel?.currentFormStructure;
-  const hostEntitySources =
-    dataModel?.dictFieldEntityDataSource
-    ?? dataModel?.currentFormData?.DictCascadingFiledDataSource
-    ?? dataModel?.currentFormStructure?.DictStandAloneEntityDataSource
-    ?? null;
   const hostSlotsRef = useRef<FormAgentHostSlots>({});
-  hostSlotsRef.current.getContext = () => ({
-    formRole: controllerModel.isTemplateHeader ? 'header' : 'main',
-    formName: transactionDto?.TransactionName ?? controllerModel?.TemplateHeaderName ?? null,
-    transactionId: runtimeTransactionId,
-    ...(buildFormAgentContext({
+  hostSlotsRef.current.getContext = () => {
+    const catalog = buildFormAgentContext({
       mode: 'master',
       transaction: hostTransaction,
       formData: dataModel?.currentFormData,
-      openedFrom: controllerModel?.param2Obj ?? null,
-      entitySourceByFieldId: hostEntitySources,
-    }) as object),
-  });
+    }) as object;
+    if (!controllerModel.isTemplateHeader) return catalog;
+    return { formRole: 'header', ...catalog };
+  };
   hostSlotsRef.current.applyTool = async (toolName, args) => {
     const result = await appTransactionService.applyFormAgentTool({
       ToolName: toolName,

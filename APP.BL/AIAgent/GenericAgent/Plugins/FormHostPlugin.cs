@@ -15,8 +15,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     /// </summary>
     public class FormHostPlugin
     {
-        public Task<string> GetFormState(AgentToolContext context, string unitId = null, string rowKey = null, string match = null, string take = null, string parentRowKey = null) =>
-            AskHost(context, "get_form_state", new { unitId, rowKey, match, take, parentRowKey });
+        public Task<string> GetFormState(AgentToolContext context, string unitId = null, string fields = null, string rowKey = null, string match = null, string take = null, string parentRowKey = null) =>
+            AskHost(context, "get_form_state", new { unitId, fields, rowKey, match, take, parentRowKey });
 
         public Task<string> DescribeAction(AgentToolContext context, string kind = null, string id = null) =>
             AskHost(context, "describe_action", new { kind, id });

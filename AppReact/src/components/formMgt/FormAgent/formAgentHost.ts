@@ -323,16 +323,16 @@ export function buildFormAgentContext(args: {
       kind = parentKind === 'grid' || parentKind === 'subgrid' ? 'subgrid' : 'grid';
     }
     const path = isRoot ? 'Header' : (parentPath ? `${parentPath} / ${name}` : name);
+    const level = kind === 'subgrid' ? 3 : kind === 'grid' ? 2 : 1;
     const entry: any = {
       unitId: uid,
       path,
-      kind,
+      level,
       fields: (unit.AppTransactionFieldList || []).map(catalogField).filter(Boolean).slice(0, 80),
     };
     if (!isRoot && parentId != null) entry.parentUnitId = parentId;
-    if (kind === 'grid' || kind === 'subgrid') {
-      entry.rowCount = kind === 'subgrid' ? undefined : getManyRows(form?.DictOneToManyFields, uid).length;
-      if (kind === 'grid') entry.rowCount = getManyRows(form?.DictOneToManyFields, uid).length;
+    if (level === 2) {
+      entry.rowCount = getManyRows(form?.DictOneToManyFields, uid).length;
     }
     catalogUnits.push(entry);
     const kids = [...(unit.Children || []), ...(unit.AppTransactionUnitList || [])];
@@ -342,34 +342,29 @@ export function buildFormAgentContext(args: {
 
   if (args.mode === 'list') {
     const rows = Array.isArray(form.ListData) ? form.ListData : [];
-    return {
+    const ctx: any = {
       form: tx.TransactionName,
-      pk: null,
-      mode: 'list',
       transactionId: tx.TransactionId ?? tx.Id ?? form.TransactionId,
-      isDirty: Boolean(form.IsDirty),
       units: [{
         unitId: unitIdOf(root),
         path: tx.TransactionName || 'List',
-        kind: 'grid',
+        level: 2,
         rowCount: rows.length,
         fields: rootFields.map(catalogField).filter(Boolean).slice(0, 80),
       }],
-      actions,
     };
+    if (actions.length) ctx.actions = actions;
+    return ctx;
   }
 
-  return {
+  const ctx: any = {
     form: tx.TransactionName,
     pk: form.RootPrimaryKeyValue ?? null,
-    mode: 'master',
     transactionId: tx.TransactionId ?? tx.Id ?? form.TransactionId,
-    isNew: Boolean(form.IsNew),
-    isDirty: Boolean(form.IsDirty),
-    openedFrom: args.openedFrom ?? null,
     units: catalogUnits,
-    actions,
   };
+  if (actions.length) ctx.actions = actions;
+  return ctx;
 }
 
 function unwrapJson(raw: unknown): unknown {
