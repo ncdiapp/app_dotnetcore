@@ -67,9 +67,15 @@ namespace App.BL.AIAgent.GenericAgent
                 }
 
                 var rows = new JArray();
+                var unresolved = new List<string>();
                 foreach (var patch in patches)
                 {
-                    var mapped = MapPatch(patch, fields, lookups);
+                    var mapped = MapPatch(patch, fields, lookups, unresolved);
+                    if (unresolved.Count > 0)
+                    {
+                        result.Error = string.Join(" ", unresolved);
+                        return result;
+                    }
                     if (mapped.Count == 0) continue;
                     rows.Add(ToRow(mapped));
                 }
@@ -310,7 +316,8 @@ namespace App.BL.AIAgent.GenericAgent
         static Dictionary<string, object> MapPatch(
             Dictionary<string, object> patch,
             List<AppTransactionFieldExDto> fields,
-            Dictionary<int, List<LookupItemDto>> lookups)
+            Dictionary<int, List<LookupItemDto>> lookups,
+            List<string> unresolved = null)
         {
             var mapped = new Dictionary<string, object>();
             object leftover = null;
@@ -329,20 +336,39 @@ namespace App.BL.AIAgent.GenericAgent
                 }
                 var value = Coerce(field, pair.Value, lookups);
                 if (value == null && pair.Value != null && !string.IsNullOrWhiteSpace(Convert.ToString(pair.Value, CultureInfo.InvariantCulture)))
+                {
+                    if (IsLookupField(field))
+                        unresolved?.Add(LookupError(field, pair.Value));
                     continue;
+                }
                 mapped[field.DataBaseFieldName] = value;
             }
             if (mapped.Count == 0 && leftover != null)
             {
-                var lookup = fields.FirstOrDefault(f => f.EntityId.HasValue) ?? fields.FirstOrDefault();
+                var lookup = fields.FirstOrDefault(IsLookupField) ?? fields.FirstOrDefault();
                 if (lookup != null)
                 {
                     var value = Coerce(lookup, leftover, lookups);
                     if (value != null) mapped[lookup.DataBaseFieldName] = value;
+                    else if (IsLookupField(lookup)) unresolved?.Add(LookupError(lookup, leftover));
                 }
+            }
+            foreach (var pair in mapped.ToList())
+            {
+                var written = fields.FirstOrDefault(f => Norm(f.DataBaseFieldName) == Norm(pair.Key));
+                if (written == null || IsLookupField(written)) continue;
+                var lookup = RelatedLookup(fields, written);
+                if (lookup == null || mapped.ContainsKey(lookup.DataBaseFieldName)) continue;
+                var coerced = Coerce(lookup, pair.Value, lookups);
+                if (coerced != null) mapped[lookup.DataBaseFieldName] = coerced;
             }
             return mapped;
         }
+
+        static string LookupError(AppTransactionFieldExDto field, object value) =>
+            (field.DisplayName ?? field.DataBaseFieldName)
+            + " (" + field.DataBaseFieldName + ") is a dropdown. Write the lookup Id, not '"
+            + Convert.ToString(value, CultureInfo.InvariantCulture) + "'.";
 
         static AppTransactionFieldExDto MatchField(List<AppTransactionFieldExDto> fields, string key)
         {
@@ -369,23 +395,56 @@ namespace App.BL.AIAgent.GenericAgent
                 {
                     var db = Compact(f.DataBaseFieldName);
                     var label = Compact(f.DisplayName);
-                    return db.Contains(sk) || label.Contains(sk);
+                    var stem = Stem(f.DataBaseFieldName);
+                    var lstem = Stem(f.DisplayName);
+                    return db.Contains(sk) || label.Contains(sk) || ck.Contains(db)
+                        || (stem.Length >= 3 && (sk.Contains(stem) || ck.Contains(stem)))
+                        || (lstem.Length >= 3 && (sk.Contains(lstem) || ck.Contains(lstem)));
                 }).ToList();
             }
             return Pick(cands, ck, sk);
+        }
+
+        static AppTransactionFieldExDto RelatedLookup(List<AppTransactionFieldExDto> fields, AppTransactionFieldExDto from)
+        {
+            if (from == null || fields == null) return null;
+            var stem = Stem(from.DataBaseFieldName);
+            if (stem.Length < 2) stem = Stem(from.DisplayName);
+            var hits = fields.Where(f =>
+                f != from
+                && IsLookupField(f)
+                && (Stem(f.DataBaseFieldName) == stem || Stem(f.DisplayName) == stem
+                    || Compact(f.DataBaseFieldName).StartsWith(stem, StringComparison.Ordinal)
+                    || stem.StartsWith(Stem(f.DataBaseFieldName), StringComparison.Ordinal))).ToList();
+            if (hits.Count == 1) return hits[0];
+            return hits.OrderBy(f => (f.DataBaseFieldName ?? "").Length).FirstOrDefault();
         }
 
         static AppTransactionFieldExDto Pick(List<AppTransactionFieldExDto> cands, string ck, string sk)
         {
             if (cands == null || cands.Count == 0) return null;
             if (cands.Count == 1) return cands[0];
+            var lookup = cands.Where(IsLookupField).ToList();
+            if (lookup.Count == 1) return lookup[0];
+            if (lookup.Count > 1)
+                return lookup.OrderBy(f => (f.DataBaseFieldName ?? "").Length).First();
             var exact = cands.Where(f => Compact(f.DataBaseFieldName) == ck || Compact(f.DisplayName) == ck).ToList();
             if (exact.Count == 1) return exact[0];
             var stemExact = cands.Where(f => Compact(f.DataBaseFieldName) == sk || Compact(f.DisplayName) == sk).ToList();
             if (stemExact.Count > 0) return stemExact.OrderBy(f => (f.DataBaseFieldName ?? "").Length).First();
-            var lookup = cands.Where(f => f.EntityId.HasValue).ToList();
-            if (lookup.Count == 1) return lookup[0];
             return null;
+        }
+
+        static bool IsLookupField(AppTransactionFieldExDto field)
+        {
+            if (field == null) return false;
+            if (field.EntityId.HasValue && field.EntityId.Value > 0) return true;
+            var control = field.ControlType;
+            return control == (int)EmAppControlType.DDL
+                || control == (int)EmAppControlType.SearchAbleDDL
+                || control == (int)EmAppControlType.AutoComplete
+                || control == (int)EmAppControlType.RadioButtons
+                || control == (int)EmAppControlType.MultiSelectDDL;
         }
 
         static object Coerce(AppTransactionFieldExDto field, object value, Dictionary<int, List<LookupItemDto>> lookups)
@@ -401,22 +460,48 @@ namespace App.BL.AIAgent.GenericAgent
                 if (DateTime.TryParse(text, out dt)) return dt;
                 return text;
             }
+            if (IsLookupField(field))
+            {
+                if (!field.EntityId.HasValue) return null;
+                var hit = ResolveLookup(LookupItems(field.EntityId.Value, lookups), text);
+                if (hit != null) return hit;
+                if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var lookupId))
+                    return lookupId;
+                return null;
+            }
             if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var whole))
                 return whole;
             if (decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var number) && text.IndexOf('.') >= 0)
                 return number;
-            if (field.EntityId.HasValue
-                || control == (int)EmAppControlType.DDL
-                || control == (int)EmAppControlType.SearchAbleDDL)
-            {
-                if (!field.EntityId.HasValue) return text;
-                var items = LookupItems(field.EntityId.Value, lookups);
-                var hit = items.FirstOrDefault(i => string.Equals((i?.Display ?? "").Trim(), text, StringComparison.OrdinalIgnoreCase));
-                if (hit?.Id == null)
-                    hit = items.FirstOrDefault(i => Compact(i?.Display) == Compact(text));
-                return hit?.Id ?? (object)text;
-            }
             return text;
+        }
+
+        static object ResolveLookup(List<LookupItemDto> items, string text)
+        {
+            if (items == null || items.Count == 0 || string.IsNullOrWhiteSpace(text)) return null;
+            var n = text.Trim();
+            var ck = Compact(n);
+            object One(IEnumerable<LookupItemDto> hits)
+            {
+                var list = hits.Where(i => i?.Id != null).ToList();
+                if (list.Count == 1) return list[0].Id;
+                var exact = list.Where(i => string.Equals((i.Display ?? "").Trim(), n, StringComparison.OrdinalIgnoreCase)).ToList();
+                return exact.Count == 1 ? exact[0].Id : null;
+            }
+            var byId = One(items.Where(i => string.Equals(Convert.ToString(i?.Id, CultureInfo.InvariantCulture), n, StringComparison.OrdinalIgnoreCase)));
+            if (byId != null) return byId;
+            var byDisplay = One(items.Where(i => string.Equals((i?.Display ?? "").Trim(), n, StringComparison.OrdinalIgnoreCase)
+                || Compact(i?.Display) == ck));
+            if (byDisplay != null) return byDisplay;
+            var byFirst = One(items.Where(i => string.Equals((i?.FirstField ?? "").Trim(), n, StringComparison.OrdinalIgnoreCase)));
+            if (byFirst != null) return byFirst;
+            var byLast = One(items.Where(i => string.Equals((i?.LastField ?? "").Trim(), n, StringComparison.OrdinalIgnoreCase)));
+            if (byLast != null) return byLast;
+            return One(items.Where(i =>
+            {
+                var parts = (i?.Display ?? "").Split('|');
+                return parts.Any(p => string.Equals(p.Trim(), n, StringComparison.OrdinalIgnoreCase) || Compact(p) == ck);
+            }));
         }
 
         static List<LookupItemDto> LookupItems(int entityId, Dictionary<int, List<LookupItemDto>> lookups)
@@ -494,7 +579,7 @@ namespace App.BL.AIAgent.GenericAgent
                     return result;
                 }
                 DataModelDateTimeConverterBL.ConvertMasterDetailPostedUtcToClientForCalculation(master);
-                result.ToolResult = ApplyMaster(tool, master, args);
+                result.ToolResult = ApplyMaster(tool, master, args, master);
                 if (result.ToolResult.Value<bool>("ok") && tool != "get_form_state")
                     master.IsDirty = true;
                 result.FormData = JToken.FromObject(master);
@@ -508,24 +593,53 @@ namespace App.BL.AIAgent.GenericAgent
             }
         }
 
-        static JObject ApplyMaster(string tool, AppMasterDetailDto form, JObject args)
+        static JObject ApplyMaster(string tool, AppMasterDetailDto form, JObject args, AppMasterDetailDto posted)
         {
             var tx = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(form?.TransactionId ?? 0);
             if (tx == null) return Fail("Transaction was not found.");
             var lookups = new Dictionary<int, List<LookupItemDto>>();
+            SeedLookups(posted ?? form, tx, lookups);
             if (tool == "get_form_state") return ReadMaster(form, tx, args, lookups);
             if (tool == "set_fields") return WriteMasterFields(form, tx, args, lookups);
             if (tool == "update_grid") return WriteMasterGrid(form, tx, args, lookups);
             return Fail(tool + " is not applied on FormData.");
         }
 
+        static void SeedLookups(AppMasterDetailDto form, AppTransactionExDto tx, Dictionary<int, List<LookupItemDto>> lookups)
+        {
+            var src = form?.DictCascadingFiledDataSource;
+            if (src == null || src.Count == 0) return;
+            var byId = new Dictionary<string, AppTransactionFieldExDto>(StringComparer.OrdinalIgnoreCase);
+            void AddUnit(AppTransactionUnitExDto unit)
+            {
+                if (unit?.AppTransactionFieldList == null) return;
+                foreach (var field in unit.AppTransactionFieldList)
+                {
+                    if (field?.Id == null) continue;
+                    byId[field.Id.ToString()] = field;
+                }
+            }
+            AddUnit(RootUnit(tx));
+            if (tx?.DictAllTransactionUnitIdExDto != null)
+            {
+                foreach (var unit in tx.DictAllTransactionUnitIdExDto.Values)
+                    AddUnit(unit);
+            }
+            foreach (var pair in src)
+            {
+                if (pair.Value == null || pair.Value.Count == 0) continue;
+                if (!byId.TryGetValue(pair.Key, out var field) || !field.EntityId.HasValue) continue;
+                lookups[field.EntityId.Value] = pair.Value;
+            }
+        }
+
         static JObject ApplyList(string tool, AppListDataDto form, JObject args)
         {
             var tx = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(form?.TransactionId ?? 0);
             if (tx == null) return Fail("Transaction was not found.");
-            var lookups = new Dictionary<int, List<LookupItemDto>>();
             var fields = RootUnit(tx)?.AppTransactionFieldList?.Where(f => f != null && !string.IsNullOrWhiteSpace(f.DataBaseFieldName)).ToList()
                 ?? new List<AppTransactionFieldExDto>();
+            var lookups = new Dictionary<int, List<LookupItemDto>>();
             if (form.ListData == null) form.ListData = new List<AppChildDataDto>();
             if (tool == "get_form_state")
             {
@@ -547,7 +661,9 @@ namespace App.BL.AIAgent.GenericAgent
             if (tool == "set_fields" || (tool == "update_grid" && ArgString(args, "op") != "add" && ArgString(args, "op") != "delete"))
             {
                 var patch = ParsePatches(ArgString(args, "fieldsJson")).FirstOrDefault() ?? new Dictionary<string, object>();
-                var mapped = MapPatch(patch, fields, lookups);
+                var unresolved = new List<string>();
+                var mapped = MapPatch(patch, fields, lookups, unresolved);
+                if (unresolved.Count > 0) return Fail(string.Join(" ", unresolved));
                 if (mapped.Count == 0) return Fail("Could not map fieldsJson onto this list.");
                 var match = ArgObject(args, "match");
                 var mappedMatch = match.Count == 0 ? null : MapPatch(match, fields, lookups);
@@ -565,9 +681,11 @@ namespace App.BL.AIAgent.GenericAgent
                 {
                     var patches = ParsePatches(ArgString(args, "fieldsJson"));
                     var added = 0;
+                    var unresolved = new List<string>();
                     foreach (var patch in patches)
                     {
-                        var mapped = MapPatch(patch, fields, lookups);
+                        var mapped = MapPatch(patch, fields, lookups, unresolved);
+                        if (unresolved.Count > 0) return Fail(string.Join(" ", unresolved));
                         if (mapped.Count == 0) continue;
                         form.ListData.Add(NewChild(mapped));
                         added++;
@@ -590,19 +708,17 @@ namespace App.BL.AIAgent.GenericAgent
         {
             var patch = ParsePatches(ArgString(args, "fieldsJson")).FirstOrDefault() ?? new Dictionary<string, object>();
             var fields = OneToOneFields(tx);
-            var mappedWrites = new List<(AppTransactionFieldExDto Field, object Value)>();
-            foreach (var pair in patch)
+            var unresolved = new List<string>();
+            var mapped = MapPatch(patch, fields, lookups, unresolved);
+            if (unresolved.Count > 0) return Fail(string.Join(" ", unresolved));
+            if (mapped.Count == 0) return Fail("Could not map fieldsJson onto this form.");
+            var applied = new JObject();
+            foreach (var pair in mapped)
             {
                 var field = MatchField(fields, pair.Key);
-                if (field == null || string.IsNullOrWhiteSpace(field.DataBaseFieldName)) continue;
-                mappedWrites.Add((field, Coerce(field, pair.Value, lookups)));
-            }
-            if (mappedWrites.Count == 0) return Fail("Could not map fieldsJson onto this form.");
-            var applied = new JObject();
-            foreach (var write in mappedWrites)
-            {
-                SetOneToOne(form, tx, write.Field, write.Value);
-                applied[write.Field.DataBaseFieldName] = write.Value == null ? JValue.CreateNull() : JToken.FromObject(write.Value);
+                if (field == null) continue;
+                SetOneToOne(form, tx, field, pair.Value);
+                applied[field.DataBaseFieldName] = pair.Value == null ? JValue.CreateNull() : JToken.FromObject(pair.Value);
             }
             return new JObject { ["ok"] = true, ["saved"] = false, ["applied"] = applied };
         }
@@ -624,9 +740,11 @@ namespace App.BL.AIAgent.GenericAgent
                 var patches = ParsePatches(ArgString(args, "fieldsJson"));
                 var added = 0;
                 var target = buckets[0];
+                var unresolved = new List<string>();
                 foreach (var patch in patches)
                 {
-                    var rowMapped = MapPatch(patch, fields, lookups);
+                    var rowMapped = MapPatch(patch, fields, lookups, unresolved);
+                    if (unresolved.Count > 0) return Fail(string.Join(" ", unresolved));
                     if (rowMapped.Count == 0) continue;
                     target.Add(NewChild(rowMapped));
                     added++;
@@ -635,7 +753,9 @@ namespace App.BL.AIAgent.GenericAgent
             }
 
             var patchOne = ParsePatches(ArgString(args, "fieldsJson")).FirstOrDefault() ?? new Dictionary<string, object>();
-            var mapped = op == "delete" ? new Dictionary<string, object>() : MapPatch(patchOne, fields, lookups);
+            var updateErrors = new List<string>();
+            var mapped = op == "delete" ? new Dictionary<string, object>() : MapPatch(patchOne, fields, lookups, updateErrors);
+            if (updateErrors.Count > 0) return Fail(string.Join(" ", updateErrors));
             if (op != "delete" && mapped.Count == 0) return Fail("Could not map fieldsJson onto grid columns.");
             var updated = 0;
             var deleted = 0;

@@ -192,6 +192,10 @@ function stemKey(value: unknown) {
 
 function isLookupishField(field: any, entitySourceByFieldId?: Record<string, any[]> | null) {
   if (lookupItemsForField(field, entitySourceByFieldId).length > 0) return true;
+  const entityId = Number(pick(field, 'EntityId', 'entityId'));
+  if (Number.isFinite(entityId) && entityId > 0) return true;
+  const control = Number(pick(field, 'ControlType', 'controlType'));
+  if (control === 1 || control === 38 || control === 39 || control === 48 || control === 53) return true;
   if (/id$/i.test(fieldDbName(field))) return true;
   return /dropdown|combo|lookup|entity|select/i.test(String(pick(field, 'ControlType', 'controlType') ?? ''));
 }
@@ -236,8 +240,12 @@ function matchPatchFields(fields: any[], key: string, entitySourceByFieldId?: Re
   const byContains = fields.filter((field) => {
     const db = compact(fieldDbName(field));
     const label = compact(fieldLabel(field));
+    const stem = stemKey(fieldDbName(field));
+    const lstem = stemKey(fieldLabel(field));
     if (!sk || sk.length < 3) return false;
-    return db.includes(sk) || label.includes(sk) || (ck.length >= 3 && (db.includes(ck) || ck.includes(db)));
+    return db.includes(sk) || label.includes(sk) || ck.includes(db)
+      || (stem.length >= 3 && (sk.includes(stem) || ck.includes(stem)))
+      || (lstem.length >= 3 && (sk.includes(lstem) || ck.includes(lstem)));
   });
   if (byContains.length) return pickPreferredField(byContains, key, entitySourceByFieldId);
   return [];
@@ -253,15 +261,26 @@ function lookupItemsForField(field: any, entitySourceByFieldId?: Record<string, 
 function coerceLookupValue(field: any, value: unknown, entitySourceByFieldId?: Record<string, any[]> | null) {
   if (value == null || value === '') return value;
   const items = lookupItemsForField(field, entitySourceByFieldId);
-  if (!items.length) return value;
   const n = String(value).trim();
+  const ck = compact(n);
   const idOf = (item: any) => item?.Id ?? item?.id;
-  const dispOf = (item: any) => item?.Display ?? item?.display ?? item?.Name ?? item?.name;
-  const byId = items.find((item) => String(idOf(item)) === n);
-  if (byId) return idOf(byId);
-  const byDisp = items.find((item) => norm(dispOf(item)) === norm(n) || compact(dispOf(item)) === compact(n));
-  if (byDisp) return idOf(byDisp);
-  if (/^-?\d+(\.\d+)?$/.test(n)) return Number(n);
+  const dispOf = (item: any) => String(item?.Display ?? item?.display ?? item?.Name ?? item?.name ?? '');
+  const tokens = (item: any) => dispOf(item).split('|').map((part) => part.trim()).filter(Boolean);
+  const pickOne = (hits: any[]) => {
+    if (hits.length === 1) return idOf(hits[0]);
+    const exact = hits.filter((item) => norm(dispOf(item)) === norm(n));
+    return exact.length === 1 ? idOf(exact[0]) : undefined;
+  };
+  if (items.length) {
+    const byId = pickOne(items.filter((item) => String(idOf(item)) === n));
+    if (byId != null) return byId;
+    const byDisp = pickOne(items.filter((item) => norm(dispOf(item)) === norm(n) || compact(dispOf(item)) === ck));
+    if (byDisp != null) return byDisp;
+    const byToken = pickOne(items.filter((item) => tokens(item).some((t) => norm(t) === norm(n) || compact(t) === ck)));
+    if (byToken != null) return byToken;
+  }
+  if (/^-?\d+$/.test(n)) return Number(n);
+  if (isLookupishField(field, entitySourceByFieldId)) return undefined;
   return value;
 }
 
@@ -309,7 +328,9 @@ export function buildFormAgentContext(args: {
   const catalogField = (field: any) => {
     const db = fieldDbName(field);
     if (!db) return null;
-    return { db, label: fieldLabel(field) };
+    const row: any = { db, label: fieldLabel(field) };
+    if (isLookupishField(field, entitySourceByFieldId)) row.lookup = true;
+    return row;
   };
   const catalogUnits: any[] = [];
   const walkCatalog = (unit: any, parentPath: string, parentId: any, parentKind: string) => {
@@ -572,6 +593,20 @@ function mapPatchToUnitFields(
       out[db] = asCellValue(coerceLookupValue(field, leftover[0], entitySourceByFieldId));
     }
   }
+  Object.keys(out).forEach((db) => {
+    const written = (fields || []).find((f: any) => fieldDbName(f) === db);
+    if (!written || isLookupishField(written, entitySourceByFieldId)) return;
+    const stem = stemKey(db);
+    const lookup = (fields || []).find((f: any) => {
+      if (f === written || !isLookupishField(f, entitySourceByFieldId)) return false;
+      const fs = stemKey(fieldDbName(f));
+      return fs === stem || compact(fieldDbName(f)).startsWith(stem) || stem.startsWith(fs);
+    });
+    const ldb = lookup ? fieldDbName(lookup) : '';
+    if (!ldb || Object.prototype.hasOwnProperty.call(out, ldb)) return;
+    const coerced = asCellValue(coerceLookupValue(lookup, out[db], entitySourceByFieldId));
+    if (coerced != null && coerced !== '') out[ldb] = coerced;
+  });
   return out;
 }
 
