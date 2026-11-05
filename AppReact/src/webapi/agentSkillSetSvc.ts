@@ -62,6 +62,7 @@ export interface AppAgentToolRegisterDto {
     ToolConfig:  string;
     IsActive:    boolean;
     SortOrder:   number;
+    CallNotes?:  string | null;
 }
 
 export interface AppAgentMcpServerDto {
@@ -133,6 +134,7 @@ export interface AppAgentLibraryToolDto {
     /** JSON map layout→HTML (platform-ui-render render_* tools). */
     TemplateContent?:   string | null;
     TemplateMetaJson?:  string | null;
+    CallNotes?:         string | null;
 }
 
 export interface LibraryToolPreviewDto {

@@ -15,7 +15,8 @@ namespace App.BL.TenantBusiness
         string ParameterSchemaJson,
         string ToolType,
         string ToolConfig,
-        bool   IsActive);
+        bool   IsActive,
+        string CallNotes = null);
 
     public static class AppAgentToolRegisterBL
     {
@@ -39,7 +40,7 @@ namespace App.BL.TenantBusiness
         {
             var dt = fixture.RetriveDataTable(
                 @"SELECT ToolRegisterId, SkillKey, ToolName, ToolDescription, ParameterSchemaJson,
-                         ToolType, ToolConfig, IsActive
+                         ToolType, ToolConfig, IsActive, CallNotes
                   FROM dbo.AppAgentToolRegister
                   WHERE SkillKey=@SkillKey AND IsActive=1
                   ORDER BY ToolRegisterId",
@@ -84,7 +85,7 @@ namespace App.BL.TenantBusiness
         {
             var dt = fixture.RetriveDataTable(@"
 SELECT t.LibraryToolId AS ToolRegisterId, t.LibraryKey AS SkillKey, t.ToolName, t.ToolDescription,
-       t.ParameterSchemaJson, t.ToolType, t.ToolConfig, t.IsActive
+       t.ParameterSchemaJson, t.ToolType, t.ToolConfig, t.IsActive, t.CallNotes
 FROM dbo.AppAgentLibraryTool t
 INNER JOIN dbo.AppAgentToolLibrary l ON t.LibraryKey=l.LibraryKey
 WHERE t.IsActive=1 AND l.IsActive=1
@@ -104,12 +105,12 @@ ORDER BY l.LibraryKey, t.SortOrder, t.LibraryToolId",
         {
             var dt = fixture.RetriveDataTable(@"
 SELECT t.ToolRegisterId, t.SkillKey, t.ToolName, t.ToolDescription, t.ParameterSchemaJson,
-       t.ToolType, t.ToolConfig, t.IsActive, 0 AS IsLibraryTool
+       t.ToolType, t.ToolConfig, t.IsActive, t.CallNotes, 0 AS IsLibraryTool
 FROM dbo.AppAgentToolRegister t
 WHERE t.SkillKey=@SkillKey AND t.IsActive=1
 UNION ALL
 SELECT t.LibraryToolId, t.LibraryKey, t.ToolName, t.ToolDescription, t.ParameterSchemaJson,
-       t.ToolType, t.ToolConfig, t.IsActive, 1 AS IsLibraryTool
+       t.ToolType, t.ToolConfig, t.IsActive, t.CallNotes, 1 AS IsLibraryTool
 FROM dbo.AppAgentLibraryTool t
 INNER JOIN dbo.AppAgentLibrarySubscription s ON t.LibraryKey=s.LibraryKey
 INNER JOIN dbo.AppAgentSkillSet k ON k.AgentID = s.AgentID
@@ -154,7 +155,7 @@ ORDER BY IsLibraryTool, ToolRegisterId",
                     @"UPDATE dbo.AppAgentToolRegister SET
                         SkillKey=@SkillKey, ToolName=@ToolName, ToolDescription=@Description,
                         ParameterSchemaJson=@ParameterSchemaJson, ToolType=@ToolType,
-                        ToolConfig=@ToolConfig, IsActive=@IsActive
+                        ToolConfig=@ToolConfig, IsActive=@IsActive, CallNotes=@CallNotes
                       WHERE ToolRegisterId=@Id",
                     UpsertParams(fixture, dto));
                 return true;
@@ -176,7 +177,7 @@ ORDER BY IsLibraryTool, ToolRegisterId",
                     @"UPDATE dbo.AppAgentToolRegister SET
                         ToolDescription=@Description,
                         ParameterSchemaJson=@ParameterSchemaJson, ToolType=@ToolType,
-                        ToolConfig=@ToolConfig, IsActive=@IsActive
+                        ToolConfig=@ToolConfig, IsActive=@IsActive, CallNotes=@CallNotes
                       WHERE ToolRegisterId=@Id",
                     UpsertParams(fixture, updateDto));
                 return true;
@@ -184,8 +185,8 @@ ORDER BY IsLibraryTool, ToolRegisterId",
 
             fixture.ExecuteNonQueryResult(
                 @"INSERT INTO dbo.AppAgentToolRegister
-                    (SkillKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive)
-                  VALUES (@SkillKey, @ToolName, @Description, @ParameterSchemaJson, @ToolType, @ToolConfig, @IsActive)",
+                    (SkillKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, CallNotes)
+                  VALUES (@SkillKey, @ToolName, @Description, @ParameterSchemaJson, @ToolType, @ToolConfig, @IsActive, @CallNotes)",
                 UpsertParams(fixture, dto));
             return true;
         }
@@ -213,7 +214,7 @@ ORDER BY IsLibraryTool, ToolRegisterId",
                     @"UPDATE dbo.AppAgentToolRegister SET
                         SkillKey=@SkillKey, ToolName=@ToolName, ToolDescription=@Description,
                         ParameterSchemaJson=@ParameterSchemaJson, ToolType=@ToolType,
-                        ToolConfig=@ToolConfig, IsActive=@IsActive
+                        ToolConfig=@ToolConfig, IsActive=@IsActive, CallNotes=@CallNotes
                       WHERE ToolRegisterId=@Id",
                     UpsertParams(fixture, dto));
                 return dto.Id;
@@ -236,7 +237,7 @@ ORDER BY IsLibraryTool, ToolRegisterId",
                     @"UPDATE dbo.AppAgentToolRegister SET
                         ToolDescription=@Description,
                         ParameterSchemaJson=@ParameterSchemaJson, ToolType=@ToolType,
-                        ToolConfig=@ToolConfig, IsActive=@IsActive
+                        ToolConfig=@ToolConfig, IsActive=@IsActive, CallNotes=@CallNotes
                       WHERE ToolRegisterId=@Id",
                     UpsertParams(fixture, updateDto));
                 return existingId;
@@ -244,9 +245,9 @@ ORDER BY IsLibraryTool, ToolRegisterId",
 
             var dt = fixture.RetriveDataTable(
                 @"INSERT INTO dbo.AppAgentToolRegister
-                    (SkillKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive)
+                    (SkillKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, CallNotes)
                   OUTPUT INSERTED.ToolRegisterId
-                  VALUES (@SkillKey, @ToolName, @Description, @ParameterSchemaJson, @ToolType, @ToolConfig, @IsActive)",
+                  VALUES (@SkillKey, @ToolName, @Description, @ParameterSchemaJson, @ToolType, @ToolConfig, @IsActive, @CallNotes)",
                 UpsertParams(fixture, dto));
 
             if (dt != null && dt.Rows.Count > 0)
@@ -301,7 +302,8 @@ ORDER BY IsLibraryTool, ToolRegisterId",
                 ParameterSchemaJson: row["ParameterSchemaJson"] as string ?? "",
                 ToolType:            row["ToolType"] as string ?? "BuiltIn",
                 ToolConfig:          row["ToolConfig"] as string ?? "",
-                IsActive:            row["IsActive"] != DBNull.Value && Convert.ToBoolean(row["IsActive"]));
+                IsActive:            row["IsActive"] != DBNull.Value && Convert.ToBoolean(row["IsActive"]),
+                CallNotes:           Col(row, "CallNotes"));
         }
 
         private static List<DbParameter> UpsertParams(DatabaseSchemaMrg.DatabaseFixture f, AppAgentToolRegisterDto d)
@@ -315,8 +317,16 @@ ORDER BY IsLibraryTool, ToolRegisterId",
                 P(f, "@ParameterSchemaJson", d.ParameterSchemaJson),
                 P(f, "@ToolType",            d.ToolType ?? "BuiltIn"),
                 P(f, "@ToolConfig",          d.ToolConfig),
-                P(f, "@IsActive",            d.IsActive)
+                P(f, "@IsActive",            d.IsActive),
+                P(f, "@CallNotes",           (object)d.CallNotes ?? DBNull.Value)
             };
+        }
+
+        private static string Col(DataRow row, string name)
+        {
+            if (row?.Table == null || !row.Table.Columns.Contains(name) || row[name] == DBNull.Value)
+                return null;
+            return row[name] as string;
         }
 
         private static DatabaseSchemaMrg.DatabaseFixture GetFixture()

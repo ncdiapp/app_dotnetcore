@@ -40,6 +40,7 @@ const TOOL_CONFIG_TEMPLATES: Record<string, string> = {
 const emptyTool = (skillKey: string): AppAgentToolRegisterDto => ({
     Id: 0, SkillKey: skillKey, ToolName: '', Description: '',
     ToolType: 'BuiltIn', ToolConfig: TOOL_CONFIG_TEMPLATES['BuiltIn'], IsActive: true, SortOrder: 0,
+    CallNotes: '',
 });
 
 interface TableInfo { name: string; schema: string; }
@@ -181,6 +182,7 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
                     // Preserve TemplateContent when editing tool metadata only.
                     TemplateContent: editItem.TemplateContent ?? null,
                     TemplateMetaJson: editItem.TemplateMetaJson ?? null,
+                    CallNotes: editItem.CallNotes ?? null,
                 };
                 await agentSkillSetSvc.UpsertLibraryTool(payload);
             } else {
@@ -346,6 +348,22 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
                                     />
                                     <span className={`text-xs ${wordCount < 15 ? 'text-orange-500' : 'text-green-600'}`}>
                                         {wordCount} words{wordCount < 15 ? ' — aim for 15+ for reliable tool selection' : ''}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="flex items-start">
+                                <label className={`${lbl} mt-1`}>Call Notes</label>
+                                <div className="flex flex-col flex-auto w-32 gap-0.5">
+                                    <textarea
+                                        className={`w-full px-2 py-1 text-xs border ${theme.inputBox} focus:outline-none`}
+                                        rows={5}
+                                        placeholder="How to call this tool (gates, next step). Not sent on the tool card. Attached when the call fails."
+                                        value={editItem.CallNotes ?? ''}
+                                        onChange={e => update('CallNotes', e.target.value)}
+                                    />
+                                    <span className={`text-xs ${theme.label}`}>
+                                        Kept off Gemini functionDeclarations. Shown on failed / skipped tool results as callNotes.
                                     </span>
                                 </div>
                             </div>

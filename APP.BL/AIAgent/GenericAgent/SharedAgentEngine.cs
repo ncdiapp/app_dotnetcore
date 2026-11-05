@@ -254,7 +254,7 @@ A render button click arrives as a user message. If the user picked a row or a f
                 var kernel = KernelFactory.Build(identity);
                 kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks, enableThinkMode));
                 kernel.AutoFunctionInvocationFilters.Add(new GenericAgentPruneFilter(skillSet.MaxIterations, skillSet.MaxHistoryTokens));
-                if (!string.IsNullOrWhiteSpace(resolvedChatKey))
+                if (!string.IsNullOrWhiteSpace(resolvedChatKey) && !hasFormHost)
                 {
                     try
                     {
@@ -994,6 +994,7 @@ A render button click arrives as a user message. If the user picked a row or a f
             var cap        = maxChars > 0 ? maxChars : DefaultMaxToolResultChars;
             var toolType   = row.ToolType;
             var toolConfig = row.ToolConfig;
+            var callNotes  = row.CallNotes;
 
             return KernelFunctionFactory.CreateFromMethod(
                 async (KernelArguments args, CancellationToken ct) =>
@@ -1004,7 +1005,7 @@ A render button click arrives as a user message. If the user picked a row or a f
                     var result = await AppAgentToolEngine.Dispatch(toolType, toolConfig, strArgs, context, ct, instancePool, row.ToolName)
                                                          .ConfigureAwait(false);
                     result = DataAnalyze.AgentDataAnalyzeHook.MaybeCacheAndRewrite(context, toolType, row.ToolName, result, strArgs);
-                    return CapResult(result, cap);
+                    return AttachCallNotes(CapResult(result, cap), callNotes);
                 },
                 functionName: SanitizeName(row.ToolName),
                 description:  row.Description ?? row.ToolName,
@@ -1094,7 +1095,7 @@ A render button click arrives as a user message. If the user picked a row or a f
                     string Arg(string name, string fallback = null) =>
                         args.TryGetValue(name, out var v) && v != null ? v.ToString() : fallback;
 
-                    return await plugin.AskUser(
+                    var asked = await plugin.AskUser(
                         prompt: Arg("prompt", "") ?? "",
                         context: context,
                         mode: Arg("mode", "text"),
@@ -1103,25 +1104,13 @@ A render button click arrives as a user message. If the user picked a row or a f
                         contextKey: Arg("contextKey"),
                         ui: Arg("ui"), // null → plugin defaults / infers from prompt keywords
                         layout: Arg("layout", "vertical")).ConfigureAwait(false);
+                    return AttachCallNotes(asked, AskUserCallNotes);
                 },
                 functionName: "ask_user",
                 description:
-                    "System built-in (auto-injected for Interactive agents — not a library/private tool). "
-                    + "Ask the user a structured question and wait for their answer. "
-                    + "For large row fetches: call execute_sql first (platform COUNTs). If it returns need_ask_user, call ask_user with that prompt/optionsJson/contextKey=confirm_row_limit (include the counted row total). "
-                    + "For analysis-like asks (group-by / ranges / multi-part metrics): MUST call with contextKey=confirm_kpi_dashboard, mode=single_choice, "
-                    + "optionsJson=[{\"id\":\"kpi_dashboard\",\"label\":\"KPI / Dashboard — batch analysis\"},{\"id\":\"fetch_display\",\"label\":\"Only fetch and show the data I asked for\"}] BEFORE data_analyze or inventing tables. "
-                    + "mode=text|single_choice|multi_choice. "
-                    + "Choice UI (single_choice + optionsJson): "
-                    + "ui=button_group (clickable buttons, default for menus), "
-                    + "ui=radio (radio + Submit), "
-                    + "ui=dropdown (HTML drop-down + Submit). "
-                    + "When instructions say ddl / drop down / dropdown / combobox / option list / select list, "
-                    + "MUST use mode=single_choice + ui=dropdown + optionsJson [{id,display}]. "
-                    + "When they say radio buttons, use ui=radio (or fieldsJson type=radio on a form). "
-                    + "When they say buttons/button group, use ui=button_group. "
-                    + "Never put choices only in prompt text. "
-                    + "fieldsJson: type=text|select|radio (select=DDL, radio=radio buttons; both need options).",
+                    "Ask the user a question and wait. mode=text|single_choice|multi_choice. "
+                    + "Choices require optionsJson [{id,display}] and optional ui=button_group|radio|dropdown. "
+                    + "Do not list choices only in prompt text.",
                 parameters: parameters);
         }
 
@@ -1403,6 +1392,32 @@ A render button click arrives as a user message. If the user picked a row or a f
             // Gemini requires function names to start with a letter or underscore
             if (s.Length > 0 && char.IsDigit(s[0])) s = "_" + s;
             return s;
+        }
+
+        const string AskUserCallNotes =
+            "Choices need optionsJson [{id,display}] (never only in prompt). "
+            + "ui=button_group|radio|dropdown. "
+            + "Large row fetches: if execute_sql returns need_ask_user, retry with that prompt/optionsJson and contextKey=confirm_row_limit. "
+            + "Analysis-like asks: contextKey=confirm_kpi_dashboard, mode=single_choice, options kpi_dashboard vs fetch_display, before data_analyze.";
+
+        /// <summary>CallNotes stay off the tool card; attach only when the call failed or was skipped.</summary>
+        static string AttachCallNotes(string result, string callNotes)
+        {
+            if (string.IsNullOrWhiteSpace(callNotes) || string.IsNullOrWhiteSpace(result)) return result ?? "";
+            try
+            {
+                var token = JToken.Parse(result);
+                if (token is JObject obj)
+                {
+                    var failed = obj["ok"]?.Type == JTokenType.Boolean && obj["ok"].Value<bool>() == false
+                        || obj["skipped"]?.Type == JTokenType.Boolean && obj["skipped"].Value<bool>();
+                    if (!failed) return result;
+                    if (obj["callNotes"] == null) obj["callNotes"] = callNotes;
+                    return obj.ToString(Newtonsoft.Json.Formatting.None);
+                }
+            }
+            catch { /* not JSON */ }
+            return result;
         }
 
         private static string CapResult(string? s, int max)
