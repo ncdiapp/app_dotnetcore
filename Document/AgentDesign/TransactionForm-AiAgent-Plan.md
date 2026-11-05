@@ -1,8 +1,9 @@
 # Transaction Form AI Agent — Design Plan
 
-**Status:** Implementation started (2026-11-03). Dock chat chrome and full-height dock agreed 2026-11-04. Apply migration `V070__AppFormAgent_xhu.sql` before using the agent.  
+**Status:** Implementation in progress. Catalog-only `HostContextJson` and Calculation-style apply agreed 2026-11-05 (sections 5 and 11). Apply migrations `V070__AppFormAgent_xhu.sql` then `V071` / `V072`.  
 **Date:** 2026-11-03  
-**Scope:** Master Detail and List Edit transaction forms. One shared Specialist. First delivery includes the AI panel, List Edit Communication, host tools, and seeded libraries.
+**Scope:** Master Detail and List Edit transaction forms. One shared Specialist. First delivery includes the AI panel, List Edit Communication, host tools, and seeded libraries.  
+**Not in scope:** a vector database. Field/grid addressing uses the unit catalog plus server-side match, not embeddings.
 
 ---
 
@@ -111,16 +112,16 @@ New library `platform-form-host`, registered like V028. Each row is `AppAgentLib
 
 Runtime path is unchanged: `SharedAgentEngine.WrapRegisteredTool` to `AppAgentToolEngine.Dispatch`, `BuiltIn` branch, `BuiltInToolExecutor` reflects into `FormHostPlugin`.
 
-Methods that change the open form do not read or write the business record in C#. They wait on the same bridge `ask_user` uses (`AgentHitlBridge` in `AgentAskUserPlugin`):
+`set_fields`, `update_grid`, and `get_form_state` follow the **Calculation** round trip (section 11). They do not save the business record. Popup and command tools still wait on `AgentHitlBridge`:
 
-1. The engine emits a `host_tool` event (tool name, arguments, requestId).
-2. `SharedAgentChat` on the form hands the request to `FormMasterDetail` or `FormListEdit`.
-3. React calls the existing functions: change a field, change a grid, or open a Linked Search / Link Target popup.
-4. The page POSTs the JSON result back. The C# method returns that JSON to the model.
+1. The engine emits `host_tool` (tool name, raw arguments, requestId).
+2. The open form POSTs **current `FormData` + tool + args** to `AppTransaction/ApplyFormAgentTool` (same idea as `ValidateAndCalculateTransactionData`).
+3. `FormHostWriteBL` uses cached `AppTransactionExDto` (ControlType, EntityId, db names). It matches units/fields, coerces DDL / date / file values, applies match filters on grids, and returns the mutated DTO. No database write.
+4. React replaces `currentFormData` with the response (bind only), then POSTs a small `{ ok, matched, applied }` JSON to `ConfirmHostTool` for the model.
 
 If the bridge is empty (Agent Management test chat), the method returns `{ ok: false, error }`.
 
-Host methods: `GetFormState`, `DescribeAction`, `SetFields`, `UpdateGrid`, `OpenLinkedSearch`, `OpenLinkTarget`, `RunCommand`. The UI code stays in React.
+Host methods: `GetFormState`, `DescribeAction`, `SetFields`, `UpdateGrid`, `OpenLinkedSearch`, `OpenLinkTarget`, `RunCommand`. Mapping and coercion live in C#. The UI only posts FormData and rebinds.
 
 One server read method, `ListAppFiles`, lists `AppFile` rows by keyword (FileId, name, whether it is an image). This is not `agent-files`. That library is the agent workspace only.
 
@@ -131,7 +132,7 @@ Seed subscriptions:
 - `platform-api-provider` — `api-provider-search`, then `api-provider-detail`, then `api-provider-execute`. Writes keep that library's existing confirmation.
 - `data-analyze` and `platform-ui-render` — aggregation, and Grid / Card / Chart. A `render_interactive` button uses the existing `[ui_render_action]` turn, then `set_fields` or `update_grid`.
 
-Reading the open form does not need those libraries. Field values and a grid sample are already in `HostContextJson`. When the sample is short or the user just edited the form, the model calls `get_form_state`.
+Reading live values is `get_form_state` (optional `unitId` + `match`). `HostContextJson` is a field/unit **catalog** only — no row values, no Entity item lists.
 
 Example, "for each category I need, show the three best-value items": read the categories from the form grid, fetch candidates with `execute_sql` or an API, take the top three per category with `data_analyze`, and show them with `render_interactive` as cards or a grid. After the user clicks "add to the form", the agent calls `update_grid`. Picking an image is the same path: `ListAppFiles`, a card view (`CardImageLoader` already paints an AppFile id), the user clicks one, `set_fields` writes the FileId into the image field.
 
@@ -141,17 +142,65 @@ When the turn carries `HostContextJson`, do not append `AnalysisPathHardRule` fr
 
 ## 5. Context each turn
 
-Current values and unsaved edits live in the browser (`FormMasterDetail` `dataModel.currentFormData`, or the List Edit list). Each `RunAgent` sends a `HostContextJson` built by the host. The engine injects it into that turn's system section. It is not written into chat history.
+Unsaved values live only in the browser. Each `RunAgent` sends a compact **catalog** as `HostContextJson`. The engine injects it into that turn's system section (system prompt is rebuilt every turn, so send the catalog every turn). It is not stored in chat history. Do not send field values or grid rows in this JSON.
 
-Each turn carries a catalog, not the full two-hop graph:
+```json
+{
+  "form": "Sales Order",
+  "pk": "SO-2026-00418",
+  "transactionId": 1204,
+  "mode": "master",
+  "isDirty": false,
+  "units": [
+    {
+      "unitId": 4401,
+      "path": "Header",
+      "kind": "one",
+      "fields": [
+        { "db": "OrderNo", "label": "Order No" },
+        { "db": "CustomerId", "label": "Customer" },
+        { "db": "Remark", "label": "Remark" }
+      ]
+    },
+    {
+      "unitId": 4402,
+      "path": "Header / Order Line",
+      "kind": "grid",
+      "parentUnitId": 4401,
+      "rowCount": 12,
+      "fields": [
+        { "db": "Sku", "label": "SKU" },
+        { "db": "Qty", "label": "Qty" }
+      ]
+    },
+    {
+      "unitId": 4403,
+      "path": "Header / Order Line / Allocation",
+      "kind": "subgrid",
+      "parentUnitId": 4402,
+      "fields": [
+        { "db": "WhseId", "label": "Warehouse" },
+        { "db": "AllocQty", "label": "Alloc Qty" }
+      ]
+    }
+  ]
+}
+```
 
-- This form: transactionId, name, rootPk, isNew, isDirty, where it was opened from (`param2`: link target or form group).
-- Fields: unit, fieldId, dbName, label, type, current value.
-- Grids: columns, row count, at most 20 rows. Say when the list is truncated. Further rows come from `get_form_state`.
-- Action catalog: Linked Search, Link Target, and Command on this form. Each entry has id, name, host unit, what it needs, and what it writes back.
-- Two hops: `describe_action` on a Link Target returns that target form's key fields and the names of its next actions. It does not preload the target record.
+- `kind`: `one` (root or sibling 1-1), `grid` (child), `subgrid` (grandchild under a grid row).
+- Field entries are `{ db, label }` only. Do **not** put `entityId`, lookup item lists, ControlType, or current values here. The apply tool loads field structure from `AppTransactionExDto`.
+- Grid `rowCount` is a hint. Rows are not included.
+- Address for tools: `unitId` (or unit display name) + field `db`/`label` + optional `match` / `rowKey` / `parentRowKey`.
+- Ambiguous names: `ask_user`. Do not guess.
+- Form group: `{ "mode": "transactionFormGroup", "forms": [ /* one catalog per host */ ] }`.
+- List Edit: `mode: "list"`, one unit of columns, `rowCount`, no row payload.
+- Actions: keep a short `actions` list (id, kind, name, unitId) for Linked Search / Link Target / Command. Details via `describe_action`.
 
-List Edit context is the list: columns, the selected row, at most 20 rows, and the Linked Search and Link Target configured on that list unit.
+Example: “For Product Fabric BOM grid, set fabric as approved for fabric Woven ABC123.”
+
+- Catalog maps “Fabric BOM” → grid `unitId`, “Fabric Code” / “Fabric Status” → `db`.
+- Model calls `update_grid` once with `match: { FabricCode: "Woven ABC123" }` and `fieldsJson: { Status: "Approved" }`.
+- Server finds the two matching rows among 100, coerces Approved → entity Id 1, patches FormData, returns it. The model never sees the 100 rows.
 
 ---
 
@@ -197,12 +246,11 @@ Communication for a List Edit transaction is one thread for the whole transactio
 
 ## 8. What the form host does
 
-The host sits on `FormMasterDetail` and `FormListEdit` and calls the functions that already exist.
+The host sits on `FormMasterDetail` and `FormListEdit`.
 
-- Set a field: `buildFormDataWithOneToOneValue` and `onDataModelChange`. On List Edit, the target is the selected row or the row named by the tool.
-- Set a grid: the same `DictOneToManyFields` update `DataGridLayout` already uses. On List Edit, the list source is `ListData`.
-- Open Linked Search: `FormMainMenus.handleLinkedSearch` or `DataGridLayout.executeLinkedSearch`, and the List Edit equivalents. The tool returns only after the user confirms or cancels. Write-back stays `applyLinkedSearchResultToRootRow`, `applyLinkedSearchAddRows`, `applyLinkedSearchUpdateHostRow`, or `applyLinkedSearchResultToListRow`.
-- Open Link Target: `handleLinkTarget` or `executeUnitLinkTarget`. Popup versus new tab follows the existing `IsPopup` flag.
+- **set_fields / update_grid / get_form_state:** POST current FormData to `ApplyFormAgentTool` (section 11). Bind the returned FormData. Do not map columns in React.
+- Open Linked Search: existing `handleLinkedSearch` / grid / List Edit popups. Tool returns after confirm or cancel. Write-back stays the existing callbacks.
+- Open Link Target: `handleLinkTarget` / `executeUnitLinkTarget`. `IsPopup` unchanged.
 - Command: Save, delete, and server commands go through `ask_user` first, then `handleCommandAction`. Refresh may run immediately.
 
 ```mermaid
@@ -223,6 +271,34 @@ sequenceDiagram
 ```
 
 ---
+
+## 11. Server apply (same pattern as Calculation)
+
+Calculation today: client POSTs `currentFormData` to `ValidateAndCalculateTransactionData`; server mutates the DTO; response binds the UI; **no Save**.
+
+Form-agent writes use the same pattern. The agent loop cannot see browser memory, so `host_tool` still wakes the page. The page then POSTs FormData; the server does the work; the page binds. The model only sees a small tool result.
+
+```
+LLM → update_grid / set_fields / get_form_state
+  → host_tool
+  → POST ApplyFormAgentTool { FormData, ToolName, Args, Mode }
+  → FormHostWriteBL on AppMasterDetailDto / AppListDataDto
+  → { FormData, ToolResult }
+  → client currentFormData = FormData, IsDirty = true
+  → ConfirmHostTool(ToolResult)
+```
+
+`FormHostWriteBL`:
+
+- Load `AppTransactionExDto` from cache (`GetOnetHierarchyTranscationFromCache`).
+- Map keys: `DataBaseFieldName`, `DisplayName`, then stem (`ColorId` → Color lookup, not ColorCode). Ambiguous → error.
+- Coerce from ControlType: Entity/SearchAble DDL display → Id (`GetLookupItemList`); numeric Id kept; Date / DateTime parsed; File / Image stored as the given FileId.
+- `update_grid` `op=update` with `match` (e.g. `{ "FabricCode": "Woven ABC123" }`) updates **every** matching row. Optional `parentRowKey` for subgrid. `op=add` still takes a JSON **array** of rows in one call. `op=delete` uses `match` or `rowKey`.
+- `get_form_state` returns a value slice (optional `unitId`, `match`, `take`). It does not dump the catalog again.
+- Do not call `ValidateAndCalculateMasterDetailTransactionData` on every agent write (would drop UI-only state). Formula pass stays later.
+- Linked Search / Link Target / command popups stay on the host.
+
+No vector database. Matching 100 grid rows is an in-memory filter on posted FormData.
 
 ## 9. Out of scope
 
@@ -245,5 +321,6 @@ sequenceDiagram
 1. Add the AI flags and dock to `TransactionOptionDto`, and show them in the Transaction Graphic Editor for Master Detail and List Edit.
 2. Shared dock on Master Detail (Messages, AI, or both tabs) and the same dock on List Edit, including List Communication with root `__list__`. Embed `AgentUiChatHost`.
 3. Upgrade script: seed `app-transaction-form-agent`, `platform-form-host`, subscriptions, and DDL exclusions. Block rename and delete of that code.
-4. Build `HostContextJson` on each turn and inject it into that turn's system section only.
-5. `host_tool` bridge: read state, edit fields and grids, open the existing Linked Search and Link Target popups, confirm Save / delete / server commands, list AppFiles, and write a render selection back onto the form.
+4. Build catalog-only `HostContextJson` on each turn and inject it into that turn's system section only.
+5. `host_tool` bridge: popups and commands on the host; `set_fields` / `update_grid` / `get_form_state` POST FormData to `ApplyFormAgentTool` (section 11).
+6. `FormHostWriteBL` mutates the posted DTO (match, coerce). Formula recalculation of dependent columns is not part of this step.

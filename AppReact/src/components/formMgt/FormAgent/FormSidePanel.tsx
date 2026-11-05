@@ -154,12 +154,11 @@ const FormSidePanel: React.FC<Props> = ({
                   }
                   return { ok: results.some((r: any) => r?.ok === true), results };
                 };
-                if (toolName === 'get_form_state') {
-                  if (hosts.length === 1) return { ok: true, form: hosts[0].slots.getContext?.() ?? null };
-                  return { ok: true, forms: hosts.map((h) => ({ formRole: h.role, formName: h.name, form: h.slots.getContext?.() ?? null })) };
+                if (toolName === 'get_form_state' || toolName === 'set_fields' || toolName === 'update_grid') {
+                  return callAll((s) => s.applyTool?.(toolName, args)
+                    ?? (toolName === 'set_fields' ? s.setFields?.(args) : toolName === 'update_grid' ? s.updateGrid?.(args) : { ok: false, error: `${toolName} is not available.` })
+                    ?? { ok: false, error: `${toolName} is not available.` });
                 }
-                if (toolName === 'set_fields') return callAll((s) => s.setFields?.(args) ?? { ok: false, error: 'set_fields is not available.' });
-                if (toolName === 'update_grid') return callAll((s) => s.updateGrid?.(args) ?? { ok: false, error: 'update_grid is not available.' });
                 if (toolName === 'describe_action') {
                   for (const h of hosts) {
                     const r: any = h.slots.describeAction?.(args);

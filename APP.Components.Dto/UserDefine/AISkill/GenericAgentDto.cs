@@ -57,6 +57,24 @@ namespace APP.Components.Dto
         public string ResultJson { get; set; }
     }
 
+    /// <summary>
+    /// Calculation-style apply: client posts open FormData; server mutates; no save.
+    /// </summary>
+    public class FormAgentApplyToolRequestDto
+    {
+        public string ToolName { get; set; }
+        /// <summary>master | list</summary>
+        public string Mode { get; set; }
+        public JToken FormData { get; set; }
+        public JObject Args { get; set; }
+    }
+
+    public class FormAgentApplyToolResultDto
+    {
+        public JToken FormData { get; set; }
+        public JObject ToolResult { get; set; }
+    }
+
     public class GenericAgentStartResultDto
     {
         public bool   IsStarted { get; set; }

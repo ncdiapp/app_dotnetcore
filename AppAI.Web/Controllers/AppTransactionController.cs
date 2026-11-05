@@ -883,6 +883,21 @@ public class AppTransactionController : SecureBaseController
 
 
     [HttpPost]
+    public OperationCallResult<FormAgentApplyToolResultDto> ApplyFormAgentTool([FromBody] FormAgentApplyToolRequestDto request)
+    {
+        var result = new OperationCallResult<FormAgentApplyToolResultDto>();
+        if (request == null || request.FormData == null || string.IsNullOrWhiteSpace(request.ToolName))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AppTransactionController), "ApplyFormAgentTool",
+                ValidationItemType.Error, "ToolName and FormData are required."));
+            return result;
+        }
+        result.Object = App.BL.AIAgent.GenericAgent.FormHostWriteBL.ApplyPostedForm(request);
+        return result;
+    }
+
+    [HttpPost]
     public OperationCallResult<AppMasterDetailDto> ValidateAndCalculateTransactionData(object rootAppformDataDto)
     {
         var aformData = JsonConvert.DeserializeObject<AppMasterDetailDto>(rootAppformDataDto.ToString());

@@ -631,6 +631,17 @@ class AppTransactionService {
     return response.json();
   }
 
+  /** Form agent: apply set_fields / update_grid / get_form_state on posted FormData. No save. */
+  async applyFormAgentTool(payload: { ToolName: string; Mode?: string; FormData: any; Args?: any }): Promise<any> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/AppTransaction/ApplyFormAgentTool`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload ?? null),
+    });
+    if (!response.ok) throw new Error('Failed to apply form agent tool');
+    return response.json();
+  }
+
   /** Master-detail runtime: run validation + calculation without saving. */
   async validateAndCalculateTransactionData(rootAppformDataDto: any): Promise<any> {
     const response = await fetch(`${endpoints.BASE_URL}/webapi/AppTransaction/ValidateAndCalculateTransactionData`, {

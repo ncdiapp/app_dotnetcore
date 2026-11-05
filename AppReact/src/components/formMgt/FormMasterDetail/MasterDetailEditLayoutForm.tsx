@@ -13,12 +13,11 @@ import FormSidePanel from '../FormAgent/FormSidePanel';
 import { FormAgentResultSlotContext, FormGroupAgentHostsContext, FormGroupDockSlotContext } from '../FormAgent/formGroupDock';
 import {
   FormAgentHostContext,
-  applySetFields,
-  applyUpdateGrid,
   buildFormAgentContext,
   describeFormAction,
   type FormAgentHostSlots,
 } from '../FormAgent/formAgentHost';
+import { appTransactionService } from '../../../webapi/apptransactionsvc';
 import {
   FormMasterDetailRuntimeConfigProvider,
   emptyFormMasterDetailRuntimeConfigApi,
@@ -173,6 +172,12 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
     (isConversationEnabled && (transactionDto?.OtherOptions?.IsOpenCommunicationByDefault ?? transactionDto?.IsOpenCommunicationByDefault))
     || (isAiEnabled && transactionDto?.OtherOptions?.IsOpenAiAgentByDefault)
   );
+  const hostTransaction = transactionExDto || transactionDto || dataModel?.currentFormStructure;
+  const hostEntitySources =
+    dataModel?.dictFieldEntityDataSource
+    ?? dataModel?.currentFormData?.DictCascadingFiledDataSource
+    ?? dataModel?.currentFormStructure?.DictStandAloneEntityDataSource
+    ?? null;
   const hostSlotsRef = useRef<FormAgentHostSlots>({});
   hostSlotsRef.current.getContext = () => ({
     formRole: controllerModel.isTemplateHeader ? 'header' : 'main',
@@ -180,21 +185,28 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
     transactionId: runtimeTransactionId,
     ...(buildFormAgentContext({
       mode: 'master',
-      transaction: transactionDto,
+      transaction: hostTransaction,
       formData: dataModel?.currentFormData,
       openedFrom: controllerModel?.param2Obj ?? null,
+      entitySourceByFieldId: hostEntitySources,
     }) as object),
   });
-  hostSlotsRef.current.setFields = async (args) => {
-    const { next, applied, missed } = applySetFields(dataModel?.currentFormData, args, 'master', transactionDto);
-    onDataModelChange?.({ ...dataModel, currentFormData: next });
-    return { ok: applied.length > 0, saved: false, applied, missed };
+  hostSlotsRef.current.applyTool = async (toolName, args) => {
+    const result = await appTransactionService.applyFormAgentTool({
+      ToolName: toolName,
+      Mode: 'master',
+      FormData: dataModel?.currentFormData,
+      Args: args || {},
+    });
+    const obj = result?.Object ?? result;
+    const toolResult = obj?.ToolResult ?? { ok: false, error: 'Empty apply result.' };
+    if (obj?.FormData && toolName !== 'get_form_state') {
+      onDataModelChange?.({ ...dataModel, currentFormData: { ...obj.FormData, IsDirty: true } });
+    }
+    return toolResult;
   };
-  hostSlotsRef.current.updateGrid = async (args) => {
-    const next = applyUpdateGrid(dataModel?.currentFormData, args, 'master');
-    onDataModelChange?.({ ...dataModel, currentFormData: next });
-    return { ok: true, saved: false };
-  };
+  hostSlotsRef.current.setFields = (args) => hostSlotsRef.current.applyTool!('set_fields', args);
+  hostSlotsRef.current.updateGrid = (args) => hostSlotsRef.current.applyTool!('update_grid', args);
   hostSlotsRef.current.describeAction = (args) => describeFormAction(transactionDto, args);
   const formGroupHostKey = `${controllerModel.isTemplateHeader ? 'header' : 'main'}:${runtimeTransactionId}:${controllerModel.uiId}`;
   useEffect(() => {

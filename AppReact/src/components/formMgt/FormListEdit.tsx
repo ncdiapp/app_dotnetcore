@@ -24,8 +24,6 @@ import { FormAgentResultSlotContext } from './FormAgent/formGroupDock';
 import {
   FormAgentHostContext,
   LIST_COMMUNICATION_ROOT,
-  applySetFields,
-  applyUpdateGrid,
   buildFormAgentContext,
   describeFormAction,
   type FormAgentHostSlots,
@@ -1517,16 +1515,28 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
     formData: dataModel.currentFormData,
   });
   listAgentHostRef.current.describeAction = (args) => describeFormAction(listTransaction, args);
-  listAgentHostRef.current.setFields = async (args) => {
-    const { next } = applySetFields(dataModel.currentFormData, args, 'list', listTransaction);
-    setDataModel((prev) => ({ ...prev, currentFormData: next, listDataSource: prev.listDataSource }));
-    const cv = dataModel.listDataSource as any;
-    if (cv && Array.isArray(next.ListData)) {
-      cv.sourceCollection = next.ListData;
-      cv.refresh?.();
+  listAgentHostRef.current.applyTool = async (toolName, args) => {
+    const result = await appTransactionService.applyFormAgentTool({
+      ToolName: toolName,
+      Mode: 'list',
+      FormData: dataModel.currentFormData,
+      Args: args || {},
+    });
+    const obj = result?.Object ?? result;
+    const toolResult = obj?.ToolResult ?? { ok: false, error: 'Empty apply result.' };
+    if (obj?.FormData && toolName !== 'get_form_state') {
+      const next = { ...obj.FormData, IsDirty: true };
+      setDataModel((prev) => ({ ...prev, currentFormData: next, listDataSource: prev.listDataSource }));
+      const cv = dataModel.listDataSource as any;
+      if (cv && Array.isArray(next.ListData)) {
+        cv.sourceCollection = next.ListData;
+        cv.refresh?.();
+      }
     }
-    return { ok: true, saved: false };
+    return toolResult;
   };
+  listAgentHostRef.current.setFields = (args) => listAgentHostRef.current.applyTool!('set_fields', args);
+  listAgentHostRef.current.updateGrid = (args) => listAgentHostRef.current.applyTool!('update_grid', args);
   const settleListAgent = (value: unknown) => {
     const done = listAgentWaitRef.current;
     listAgentWaitRef.current = null;
@@ -1571,16 +1581,6 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
       return { ok: true };
     }
     return { ok: false, error: 'Command was not found on this list.' };
-  };
-  listAgentHostRef.current.updateGrid = async (args) => {
-    const updated = applyUpdateGrid(dataModel.currentFormData, args, 'list');
-    setDataModel((prev) => ({ ...prev, currentFormData: updated }));
-    const cv = dataModel.listDataSource as any;
-    if (cv && Array.isArray(updated.ListData)) {
-      cv.sourceCollection = updated.ListData;
-      cv.refresh?.();
-    }
-    return { ok: true, saved: false };
   };
 
   return (

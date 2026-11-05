@@ -15,8 +15,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     /// </summary>
     public class FormHostPlugin
     {
-        public Task<string> GetFormState(AgentToolContext context, string unitId = null, string rowKey = null) =>
-            AskHost(context, "get_form_state", new { unitId, rowKey });
+        public Task<string> GetFormState(AgentToolContext context, string unitId = null, string rowKey = null, string match = null, string take = null, string parentRowKey = null) =>
+            AskHost(context, "get_form_state", new { unitId, rowKey, match, take, parentRowKey });
 
         public Task<string> DescribeAction(AgentToolContext context, string kind = null, string id = null) =>
             AskHost(context, "describe_action", new { kind, id });
@@ -24,8 +24,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         public Task<string> SetFields(AgentToolContext context, string fieldsJson = null, string rowKey = null) =>
             AskHost(context, "set_fields", new { fieldsJson, rowKey });
 
-        public Task<string> UpdateGrid(AgentToolContext context, string unitId = null, string op = null, string rowKey = null, string fieldsJson = null) =>
-            AskHost(context, "update_grid", new { unitId, op, rowKey, fieldsJson });
+        /// <summary>
+        /// Add/update/delete grid rows on the posted FormData (Calculation round trip).
+        /// One add call carries every new row. Update may use match to change every matching row.
+        /// </summary>
+        public Task<string> UpdateGrid(AgentToolContext context, string unitId = null, string op = null, string rowKey = null, string fieldsJson = null, string match = null, string parentRowKey = null) =>
+            AskHost(context, "update_grid", new { unitId, op, rowKey, fieldsJson, match, parentRowKey });
 
         public Task<string> OpenLinkedSearch(AgentToolContext context, string linkedSearchId = null, string unitId = null, string rowKey = null) =>
             AskHost(context, "open_linked_search", new { linkedSearchId, unitId, rowKey });
