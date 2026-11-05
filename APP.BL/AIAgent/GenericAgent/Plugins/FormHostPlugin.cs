@@ -26,7 +26,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
         /// <summary>
         /// Add/update/delete grid rows on the posted FormData (Calculation round trip).
-        /// One add call carries every new row. Update may use match to change every matching row.
+        /// One add call carries every new row. One update with no rowKey/match changes every row.
         /// </summary>
         public Task<string> UpdateGrid(AgentToolContext context, string unitId = null, string op = null, string rowKey = null, string fieldsJson = null, string match = null, string parentRowKey = null) =>
             AskHost(context, "update_grid", new { unitId, op, rowKey, fieldsJson, match, parentRowKey });
