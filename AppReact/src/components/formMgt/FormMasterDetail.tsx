@@ -1006,17 +1006,21 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
         );
     }
 
+    const isTemplateHeader = Boolean(controllerModel?.isTemplateHeader);
+
     return (
         <div
-            className={`w-full h-full flex ${theme.default}`}
+            className={`w-full ${isTemplateHeader ? 'h-auto' : 'h-full'} flex ${theme.default}`}
             style={{ position: 'relative' }}
             onMouseDown={handleMainBodyClick}
             onKeyDown={handleMainBodyKeyDown}
         >
-            {/* Main Form Container - no left border when embedded in file properties */}
+            {/* Main Form Container - no left border when embedded in file properties.
+                Template headers live in an auto-height portal; h-full + flex-auto + min-h-0
+                would collapse the field body to 0px while the title bar still shows. */}
             <div
-                className={`flex-auto h-full overflow-auto ${theme.mainContentSection} ${controllerModel?.isFilePropertyEdit ? 'border-l-0' : ''}`}
-                style={{ flex: '1 0' }}
+                className={`${isTemplateHeader ? 'w-full h-auto overflow-visible' : 'flex-auto h-full overflow-auto'} ${theme.mainContentSection} ${controllerModel?.isFilePropertyEdit ? 'border-l-0' : ''}`}
+                style={isTemplateHeader ? undefined : { flex: '1 0' }}
             >
                 {/* Show loading state */}
                 {dataModel.isLoading && (

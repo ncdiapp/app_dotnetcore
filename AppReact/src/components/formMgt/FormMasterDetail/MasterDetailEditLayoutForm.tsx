@@ -491,14 +491,16 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
     const menuVisible =
       !controllerModel.isPreview &&
       (controllerModel.isFilePropertyEdit || !hideEmbeddedMenu);
+    const isTemplateHeader = Boolean(controllerModel.isTemplateHeader);
+
     return (
       <FormMasterDetailRuntimeConfigProvider
         value={runtimeFieldConfigApi ?? emptyFormMasterDetailRuntimeConfigApi}
       >
       <FormAgentHostContext.Provider value={hostSlotsRef}>
       <FormAgentResultSlotContext.Provider value={resultSlotEl}>
-      <div className="w-full h-full flex flex-row min-h-0">
-      <div ref={setResultSlotEl} className="relative w-1 flex-auto h-full min-w-0 flex flex-col">
+      <div className={`w-full flex flex-row ${isTemplateHeader ? 'h-auto' : 'h-full min-h-0'}`}>
+      <div ref={setResultSlotEl} className={`relative w-1 flex-auto min-w-0 flex flex-col ${isTemplateHeader ? 'h-auto' : 'h-full'}`}>
         {/* Menu Bar - Desktop only - Hide in preview, file property edit, or isHideHeaderAndFooter (Angular: directivOutercontrol.isHideMasterDetailFormTopMenu) */}
         {menuVisible && (
           <div className={`h-10 flex-shrink-0 border-b ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
@@ -557,17 +559,17 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
         <div
           ref={mainContainerRef}
           id={`MasterDetailEditLayoutForm${controllerModel.uiId}`}
-          className={`w-full h-1 flex-auto p-1 min-h-0 flex flex-col ${theme.mainContentSection}`}
-          style={{ height: menuVisible ? 'calc(100% - 40px)' : '100%' }}
+          className={`w-full p-1 ${isTemplateHeader ? 'h-auto' : 'h-1 flex-auto min-h-0 flex flex-col'} ${theme.mainContentSection}`}
+          style={isTemplateHeader ? undefined : { height: menuVisible ? 'calc(100% - 40px)' : '100%' }}
         >
-          <div className="w-full h-1 flex-auto min-h-0 flex flex-col">
-            {/* Main scroll area */}
-            <div className="w-full min-w-0 h-1 flex-auto overflow-auto">
+          <div className={isTemplateHeader ? 'w-full' : 'w-full h-1 flex-auto min-h-0 flex flex-col'}>
+            {/* Main scroll area. Template header must size to content (not fill/collapse). */}
+            <div className={isTemplateHeader ? 'w-full min-w-0 overflow-visible' : 'w-full min-w-0 h-1 flex-auto overflow-auto'}>
               {/* Template Header Container (for dynamic content) */}
               <div
                 id={`TemplateHeaderContainer${controllerModel.uiId}`}
                 ref={templateHeaderContainerRef}
-                className="w-full"
+                className="w-full shrink-0"
               />
 
               {/* Transaction Headers - stable key so typing in form does not remount (no Date.now()) */}

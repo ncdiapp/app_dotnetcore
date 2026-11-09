@@ -5,7 +5,7 @@
 **Date:** 2026-10-21  
 **Status (2026-10-21):** Implemented end to end and unit-tested (66 tests pass, web project builds, React type-checks). **Not yet run against a real tenant database or LLM.** Rollout starts in `DryRun`, then `Preview` (see §9).  
 **Audience:** Senior developers, backend engineers  
-**Related:** `SharedAgentEngine-Architecture.md` (§3.7, §4, §9), `ToolNameConvention-ProviderLimits.md`
+**Related:** `SharedAgentEngine-Architecture.md` (§3.7, §4, §9), `ToolNameConvention-ProviderLimits.md`, `SharedAgentEngine-VectorStore-Architecture.md` (shared Tenant vector tables for Entity Lookup / future corpora — separate from L3 episode embeddings)
 
 ---
 

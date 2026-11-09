@@ -5,7 +5,9 @@
 **Date:** 2026-09-02 (first version) · **Revised:** 2026-09-30  
 **Audience:** Senior developers, backend engineers  
 
-**Revision 2026-09-30 — what changed since the first version:** Tool Libraries and subscriptions (§3.5), library-owned MCP servers with auth headers and Test/Sync (§3.3, §8), per-agent tool exclusions and the unified tool catalog (§3.6, §12), server-side conversation persistence (§9), orchestrator/child agents and shared context (§3.7), MCP plugin-name rule (§8; see `ToolNameConvention-ProviderLimits.md`), and a prioritised improvement backlog (§13).
+**Revision 2026-09-30 — what changed since the first version:** Tool Libraries and subscriptions (§3.5), library-owned MCP servers with auth headers and Test/Sync (§3.3, §8), per-agent tool exclusions and the unified tool catalog (§3.6, §12), server-side conversation persistence (§9), orchestrator/child agents and shared context (§3.7), MCP plugin-name rule (§8; see `ToolNameConvention-ProviderLimits.md`), and a prioritised improvement backlog (§13).  
+
+**Related:** `SharedAgentEngine-VectorStore-Architecture.md` (Tenant DB vector tables; Entity Lookup semantic resolve — design 2026-11-09).
 
 ---
 
@@ -398,7 +400,7 @@ Rules given to the model: copy names exactly, choose the fewest tools, put a con
 
 `risk` is a **hint only** (server annotations when sent, otherwise verbs in the tool name); it gates nothing at run time.
 
-**RAG path (not built):** implement `IToolCatalogRetriever` with an embedding lookup over `AppAgentToolCatalog.Embedding` and assign it to `ToolCatalogRetrieval.Current`. Nothing else changes.
+**RAG path (not built):** implement `IToolCatalogRetriever` with an embedding lookup over `AppAgentToolCatalog.Embedding` and assign it to `ToolCatalogRetrieval.Current`. Nothing else changes. Prefer the shared tenant vector store in `SharedAgentEngine-VectorStore-Architecture.md` when that work starts (Entity Lookup is the first consumer of those tables).
 
 ---
 
@@ -421,7 +423,8 @@ Priority: **P1** fix soon (security or correctness), **P2** next, **P3** when sc
 | 11 | P2 | Maintainability | `GenericAgentEngine.cs` is far above the 300-line file limit and mixes kernel building, tool wrapping, MCP, history and filters. | Split: `McpPluginFactory`, `ToolWrapper`, `ChatHistoryBuilder`, `KernelFactory`. |
 | 12 | P2 | Observability | No per-run record of which tools were offered, called and truncated, or of token use. | Persist a run summary (tools offered/used, iterations, truncations, duration) for debugging and cost review. |
 | 13 | P2 | Testing | No automated tests cover tool selection, exclusions, header resolution or plugin naming. | xUnit tests for `McpPluginName`, `BuildHeaders`, exclusion filtering, risk guess; a Playwright scenario for the library tools UI. |
-| 14 | P3 | Scale | The catalog prompt is capped at 300 tools with keyword scoring; beyond ~500 tools quality drops. | Implement the embedding retriever (§12), keep the two-stage pick (libraries then tools). |
+| 14 | P3 | Scale | The catalog prompt is capped at 300 tools with keyword scoring; beyond ~500 tools quality drops. | Implement the embedding retriever (§12), keep the two-stage pick (libraries then tools). See also `SharedAgentEngine-VectorStore-Architecture.md`. |
+| 19 | P2 | Data | Agent Form/Search DDL writes need semantic Entity Lookup (Display ≈ user text → Id). | Designed in `SharedAgentEngine-VectorStore-Architecture.md` (Tenant DB VARBINARY tables + optional SQL2025 native / memory cache). |
 | 15 | P3 | Scale | `GenericAgentSessionStore` is in-memory (single node) and gate state lives in process. | Move to a distributed store (Redis/SQL) before multi-node deployment. |
 | 16 | P3 | MCP | Only `streamable-http` is supported; `stdio` rows are skipped, no `sse`, no OAuth. | Add transports as needed; OAuth client-credentials for enterprise MCP servers. |
 | 17 | P3 | Risk hint | Risk is guessed from names and is not editable. | Allow manual override in the library UI and show it next to every tool. |

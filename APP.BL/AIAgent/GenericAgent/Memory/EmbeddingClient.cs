@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -34,10 +36,33 @@ namespace App.BL.AIAgent.GenericAgent.Memory
         public static double RecallThreshold(string model) =>
             model.StartsWith("openai:", StringComparison.Ordinal) ? 0.45 : 0.70;
 
+        /// <summary>Resolved embedding model id (provider:model) without calling the API, or null if no key.</summary>
+        public static string ResolveModelId(AppClientIdentity identity)
+        {
+            var provider = (AIConfigSettingBL.GetProvider(identity) ?? "").Trim().ToLowerInvariant();
+            var geminiKey = AIConfigSettingBL.GetApiKeyForProvider("gemini", identity);
+            var openAiKey = AIConfigSettingBL.GetApiKeyForProvider("openai", identity);
+            if (provider == "openai" && !string.IsNullOrWhiteSpace(openAiKey))
+                return "openai:" + OpenAiModel;
+            if (!string.IsNullOrWhiteSpace(geminiKey) && provider != "openai")
+                return "gemini:" + GeminiModel;
+            if (!string.IsNullOrWhiteSpace(openAiKey))
+                return "openai:" + OpenAiModel;
+            return null;
+        }
+
         public static async Task<EmbeddingResult> EmbedAsync(string text, AppClientIdentity identity, CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(text)) return null;
-            var input = text.Length > MaxInputChars ? text.Substring(0, MaxInputChars) : text;
+            var batch = await EmbedManyAsync(new[] { text }, identity, ct).ConfigureAwait(false);
+            return batch == null || batch.Count == 0 ? null : batch[0];
+        }
+
+        /// <summary>Batch embed. Returns null if the provider is unavailable; a failed batch also returns null.</summary>
+        public static async Task<IReadOnlyList<EmbeddingResult>> EmbedManyAsync(
+            IReadOnlyList<string> texts, AppClientIdentity identity, CancellationToken ct = default)
+        {
+            if (texts == null || texts.Count == 0) return Array.Empty<EmbeddingResult>();
             try
             {
                 var provider = (AIConfigSettingBL.GetProvider(identity) ?? "").Trim().ToLowerInvariant();
@@ -45,18 +70,37 @@ namespace App.BL.AIAgent.GenericAgent.Memory
                 var openAiKey = AIConfigSettingBL.GetApiKeyForProvider("openai", identity);
 
                 if (provider == "openai" && !string.IsNullOrWhiteSpace(openAiKey))
-                    return await OpenAiAsync(input, openAiKey, ct).ConfigureAwait(false);
+                    return await OpenAiManyAsync(texts, openAiKey, ct).ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(geminiKey) && provider != "openai")
-                    return await GeminiAsync(input, geminiKey, ct).ConfigureAwait(false);
+                    return await GeminiManyAsync(texts, geminiKey, ct).ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(openAiKey))
-                    return await OpenAiAsync(input, openAiKey, ct).ConfigureAwait(false);
+                    return await OpenAiManyAsync(texts, openAiKey, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                NLog.LogManager.GetCurrentClassLogger().Warn(ex, "Embedding request failed — recall skipped");
+                NLog.LogManager.GetCurrentClassLogger().Warn(ex, "Embedding request failed — skipped");
             }
             return null;
+        }
+
+        private static string Clip(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return "";
+            return text.Length > MaxInputChars ? text.Substring(0, MaxInputChars) : text;
+        }
+
+        private static async Task<IReadOnlyList<EmbeddingResult>> GeminiManyAsync(
+            IReadOnlyList<string> texts, string apiKey, CancellationToken ct)
+        {
+            var list = new List<EmbeddingResult>(texts.Count);
+            foreach (var text in texts)
+            {
+                var one = await GeminiAsync(Clip(text), apiKey, ct).ConfigureAwait(false);
+                if (one == null) return null;
+                list.Add(one);
+            }
+            return list;
         }
 
         private static async Task<EmbeddingResult> GeminiAsync(string input, string apiKey, CancellationToken ct)
@@ -86,9 +130,11 @@ namespace App.BL.AIAgent.GenericAgent.Memory
                 : new EmbeddingResult { Vector = Normalize(values), Model = "gemini:" + GeminiModel };
         }
 
-        private static async Task<EmbeddingResult> OpenAiAsync(string input, string apiKey, CancellationToken ct)
+        private static async Task<IReadOnlyList<EmbeddingResult>> OpenAiManyAsync(
+            IReadOnlyList<string> texts, string apiKey, CancellationToken ct)
         {
-            var body = new JObject { ["model"] = OpenAiModel, ["input"] = input };
+            var clipped = texts.Select(Clip).ToList();
+            var body = new JObject { ["model"] = OpenAiModel, ["input"] = new JArray(clipped.Cast<object>()) };
             using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/embeddings")
             {
                 Content = new StringContent(body.ToString(), Encoding.UTF8, "application/json")
@@ -101,10 +147,17 @@ namespace App.BL.AIAgent.GenericAgent.Memory
                 NLog.LogManager.GetCurrentClassLogger().Warn("OpenAI embedding failed: {0}", (int)resp.StatusCode);
                 return null;
             }
-            var values = JObject.Parse(json)["data"]?[0]?["embedding"] as JArray;
-            return values == null || values.Count == 0
-                ? null
-                : new EmbeddingResult { Vector = Normalize(values), Model = "openai:" + OpenAiModel };
+            var data = JObject.Parse(json)["data"] as JArray;
+            if (data == null || data.Count != clipped.Count) return null;
+            var ordered = data.OrderBy(t => t.Value<int?>("index") ?? 0).ToList();
+            var list = new List<EmbeddingResult>(ordered.Count);
+            foreach (var row in ordered)
+            {
+                var values = row["embedding"] as JArray;
+                if (values == null || values.Count == 0) return null;
+                list.Add(new EmbeddingResult { Vector = Normalize(values), Model = "openai:" + OpenAiModel });
+            }
+            return list;
         }
 
         private static float[] Normalize(JArray values)

@@ -3,7 +3,7 @@
 **Status:** Implementation in progress. Catalog-only `HostContextJson` and Calculation-style apply agreed 2026-11-05 (sections 5 and 11). Apply migrations `V070__AppFormAgent_xhu.sql` then `V071` / `V072`.  
 **Date:** 2026-11-03  
 **Scope:** Master Detail and List Edit transaction forms. One shared Specialist. First delivery includes the AI panel, List Edit Communication, host tools, and seeded libraries.  
-**Not in scope:** a vector database. Field/grid addressing uses the unit catalog plus server-side match, not embeddings.
+**Related:** Entity Lookup semantic match (exact → vector) is designed in `SharedAgentEngine-VectorStore-Architecture.md` (not implemented yet). Field/grid *addressing* still uses the unit catalog plus server-side match, not embeddings.
 
 ---
 
@@ -292,13 +292,13 @@ LLM → update_grid / set_fields / get_form_state
 
 - Load `AppTransactionExDto` from cache (`GetOnetHierarchyTranscationFromCache`).
 - Map keys: `DataBaseFieldName`, `DisplayName`, then stem (`ColorId` → Color lookup, not ColorCode). Ambiguous → error.
-- Coerce from ControlType: Entity/SearchAble DDL display → Id (`GetLookupItemList`); numeric Id kept; Date / DateTime parsed; File / Image stored as the given FileId.
+- Coerce from ControlType: Entity/SearchAble DDL display → Id (`GetLookupItemList` exact match today; planned exact → vector via `SharedAgentEngine-VectorStore-Architecture.md`); numeric Id kept; Date / DateTime parsed; File / Image stored as the given FileId.
 - `update_grid` `op=update` with `match` (e.g. `{ "FabricCode": "Woven ABC123" }`) updates **every** matching row. Optional `parentRowKey` for subgrid. `op=add` still takes a JSON **array** of rows in one call. `op=delete` uses `match` or `rowKey`.
 - `get_form_state` returns a value slice (optional `unitId`, `match`, `take`). It does not dump the catalog again.
 - Do not call `ValidateAndCalculateMasterDetailTransactionData` on every agent write (would drop UI-only state). Formula pass stays later.
 - Linked Search / Link Target / command popups stay on the host.
 
-No vector database. Matching 100 grid rows is an in-memory filter on posted FormData.
+Matching 100 grid rows is an in-memory filter on posted FormData. Semantic Entity Lookup (DDL Display → Id) is covered by `SharedAgentEngine-VectorStore-Architecture.md`, not by grid addressing.
 
 ## 9. Out of scope
 

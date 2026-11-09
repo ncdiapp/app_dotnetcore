@@ -5,6 +5,8 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
+using APP.Framework;
+using App.BL.AIAgent.GenericAgent.VectorStore;
 using Newtonsoft.Json.Linq;
 
 namespace App.BL.AIAgent.GenericAgent
@@ -463,11 +465,14 @@ namespace App.BL.AIAgent.GenericAgent
             if (IsLookupField(field))
             {
                 if (!field.EntityId.HasValue) return null;
-                var hit = ResolveLookup(LookupItems(field.EntityId.Value, lookups), text);
+                var items = LookupItems(field.EntityId.Value, lookups);
+                var hit = ResolveLookup(items, text);
                 if (hit != null) return hit;
                 if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var lookupId))
                     return lookupId;
-                return null;
+                var identity = CurrentIdentity();
+                hit = EntityLookupSemanticResolver.Resolve(field.EntityId.Value, text, items, identity);
+                return hit;
             }
             if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var whole))
                 return whole;
@@ -476,32 +481,14 @@ namespace App.BL.AIAgent.GenericAgent
             return text;
         }
 
-        static object ResolveLookup(List<LookupItemDto> items, string text)
+        static object ResolveLookup(List<LookupItemDto> items, string text) =>
+            EntityLookupSemanticResolver.ResolveExact(items, text);
+
+        static AppClientIdentity CurrentIdentity()
         {
-            if (items == null || items.Count == 0 || string.IsNullOrWhiteSpace(text)) return null;
-            var n = text.Trim();
-            var ck = Compact(n);
-            object One(IEnumerable<LookupItemDto> hits)
-            {
-                var list = hits.Where(i => i?.Id != null).ToList();
-                if (list.Count == 1) return list[0].Id;
-                var exact = list.Where(i => string.Equals((i.Display ?? "").Trim(), n, StringComparison.OrdinalIgnoreCase)).ToList();
-                return exact.Count == 1 ? exact[0].Id : null;
-            }
-            var byId = One(items.Where(i => string.Equals(Convert.ToString(i?.Id, CultureInfo.InvariantCulture), n, StringComparison.OrdinalIgnoreCase)));
-            if (byId != null) return byId;
-            var byDisplay = One(items.Where(i => string.Equals((i?.Display ?? "").Trim(), n, StringComparison.OrdinalIgnoreCase)
-                || Compact(i?.Display) == ck));
-            if (byDisplay != null) return byDisplay;
-            var byFirst = One(items.Where(i => string.Equals((i?.FirstField ?? "").Trim(), n, StringComparison.OrdinalIgnoreCase)));
-            if (byFirst != null) return byFirst;
-            var byLast = One(items.Where(i => string.Equals((i?.LastField ?? "").Trim(), n, StringComparison.OrdinalIgnoreCase)));
-            if (byLast != null) return byLast;
-            return One(items.Where(i =>
-            {
-                var parts = (i?.Display ?? "").Split('|');
-                return parts.Any(p => string.Equals(p.Trim(), n, StringComparison.OrdinalIgnoreCase) || Compact(p) == ck);
-            }));
+            if (ServerContext.Instance.CurrnetClientIdentity is AppClientIdentity ai)
+                return ai;
+            return default;
         }
 
         static List<LookupItemDto> LookupItems(int entityId, Dictionary<int, List<LookupItemDto>> lookups)
