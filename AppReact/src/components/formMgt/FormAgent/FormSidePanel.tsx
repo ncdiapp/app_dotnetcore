@@ -147,15 +147,46 @@ const FormSidePanel: React.FC<Props> = ({
               onHostTool={async (toolName, args) => {
                 const hosts = listFormHosts();
                 if (hosts.length === 0) return { ok: false, error: 'This tool only runs inside an open transaction form.' };
-                const callAll = async (fn: (slots: FormAgentHostSlots) => Promise<unknown> | unknown) => {
-                  const results = [];
-                  for (const h of hosts) {
-                    results.push({ formRole: h.role, formName: h.name, ...(await Promise.resolve(fn(h.slots)) as any) });
+                const gridNotOnForm = (err: unknown) => /grid unit was not found/i.test(String(err || ''));
+                const hostOwnsGrid = (slots: FormAgentHostSlots) => {
+                  const ctx: any = slots.getContext?.();
+                  const units = Array.isArray(ctx?.units) ? ctx.units : [];
+                  const raw = args?.unitId ?? args?.UnitId;
+                  if (raw == null || String(raw).trim() === '') {
+                    return units.some((u: any) => Number(u?.level) === 2 || Number(u?.level) === 3);
                   }
-                  return { ok: results.some((r: any) => r?.ok === true), results };
+                  const key = String(raw).trim().toLowerCase();
+                  return units.some((u: any) => {
+                    if (Number(u?.level) !== 2 && Number(u?.level) !== 3) return false;
+                    if (String(u?.unitId ?? '') === String(raw)) return true;
+                    const path = String(u?.path || '').toLowerCase();
+                    return path === key || path.endsWith(key) || path.split('/').pop()?.trim() === key;
+                  });
+                };
+                const callHosts = async (
+                  targets: typeof hosts,
+                  fn: (slots: FormAgentHostSlots) => Promise<unknown> | unknown,
+                ) => {
+                  const results: any[] = [];
+                  for (const h of targets) {
+                    const raw = { formRole: h.role, formName: h.name, ...(await Promise.resolve(fn(h.slots)) as any) };
+                    if (toolName === 'update_grid' && raw?.ok === false && gridNotOnForm(raw.error)) continue;
+                    results.push(raw);
+                  }
+                  const ok = results.some((r) => r?.ok === true);
+                  if (results.length === 0) {
+                    return { ok: false, error: 'Grid unit was not found. Use unitId or the unit name from HostContextJson.' };
+                  }
+                  return results.length === 1 ? results[0] : { ok, results };
                 };
                 if (toolName === 'get_form_state' || toolName === 'set_fields' || toolName === 'update_grid') {
-                  return callAll((s) => s.applyTool?.(toolName, args)
+                  const targets = toolName === 'update_grid' && hosts.length > 1
+                    ? (() => {
+                        const owned = hosts.filter((h) => hostOwnsGrid(h.slots));
+                        return owned.length ? owned : hosts;
+                      })()
+                    : hosts;
+                  return callHosts(targets, (s) => s.applyTool?.(toolName, args)
                     ?? (toolName === 'set_fields' ? s.setFields?.(args) : toolName === 'update_grid' ? s.updateGrid?.(args) : { ok: false, error: `${toolName} is not available.` })
                     ?? { ok: false, error: `${toolName} is not available.` });
                 }
