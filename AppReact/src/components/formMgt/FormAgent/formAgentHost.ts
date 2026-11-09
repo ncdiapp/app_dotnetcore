@@ -151,7 +151,7 @@ function fieldSummary(field: any, unitId?: any, entitySourceByFieldId?: Record<s
 }
 
 function valuesFor(fields: any[], dict: Record<string, any> | undefined, unitId?: any) {
-  return (fields || []).slice(0, 80).map((field) => {
+  return (fields || []).map((field) => {
     const db = fieldDbName(field);
     const value = db ? (dict?.[db] ?? dict?.[String(db)]) : undefined;
     return { ...fieldSummary(field, unitId), value };
@@ -349,7 +349,7 @@ export function buildFormAgentContext(args: {
       unitId: uid,
       path,
       level,
-      fields: (unit.AppTransactionFieldList || []).map(catalogField).filter(Boolean).slice(0, 80),
+      fields: (unit.AppTransactionFieldList || []).map(catalogField).filter(Boolean),
     };
     if (!isRoot && parentId != null) entry.parentUnitId = parentId;
     if (level === 2) {
@@ -371,7 +371,7 @@ export function buildFormAgentContext(args: {
         path: tx.TransactionName || 'List',
         level: 2,
         rowCount: rows.length,
-        fields: rootFields.map(catalogField).filter(Boolean).slice(0, 80),
+        fields: rootFields.map(catalogField).filter(Boolean),
       }],
     };
     if (actions.length) ctx.actions = actions;
