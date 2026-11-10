@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using App.BL.DbGenie;
 using APP.Components.EntityDto;
@@ -61,7 +60,7 @@ namespace App.BL.AppBuilderAgent.Plugins
         public async Task<string> ProposeSchema(
             [AgentParam("Detailed natural-language description of the entities, fields, and relationships to build.", isRequired: true)]
             string requirements,
-            [AgentParam("Application name used to prefix all table names, e.g. 'SalesOrder'. Max 10 chars, letters/numbers only.", isRequired: true)]
+            [AgentParam("Application name used to prefix all table names, e.g. 'SalesOrder'. Max 10 chars, letters/numbers only. Pass unprefixed logical table names in requirements — the platform prefixes once.", isRequired: true)]
             string appName)
         {
             try
@@ -101,96 +100,11 @@ namespace App.BL.AppBuilderAgent.Plugins
                         Feedback  = extraction.Error ?? "Could not extract a schema from the requirements. Please provide more detail."
                     });
 
-                // ── Step 1b: Apply app-name prefix (same logic as CreateHierarchyTransactionFromRequirementsAsync) ──
-                var appPrefix = Regex.Replace(appName ?? "App", @"[^A-Za-z0-9]", "");
-                if (appPrefix.Length > 10) appPrefix = appPrefix.Substring(0, 10);
-                if (string.IsNullOrEmpty(appPrefix)) appPrefix = "App";
-                appPrefix += "_";
+                // ── Step 1b: Idempotent app-name prefix (skip if name already prefixed) ──
+                SchemaProposeHelpers.ApplyAppNamePrefix(extraction.Tables, appName);
 
-                var nameMap = extraction.Tables.ToDictionary(
-                    t => t.Name,
-                    t => appPrefix + t.Name,
-                    StringComparer.OrdinalIgnoreCase);
-
-                foreach (var table in extraction.Tables)
-                {
-                    table.Name = nameMap.ContainsKey(table.Name) ? nameMap[table.Name] : table.Name;
-                    foreach (var rel in table.Relationships ?? Enumerable.Empty<DbGenieRelationshipMetadataDto>())
-                    {
-                        if (!string.IsNullOrWhiteSpace(rel.TargetTable) && nameMap.ContainsKey(rel.TargetTable))
-                            rel.TargetTable = nameMap[rel.TargetTable];
-                    }
-                }
-
-                // ── Step 1c: Mark lookup tables (association) vs composition tables ──
-                // FK direction is authoritative.  Two guards detect when the LLM inverted a
-                // ONE_TO_MANY (i.e. wrote Orders→Customers instead of Orders←Customers):
-                //
-                //   Guard 1 — Explicit MANY_TO_ONE: if the source table ALSO has a MANY_TO_ONE
-                //             to the same target, the ONE_TO_MANY is a duplicate in the wrong
-                //             direction.  Source holds the FK → it is the "many" side → skip.
-                //
-                //   Guard 2 — FK column in source non-PK: if ForeignKeyColumn is named and lives
-                //             in the SOURCE table as a non-PK column, the FK belongs to the source
-                //             (MANY_TO_ONE), not the child.  Skip.
-                //             Exception: if ForeignKeyColumn IS the source's PK, it is the column
-                //             that the child table references (e.g. Orders.OrderId ← OrderItems.OrderId),
-                //             which is a valid ONE_TO_MANY — do NOT skip.
-                var columnsByTable = extraction.Tables.ToDictionary(
-                    t => t.Name,
-                    t => new HashSet<string>(
-                        (t.Columns ?? Enumerable.Empty<DbGenieColumnMetadataDto>()).Select(c => c.Name),
-                        StringComparer.OrdinalIgnoreCase),
-                    StringComparer.OrdinalIgnoreCase);
-
-                var pksByTable = extraction.Tables.ToDictionary(
-                    t => t.Name,
-                    t => new HashSet<string>(
-                        (t.Columns ?? Enumerable.Empty<DbGenieColumnMetadataDto>())
-                            .Where(c => c.IsPrimaryKey)
-                            .Select(c => c.Name),
-                        StringComparer.OrdinalIgnoreCase),
-                    StringComparer.OrdinalIgnoreCase);
-
-                var compositionChildSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var t in extraction.Tables)
-                {
-                    columnsByTable.TryGetValue(t.Name, out var srcCols);
-                    pksByTable.TryGetValue(t.Name, out var srcPks);
-
-                    // Guard 1: collect MANY_TO_ONE targets — if source has MANY_TO_ONE → X,
-                    // then any ONE_TO_MANY → X from the same source is the inverted direction.
-                    var manyToOneTargets = new HashSet<string>(
-                        (t.Relationships ?? Enumerable.Empty<DbGenieRelationshipMetadataDto>())
-                            .Where(r => string.Equals(r.Type, "MANY_TO_ONE", StringComparison.OrdinalIgnoreCase)
-                                        && !string.IsNullOrWhiteSpace(r.TargetTable))
-                            .Select(r => r.TargetTable),
-                        StringComparer.OrdinalIgnoreCase);
-
-                    foreach (var rel in t.Relationships ?? Enumerable.Empty<DbGenieRelationshipMetadataDto>())
-                    {
-                        if (!string.Equals(rel.Type, "ONE_TO_MANY", StringComparison.OrdinalIgnoreCase) ||
-                            string.IsNullOrWhiteSpace(rel.TargetTable))
-                            continue;
-
-                        // Guard 1: source also has MANY_TO_ONE to this target → inverted
-                        if (manyToOneTargets.Contains(rel.TargetTable))
-                            continue;
-
-                        // Guard 2: FK column is in source table as a NON-PK column
-                        //   → source owns the FK → this is MANY_TO_ONE, not ONE_TO_MANY
-                        // (if FK column is the source PK it is the column the child references — valid)
-                        if (!string.IsNullOrWhiteSpace(rel.ForeignKeyColumn) &&
-                            srcCols != null && srcCols.Contains(rel.ForeignKeyColumn) &&
-                            (srcPks == null || !srcPks.Contains(rel.ForeignKeyColumn)))
-                            continue;   // inverted ONE_TO_MANY → treat as MANY_TO_ONE (lookup ref)
-
-                        compositionChildSet.Add(rel.TargetTable);
-                    }
-                }
-
-                foreach (var t in extraction.Tables)
-                    t.IsLookup = !compositionChildSet.Contains(t.Name);
+                // ── Step 1c: Mark lookup vs composition (parents ∪ children on ONE_TO_MANY) ──
+                SchemaProposeHelpers.MarkLookupVsComposition(extraction.Tables);
 
                 // ── Step 2: Generate CREATE TABLE script preview ───────────────
                 var script = AppDbGenieBL.GenerateCreateTableScripts(extraction.Tables, _schemaOwner);
@@ -267,22 +181,19 @@ namespace App.BL.AppBuilderAgent.Plugins
         [AgentTool("execute_approved_schema",
             "Execute the schema approved by propose_schema: create the physical database tables and AppTransaction hierarchy. " +
             "Call this ONLY after propose_schema returns {Confirmed:true}. Do NOT pass schemaJson — the schema is stored internally. " +
-            "On partial failure (tables created but transactions failed), " +
-            "all newly created tables are automatically dropped and the error is reported. " +
-            "Returns {IsSuccess, TransactionId, TransactionName, TablesCreated[], LookupTables[], RolledBack[]}. " +
-            "IMPORTANT: LookupTables[] contains standalone reference tables excluded from the master-detail hierarchy. " +
-            "Their tables are ALREADY IN THE DATABASE — do not call propose_schema or execute_approved_schema again. " +
-            "For each table in LookupTables call ONLY: " +
-            "1) create_entity_from_table(tableName, saasApplicationId) " +
-            "2) create_transaction_from_table(tableName, saasApplicationId) " +
-            "3) create_list_edit_form(transactionId) " +
-            "4) create_search_view(transactionId) — to give it a navigation screen. " +
-            "propose_schema is called EXACTLY ONCE per application — never call it again after this point.")]
+            "Create SimpleList / entity data sources BEFORE this call, then pass entityMapJson to wire dropdowns in one step. " +
+            "entityMapJson keys: ColumnName, TableName.ColumnName, UnitName.ColumnName, or field:{fieldId}. " +
+            "Returns TransactionId, TablesCreated, LookupTables, FKMappings, Fields, TableColumns, EntityWiring. " +
+            "Use returned Fields/TableColumns — do NOT call get_transaction_details or get_table_schema for greenfield mockup/wiring. " +
+            "For each LookupTables entry: create_entity_from_table → set_field via FKMappings → create_transaction_from_table → create_list_edit_form (no create_search_view on lookups). " +
+            "Then create_search_view on the MASTER TransactionId only.")]
         public async Task<string> ExecuteApprovedSchema(
             [AgentParam("The SaasApplicationId returned by create_app_package. Required to link transactions to the correct app.")]
             int? saasApplicationId = null,
             [AgentParam("Display name for the root transaction, e.g. 'Sales Order Management'.")]
-            string transactionName = null)
+            string transactionName = null,
+            [AgentParam("JSON mapping fields to EntityDataSource IDs. Keys: ColumnName, TableName.ColumnName, UnitName.ColumnName, or field:{fieldId}. Example: {\"Ord_Order.Status\":4577,\"Category\":4578,\"ProductId\":4580}.")]
+            string entityMapJson = null)
         {
             try
             {
@@ -298,11 +209,19 @@ namespace App.BL.AppBuilderAgent.Plugins
                 }
                 catch (Exception ex)
                 {
-                    return JsonConvert.SerializeObject(new { IsSuccess = false, Error = "Invalid SchemaJson: " + ex.Message });
+                    return FailExecuteAndClear("Invalid SchemaJson: " + ex.Message);
                 }
 
                 if (schema?.Tables == null || schema.Tables.Count == 0)
-                    return JsonConvert.SerializeObject(new { IsSuccess = false, Error = "SchemaJson contains no tables." });
+                    return FailExecuteAndClear("SchemaJson contains no tables.");
+
+                var preflight = SchemaProposeHelpers.ValidateSchemaForDdl(schema.Tables);
+                if (preflight.Count > 0)
+                {
+                    return FailExecuteAndClear(
+                        "Schema preflight failed: " + string.Join(" ", preflight),
+                        extra: new { PreflightErrors = preflight });
+                }
 
                 var request = new DbGenieCreateTransactionRequestDto
                 {
@@ -342,6 +261,9 @@ namespace App.BL.AppBuilderAgent.Plugins
                         }
                     }
 
+                    // Clear stored schema so propose_schema can re-extract a fixed design.
+                    _approvedSchemaJson = null;
+
                     return JsonConvert.SerializeObject(new
                     {
                         IsSuccess      = false,
@@ -349,20 +271,18 @@ namespace App.BL.AppBuilderAgent.Plugins
                         RolledBack     = rolledBack,
                         RollbackFailed = rollbackFailed.Count > 0 ? rollbackFailed : null,
                         Note           = rolledBack.Count > 0
-                            ? $"Partial failure: {rolledBack.Count} table(s) were dropped during rollback."
-                            : "No tables were created before the failure.",
-                        RecoveryInstruction = "CRITICAL: Do NOT call propose_schema again — the schema is stored internally. Fix the error above and retry by calling execute_approved_schema again (no schemaJson parameter)."
+                            ? $"Partial failure: {rolledBack.Count} table(s) were dropped during rollback. Approved schema cleared."
+                            : "No tables were created before the failure. Approved schema cleared.",
+                        SchemaCleared  = true,
+                        RecoveryInstruction = ExecuteFailureRecoveryInstruction
                     }, Formatting.Indented);
                 }
 
                 var lookupTables = result.LookupTables ?? new System.Collections.Generic.List<string>();
 
                 // Build FK → lookup-table mappings so the agent knows which fields to wire as dropdowns.
-                // For each MANY_TO_ONE relationship pointing at a lookup table, record:
-                //   LookupTable (the entity source table), FKTable (the table that holds the FK column),
-                //   FKField (the column to set as DDL), MasterTransactionId (the transaction to call set_field_entity on).
-                var lookupSet   = new System.Collections.Generic.HashSet<string>(lookupTables, StringComparer.OrdinalIgnoreCase);
-                var fkMappings  = new System.Collections.Generic.List<object>();
+                var lookupSet   = new HashSet<string>(lookupTables, StringComparer.OrdinalIgnoreCase);
+                var fkMappings  = new List<object>();
                 foreach (var t in schema.Tables)
                 {
                     foreach (var rel in t.Relationships ?? Enumerable.Empty<DbGenieRelationshipMetadataDto>())
@@ -376,9 +296,78 @@ namespace App.BL.AppBuilderAgent.Plugins
                             LookupTable         = rel.TargetTable,
                             FKTable             = t.Name,
                             FKField             = rel.ForeignKeyColumn,
-                            MasterTransactionId = result.TransactionId   // FK lives in the master/detail hierarchy
+                            MasterTransactionId = result.TransactionId
                         });
                     }
+                }
+
+                // Wire SimpleList / entity dropdowns when agent created entities before execute.
+                var entityWireResults = EntityMapWiring.WireFromJson(
+                    result.TransactionId, entityMapJson, out _);
+
+                // Field + column snapshots so the agent skips get_transaction_details / get_table_schema.
+                var fields = EntityMapWiring.LoadFields(result.TransactionId);
+                var units = fields
+                    .GroupBy(f => new { f.TableName, f.UnitName })
+                    .Select(g => new
+                    {
+                        TableName = g.Key.TableName,
+                        UnitName  = g.Key.UnitName,
+                        FieldCount = g.Count()
+                    })
+                    .ToList();
+                var fieldPayload = fields.Select(f => new
+                {
+                    f.FieldId,
+                    f.ColumnName,
+                    f.UnitName,
+                    f.TableName,
+                    f.EntityId,
+                    f.ControlType
+                }).ToList();
+                var tableColumns = schema.Tables.Select(t => new
+                {
+                    TableName = t.Name,
+                    Columns = (t.Columns ?? Enumerable.Empty<DbGenieColumnMetadataDto>())
+                        .Select(c => new { c.Name, c.DataType, c.IsPrimaryKey, c.IsNullable })
+                        .ToList()
+                }).ToList();
+
+                var unboundEnums = fields
+                    .Where(f => !f.EntityId.HasValue || f.EntityId.Value <= 0)
+                    .Where(f =>
+                    {
+                        var n = f.ColumnName ?? "";
+                        return n.EndsWith("Status", StringComparison.OrdinalIgnoreCase)
+                            || n.EndsWith("Type", StringComparison.OrdinalIgnoreCase)
+                            || n.Equals("Category", StringComparison.OrdinalIgnoreCase)
+                            || n.EndsWith("Category", StringComparison.OrdinalIgnoreCase);
+                    })
+                    .Select(f => $"field:{f.FieldId} ({f.TableName}.{f.ColumnName})")
+                    .ToList();
+
+                string nextStep;
+                if (lookupTables.Count > 0)
+                {
+                    nextStep =
+                        $"Lookup tables already exist in DB: {string.Join(", ", lookupTables)}. " +
+                        "DO NOT call propose_schema or execute_approved_schema again. " +
+                        "For each lookup table: create_entity_from_table → wire FKMappings with set_field_entity(fieldId=…) → " +
+                        "create_transaction_from_table → create_list_edit_form (do NOT create_search_view on lookups). " +
+                        $"Then create_search_view(transactionId={result.TransactionId}) for the MASTER transaction. " +
+                        "Use returned Fields/TableColumns — do NOT call get_transaction_details or get_table_schema.";
+                }
+                else
+                {
+                    nextStep =
+                        $"Tables and master-detail transaction created (TransactionId={result.TransactionId}). " +
+                        "1) If EntityWiring left any enum/FK unbound, call set_field_entity with fieldId from Fields[] for EVERY unbound dropdown. " +
+                        (unboundEnums.Count > 0
+                            ? $"Unbound candidates: {string.Join(", ", unboundEnums)}. "
+                            : "") +
+                        $"2) create_search_view(transactionId={result.TransactionId}). " +
+                        "3) insert_mockup_data using TableColumns (do NOT call get_table_schema). " +
+                        "Do NOT call get_transaction_details, get_existing_transactions, or list_applications.";
                 }
 
                 return JsonConvert.SerializeObject(new
@@ -389,19 +378,11 @@ namespace App.BL.AppBuilderAgent.Plugins
                     TablesCreated   = tableNames,
                     LookupTables    = lookupTables,
                     FKMappings      = fkMappings.Count > 0 ? fkMappings : null,
-                    NextStep        = lookupTables.Count > 0
-                        ? $"Lookup tables already exist in DB: {string.Join(", ", lookupTables)}. " +
-                          "DO NOT call propose_schema or execute_approved_schema again — tables are already created. " +
-                          "For each lookup table:\n" +
-                          "  1) create_entity_from_table → note the returned entityId\n" +
-                          "  2) For each matching entry in FKMappings, call set_field_entity(transactionId=MasterTransactionId, fieldName=FKField, unitName=FKTable, entityId=<returned entityId>)\n" +
-                          "  3) create_transaction_from_table\n" +
-                          "  4) create_list_edit_form  ← this also adds the nav menu entry automatically, do NOT call create_search_view\n" +
-                          $"Then call create_search_view(transactionId={result.TransactionId}) for the MASTER transaction to create the main navigation screen."
-                        : $"Tables and transactions created. Now continue:\n" +
-                          $"  1) Call create_search_view(transactionId={result.TransactionId}) — this creates the search/listing screen and adds it to the navigation menu.\n" +
-                          $"  2) Call insert_mockup_data to populate realistic demo rows (lookup tables first, then master, then child rows).\n" +
-                          $"  3) If create_search_view did NOT auto-add the screen to the menu, call add_search_to_menu.",
+                    Units           = units,
+                    Fields          = fieldPayload,
+                    TableColumns    = tableColumns,
+                    EntityWiring    = entityWireResults.Count > 0 ? entityWireResults : null,
+                    NextStep        = nextStep,
                     Script          = result.CreatedTableScripts?.Length > 500
                         ? result.CreatedTableScripts.Substring(0, 500) + "..."
                         : result.CreatedTableScripts
@@ -409,13 +390,32 @@ namespace App.BL.AppBuilderAgent.Plugins
             }
             catch (Exception ex)
             {
-                return JsonConvert.SerializeObject(new
-                {
-                    IsSuccess = false,
-                    Error = ex.Message,
-                    RecoveryInstruction = "CRITICAL: Do NOT call propose_schema again — the schema is stored internally. Call execute_approved_schema again to retry."
-                });
+                return FailExecuteAndClear(ex.Message);
             }
+        }
+
+        private const string ExecuteFailureRecoveryInstruction =
+            "Approved schema was CLEARED. Fix the Error (exact PK/FK column names on the correct tables), " +
+            "then call propose_schema AGAIN with revised requirements (user will re-confirm), " +
+            "then execute_approved_schema with the same entityMapJson. " +
+            "Do NOT call create_application on the first failure — only after two failed propose/execute cycles or if the user explicitly skips schema review.";
+
+        private string FailExecuteAndClear(string error, object extra = null)
+        {
+            _approvedSchemaJson = null;
+            var payload = new Dictionary<string, object>
+            {
+                ["IsSuccess"] = false,
+                ["Error"] = error,
+                ["SchemaCleared"] = true,
+                ["RecoveryInstruction"] = ExecuteFailureRecoveryInstruction
+            };
+            if (extra != null)
+            {
+                foreach (var p in extra.GetType().GetProperties())
+                    payload[p.Name] = p.GetValue(extra);
+            }
+            return JsonConvert.SerializeObject(payload, Formatting.Indented);
         }
 
         // ─────────────────────────────────────────────────────────────────────

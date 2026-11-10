@@ -24,13 +24,14 @@ namespace App.BL.AppBuilderAgent.Plugins
 
         // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("execute_sql",
-            "Execute a SQL SELECT query. Only SELECT is allowed. Optional dataSourceId targets a registered DataSource; omit for session default. "
+            "Execute a SQL SELECT query. Only SELECT is allowed. ONE statement per call — do not batch with ';'. "
+            + "Optional dataSourceId targets a registered DataSource; omit for session default. "
             + "For unbounded detail SELECTs the platform COUNTs first: ≤250 rows → fetch all unless user asked for N or SQL has hard TOP N; larger → ask_user confirm_row_limit. "
             + "When the user wants N rows, use SELECT TOP N or rely on platform turn intent; pass render_interactive limit=N. "
             + "Scalar COUNT(*) / GROUP BY may omit TOP. "
             + "Platform caches tools up to MaxCachedRows; LLM only sees ~20 sample rows.")]
         public string ExecuteSql(
-            [AgentParam("A SQL SELECT statement. Must start with SELECT.", isRequired: true)] string sql,
+            [AgentParam("A single SQL SELECT statement. Must start with SELECT. Do not include multiple statements separated by ';'.", isRequired: true)] string sql,
             [AgentParam("Optional DataSourceRegisterId. When omitted or 0, uses the session default data source.")] int? dataSourceId = null,
             AgentToolContext context = null)
         {
@@ -45,6 +46,9 @@ namespace App.BL.AppBuilderAgent.Plugins
                         IsSuccess = false,
                         Error = "Only SELECT statements are allowed. Use create_database_table for DDL."
                     });
+
+                if (TryGetMultiStatementError(sql, out var multiErr))
+                    return JsonConvert.SerializeObject(new { IsSuccess = false, Error = multiErr });
 
                 var sessionKey = context?.ChatSessionKey;
                 var hasChoice = AgentRowLimitConfirmBL.TryGetMaxRows(sessionKey, out var chosenMax);
@@ -416,6 +420,72 @@ namespace App.BL.AppBuilderAgent.Plugins
                 AgentRowLimitConfirmBL.Mark(sessionKey, opt);
             chosen = opt;
             return true;
+        }
+
+        /// <summary>
+        /// Rejects batched SQL before the row-limit COUNT wrapper mangles multi-statement input.
+        /// Ignores ';' inside string literals and comments; trailing statement terminators are OK.
+        /// </summary>
+        internal static bool TryGetMultiStatementError(string sql, out string error)
+        {
+            error = null;
+            if (string.IsNullOrWhiteSpace(sql)) return false;
+
+            var stripped = StripSqlLiteralsAndComments(sql).TrimEnd();
+            while (stripped.EndsWith(";", StringComparison.Ordinal))
+                stripped = stripped.TrimEnd(';').TrimEnd();
+
+            if (stripped.IndexOf(';') < 0) return false;
+
+            error = "Only one SQL statement per execute_sql call. Split into separate calls (do not batch with ';').";
+            return true;
+        }
+
+        private static string StripSqlLiteralsAndComments(string sql)
+        {
+            var sb = new System.Text.StringBuilder(sql.Length);
+            for (var i = 0; i < sql.Length; i++)
+            {
+                var c = sql[i];
+                var next = i + 1 < sql.Length ? sql[i + 1] : '\0';
+
+                // Line comment
+                if (c == '-' && next == '-')
+                {
+                    while (i < sql.Length && sql[i] != '\n') i++;
+                    continue;
+                }
+
+                // Block comment
+                if (c == '/' && next == '*')
+                {
+                    i += 2;
+                    while (i + 1 < sql.Length && !(sql[i] == '*' && sql[i + 1] == '/')) i++;
+                    i++; // skip '/'
+                    continue;
+                }
+
+                // Single-quoted string
+                if (c == '\'')
+                {
+                    sb.Append(' ');
+                    i++;
+                    while (i < sql.Length)
+                    {
+                        if (sql[i] == '\'' && i + 1 < sql.Length && sql[i + 1] == '\'')
+                        {
+                            i += 2; // escaped quote
+                            continue;
+                        }
+                        if (sql[i] == '\'') break;
+                        i++;
+                    }
+                    continue;
+                }
+
+                sb.Append(c);
+            }
+            return sb.ToString();
         }
     }
 }

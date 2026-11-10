@@ -40,9 +40,9 @@ namespace App.BL.AppBuilderAgent.Plugins
             int? saasApplicationId = null,
             [AgentParam("Optional descriptive name for the root transaction, e.g. 'Sales Order Management'")]
             string appName = null,
-            [AgentParam("JSON object mapping FK column names to EntityDataSource IDs — wires dropdowns at creation time. " +
-                        "Format: {\"ProductId\":42,\"CategoryId\":15,\"StatusId\":8}. " +
-                        "Obtain entity IDs from list_entity_data_sources. " +
+            [AgentParam("JSON object mapping fields to EntityDataSource IDs — wires dropdowns at creation time. " +
+                        "Keys: bare ColumnName, TableName.ColumnName, UnitName.ColumnName, or field:{fieldId}. " +
+                        "Example: {\"ProductId\":42,\"Ord_Order.Status\":15,\"field:3122\":8}. " +
                         "This eliminates the need for separate set_field_entity calls after build.")]
             string entityMapJson = null)
         {
@@ -102,17 +102,7 @@ namespace App.BL.AppBuilderAgent.Plugins
                 // ── Entity map wiring (eliminates post-hoc set_field_entity calls) ──
                 var entityWireResults = new List<object>();
                 if (result.IsSuccess && !string.IsNullOrWhiteSpace(entityMapJson) && result.TransactionId > 0)
-                {
-                    try
-                    {
-                        var entityMap = Newtonsoft.Json.Linq.JObject.Parse(entityMapJson);
-                        entityWireResults = WireEntityMap(result.TransactionId, entityMap);
-                    }
-                    catch (Exception ex)
-                    {
-                        entityWireResults.Add(new { Warning = "entityMapJson parse failed: " + ex.Message });
-                    }
-                }
+                    entityWireResults = EntityMapWiring.WireFromJson(result.TransactionId, entityMapJson, out _);
 
                 return JsonConvert.SerializeObject(new
                 {
@@ -132,54 +122,6 @@ namespace App.BL.AppBuilderAgent.Plugins
             {
                 return JsonConvert.SerializeObject(new { IsSuccess = false, Error = ex.Message, StackTrace = ex.ToString() });
             }
-        }
-
-        // ─────────────────────────────────────────────────────────────────────
-        // Helper: wire FK columns → entity IDs across all units of a transaction
-        // ─────────────────────────────────────────────────────────────────────
-
-        private List<object> WireEntityMap(int transactionId, Newtonsoft.Json.Linq.JObject entityMap)
-        {
-            var results = new List<object>();
-
-            AppCacheManagerBL.RefreshOnetHierarchyTranscation(transactionId);
-            var transExDto = AppTransactionBL.GetHierarchyTranscationFromDatabase(transactionId);
-            if (transExDto == null) return results;
-
-            var allFields = (transExDto.AppTransactionUnitList ?? Enumerable.Empty<AppTransactionUnitExDto>())
-                .SelectMany(u => u.AppTransactionFieldList ?? Enumerable.Empty<AppTransactionFieldExDto>())
-                .ToList();
-
-            foreach (var prop in entityMap.Properties())
-            {
-                var columnName = prop.Name;
-                var entityId   = (int?)prop.Value;
-                if (!entityId.HasValue) continue;
-
-                var matches = allFields.Where(f =>
-                    string.Equals(f.DataBaseFieldName, columnName, StringComparison.OrdinalIgnoreCase)).ToList();
-
-                foreach (var fieldSummary in matches)
-                {
-                    try
-                    {
-                        var field = AppTransactionBL.RetrieveOneAppTransactionFieldExDto(Convert.ToInt32(fieldSummary.Id));
-                        if (field == null) continue;
-                        field.IsModified  = true;
-                        field.EntityId    = entityId;
-                        field.ControlType = 1; // DDL
-                        var saveResult = AppTransactionBL.SaveAppTransactionFieldExDto(field);
-                        bool ok = saveResult?.ValidationResult?.HasErrors == false;
-                        results.Add(new { Column = columnName, EntityId = entityId, FieldId = Convert.ToInt32(field.Id), Wired = ok });
-                    }
-                    catch (Exception ex)
-                    {
-                        results.Add(new { Column = columnName, EntityId = entityId, Error = ex.Message });
-                    }
-                }
-            }
-
-            return results;
         }
 
         // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
