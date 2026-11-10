@@ -87,16 +87,40 @@ namespace App.BL.AppBuilderAgent.Plugins
                 var left  = key.Substring(0, dot).Trim();
                 var right = key.Substring(dot + 1).Trim();
                 hits.AddRange(fields.Where(f =>
-                    string.Equals(f.ColumnName, right, StringComparison.OrdinalIgnoreCase) &&
-                    (string.Equals(f.TableName, left, StringComparison.OrdinalIgnoreCase) ||
-                     string.Equals(f.UnitName, left, StringComparison.OrdinalIgnoreCase))));
-                return hits;
+                    ColumnNameMatches(f.ColumnName, right) &&
+                    (UnitOrTableMatches(f.TableName, left) || UnitOrTableMatches(f.UnitName, left))));
+                if (hits.Count > 0) return hits;
             }
 
-            // bare column name
-            hits.AddRange(fields.Where(f =>
-                string.Equals(f.ColumnName, key, StringComparison.OrdinalIgnoreCase)));
+            // bare column name (also try Status ↔ StatusId)
+            hits.AddRange(fields.Where(f => ColumnNameMatches(f.ColumnName, key)));
             return hits;
+        }
+
+        /// <summary>Match Status to StatusId / MovementType to MovementTypeId and exact names.</summary>
+        internal static bool ColumnNameMatches(string columnName, string key)
+        {
+            if (string.IsNullOrWhiteSpace(columnName) || string.IsNullOrWhiteSpace(key))
+                return false;
+            if (string.Equals(columnName, key, StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (string.Equals(columnName, key + "Id", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (key.EndsWith("Id", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(columnName, key.Substring(0, key.Length - 2), StringComparison.OrdinalIgnoreCase))
+                return true;
+            return false;
+        }
+
+        internal static bool UnitOrTableMatches(string unitOrTable, string key)
+        {
+            if (string.IsNullOrWhiteSpace(unitOrTable) || string.IsNullOrWhiteSpace(key))
+                return false;
+            if (string.Equals(unitOrTable, key, StringComparison.OrdinalIgnoreCase))
+                return true;
+            static string Norm(string s) =>
+                new string((s ?? "").Where(c => c != ' ' && c != '_' && c != '-').ToArray());
+            return string.Equals(Norm(unitOrTable), Norm(key), StringComparison.OrdinalIgnoreCase);
         }
 
         public static List<object> Wire(int transactionId, JObject entityMap)

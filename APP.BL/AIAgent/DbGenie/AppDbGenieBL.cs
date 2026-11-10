@@ -117,6 +117,15 @@ FK DIRECTION RULE (non-negotiable):
   • NEVER generate ONE_TO_MANY when the foreignKeyColumn is a column of the source (this) table.
   • For ONE_TO_MANY the foreignKeyColumn MUST be a column of the targetTable, not this table.
 
+LOOKUP vs COMPOSITION (non-negotiable):
+  • Mark each table with ""isLookup"": true for standalone reference/master data (Customer, Supplier, Location, Category master).
+  • Mark ""isLookup"": false for the operational document and its owned lines (Order, OrderItem).
+  • For every COMPOSITION pair you MUST emit BOTH:
+      - ONE_TO_MANY on the parent (Order → OrderItem, FK column on the child)
+      - MANY_TO_ONE on the child (OrderItem → Order)
+  • NEVER emit ONE_TO_MANY from a lookup/reference table toward a document (e.g. Customer → Order). Documents reference lookups via MANY_TO_ONE only.
+  • Do NOT create physical tables for fixed enumerations already described as SimpleList / dropdown entities (Status, Type, Priority, UoM). Keep a Status/StatusId (or Type) column on the document table instead.
+
 Return JSON in this exact format:
 {{
   ""tables"": [
@@ -124,6 +133,7 @@ Return JSON in this exact format:
       ""name"": ""TableName"",
       ""description"": ""Table description"",
       ""description2"": ""Table longer description with more details"",
+      ""isLookup"": false,
       ""columns"": [
         {{
           ""name"": ""ColumnName"",
@@ -389,6 +399,7 @@ Be concise and build the query directly without unnecessary back-and-forth.";
                     Name = tableToken["name"]?.ToString(),
                     Description = tableToken["description"]?.ToString(),
                     SchemaOwner = "dbo",
+                    IsLookup = tableToken["isLookup"]?.Value<bool>() ?? false,
                     Columns = new List<DbGenieColumnMetadataDto>(),
                     Relationships = new List<DbGenieRelationshipMetadataDto>()
                 };
@@ -1668,50 +1679,37 @@ ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION";
             // (a table in two positions causes "An item with the same key has already been added" in SaveAppTransactionExDto).
             var placedTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { rootTable.Name };
 
+            // Children from parent ONE_TO_MANY OR child MANY_TO_ONE → parent (LLM often omits ONE_TO_MANY).
+            var childNames = App.BL.AppBuilderAgent.Plugins.SchemaProposeHelpers
+                .GetDirectCompositionChildren(rootTable.Name, tables);
+
             var childDefs = new List<HierarchyChildTableDto>();
-            if (rootTable.Relationships != null)
+            foreach (var childName in childNames)
             {
-                foreach (var rel in rootTable.Relationships)
+                if (placedTables.Contains(childName))
+                    continue;
+                if (tableDict.TryGetValue(childName, out var relTargetMeta) && relTargetMeta.IsLookup)
+                    continue;
+
+                placedTables.Add(childName);
+
+                var grandChildNames = new List<string>();
+                foreach (var gcName in App.BL.AppBuilderAgent.Plugins.SchemaProposeHelpers
+                             .GetDirectCompositionChildren(childName, tables))
                 {
-                    if (!string.Equals(rel.Type, "ONE_TO_MANY", StringComparison.OrdinalIgnoreCase) ||
-                        string.IsNullOrWhiteSpace(rel.TargetTable))
+                    if (placedTables.Contains(gcName))
                         continue;
-
-                    // Skip if this table has already been placed in the hierarchy
-                    if (placedTables.Contains(rel.TargetTable))
+                    if (tableDict.TryGetValue(gcName, out var gcMeta) && gcMeta.IsLookup)
                         continue;
-
-                    // Skip lookup (reference) tables — they get standalone list-edit screens,
-                    // not master-detail child tabs. This guards against the LLM accidentally
-                    // generating ONE_TO_MANY toward a reference/lookup entity.
-                    if (tableDict.TryGetValue(rel.TargetTable, out var relTargetMeta) && relTargetMeta.IsLookup)
-                        continue;
-
-                    placedTables.Add(rel.TargetTable);
-
-                    var grandChildNames = new List<string>();
-
-                    if (tableDict.TryGetValue(rel.TargetTable, out var childTable) &&
-                        childTable.Relationships != null)
-                    {
-                        foreach (var gcRel in childTable.Relationships)
-                        {
-                            if (string.Equals(gcRel.Type, "ONE_TO_MANY", StringComparison.OrdinalIgnoreCase) &&
-                                !string.IsNullOrWhiteSpace(gcRel.TargetTable) &&
-                                !placedTables.Contains(gcRel.TargetTable))
-                            {
-                                placedTables.Add(gcRel.TargetTable);
-                                grandChildNames.Add(gcRel.TargetTable);
-                            }
-                        }
-                    }
-
-                    childDefs.Add(new HierarchyChildTableDto
-                    {
-                        TableName = rel.TargetTable,
-                        GrandChildTableNames = grandChildNames
-                    });
+                    placedTables.Add(gcName);
+                    grandChildNames.Add(gcName);
                 }
+
+                childDefs.Add(new HierarchyChildTableDto
+                {
+                    TableName = childName,
+                    GrandChildTableNames = grandChildNames
+                });
             }
 
             return new HierarchyTableSetupDto

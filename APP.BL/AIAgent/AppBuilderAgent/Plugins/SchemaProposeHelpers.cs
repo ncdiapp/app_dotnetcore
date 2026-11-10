@@ -91,14 +91,30 @@ namespace App.BL.AppBuilderAgent.Plugins
             }
         }
 
+        // Document/transaction signals (avoid bare "Type" — that matches TypeCode on enum tables).
+        private static readonly Regex DocumentColumnSignal = new Regex(
+            @"Date|Amount|Total|Quantity|\bQty\b|Number|Status|Priority|Reference",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex ReferenceColumnSignal = new Regex(
+            @"Name|Code|Description|Location|Address|Phone|Email|Manager",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
         /// <summary>
         /// Marks association/lookup tables vs composition hierarchy participants.
         /// A table is composition (IsLookup=false) if it appears as a parent OR child
         /// on a validated ONE_TO_MANY edge. Standalone reference tables remain IsLookup=true.
+        /// Explicit IsLookup=true from extraction is preserved. Reference-like tables that are
+        /// MANY_TO_ONE targets are demoted to lookup even when the LLM also emitted ONE_TO_MANY
+        /// from them toward a document (e.g. Customer → Order), so the document stays master.
         /// </summary>
         public static void MarkLookupVsComposition(IList<DbGenieTableMetadataDto> tables)
         {
             if (tables == null || tables.Count == 0) return;
+
+            var forcedLookup = new HashSet<string>(
+                tables.Where(t => t.IsLookup).Select(t => t.Name),
+                StringComparer.OrdinalIgnoreCase);
 
             var columnsByTable = tables.ToDictionary(
                 t => t.Name,
@@ -117,6 +133,12 @@ namespace App.BL.AppBuilderAgent.Plugins
                 StringComparer.OrdinalIgnoreCase);
 
             var compositionSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // Targets of MANY_TO_ONE from a document-shaped table (false composition roots).
+            var referencedByDocument = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // Sources of ONE_TO_MANY toward a document-shaped table (lookup wrongly owning a document).
+            var ownsDocumentViaOneToMany = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            var tableByName = tables.ToDictionary(t => t.Name, StringComparer.OrdinalIgnoreCase);
 
             foreach (var t in tables)
             {
@@ -129,6 +151,12 @@ namespace App.BL.AppBuilderAgent.Plugins
                                     && !string.IsNullOrWhiteSpace(r.TargetTable))
                         .Select(r => r.TargetTable),
                     StringComparer.OrdinalIgnoreCase);
+
+                if (LooksLikeDocument(t))
+                {
+                    foreach (var target in manyToOneTargets)
+                        referencedByDocument.Add(target);
+                }
 
                 foreach (var rel in t.Relationships ?? Enumerable.Empty<DbGenieRelationshipMetadataDto>())
                 {
@@ -146,11 +174,128 @@ namespace App.BL.AppBuilderAgent.Plugins
 
                     compositionSet.Add(t.Name);
                     compositionSet.Add(rel.TargetTable);
+
+                    if (tableByName.TryGetValue(rel.TargetTable, out var child) && LooksLikeDocument(child))
+                        ownsDocumentViaOneToMany.Add(t.Name);
+                }
+
+                // Inverse composition: child → MANY_TO_ONE → document parent (LLM often omits parent ONE_TO_MANY).
+                foreach (var rel in t.Relationships ?? Enumerable.Empty<DbGenieRelationshipMetadataDto>())
+                {
+                    if (!string.Equals(rel.Type, "MANY_TO_ONE", StringComparison.OrdinalIgnoreCase) ||
+                        string.IsNullOrWhiteSpace(rel.TargetTable) ||
+                        string.IsNullOrWhiteSpace(rel.ForeignKeyColumn))
+                        continue;
+
+                    if (srcCols == null || !srcCols.Contains(rel.ForeignKeyColumn))
+                        continue;
+                    if (srcPks != null && srcPks.Contains(rel.ForeignKeyColumn))
+                        continue;
+                    if (!tableByName.TryGetValue(rel.TargetTable, out var parent))
+                        continue;
+
+                    // Document line → document header (not → Customer/Product lookup).
+                    if (LooksLikeDocument(parent) && LooksLikeDocument(t))
+                    {
+                        compositionSet.Add(t.Name);
+                        compositionSet.Add(parent.Name);
+                    }
                 }
             }
 
             foreach (var t in tables)
+            {
+                if (forcedLookup.Contains(t.Name))
+                {
+                    t.IsLookup = true;
+                    continue;
+                }
+
+                // Demote only when a reference-shaped table is pulled into a document graph:
+                // referenced by a document via MANY_TO_ONE, and/or wrongly ONE_TO_MANY→document.
+                // Do NOT demote Customer→CustomerAddress composition when no document references Customer.
+                if (LooksLikeReferenceData(t) &&
+                    !LooksLikeDocument(t) &&
+                    (referencedByDocument.Contains(t.Name) || ownsDocumentViaOneToMany.Contains(t.Name)))
+                {
+                    t.IsLookup = true;
+                    continue;
+                }
+
                 t.IsLookup = !compositionSet.Contains(t.Name);
+            }
+        }
+
+        /// <summary>
+        /// Direct composition children of <paramref name="parentName"/>:
+        /// parent ONE_TO_MANY → child, or child MANY_TO_ONE → parent (when both are non-lookup).
+        /// </summary>
+        public static List<string> GetDirectCompositionChildren(
+            string parentName,
+            IList<DbGenieTableMetadataDto> tables)
+        {
+            var result = new List<string>();
+            if (string.IsNullOrWhiteSpace(parentName) || tables == null || tables.Count == 0)
+                return result;
+
+            var byName = tables.ToDictionary(t => t.Name, StringComparer.OrdinalIgnoreCase);
+            if (!byName.TryGetValue(parentName, out var parent))
+                return result;
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { parent.Name };
+
+            foreach (var rel in parent.Relationships ?? Enumerable.Empty<DbGenieRelationshipMetadataDto>())
+            {
+                if (!string.Equals(rel.Type, "ONE_TO_MANY", StringComparison.OrdinalIgnoreCase) ||
+                    string.IsNullOrWhiteSpace(rel.TargetTable))
+                    continue;
+                if (!byName.TryGetValue(rel.TargetTable, out var child) || child.IsLookup)
+                    continue;
+                if (!seen.Add(child.Name))
+                    continue;
+                result.Add(child.Name);
+            }
+
+            foreach (var t in tables)
+            {
+                if (t.IsLookup || string.Equals(t.Name, parent.Name, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (seen.Contains(t.Name))
+                    continue;
+
+                var hasManyToOneToParent = (t.Relationships ?? Enumerable.Empty<DbGenieRelationshipMetadataDto>())
+                    .Any(r =>
+                        string.Equals(r.Type, "MANY_TO_ONE", StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(r.TargetTable, parent.Name, StringComparison.OrdinalIgnoreCase) &&
+                        !string.IsNullOrWhiteSpace(r.ForeignKeyColumn));
+                if (!hasManyToOneToParent)
+                    continue;
+
+                seen.Add(t.Name);
+                result.Add(t.Name);
+            }
+
+            return result;
+        }
+
+        /// <summary>Document/transaction shape: dates, amounts, status/type, document numbers.</summary>
+        internal static bool LooksLikeDocument(DbGenieTableMetadataDto table)
+        {
+            var cols = table?.Columns ?? Enumerable.Empty<DbGenieColumnMetadataDto>();
+            return cols.Any(c =>
+                !string.IsNullOrWhiteSpace(c.Name) &&
+                !c.IsPrimaryKey &&
+                DocumentColumnSignal.IsMatch(c.Name));
+        }
+
+        /// <summary>Reference/lookup shape: name/code/contact style columns.</summary>
+        internal static bool LooksLikeReferenceData(DbGenieTableMetadataDto table)
+        {
+            var cols = table?.Columns ?? Enumerable.Empty<DbGenieColumnMetadataDto>();
+            return cols.Any(c =>
+                !string.IsNullOrWhiteSpace(c.Name) &&
+                !c.IsPrimaryKey &&
+                ReferenceColumnSignal.IsMatch(c.Name));
         }
 
         /// <summary>

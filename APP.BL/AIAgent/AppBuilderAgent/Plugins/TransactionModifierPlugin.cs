@@ -83,12 +83,16 @@ namespace App.BL.AppBuilderAgent.Plugins
                 return null;
             }
 
-            // Narrow to the specified unit when unitName is given
+            // Narrow to the specified unit when unitName is given (table/display; ignore spaces/_/-)
             var candidateUnits = string.IsNullOrWhiteSpace(unitName)
                 ? units
                 : units.Where(u =>
-                    string.Equals(u.UnitDisplayName,  unitName, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(u.DataBaseTableName, unitName, StringComparison.OrdinalIgnoreCase));
+                    EntityMapWiring.UnitOrTableMatches(u.UnitDisplayName, unitName) ||
+                    EntityMapWiring.UnitOrTableMatches(u.DataBaseTableName, unitName)).ToList();
+
+            // If unitName was given but matched nothing, fall back to all units (still prefer fieldId).
+            if (!string.IsNullOrWhiteSpace(unitName) && candidateUnits.Count == 0)
+                candidateUnits = units;
 
             var candidateFields = candidateUnits
                 .SelectMany(u => u.AppTransactionFieldList ?? Enumerable.Empty<AppTransactionFieldExDto>())
@@ -96,8 +100,8 @@ namespace App.BL.AppBuilderAgent.Plugins
 
             var matches = candidateFields
                 .Where(f =>
-                    string.Equals(f.DisplayName,       fieldName, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(f.DataBaseFieldName, fieldName, StringComparison.OrdinalIgnoreCase))
+                    string.Equals(f.DisplayName, fieldName, StringComparison.OrdinalIgnoreCase) ||
+                    EntityMapWiring.ColumnNameMatches(f.DataBaseFieldName, fieldName))
                 .ToList();
 
             if (matches.Count == 1)

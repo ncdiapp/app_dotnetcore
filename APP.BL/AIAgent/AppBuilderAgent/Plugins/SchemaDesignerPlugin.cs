@@ -183,6 +183,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             "Call this ONLY after propose_schema returns {Confirmed:true}. Do NOT pass schemaJson — the schema is stored internally. " +
             "Create SimpleList / entity data sources BEFORE this call, then pass entityMapJson to wire dropdowns in one step. " +
             "entityMapJson keys: ColumnName, TableName.ColumnName, UnitName.ColumnName, or field:{fieldId}. " +
+            "Column keys match Status↔StatusId / Type↔TypeId aliases. " +
             "Returns TransactionId, TablesCreated, LookupTables, FKMappings, Fields, TableColumns, EntityWiring. " +
             "Use returned Fields/TableColumns — do NOT call get_transaction_details or get_table_schema for greenfield mockup/wiring. " +
             "For each LookupTables entry: create_entity_from_table → set_field via FKMappings → create_transaction_from_table → create_list_edit_form (no create_search_view on lookups). " +
@@ -339,19 +340,40 @@ namespace App.BL.AppBuilderAgent.Plugins
                     {
                         var n = f.ColumnName ?? "";
                         return n.EndsWith("Status", StringComparison.OrdinalIgnoreCase)
+                            || n.EndsWith("StatusId", StringComparison.OrdinalIgnoreCase)
                             || n.EndsWith("Type", StringComparison.OrdinalIgnoreCase)
+                            || n.EndsWith("TypeId", StringComparison.OrdinalIgnoreCase)
                             || n.Equals("Category", StringComparison.OrdinalIgnoreCase)
-                            || n.EndsWith("Category", StringComparison.OrdinalIgnoreCase);
+                            || n.EndsWith("Category", StringComparison.OrdinalIgnoreCase)
+                            || n.EndsWith("CategoryId", StringComparison.OrdinalIgnoreCase)
+                            || n.EndsWith("UnitOfMeasure", StringComparison.OrdinalIgnoreCase)
+                            || n.EndsWith("UnitOfMeasureId", StringComparison.OrdinalIgnoreCase);
                     })
                     .Select(f => $"field:{f.FieldId} ({f.TableName}.{f.ColumnName})")
                     .ToList();
+
+                // Non-lookup tables that never became transaction units (usually missing parent ONE_TO_MANY).
+                var unitTables = new HashSet<string>(
+                    fields.Select(f => f.TableName).Where(n => !string.IsNullOrWhiteSpace(n)),
+                    StringComparer.OrdinalIgnoreCase);
+                var missingCompositionUnits = schema.Tables
+                    .Where(t => !t.IsLookup && !unitTables.Contains(t.Name))
+                    .Select(t => t.Name)
+                    .ToList();
+                string missingUnitsWarning = missingCompositionUnits.Count == 0
+                    ? null
+                    : "Composition tables missing as Units (master-detail child not created): " +
+                      string.Join(", ", missingCompositionUnits) +
+                      ". Call propose_plan then create_hierarchy_from_tables with the MASTER table + these children " +
+                      "(exclude LookupTables). Do NOT create_application.";
 
                 string nextStep;
                 if (lookupTables.Count > 0)
                 {
                     nextStep =
                         $"Lookup tables already exist in DB: {string.Join(", ", lookupTables)}. " +
-                        "DO NOT call propose_schema or execute_approved_schema again. " +
+                        "DO NOT call propose_schema, execute_approved_schema, create_hierarchy_from_tables, or create_application again for TablesCreated " +
+                        "unless MissingCompositionUnits is non-empty. " +
                         "For each lookup table: create_entity_from_table → wire FKMappings with set_field_entity(fieldId=…) → " +
                         "create_transaction_from_table → create_list_edit_form (do NOT create_search_view on lookups). " +
                         $"Then create_search_view(transactionId={result.TransactionId}) for the MASTER transaction. " +
@@ -361,6 +383,10 @@ namespace App.BL.AppBuilderAgent.Plugins
                 {
                     nextStep =
                         $"Tables and master-detail transaction created (TransactionId={result.TransactionId}). " +
+                        "CRITICAL: Do NOT call create_hierarchy_from_tables, create_application, or propose_plan for these tables — the hierarchy already exists" +
+                        (missingCompositionUnits.Count > 0
+                            ? " — EXCEPT MissingCompositionUnits: use create_hierarchy_from_tables to add missing children. "
+                            : ". ") +
                         "1) If EntityWiring left any enum/FK unbound, call set_field_entity with fieldId from Fields[] for EVERY unbound dropdown. " +
                         (unboundEnums.Count > 0
                             ? $"Unbound candidates: {string.Join(", ", unboundEnums)}. "
@@ -369,6 +395,9 @@ namespace App.BL.AppBuilderAgent.Plugins
                         "3) insert_mockup_data using TableColumns (do NOT call get_table_schema). " +
                         "Do NOT call get_transaction_details, get_existing_transactions, or list_applications.";
                 }
+
+                if (!string.IsNullOrEmpty(missingUnitsWarning))
+                    nextStep = missingUnitsWarning + " " + nextStep;
 
                 return JsonConvert.SerializeObject(new
                 {
@@ -379,6 +408,8 @@ namespace App.BL.AppBuilderAgent.Plugins
                     LookupTables    = lookupTables,
                     FKMappings      = fkMappings.Count > 0 ? fkMappings : null,
                     Units           = units,
+                    MissingCompositionUnits = missingCompositionUnits.Count > 0 ? missingCompositionUnits : null,
+                    Warning         = missingUnitsWarning,
                     Fields          = fieldPayload,
                     TableColumns    = tableColumns,
                     EntityWiring    = entityWireResults.Count > 0 ? entityWireResults : null,

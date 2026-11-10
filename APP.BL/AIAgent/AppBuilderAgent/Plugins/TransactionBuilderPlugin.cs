@@ -361,22 +361,40 @@ namespace App.BL.AppBuilderAgent.Plugins
                     return JsonConvert.SerializeObject(new { IsSuccess = false, Error = errorDetail });
                 }
 
+                // Reload and count units — ChildTables in the request can "succeed" while link-field
+                // detection fails and children are dropped on save (e.g. parent PK Id vs StockMovementId).
+                int txnId = Convert.ToInt32(result.Object.Id);
+                AppCacheManagerBL.RefreshOnetHierarchyTranscation(txnId);
+                var saved = AppTransactionBL.GetHierarchyTranscationFromDatabase(txnId);
+                int unitCount = CountHierarchyUnits(saved);
+                int expectedUnits = 1 + childList.Count + childList.Sum(c => c.GrandChildTableNames?.Count ?? 0);
+                string linkWarning = null;
+                if (unitCount < expectedUnits)
+                {
+                    linkWarning =
+                        $"Expected {expectedUnits} unit(s) but transaction has {unitCount}. " +
+                        "Child FK may not match parent PK (e.g. parent Id vs child StockMovementId). " +
+                        "Ensure the child table has a FK column named {{ParentEntity}}Id pointing at the master.";
+                }
+
                 return JsonConvert.SerializeObject(new
                 {
-                    IsSuccess            = true,
+                    IsSuccess            = unitCount >= 2 || childList.Count == 0,
                     TransactionId        = result.Object.Id,
                     TransactionName      = result.Object.TransactionName,
                     MasterTable          = masterTableName,
+                    UnitCount            = unitCount,
                     ChildTables          = childList.Select(c => new
                     {
                         c.TableName,
                         GrandChildren = c.GrandChildTableNames ?? new List<string>()
                     }).ToList(),
                     ExcludedEntityTables = excludedAsEntities,
+                    Warning              = linkWarning,
                     Note = excludedAsEntities.Count > 0
                         ? $"Tables [{string.Join(", ", excludedAsEntities)}] were excluded from child units because they are registered Entity Data Sources. " +
                           "Wire their FK columns in the master unit as DDL fields using set_field_entity."
-                        : null
+                        : linkWarning
                 }, Formatting.Indented);
             }
             catch (Exception ex)
@@ -389,6 +407,23 @@ namespace App.BL.AppBuilderAgent.Plugins
         // FK check helper — queries sys.foreign_keys to verify a FK exists from
         // childTable → parentTable.  Fails open so a query failure won't block.
         // ─────────────────────────────────────────────────────────────────────
+
+        private static int CountHierarchyUnits(AppTransactionExDto tx)
+        {
+            if (tx?.AppTransactionUnitList == null) return 0;
+            int n = 0;
+            void walk(AppTransactionUnitExDto u)
+            {
+                if (u == null) return;
+                n++;
+                if (u.Children == null) return;
+                foreach (var c in u.Children)
+                    walk(c);
+            }
+            foreach (var root in tx.AppTransactionUnitList)
+                walk(root);
+            return n;
+        }
 
         private static bool FkExists(DatabaseFixture fixture, string childTable, string parentTable)
         {

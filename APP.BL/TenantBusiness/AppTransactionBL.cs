@@ -4167,7 +4167,8 @@ namespace App.BL
 
         /// <summary>
         /// Wires the child/sibling field that points at the parent unit PK.
-        /// DB FK is preferred; if none exists (VIEWs, StyleSpecId↔ReferenceId), match by column name or alias.
+        /// DB FK is preferred; if none exists (VIEWs, StyleSpecId↔ReferenceId, or parent PK named Id
+        /// with child FK StockMovementId), match by column name / table-derived alias.
         /// Sets ParentPKFieldGuid and registers <paramref name="dictPkFkMap"/> so save can persist LinkToParentPrimaryKeyFieldId.
         /// </summary>
         private static void MarkParentLinkField(
@@ -4198,29 +4199,19 @@ namespace App.BL
                         fk.Columns == null || fk.Columns.Count == 0)
                         continue;
 
-                    linkField = unit.AppTransactionFieldList
-                        .FirstOrDefault(f => f.DataBaseFieldName != null &&
-                            f.DataBaseFieldName.Equals(fk.Columns[0], StringComparison.OrdinalIgnoreCase));
+                    linkField = FindEligibleParentLinkField(unit, fk.Columns[0], parentPkCol);
                     if (linkField != null)
                         break;
                 }
             }
 
-            if (linkField == null && !string.IsNullOrWhiteSpace(parentPkCol))
+            if (linkField == null)
             {
-                linkField = unit.AppTransactionFieldList.FirstOrDefault(f =>
-                    f.DataBaseFieldName != null &&
-                    f.DataBaseFieldName.Equals(parentPkCol, StringComparison.OrdinalIgnoreCase));
-            }
-
-            if (linkField == null && !string.IsNullOrWhiteSpace(parentPkCol))
-            {
-                string aliasCol = ResolveLogicalParentLinkAlias(parentPkCol);
-                if (!string.IsNullOrWhiteSpace(aliasCol))
+                foreach (var candidate in GetParentLinkColumnCandidates(parentTableName, parentPkCol))
                 {
-                    linkField = unit.AppTransactionFieldList.FirstOrDefault(f =>
-                        f.DataBaseFieldName != null &&
-                        f.DataBaseFieldName.Equals(aliasCol, StringComparison.OrdinalIgnoreCase));
+                    linkField = FindEligibleParentLinkField(unit, candidate, parentPkCol);
+                    if (linkField != null)
+                        break;
                 }
             }
 
@@ -4237,6 +4228,74 @@ namespace App.BL
                 if (linkField.RowIdentityGuid.HasValue && dictPkFkMap != null)
                     dictPkFkMap[linkField.RowIdentityGuid.Value] = parentPkGuid.Value;
             }
+        }
+
+        /// <summary>
+        /// Candidate child FK column names for a parent PK.
+        /// When parent PK is Id on Whse_StockMovement → StockMovementId, Whse_StockMovementId, Id (last resort).
+        /// </summary>
+        internal static IEnumerable<string> GetParentLinkColumnCandidates(string parentTableName, string parentPkColumn)
+        {
+            var list = new List<string>();
+            void add(string s)
+            {
+                if (string.IsNullOrWhiteSpace(s)) return;
+                if (list.Any(x => x.Equals(s, StringComparison.OrdinalIgnoreCase))) return;
+                list.Add(s);
+            }
+
+            // Prefer entity-named FKs before bare Id (child's own PK is also often Id).
+            if (!string.IsNullOrWhiteSpace(parentTableName))
+            {
+                var entity = parentTableName.Trim();
+                var us = entity.LastIndexOf('_');
+                if (us >= 0 && us < entity.Length - 1)
+                    entity = entity.Substring(us + 1);
+
+                if (!string.IsNullOrWhiteSpace(entity))
+                    add(entity + "Id");
+                add(parentTableName.Trim() + "Id");
+            }
+
+            if (!string.IsNullOrWhiteSpace(parentPkColumn))
+            {
+                add(parentPkColumn);
+                var alias = ResolveLogicalParentLinkAlias(parentPkColumn);
+                if (!string.IsNullOrWhiteSpace(alias))
+                    add(alias);
+            }
+
+            return list;
+        }
+
+        /// <summary>
+        /// Find a non-ambiguous link field. Never treat the child's own Id PK as the parent link
+        /// when the parent PK column is the generic name "Id".
+        /// </summary>
+        private static AppTransactionFieldExDto FindEligibleParentLinkField(
+            AppTransactionUnitExDto unit,
+            string columnName,
+            string parentPkColumn)
+        {
+            if (unit?.AppTransactionFieldList == null || string.IsNullOrWhiteSpace(columnName))
+                return null;
+
+            return unit.AppTransactionFieldList.FirstOrDefault(f =>
+            {
+                if (f?.DataBaseFieldName == null)
+                    return false;
+                if (!f.DataBaseFieldName.Equals(columnName, StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                // Child PK named Id is NOT the FK to parent.Id — look for StockMovementId etc.
+                if (f.IsPrimaryKey &&
+                    columnName.Equals("Id", StringComparison.OrdinalIgnoreCase) &&
+                    (string.IsNullOrWhiteSpace(parentPkColumn) ||
+                     parentPkColumn.Equals("Id", StringComparison.OrdinalIgnoreCase)))
+                    return false;
+
+                return true;
+            });
         }
 
         internal static string ResolveLogicalParentLinkAlias(string parentPkColumn)

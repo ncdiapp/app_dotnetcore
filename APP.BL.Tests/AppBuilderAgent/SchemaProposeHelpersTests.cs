@@ -81,17 +81,19 @@ public class SchemaProposeHelpersTests
     public void MarkLookupVsComposition_KeepsCompositionRootNonLookup()
     {
         // Warehouse/Category = lookup; StockMovement (root) + Item (child) = composition
-        var warehouse = Table("Warehouse", pk: "WarehouseId");
-        var category = Table("Category", pk: "CategoryId");
+        var warehouse = Table("Warehouse", pk: "WarehouseId",
+            cols: ["WarehouseId", "WarehouseCode", "WarehouseName"]);
+        var category = Table("Category", pk: "CategoryId",
+            cols: ["CategoryId", "CategoryName"]);
         var movement = Table("StockMovement", pk: "MovementId",
-            cols: ["MovementId", "WarehouseId", "MovementType", "Status"],
+            cols: ["MovementId", "WarehouseId", "MovementType", "Status", "MovementDate"],
             rels:
             [
                 Rel("ONE_TO_MANY", "StockMovementItem", "MovementId"),
                 Rel("MANY_TO_ONE", "Warehouse", "WarehouseId")
             ]);
         var item = Table("StockMovementItem", pk: "ItemDetailId",
-            cols: ["ItemDetailId", "MovementId", "CategoryId", "SKUCode"],
+            cols: ["ItemDetailId", "MovementId", "CategoryId", "SKUCode", "Quantity"],
             rels:
             [
                 Rel("MANY_TO_ONE", "StockMovement", "MovementId"),
@@ -111,9 +113,10 @@ public class SchemaProposeHelpersTests
     public void MarkLookupVsComposition_SkipsInvertedOneToManyTowardLookup()
     {
         // StockMovement → Warehouse as ONE_TO_MANY with FK on source is inverted association
-        var warehouse = Table("Warehouse", pk: "WarehouseId");
+        var warehouse = Table("Warehouse", pk: "WarehouseId",
+            cols: ["WarehouseId", "WarehouseCode", "WarehouseName"]);
         var movement = Table("StockMovement", pk: "MovementId",
-            cols: ["MovementId", "WarehouseId"],
+            cols: ["MovementId", "WarehouseId", "MovementDate", "ReferenceNo"],
             rels:
             [
                 Rel("ONE_TO_MANY", "Warehouse", "WarehouseId"),
@@ -121,7 +124,7 @@ public class SchemaProposeHelpersTests
                 Rel("ONE_TO_MANY", "StockMovementItem", "MovementId")
             ]);
         var item = Table("StockMovementItem", pk: "ItemDetailId",
-            cols: ["ItemDetailId", "MovementId"],
+            cols: ["ItemDetailId", "MovementId", "Quantity"],
             rels: [Rel("MANY_TO_ONE", "StockMovement", "MovementId")]);
 
         var tables = new List<DbGenieTableMetadataDto> { warehouse, movement, item };
@@ -131,6 +134,124 @@ public class SchemaProposeHelpersTests
         Assert.False(movement.IsLookup);
         Assert.False(item.IsLookup);
     }
+
+    [Fact]
+    public void MarkLookupVsComposition_DemotesReferenceParentOfDocument()
+    {
+        // LLM wrongly emits Customer ONE_TO_MANY → Order; Order is the real document master.
+        var customer = Table("Customer", pk: "CustomerId",
+            cols: ["CustomerId", "CustomerCode", "CustomerName"]);
+        var order = Table("Order", pk: "OrderId",
+            cols: ["OrderId", "CustomerId", "OrderDate", "Status"],
+            rels:
+            [
+                Rel("MANY_TO_ONE", "Customer", "CustomerId"),
+                Rel("ONE_TO_MANY", "OrderItem", "OrderId")
+            ]);
+        var item = Table("OrderItem", pk: "OrderItemId",
+            cols: ["OrderItemId", "OrderId", "Quantity"],
+            rels: [Rel("MANY_TO_ONE", "Order", "OrderId")]);
+        customer.Relationships =
+        [
+            Rel("ONE_TO_MANY", "Order", "CustomerId")
+        ];
+
+        var tables = new List<DbGenieTableMetadataDto> { customer, order, item };
+        SchemaProposeHelpers.MarkLookupVsComposition(tables);
+
+        Assert.True(customer.IsLookup);
+        Assert.False(order.IsLookup);
+        Assert.False(item.IsLookup);
+    }
+
+    [Fact]
+    public void MarkLookupVsComposition_HonorsExplicitIsLookupHint()
+    {
+        var supplier = Table("Supplier", pk: "SupplierId",
+            cols: ["SupplierId", "SupplierName"]);
+        supplier.IsLookup = true;
+        var order = Table("Order", pk: "OrderId",
+            cols: ["OrderId", "SupplierId", "OrderDate"],
+            rels:
+            [
+                Rel("MANY_TO_ONE", "Supplier", "SupplierId"),
+                Rel("ONE_TO_MANY", "OrderItem", "OrderId")
+            ]);
+        var item = Table("OrderItem", pk: "OrderItemId",
+            cols: ["OrderItemId", "OrderId", "Quantity"],
+            rels: [Rel("MANY_TO_ONE", "Order", "OrderId")]);
+
+        SchemaProposeHelpers.MarkLookupVsComposition([supplier, order, item]);
+
+        Assert.True(supplier.IsLookup);
+        Assert.False(order.IsLookup);
+        Assert.False(item.IsLookup);
+    }
+
+    [Fact]
+    public void MarkLookupVsComposition_KeepsTrueDocumentRoot()
+    {
+        var order = Table("Order", pk: "OrderId",
+            cols: ["OrderId", "OrderDate", "OrderNumber", "Status"],
+            rels: [Rel("ONE_TO_MANY", "OrderItem", "OrderId")]);
+        var item = Table("OrderItem", pk: "OrderItemId",
+            cols: ["OrderItemId", "OrderId", "Quantity"],
+            rels: [Rel("MANY_TO_ONE", "Order", "OrderId")]);
+
+        SchemaProposeHelpers.MarkLookupVsComposition([order, item]);
+
+        Assert.False(order.IsLookup);
+        Assert.False(item.IsLookup);
+    }
+
+    [Fact]
+    public void MarkLookupVsComposition_KeepsReferenceMasterWithOnlyOwnedChildren()
+    {
+        // Customer + Address only (no Order document) must stay composition — not demoted to lookup.
+        var customer = Table("Customer", pk: "CustomerId",
+            cols: ["CustomerId", "CustomerCode", "CustomerName"],
+            rels: [Rel("ONE_TO_MANY", "CustomerAddress", "CustomerId")]);
+        var address = Table("CustomerAddress", pk: "AddressId",
+            cols: ["AddressId", "CustomerId", "AddressLine", "City"],
+            rels: [Rel("MANY_TO_ONE", "Customer", "CustomerId")]);
+
+        SchemaProposeHelpers.MarkLookupVsComposition([customer, address]);
+
+        Assert.False(customer.IsLookup);
+        Assert.False(address.IsLookup);
+    }
+
+    [Fact]
+    public void MarkLookupVsComposition_InfersCompositionFromChildManyToOneOnly()
+    {
+        // LLM omitted parent ONE_TO_MANY — only child MANY_TO_ONE to document parent.
+        var movement = Table("StockMovement", pk: "Id",
+            cols: ["Id", "MovementDate", "MovementNumber", "Status", "WarehouseId"],
+            rels: [Rel("MANY_TO_ONE", "Warehouse", "WarehouseId")]);
+        var item = Table("StockMovementItem", pk: "Id",
+            cols: ["Id", "StockMovementId", "ProductId", "Quantity", "UnitPrice"],
+            rels:
+            [
+                Rel("MANY_TO_ONE", "StockMovement", "StockMovementId"),
+                Rel("MANY_TO_ONE", "Product", "ProductId")
+            ]);
+        var warehouse = Table("Warehouse", pk: "Id",
+            cols: ["Id", "WarehouseCode", "WarehouseName"]);
+        var product = Table("Product", pk: "Id",
+            cols: ["Id", "SKU", "ProductName"]);
+
+        var tables = new List<DbGenieTableMetadataDto> { warehouse, product, movement, item };
+        SchemaProposeHelpers.MarkLookupVsComposition(tables);
+
+        Assert.True(warehouse.IsLookup);
+        Assert.True(product.IsLookup);
+        Assert.False(movement.IsLookup);
+        Assert.False(item.IsLookup);
+
+        var children = SchemaProposeHelpers.GetDirectCompositionChildren("StockMovement", tables);
+        Assert.Contains("StockMovementItem", children);
+    }
+
 
     private static DbGenieTableMetadataDto Table(
         string name,

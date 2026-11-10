@@ -52,4 +52,58 @@ public class EntityMapWiringTests
         Assert.Empty(EntityMapWiring.ResolveTargets("field:99999", SampleFields()));
         Assert.Empty(EntityMapWiring.ResolveTargets("OtherTable.Status", SampleFields()));
     }
+
+    [Fact]
+    public void ColumnNameMatches_AllowsIdSuffixAlias()
+    {
+        Assert.True(EntityMapWiring.ColumnNameMatches("MovementTypeId", "MovementType"));
+        Assert.True(EntityMapWiring.ColumnNameMatches("Status", "StatusId"));
+        Assert.True(EntityMapWiring.ColumnNameMatches("StatusId", "StatusId"));
+        Assert.False(EntityMapWiring.ColumnNameMatches("Category", "Status"));
+    }
+
+    [Fact]
+    public void UnitOrTableMatches_IgnoresSpacesAndUnderscores()
+    {
+        Assert.True(EntityMapWiring.UnitOrTableMatches("Wh Inv Stock Movement", "WhInv_StockMovement"));
+        Assert.True(EntityMapWiring.UnitOrTableMatches("WhInv_StockMovement", "WhInv_StockMovement"));
+        Assert.False(EntityMapWiring.UnitOrTableMatches("Wh Inv Warehouse", "WhInv_StockMovement"));
+    }
+
+    [Fact]
+    public void ResolveTargets_BareName_MatchesIdSuffixColumn()
+    {
+        var fields = new List<EntityMapWiring.FieldRef>
+        {
+            new() { FieldId = 1, ColumnName = "MovementTypeId", TableName = "Ord_Order", UnitName = "Ord Order" }
+        };
+        var hits = EntityMapWiring.ResolveTargets("MovementType", fields);
+        Assert.Single(hits);
+        Assert.Equal(1, hits[0].FieldId);
+    }
+
+    [Fact]
+    public void ResolveTargets_TableDotMiss_DoesNotFallThroughToBareColumn()
+    {
+        // "WrongTable.Status" must not wire Ord_Order.Status (full key is not a bare column name).
+        var hits = EntityMapWiring.ResolveTargets("WrongTable.Status",
+        [
+            new() { FieldId = 1, ColumnName = "Status", TableName = "Ord_Order", UnitName = "Ord Order" }
+        ]);
+        Assert.Empty(hits);
+    }
+
+    [Fact]
+    public void ResolveTargets_ExactColumn_StillPreferredOverIdAliasWhenBothExist()
+    {
+        var fields = new List<EntityMapWiring.FieldRef>
+        {
+            new() { FieldId = 1, ColumnName = "Status", TableName = "Ord_Order", UnitName = "Ord Order" },
+            new() { FieldId = 2, ColumnName = "StatusId", TableName = "Ord_Order", UnitName = "Ord Order" }
+        };
+        var hits = EntityMapWiring.ResolveTargets("Status", fields);
+        Assert.Equal(2, hits.Count); // exact Status + StatusId alias — agent should prefer Table.Column
+        Assert.Contains(hits, f => f.FieldId == 1);
+        Assert.Contains(hits, f => f.FieldId == 2);
+    }
 }
