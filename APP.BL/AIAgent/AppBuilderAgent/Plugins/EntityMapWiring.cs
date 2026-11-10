@@ -38,7 +38,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             var list = new List<FieldRef>();
             if (transExDto?.AppTransactionUnitList == null) return list;
 
-            foreach (var u in transExDto.AppTransactionUnitList)
+            foreach (var u in FlattenUnits(transExDto.AppTransactionUnitList))
             {
                 foreach (var f in u.AppTransactionFieldList ?? Enumerable.Empty<AppTransactionFieldExDto>())
                 {
@@ -54,6 +54,30 @@ namespace App.BL.AppBuilderAgent.Plugins
                     });
                 }
             }
+            return list;
+        }
+
+        /// <summary>
+        /// GetHierarchyTranscationFromDatabase nests children under unit.Children and leaves only
+        /// roots (and siblings) in AppTransactionUnitList. Tools must flatten before field lookup.
+        /// </summary>
+        public static List<AppTransactionUnitExDto> FlattenUnits(
+            IEnumerable<AppTransactionUnitExDto> roots)
+        {
+            var list = new List<AppTransactionUnitExDto>();
+            if (roots == null) return list;
+
+            void walk(AppTransactionUnitExDto u)
+            {
+                if (u == null) return;
+                list.Add(u);
+                if (u.Children == null) return;
+                foreach (var c in u.Children)
+                    walk(c);
+            }
+
+            foreach (var root in roots)
+                walk(root);
             return list;
         }
 

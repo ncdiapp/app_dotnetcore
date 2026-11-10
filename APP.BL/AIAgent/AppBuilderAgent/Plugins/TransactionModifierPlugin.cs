@@ -56,7 +56,9 @@ namespace App.BL.AppBuilderAgent.Plugins
                 return null;
             }
 
-            var units = (transExDto.AppTransactionUnitList ?? Enumerable.Empty<AppTransactionUnitExDto>()).ToList();
+            // Nested master-detail children live under unit.Children — flatten for lookup.
+            var units = EntityMapWiring.FlattenUnits(
+                transExDto.AppTransactionUnitList ?? Enumerable.Empty<AppTransactionUnitExDto>());
 
             // Build a unitId → display label map for error messages
             var unitLabel = units.ToDictionary(

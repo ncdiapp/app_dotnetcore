@@ -222,7 +222,9 @@ namespace App.BL.AppBuilderAgent.Plugins
                 if (transExDto == null)
                     return JsonConvert.SerializeObject(new { Error = $"Transaction {transactionId} not found" });
 
-                var units = transExDto.AppTransactionUnitList?.Select(u => new
+                var flatUnits = EntityMapWiring.FlattenUnits(
+                    transExDto.AppTransactionUnitList ?? Enumerable.Empty<AppTransactionUnitExDto>());
+                var units = flatUnits.Select(u => new
                 {
                     UnitId      = Convert.ToInt32(u.Id),
                     Name        = u.UnitDisplayName,
@@ -238,7 +240,7 @@ namespace App.BL.AppBuilderAgent.Plugins
                 {
                     TransactionId = Convert.ToInt32(transExDto.Id),
                     Name          = transExDto.TransactionName,
-                    UnitCount     = units?.Count ?? 0,
+                    UnitCount     = units.Count,
                     Units         = units
                 }, Formatting.None);
             }

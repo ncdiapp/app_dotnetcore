@@ -408,22 +408,8 @@ namespace App.BL.AppBuilderAgent.Plugins
         // childTable → parentTable.  Fails open so a query failure won't block.
         // ─────────────────────────────────────────────────────────────────────
 
-        private static int CountHierarchyUnits(AppTransactionExDto tx)
-        {
-            if (tx?.AppTransactionUnitList == null) return 0;
-            int n = 0;
-            void walk(AppTransactionUnitExDto u)
-            {
-                if (u == null) return;
-                n++;
-                if (u.Children == null) return;
-                foreach (var c in u.Children)
-                    walk(c);
-            }
-            foreach (var root in tx.AppTransactionUnitList)
-                walk(root);
-            return n;
-        }
+        private static int CountHierarchyUnits(AppTransactionExDto tx) =>
+            EntityMapWiring.FlattenUnits(tx?.AppTransactionUnitList).Count;
 
         private static bool FkExists(DatabaseFixture fixture, string childTable, string parentTable)
         {

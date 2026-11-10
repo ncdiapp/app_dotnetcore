@@ -94,6 +94,28 @@ public class EntityMapWiringTests
     }
 
     [Fact]
+    public void FlattenUnits_IncludesNestedChildren()
+    {
+        var child = new APP.Components.EntityDto.AppTransactionUnitExDto
+        {
+            Id = 2,
+            UnitDisplayName = "Line",
+            DataBaseTableName = "Ord_OrderItem"
+        };
+        var root = new APP.Components.EntityDto.AppTransactionUnitExDto
+        {
+            Id = 1,
+            UnitDisplayName = "Master",
+            DataBaseTableName = "Ord_Order",
+            Children = [child]
+        };
+
+        var flat = EntityMapWiring.FlattenUnits([root]);
+        Assert.Equal(2, flat.Count);
+        Assert.Contains(flat, u => Convert.ToInt32(u.Id) == 2);
+    }
+
+    [Fact]
     public void ResolveTargets_ExactColumn_StillPreferredOverIdAliasWhenBothExist()
     {
         var fields = new List<EntityMapWiring.FieldRef>
