@@ -3,7 +3,8 @@
 **Status:** Implementation in progress. Catalog-only `HostContextJson` and Calculation-style apply agreed 2026-11-05 (sections 5 and 11). Apply migrations `V070__AppFormAgent_xhu.sql` then `V071` / `V072`.  
 **Date:** 2026-11-03  
 **Scope:** Master Detail and List Edit transaction forms. One shared Specialist. First delivery includes the AI panel, List Edit Communication, host tools, and seeded libraries.  
-**Related:** Entity Lookup semantic match (exact → vector) is designed in `SharedAgentEngine-VectorStore-Architecture.md` (not implemented yet). Field/grid *addressing* still uses the unit catalog plus server-side match, not embeddings.
+**Related:** Entity Lookup semantic match (exact → vector) is designed in `SharedAgentEngine-VectorStore-Architecture.md` (not implemented yet). Field/grid *addressing* still uses the unit catalog plus server-side match, not embeddings.  
+**Sub-plan (config / design):** Config is **not** on Form Agent. Separate **App Configurator Agent** — [`AppConfigurator-AiAgent-Design.md`](./AppConfigurator-AiAgent-Design.md). Implementation gated on repairing Agent Management `app-builder` first.
 
 ---
 
@@ -310,7 +311,7 @@ Matching 100 grid rows is an in-memory filter on posted FormData. Semantic Entit
 - Subscribing `platform-transaction`, `platform-search`, or the `platform-database` tools that create, alter, or drop tables.
 - A separate agent on the Transaction Form Group shell.
 - A second agent for List Edit.
-- Letting the agent edit form design (fields, layout, or linked-search configuration).
+- Letting the Form Agent edit form design (fields, layout, or linked-search configuration). That belongs to [`AppConfigurator-AiAgent-Design.md`](./AppConfigurator-AiAgent-Design.md).
 - Per-row Communication on List Edit.
 - "Follow-up user from a transaction field" on List Edit.
 
