@@ -15,7 +15,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     /// </summary>
     public class AgentFilePlugin
     {
-        public Task<string> List(AgentToolContext context, CancellationToken ct, string path = null)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("file_list",
+            "List files and folders under the current chat file area (relative to AgentOutput/{sessionKey}/). Omit path or pass empty for the root.")]
+        public Task<string> List(
+            AgentToolContext context,
+            CancellationToken ct,
+            [AgentParam("Optional relative folder path. Empty = file area root.")] string path = null)
         {
             try
             {
@@ -30,7 +36,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
         }
 
-        public Task<string> Read(AgentToolContext context, CancellationToken ct, string path)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("file_read",
+            "Read a file from the chat file area. Text: UTF-8 content. .xlsx/.xls: returns SheetNames and Sheets for all worksheets.")]
+        public Task<string> Read(
+            AgentToolContext context,
+            CancellationToken ct,
+            [AgentParam("Relative file path", isRequired: true)] string path)
         {
             try
             {
@@ -77,7 +89,14 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
         }
 
-        public Task<string> Write(AgentToolContext context, CancellationToken ct, string path, string content)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("file_write",
+            "Write a file into the chat file area. Text: UTF-8 body. .xlsx/.xls: JSON content with mode append|overwrite_sheet|replace_file.")]
+        public Task<string> Write(
+            AgentToolContext context,
+            CancellationToken ct,
+            [AgentParam("Relative file path", isRequired: true)] string path,
+            [AgentParam("Text body, or Excel JSON {mode,sheet|sheets,headers,rows}", isRequired: true)] string content)
         {
             try
             {
@@ -120,7 +139,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
         }
 
-        public Task<string> Mkdir(AgentToolContext context, CancellationToken ct, string path)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("file_mkdir", "Create a folder (and parents) under the current chat file area.")]
+        public Task<string> Mkdir(
+            AgentToolContext context,
+            CancellationToken ct,
+            [AgentParam("Relative folder path", isRequired: true)] string path)
         {
             try
             {
@@ -137,12 +161,15 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
         }
 
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("execute_agent_sql_file",
+            "Execute a .sql file from the current chat AgentOutput area (GO-batch). Connects to APP tenant (or dataSourceId).")]
         public Task<string> ExecuteSqlFile(
             AgentToolContext context,
             CancellationToken ct,
-            string relativePath,
-            int? dataSourceId = null,
-            string requiredDataSourceIds = null)
+            [AgentParam("Relative .sql path under AgentOutput, e.g. output/3359/3_PlmDw_ImportFromDW.sql", isRequired: true)] string relativePath,
+            [AgentParam("Optional target DataSourceRegisterId. Omit or 0 = APP tenant / session default.")] int? dataSourceId = null,
+            [AgentParam("Optional comma-separated DataSourceIds to preflight same-server catalogs.")] string requiredDataSourceIds = null)
         {
             try
             {
@@ -166,7 +193,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
         }
 
-        public Task<string> Delete(AgentToolContext context, CancellationToken ct, string path)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("file_delete", "Delete a file or folder (recursive) under the current chat file area.")]
+        public Task<string> Delete(
+            AgentToolContext context,
+            CancellationToken ct,
+            [AgentParam("Relative path to delete", isRequired: true)] string path)
         {
             try
             {

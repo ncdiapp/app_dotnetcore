@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import type { RootState } from '../../redux/store';
-import { AskUserEvent, DataRenderEvent, genericAgentSvc, isInteractivePage, isInteractiveTabular, uiRenderToDataRender, type GenericAgentChatUiSnapshot, type LookupItemDto, type UiRenderEvent } from '../../webapi/genericAgentSvc';
+import { AskUserEvent, DataRenderEvent, genericAgentSvc, isInteractivePage, isInteractiveTabular, uiRenderToDataRender, type GenericAgentChatUiSnapshot, type LookupItemDto, type SchemaConfirmEventDto, type UiRenderEvent } from '../../webapi/genericAgentSvc';
+import { SchemaConfirmCard } from './SchemaConfirmCard';
 import { agentSkillSetSvc } from '../../webapi/agentSkillSetSvc';
 import { aiSkillSvc } from '../../webapi/aiSkillSvc';
 import { registerTabDataSaver, unregisterTabDataSaver, useTabNavigation } from '../../redux/hooks/useTabNavigation';
@@ -671,6 +672,7 @@ const SharedAgentChat: React.FC<Props> = ({
     const liveResultOpen = useRef(false);
     const [isRunning, setIsRunning] = useState(false);
     const [pendingPlan, setPendingPlan] = useState<PlanEvent | null>(null);
+    const [pendingSchema, setPendingSchema] = useState<SchemaConfirmEventDto | null>(null);
     const [pendingAskUser, setPendingAskUser] = useState<AskUserEvent | null>(null);
     const [askAnswers, setAskAnswers] = useState<Record<string, string>>({});
     const [askSelectedIds, setAskSelectedIds] = useState<string[]>([]);
@@ -729,6 +731,7 @@ const SharedAgentChat: React.FC<Props> = ({
     const isRunningRef = useRef(false);
     const pendingAskUserRef = useRef<AskUserEvent | null>(null);
     const pendingPlanRef = useRef<PlanEvent | null>(null);
+    const pendingSchemaRef = useRef<SchemaConfirmEventDto | null>(null);
     const mountedRef = useRef(true);
     const turnActivitiesRef = useRef<TurnActivity[]>([]);
     const skillKeyRef = useRef(skillKey);
@@ -743,6 +746,7 @@ const SharedAgentChat: React.FC<Props> = ({
     isRunningRef.current = isRunning;
     pendingAskUserRef.current = pendingAskUser;
     pendingPlanRef.current = pendingPlan;
+    pendingSchemaRef.current = pendingSchema;
     skillExecutionModeRef.current = skillExecutionMode;
     turnActivitiesRef.current = turnActivities;
     skillKeyRef.current = skillKey;
@@ -932,6 +936,7 @@ const SharedAgentChat: React.FC<Props> = ({
         sessionId: sessionIdRef.current,
         pendingAskUser: pendingAskUserRef.current,
         pendingPlan: pendingPlanRef.current,
+        pendingSchema: pendingSchemaRef.current,
         askAnswers: { ...askAnswersRef.current },
         askSelectedIds: [...askSelectedIdsRef.current],
         askFreeText: askFreeTextRef.current,
@@ -1101,6 +1106,12 @@ const SharedAgentChat: React.FC<Props> = ({
             if (!mountedRef.current) return;
             setPendingPlan(plan);
         },
+        onSchema: (schema: SchemaConfirmEventDto) => {
+            if (!mountedRef.current) return;
+            setPendingSchema(schema);
+            setIsRunning(true);
+            isRunningRef.current = true;
+        },
         onHostTool: async (evt: { RequestId?: string; ToolName?: string; ArgsJson?: string }) => {
             const args = (() => {
                 try { return evt.ArgsJson ? JSON.parse(evt.ArgsJson) : {}; } catch { return {}; }
@@ -1140,6 +1151,7 @@ const SharedAgentChat: React.FC<Props> = ({
             if (stopped) {
                 setPendingAskUser(null);
                 setPendingPlan(null);
+                setPendingSchema(null);
             }
             setTurnActivities(prev => {
                 const turn = prev.find(t => t.turnIndex === idx);
@@ -1218,6 +1230,7 @@ const SharedAgentChat: React.FC<Props> = ({
                 (snap.messages?.length ?? 0) > 0
                 || !!snap.pendingAskUser
                 || !!snap.pendingPlan
+                || !!snap.pendingSchema
                 || snap.isRunning;
             if (!hasUi) return false;
 
@@ -1230,17 +1243,18 @@ const SharedAgentChat: React.FC<Props> = ({
             sessionIdRef.current = snap.sessionId;
             setPendingAskUser(snap.pendingAskUser);
             setPendingPlan(snap.pendingPlan);
+            setPendingSchema(snap.pendingSchema ?? null);
             setAskAnswers(snap.askAnswers || {});
             setAskSelectedIds(snap.askSelectedIds || []);
             setAskFreeText(snap.askFreeText || '');
-            setIsRunning(!!snap.isRunning || !!snap.pendingAskUser);
-            isRunningRef.current = !!snap.isRunning || !!snap.pendingAskUser;
+            setIsRunning(!!snap.isRunning || !!snap.pendingAskUser || !!snap.pendingSchema);
+            isRunningRef.current = !!snap.isRunning || !!snap.pendingAskUser || !!snap.pendingSchema;
             setSkillExecutionMode(snap.skillExecutionMode || 'Interactive');
             skillExecutionModeRef.current = snap.skillExecutionMode || 'Interactive';
             chatSavedSkillNameRef.current = snap.chatSavedSkillName?.trim() || null;
             chatSavedSkillIdRef.current = Number(snap.chatSavedSkillId) > 0 ? Number(snap.chatSavedSkillId) : 0;
             if (snap.error) setError(snap.error);
-            if (snap.sessionId && (genericAgentSvc.isPolling() || snap.isRunning || snap.pendingAskUser)) {
+            if (snap.sessionId && (genericAgentSvc.isPolling() || snap.isRunning || snap.pendingAskUser || snap.pendingSchema)) {
                 genericAgentSvc.resumePolling(snap.sessionId, buildLiveHandlers(snap.currentTurnIndex), chatSessionKey ?? null);
             }
             return true;
@@ -1266,6 +1280,7 @@ const SharedAgentChat: React.FC<Props> = ({
             setSessionId(null);
             sessionIdRef.current = null;
             setPendingPlan(null);
+            setPendingSchema(null);
             setPendingAskUser(null);
             setAskAnswers({});
             setAskSelectedIds([]);
@@ -1617,11 +1632,12 @@ const SharedAgentChat: React.FC<Props> = ({
 
     const handleStop = async () => {
         const sid = sessionIdRef.current || genericAgentSvc.currentSessionId;
-        if (!sid && !isRunning && !pendingAskUser) return;
+        if (!sid && !isRunning && !pendingAskUser && !pendingSchema) return;
         await genericAgentSvc.CancelRun(sid);
         // Optimistic UI clear; server also emits done "Stopped by user."
         setPendingAskUser(null);
         setPendingPlan(null);
+        setPendingSchema(null);
         setIsRunning(false);
         isRunningRef.current = false;
         setMessages(prev => {
@@ -1640,6 +1656,11 @@ const SharedAgentChat: React.FC<Props> = ({
     const handleConfirmPlan = async (confirmed: boolean) => {
         setPendingPlan(null);
         if (sessionId) await genericAgentSvc.ConfirmPlan(sessionId, confirmed);
+    };
+
+    const handleConfirmSchema = async (confirmed: boolean, schemaJson?: string, feedback?: string) => {
+        setPendingSchema(null);
+        if (sessionId) await genericAgentSvc.ConfirmSchema(sessionId, confirmed, schemaJson, feedback);
     };
 
     const handleConfirmAskUser = async (
@@ -1768,6 +1789,7 @@ const SharedAgentChat: React.FC<Props> = ({
         sessionIdRef.current = null;
         setError(null);
         setPendingPlan(null);
+        setPendingSchema(null);
         setPendingAskUser(null);
         setAskAnswers({});
         setAskSelectedIds([]);
@@ -2124,7 +2146,7 @@ const SharedAgentChat: React.FC<Props> = ({
         askMode === 'single_choice'
         && askUi === 'button_group'
         && (pendingAskUser?.Options?.length ?? 0) > 0;
-    const blocked = isRunning || !!pendingAskUser;
+    const blocked = isRunning || !!pendingAskUser || !!pendingPlan || !!pendingSchema;
     const handoffGate = isHandoffGateAsk(pendingAskUser);
     const skillLabel = isGeneralAgent ? 'General Agent' : (skillDisplayNames[skillKey] || skillKey || 'Agent');
     const hasRealUserTurn = messages.some(m =>
@@ -2137,7 +2159,7 @@ const SharedAgentChat: React.FC<Props> = ({
         if ((m.dataRenders?.length ?? 0) > 0) return true;
         return false;
     });
-    const showWelcome = !hasConversation && !isRunning && !pendingAskUser && !pendingPlan;
+    const showWelcome = !hasConversation && !isRunning && !pendingAskUser && !pendingPlan && !pendingSchema;
     const hour = new Date().getHours();
     const greetingWord = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
     const firstName = (displayName || '').trim().split(/\s+/)[0];
@@ -2627,6 +2649,14 @@ const SharedAgentChat: React.FC<Props> = ({
                                 <button className={btn} onClick={() => handleConfirmPlan(false)}><i className="fa-solid fa-xmark mr-1" />Reject</button>
                             </div>
                         </div>
+                    )}
+
+                    {pendingSchema && (
+                        <SchemaConfirmCard
+                            schema={pendingSchema}
+                            onApprove={(schemaJson) => { void handleConfirmSchema(true, schemaJson); }}
+                            onReject={(feedback) => { void handleConfirmSchema(false, undefined, feedback); }}
+                        />
                     )}
 
                     {pendingAskUser && !handoffGate && (

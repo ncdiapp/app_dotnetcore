@@ -1,5 +1,6 @@
 using System;
 using App.BL.AppBuilderAgent;
+using APP.Framework.Plugin;
 using Newtonsoft.Json;
 
 namespace App.BL.AIAgent.GenericAgent.Plugins
@@ -13,6 +14,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     /// </summary>
     public class MemoryContextPlugin
     {
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("load_memory_context",
+            "Call this tool at the start of a session to recall what was built in previous sessions: existing tables, transactions, and prior user requests. "
+            + "Use it when the user references prior work or asks what currently exists in the platform. For targeted recall by keyword, use search_memory instead.")]
         public string LoadMemoryContext()
         {
             try

@@ -14,11 +14,14 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     /// </summary>
     public class AgentScriptPlugin
     {
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("run_agent_script",
+            "Run a script file from the current chat AgentOutput area (default: only under source/, .ps1). Returns exit code, log tails, and output/ file sizes.")]
         public async Task<string> Run(
             AgentToolContext context,
             CancellationToken ct,
-            string relativePath,
-            string toolConfig = null)
+            [AgentParam("Relative path under AgentOutput/{sessionKey}/, e.g. source/_gen_plmdw_import_sql.ps1", isRequired: true)] string relativePath,
+            [AgentParam("Optional ToolConfig JSON override for script policy.")] string toolConfig = null)
         {
             try
             {
@@ -48,11 +51,14 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         /// Optional helper: check output file sizes. minSizeByFileNameJson e.g.
         /// {"4_PlmDw_ImportBlueprint.json":500000,"1_PlmDw_Tables.sql":400000}
         /// </summary>
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("validate_agent_outputs",
+            "Check deliverable file sizes under a folder (default output/). Pass minSizeByFileNameJson as a JSON object of fileName→minBytes.")]
         public Task<string> ValidateOutputs(
             AgentToolContext context,
             CancellationToken ct,
-            string relativeDir = "output",
-            string minSizeByFileNameJson = null)
+            [AgentParam("Folder under AgentOutput (default output/).")] string relativeDir = "output",
+            [AgentParam("JSON map of file name to minimum SizeBytes.")] string minSizeByFileNameJson = null)
         {
             try
             {

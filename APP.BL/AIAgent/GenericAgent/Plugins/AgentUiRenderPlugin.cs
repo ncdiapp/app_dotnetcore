@@ -20,55 +20,63 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     {
         private const int MaxRows = 50000;
 
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("render_none_interactive",
+            "Render Result HTML (none-interactive). Prefer dataset_name. layout=form|table|cards|kpi|chart|dashboard. specJson for kpi/chart/dashboard. Do not send HTML.")]
         public Task<string> RenderNoneInteractive(
             AgentToolContext context,
-            string layout = null,
-            string dataset_name = null,
-            string title = null,
-            string content = null,
-            string specJson = null,
-            int? limit = null,
-            int? cardsPerRow = null,
-            int? cardRows = null,
-            string actionsJson = null,
-            string aiPolishedRenderSpec = null,
-            bool selectAllColumns = false,
-            string promptHash = null)
+            [AgentParam("form | table | cards | kpi | chart | dashboard. Default table. kpi|chart|dashboard ONLY after ask_user option kpi_dashboard.")] string layout = null,
+            [AgentParam("Chat session cache name. Preferred.")] string dataset_name = null,
+            [AgentParam("Optional title.")] string title = null,
+            [AgentParam("Form JSON or row array when dataset_name is omitted.")] string content = null,
+            [AgentParam("Required for layout kpi|chart|dashboard after kpi_dashboard confirm.")] string specJson = null,
+            [AgentParam("First N rows after cache is chosen.")] int? limit = null,
+            [AgentParam("Cards sharing one row. 1-6.")] int? cardsPerRow = null,
+            [AgentParam("Card rows on one page. Default 3.")] int? cardRows = null,
+            [AgentParam("Interactive only: toolbar actions [{id,label}].")] string actionsJson = null,
+            [AgentParam("Optional AiPolishedRenderSpec JSON (structure only).")] string aiPolishedRenderSpec = null,
+            [AgentParam("true only when user asked for all columns.")] bool selectAllColumns = false,
+            [AgentParam("From prepare_ui_render_polish.")] string promptHash = null)
             => RenderCore(context, layout, dataset_name, title, content, specJson, limit, cardsPerRow, cardRows,
                 interactive: false, actionsJson: null, mappedFrom: null, aiPolishedRenderSpec, selectAllColumns, promptHash);
 
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("render_interactive",
+            "Render interactive Result. Prefer dataset_name. layout=form|table|cards|kpi|chart|dashboard. specJson for kpi/chart/dashboard. Do not send HTML.")]
         public Task<string> RenderInteractive(
             AgentToolContext context,
-            string layout = null,
-            string dataset_name = null,
-            string title = null,
-            string content = null,
-            string specJson = null,
-            int? limit = null,
-            int? cardsPerRow = null,
-            int? cardRows = null,
-            string actionsJson = null,
-            string aiPolishedRenderSpec = null,
-            bool selectAllColumns = false,
-            string promptHash = null)
+            [AgentParam("form | table | cards | kpi | chart | dashboard. Default table. kpi|chart|dashboard ONLY after ask_user option kpi_dashboard.")] string layout = null,
+            [AgentParam("Chat session cache name. Preferred.")] string dataset_name = null,
+            [AgentParam("Optional title.")] string title = null,
+            [AgentParam("Form JSON or row array when dataset_name is omitted.")] string content = null,
+            [AgentParam("Required for layout kpi|chart|dashboard after kpi_dashboard confirm.")] string specJson = null,
+            [AgentParam("First N rows after cache is chosen.")] int? limit = null,
+            [AgentParam("Cards sharing one row. 1-6.")] int? cardsPerRow = null,
+            [AgentParam("Card rows on one page. Default 3.")] int? cardRows = null,
+            [AgentParam("Interactive only: toolbar actions [{id,label}].")] string actionsJson = null,
+            [AgentParam("Optional AiPolishedRenderSpec JSON (structure only).")] string aiPolishedRenderSpec = null,
+            [AgentParam("true only when user asked for all columns.")] bool selectAllColumns = false,
+            [AgentParam("From prepare_ui_render_polish.")] string promptHash = null)
             => RenderCore(context, layout, dataset_name, title, content, specJson, limit, cardsPerRow, cardRows,
                 interactive: true, actionsJson, mappedFrom: null, aiPolishedRenderSpec, selectAllColumns, promptHash);
 
-        /// <summary>Deprecated data_render alias.</summary>
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("data_render",
+            "Deprecated alias of render_interactive / render_none_interactive. ui=grid|card|chart|kpi maps to layout table|cards|chart|kpi.")]
         public Task<string> RenderAlias(
             AgentToolContext context,
-            string ui = null,
-            string layout = null,
-            string dataset_name = null,
-            string title = null,
-            string dataJson = null,
-            string content = null,
-            string specJson = null,
-            string actionsJson = null,
-            string blocksJson = null,
-            int? limit = null,
-            int? cardsPerRow = null,
-            int? cardRows = null)
+            [AgentParam("Legacy: grid|card|chart|kpi|kpi_dashboard — mapped to layout.")] string ui = null,
+            [AgentParam("form|table|cards|kpi|chart|dashboard when not using ui.")] string layout = null,
+            [AgentParam("Chat session cache name. Preferred.")] string dataset_name = null,
+            [AgentParam("Optional title.")] string title = null,
+            [AgentParam("Legacy row JSON when dataset_name is omitted.")] string dataJson = null,
+            [AgentParam("Form JSON or row array.")] string content = null,
+            [AgentParam("Required for kpi|chart|dashboard layouts.")] string specJson = null,
+            [AgentParam("Interactive toolbar actions [{id,label}].")] string actionsJson = null,
+            [AgentParam("Legacy kpi_dashboard blocks JSON.")] string blocksJson = null,
+            [AgentParam("First N rows after cache is chosen.")] int? limit = null,
+            [AgentParam("Cards sharing one row. 1-6.")] int? cardsPerRow = null,
+            [AgentParam("Card rows on one page. Default 3.")] int? cardRows = null)
         {
             string mappedFrom = null;
             var layoutNorm = !string.IsNullOrWhiteSpace(layout)

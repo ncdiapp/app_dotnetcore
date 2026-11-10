@@ -278,6 +278,7 @@ export interface GenericAgentChatUiSnapshot {
     sessionId: string | null;
     pendingAskUser: AskUserEvent | null;
     pendingPlan: { PlanSummary: string } | null;
+    pendingSchema?: SchemaConfirmEventDto | null;
     askAnswers: Record<string, string>;
     askSelectedIds: string[];
     askFreeText: string;
@@ -289,10 +290,32 @@ export interface GenericAgentChatUiSnapshot {
     chatSavedSkillId?: number | null;
 }
 
+export type SchemaConfirmEventDto = {
+    Summary: string;
+    SchemaJson: string;
+    Tables: Array<{
+        Name: string;
+        Description?: string;
+        IsLookup: boolean;
+        ParentTable?: string;
+        Columns: Array<{
+            Name: string;
+            DataType: string;
+            IsPrimaryKey: boolean;
+            IsNullable: boolean;
+            IsAutoIncrement?: boolean;
+            Length?: number;
+            FKTargetTable?: string;
+        }>;
+    }>;
+    CreateScript?: string;
+};
+
 export interface GenericAgentEventHandlers {
     onToken: (text: string) => void;
     onStep: (step: { Type: string; ToolName?: string; Description: string; Details?: string; IsSuccess: boolean }) => void;
     onPlan: (plan: { PlanSummary: string }) => void;
+    onSchema?: (schema: SchemaConfirmEventDto) => void;
     onAskUser?: (ask: AskUserEvent) => void;
     onHostTool?: (evt: { RequestId?: string; ToolName?: string; ArgsJson?: string }) => Promise<unknown>;
     onDataRender?: (evt: DataRenderEvent) => void;
@@ -361,6 +384,24 @@ class GenericAgentService {
             method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ sessionId, confirmed }),
+        }).catch(() => {});
+    }
+
+    async ConfirmSchema(
+        sessionId: string,
+        confirmed: boolean,
+        schemaJson?: string | null,
+        feedback?: string | null,
+    ): Promise<void> {
+        await fetch(`${BASE}/ConfirmSchema`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({
+                SessionId: sessionId,
+                Confirmed: confirmed,
+                SchemaJson: schemaJson ?? null,
+                Feedback: feedback ?? null,
+            }),
         }).catch(() => {});
     }
 
@@ -937,6 +978,7 @@ class GenericAgentService {
                         Token?: string;
                         Step?: unknown;
                         Plan?: unknown;
+                        Schema?: SchemaConfirmEventDto;
                         AskUser?: AskUserEvent;
                         HostTool?: { RequestId?: string; ToolName?: string; ArgsJson?: string };
                         DataRender?: DataRenderEvent;
@@ -957,6 +999,7 @@ class GenericAgentService {
                     if (evt.EventType === 'token' && evt.Token) h.onToken(evt.Token);
                     if (evt.EventType === 'step' && evt.Step) h.onStep(evt.Step as never);
                     if (evt.EventType === 'plan' && evt.Plan) h.onPlan(evt.Plan as never);
+                    if (evt.EventType === 'schema' && evt.Schema) h.onSchema?.(evt.Schema as SchemaConfirmEventDto);
                     if (evt.EventType === 'ask_user' && evt.AskUser) h.onAskUser?.(evt.AskUser);
                     if (evt.EventType === 'host_tool' && evt.HostTool) {
                         const toolEvt = evt.HostTool;

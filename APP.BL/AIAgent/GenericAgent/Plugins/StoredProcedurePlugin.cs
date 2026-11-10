@@ -23,13 +23,16 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             _dataSourceId = dataSourceId;
         }
 
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("stored_procedure_list",
+            "List AI-registered stored procedures (published) for a DataSource from AppStoredProcedureRegister. Optional dataSourceId; omit for session default. Prefer stored_procedure_search for keyword discovery.")]
         public Task<string> List(
             CancellationToken ct,
             AgentToolContext context = null,
-            int? dataSourceId = null,
-            string schema = null,
-            int skip = 0,
-            int take = 50)
+            [AgentParam("Optional DataSourceRegisterId; omit for session default.")] int? dataSourceId = null,
+            [AgentParam("Optional schema filter (e.g. dbo).")] string schema = null,
+            [AgentParam("Offset (default 0).")] int skip = 0,
+            [AgentParam("Page size (default 50, max 200).")] int take = 50)
         {
             _ = ct;
             _ = schema;
@@ -38,37 +41,46 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             return Task.FromResult(AppStoredProcedureRegisterBL.ListForAgentJson(ds, skip, take));
         }
 
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("stored_procedure_search",
+            "Search AI-registered stored procedures by keyword. Only IsPublishedToAgent rows. Then stored_procedure_detail → stored_procedure_execute.")]
         public Task<string> Search(
             CancellationToken ct,
             AgentToolContext context = null,
-            string query = null,
-            int? dataSourceId = null,
-            int take = 30)
+            [AgentParam("Keyword (procedure name fragment or business term)", isRequired: true)] string query = null,
+            [AgentParam("Optional DataSourceRegisterId; omit for session default.")] int? dataSourceId = null,
+            [AgentParam("Max hits (default 30, max 100).")] int take = 30)
         {
             _ = ct;
             var ds = ResolveOptionalDs(dataSourceId, context);
             return Task.FromResult(AppStoredProcedureRegisterBL.SearchForAgentJson(ds, query, take));
         }
 
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("stored_procedure_detail",
+            "Get one AI-registered stored procedure: description, input parameters JSON, output columns, sample JSON. Call before stored_procedure_execute.")]
         public Task<string> Detail(
             CancellationToken ct,
             AgentToolContext context = null,
-            string procedureName = null,
-            string schema = null,
-            int? dataSourceId = null)
+            [AgentParam("Procedure name or schema.name", isRequired: true)] string procedureName = null,
+            [AgentParam("Optional schema if not embedded in procedureName.")] string schema = null,
+            [AgentParam("Optional DataSourceRegisterId; omit for session default.")] int? dataSourceId = null)
         {
             _ = ct;
             var ds = ResolveOptionalDs(dataSourceId, context);
             return Task.FromResult(AppStoredProcedureRegisterBL.DetailForAgentJson(ds, procedureName, schema));
         }
 
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("stored_procedure_execute",
+            "Execute a stored procedure on the chosen DataSource. Required: procedureName. Pass argsJson as a JSON object of parameter names to values.")]
         public Task<string> Execute(
             CancellationToken ct,
             AgentToolContext context = null,
-            string procedureName = null,
-            string argsJson = null,
-            string schema = null,
-            int? dataSourceId = null)
+            [AgentParam("Procedure name or schema.name", isRequired: true)] string procedureName = null,
+            [AgentParam("JSON object of SP arguments, e.g. {\"TabId\":123,\"ReferenceId\":1001}")] string argsJson = null,
+            [AgentParam("Optional schema.")] string schema = null,
+            [AgentParam("Optional DataSourceRegisterId; omit for session default.")] int? dataSourceId = null)
         {
             _ = ct;
             if (!TryResolveDs(dataSourceId, context, out var ds, out var err))

@@ -202,12 +202,16 @@ namespace App.BL.AppBuilderAgent.Plugins
                 // ── Step 4: Present to user and wait for response ─────────────
                 if (_onSchemaReady == null)
                 {
-                    // Auto-approve when no callback wired (unit tests / legacy)
+                    // Auto-approve when no callback wired (unit tests / Deterministic).
+                    // MUST still store schema — execute_approved_schema reads _approvedSchemaJson only.
+                    _approvedSchemaJson = JsonConvert.SerializeObject(extraction);
                     return JsonConvert.SerializeObject(new
                     {
                         Confirmed  = true,
-                        SchemaJson = JsonConvert.SerializeObject(extraction),
-                        Note       = "Auto-approved (no schema confirmation callback wired)."
+                        TableCount = extraction.Tables.Count,
+                        Tables     = extraction.Tables.Select(t => t.Name).ToList(),
+                        Note       = "Auto-approved (no schema confirmation callback wired). Schema stored internally — call execute_approved_schema next without schemaJson.",
+                        NextStep   = "Call execute_approved_schema immediately. Do NOT pass schemaJson — the schema is stored internally."
                     });
                 }
 

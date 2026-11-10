@@ -1,6 +1,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using App.BL.TenantBusiness;
+using APP.Framework.Plugin;
 using Newtonsoft.Json;
 
 namespace App.BL.AIAgent.GenericAgent.Plugins
@@ -14,23 +15,35 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     /// </summary>
     public class TenantCatalogPlugin
     {
-        public Task<string> ListTenantDataSources(CancellationToken ct, int? targetCompanyId = null)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("list_tenant_data_sources",
+            "List DataSourceRegisterId + name + databaseName for the current tenant company. Use for ask_user to pick PLM / PLMDW / ERP registers. Never returns connection strings.")]
+        public Task<string> ListTenantDataSources(
+            CancellationToken ct,
+            [AgentParam("Optional target company id.")] int? targetCompanyId = null)
         {
             _ = ct;
             return Task.FromResult(TenantCatalogBL.ListTenantDataSourcesJson(targetCompanyId));
         }
 
-        public Task<string> ListTenantSaasApplications(CancellationToken ct, int? targetCompanyId = null)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("list_tenant_saas_applications",
+            "List SaasApplicationId + ApplicationName for Gate-0 ask_user DDL. Slim list only (no TX/Search tree). Prefer over list_applications for Connect.")]
+        public Task<string> ListTenantSaasApplications(
+            CancellationToken ct,
+            [AgentParam("Optional target company id.")] int? targetCompanyId = null)
         {
             _ = ct;
             return Task.FromResult(TenantCatalogBL.ListTenantSaasApplicationsJson(targetCompanyId));
         }
 
-        /// <param name="dataSourceRegisterId">Tenant AppDataSourceRegister id (never a connection string).</param>
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("test_data_source_connection",
+            "Test a tenant AppDataSourceRegister by id (open SQL connection). Never pass a connection string. Returns isSuccess, dataSourceName, databaseName, serverVersion.")]
         public Task<string> TestDataSourceConnection(
             CancellationToken ct,
-            int dataSourceRegisterId = 0,
-            int? targetCompanyId = null)
+            [AgentParam("Tenant AppDataSourceRegister id.", isRequired: true)] int dataSourceRegisterId = 0,
+            [AgentParam("Optional target company id.")] int? targetCompanyId = null)
         {
             _ = ct;
             return Task.FromResult(TenantCatalogBL.TestDataSourceConnectionJson(dataSourceRegisterId, targetCompanyId));

@@ -19,11 +19,14 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         /// Returns library TemplateContent for interactive + none-interactive, field schema,
         /// sample rows (≤ SampleMaxRows), and per-column fill rates. Model polishes structure only.
         /// </summary>
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("prepare_ui_render_polish",
+            "Return templates, column schema, and up to 10 sample rows for Result polish. Structure only — do not merge rows into HTML.")]
         public Task<string> PrepareUiRenderPolish(
             AgentToolContext context,
-            string dataset_name = null,
-            string layout = null,
-            string user_prompt = null)
+            [AgentParam("Cached dataset name. Preferred.")] string dataset_name = null,
+            [AgentParam("form | table | cards | kpi | chart | dashboard. Default cards.")] string layout = null,
+            [AgentParam("Optional user intent quote for promptHash and field selection.")] string user_prompt = null)
         {
             try
             {
@@ -125,12 +128,15 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         /// <summary>Validate and store session polish. Does not write library TemplateContent.</summary>
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("cache_ui_render_polish",
+            "Cache AiPolishedRenderSpec (templates + bindings, no rows). Then call render_interactive or render_none_interactive.")]
         public Task<string> CacheUiRenderPolish(
             AgentToolContext context,
-            string aiPolishedRenderSpec = null,
-            string dataset_name = null,
-            string layout = null,
-            string promptHash = null)
+            [AgentParam("JSON AiPolishedRenderSpec: templates + bindings, no rows.", isRequired: true)] string aiPolishedRenderSpec = null,
+            [AgentParam("Cached dataset name.")] string dataset_name = null,
+            [AgentParam("form | table | cards | kpi | chart | dashboard.")] string layout = null,
+            [AgentParam("From prepare_ui_render_polish.")] string promptHash = null)
         {
             try
             {

@@ -17,18 +17,21 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     /// </summary>
     public class AgentDataAnalyzePlugin
     {
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("data_analyze",
+            "Aggregate a cached dataset (count/sum/avg/min/max/distinct/top/distribution, optional group_by). Required: user_ask (the user analysis words), operation. Prefer dataset_name from a prior cache.")]
         public Task<string> Analyze(
             AgentToolContext context,
-            string operation,
-            string user_ask,
-            string dataset_name = null,
-            string dataJson = null,
-            string column = null,
-            string group_by = null,
-            string filter = null,
-            string filter_column = null,
-            string limit = null,
-            string order_by = null)
+            [AgentParam("summary | count | sum | avg | min | max | distinct | top | distribution", isRequired: true)] string operation,
+            [AgentParam("Required. Quote the user words that request analysis. Show/export-only text is rejected.", isRequired: true)] string user_ask,
+            [AgentParam("Cached dataset name from a prior tool envelope.")] string dataset_name = null,
+            [AgentParam("Optional inline JSON when no cache yet.")] string dataJson = null,
+            [AgentParam("Target column for sum/avg/min/max/distinct/top/distribution.")] string column = null,
+            [AgentParam("Group key for count/sum/avg/min/max.")] string group_by = null,
+            [AgentParam("Substring filter.")] string filter = null,
+            [AgentParam("Column to apply filter to.")] string filter_column = null,
+            [AgentParam("Max groups/rows returned (default 20).")] string limit = null,
+            [AgentParam("asc | desc")] string order_by = null)
         {
             if (context == null || string.IsNullOrWhiteSpace(context.ChatSessionKey))
             {

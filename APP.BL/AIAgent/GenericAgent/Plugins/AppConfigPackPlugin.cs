@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using APP.BL.AppConfigPack;
 using APP.Components.EntityDto;
+using APP.Framework.Plugin;
 using Newtonsoft.Json;
 
 namespace App.BL.AIAgent.GenericAgent.Plugins
@@ -24,7 +25,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         /// Return the fixed App Config Pack JSON contract (from ImportAppConfig/PROMPT.md).
         /// Optional section: overview | tables | transactions | searches | listedit | samples | pipeline | all
         /// </summary>
-        public Task<string> GetAppConfigPackContract(CancellationToken ct, string section = null)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("get_app_config_pack_contract",
+            "Return the fixed App Config Pack JSON contract (PROMPT.md). Call before drafting pack JSON from natural language. "
+            + "Optional section: overview|tables|transactions|searches|listedit|samples|pipeline|all.")]
+        public Task<string> GetAppConfigPackContract(
+            CancellationToken ct,
+            [AgentParam("overview|tables|transactions|searches|listedit|samples|pipeline|all")] string section = null)
         {
             ct.ThrowIfCancellationRequested();
             string full = LoadContractText();
@@ -45,7 +52,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             return Task.FromResult(excerpt);
         }
 
-        public Task<string> ValidateAppConfigPack(CancellationToken ct, string packJson)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("validate_app_config_pack", "Validate App Config Pack JSON. Returns IsValid, Errors, Warnings. Fix errors before preview/execute.")]
+        public Task<string> ValidateAppConfigPack(
+            CancellationToken ct,
+            [AgentParam("Full AppConfigPack JSON", isRequired: true)] string packJson)
         {
             ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(packJson))
@@ -70,7 +81,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }));
         }
 
-        public Task<string> PreviewAppConfigPack(CancellationToken ct, string packJson, int? saasApplicationId = null)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("preview_app_config_pack",
+            "Preview what Execute would Insert/Update/Skip (tables, transactions, searches). Does not write. Pass optional saasApplicationId.")]
+        public Task<string> PreviewAppConfigPack(
+            CancellationToken ct,
+            [AgentParam("Full AppConfigPack JSON", isRequired: true)] string packJson,
+            [AgentParam("Optional SaasApplicationId target package.")] int? saasApplicationId = null)
         {
             ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(packJson))
@@ -94,7 +111,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             return Task.FromResult(JsonConvert.SerializeObject(preview.Object));
         }
 
-        public Task<string> ExecuteAppConfigPack(CancellationToken ct, string packJson, int? saasApplicationId = null)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("execute_app_config_pack",
+            "Apply App Config Pack JSON (DDL + TX + Search + Menu). ALWAYS validate + preview + ask_user confirm before calling.")]
+        public Task<string> ExecuteAppConfigPack(
+            CancellationToken ct,
+            [AgentParam("Full AppConfigPack JSON", isRequired: true)] string packJson,
+            [AgentParam("Optional SaasApplicationId target package.")] int? saasApplicationId = null)
         {
             ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(packJson))

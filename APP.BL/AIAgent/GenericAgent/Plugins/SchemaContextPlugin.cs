@@ -24,11 +24,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             _dataSourceId = dataSourceId;
         }
 
-        /// <param name="dataSourceId">Optional DataSourceRegisterId. When omitted or 0, uses the session default.</param>
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("get_database_schema",
+            "Tables and columns for a DataSource (cached ~1h). Pass dataSourceId or omit for session default. Prefer get_table_schema for one known table.")]
         public async Task<string> GetDatabaseSchema(
             CancellationToken ct,
             AgentToolContext context = null,
-            int? dataSourceId = null)
+            [AgentParam("Optional DataSourceRegisterId. Omit or 0 = session default data source.")] int? dataSourceId = null)
         {
             var ds = dataSourceId is > 0 ? dataSourceId : _dataSourceId;
             if (!ds.HasValue || ds.Value == 0)

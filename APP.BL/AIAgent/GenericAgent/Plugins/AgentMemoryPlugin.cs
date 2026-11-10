@@ -17,7 +17,15 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     /// </summary>
     public class AgentMemoryPlugin
     {
-        public string RememberFact(string key, string value, string category, AgentToolContext context)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("remember_fact",
+            "Save one stable fact about the user so it is known in future chats (a preference, a rule they stated, or a name/ID they use). "
+            + "Use only when the user asks you to remember something or states a lasting preference. Never store passwords, keys or tokens.")]
+        public string RememberFact(
+            [AgentParam("Short snake_case name, e.g. date_format", isRequired: true)] string key,
+            [AgentParam("The fact, max 500 characters", isRequired: true)] string value,
+            [AgentParam("preference, entity, rule or note")] string category,
+            AgentToolContext context)
         {
             if (context == null || context.UserId <= 0) return Error("No authenticated user; nothing was saved.");
             var result = AgentMemoryFactBL.Upsert(
@@ -34,14 +42,25 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             };
         }
 
-        public string ForgetFact(string key, AgentToolContext context)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("forget_fact", "Delete a remembered fact by its key when the user asks you to forget it.")]
+        public string ForgetFact(
+            [AgentParam("The fact key to delete", isRequired: true)] string key,
+            AgentToolContext context)
         {
             if (context == null || context.UserId <= 0) return Error("No authenticated user.");
             var deleted = AgentMemoryFactBL.DeleteByKey(context.UserId, context.SkillKey, key, context.DataSourceId);
             return deleted ? Ok("forgotten", key) : Error("No saved fact with that key.");
         }
 
-        public async Task<string> RecallMemory(string query, AgentToolContext context, CancellationToken ct)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("recall_memory",
+            "Search what you remember about this user: saved facts plus summaries of earlier conversations. "
+            + "Use when the user refers to something from before (\"like last time\", \"what did we decide about X\").")]
+        public async Task<string> RecallMemory(
+            [AgentParam("What to look for", isRequired: true)] string query,
+            AgentToolContext context,
+            CancellationToken ct)
         {
             if (context == null || context.UserId <= 0) return Error("No authenticated user.");
             if (string.IsNullOrWhiteSpace(query)) return Error("A query is required.");

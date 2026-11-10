@@ -21,19 +21,22 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         private const int MaxChartBlocks = 9;
         private const int MaxGridBlocks = 3;
 
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("data_render",
+            "Non-blocking chat UI panel (grid | card | chart | kpi_dashboard). Prefer dataset_name from a prior cached tool result.")]
         public async System.Threading.Tasks.Task<string> Render(
-            string ui,
+            [AgentParam("grid | card | chart | kpi_dashboard", isRequired: true)] string ui,
             AgentToolContext context,
-            string dataJson = null,
-            string dataset_name = null,
-            string title = null,
-            string columnsJson = null,
-            string chartConfigJson = null,
-            string actionsJson = null,
-            string metaJson = null,
-            string blocksJson = null,
-            int? cardsPerRow = null,
-            int? limit = null)
+            [AgentParam("Legacy inline row JSON when dataset_name is omitted.")] string dataJson = null,
+            [AgentParam("Chat session cache name. Preferred.")] string dataset_name = null,
+            [AgentParam("Optional panel title.")] string title = null,
+            [AgentParam("Optional column subset JSON.")] string columnsJson = null,
+            [AgentParam("Chart configuration JSON.")] string chartConfigJson = null,
+            [AgentParam("Interactive actions JSON.")] string actionsJson = null,
+            [AgentParam("Optional metadata JSON.")] string metaJson = null,
+            [AgentParam("kpi_dashboard blocks JSON.")] string blocksJson = null,
+            [AgentParam("Cards sharing one row. 1-6.")] int? cardsPerRow = null,
+            [AgentParam("First N cached rows to show.")] int? limit = null)
         {
             var uiNorm = (ui ?? "").Trim().ToLowerInvariant();
             if (uiNorm != "grid" && uiNorm != "card" && uiNorm != "chart" && uiNorm != "kpi_dashboard")

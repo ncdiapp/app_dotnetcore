@@ -19,25 +19,133 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     /// </summary>
     public class AgentDocumentPlugin
     {
-        public Task<string> ExportHtml(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null, string exportTitle = null)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("export_html", "Write email-safe HTML from the built-in template. Pass dataset_name for the full cache. Do not paste rows into content.")]
+        public Task<string> ExportHtml(
+            AgentToolContext context, CancellationToken ct,
+            [AgentParam("File name or session-relative path under output/.", isRequired: true)] string path,
+            [AgentParam("Form JSON. Omit when dataset_name is set.")] string content = null,
+            [AgentParam("Session file when dataset_name and content are omitted.")] string sourcePath = null,
+            [AgentParam("Chat session cache name — loads every cached row.")] string dataset_name = null,
+            [AgentParam("form (default), table, cards, kpi, chart, or dashboard.")] string layout = null,
+            [AgentParam("Card records when dataset_name is omitted.")] string records = null,
+            [AgentParam("True only when the user wants preview before export.")] bool preview = false,
+            [AgentParam("Cards sharing one row. 1-6.")] int cardsPerRow = 0,
+            [AgentParam("Card rows on one page (PDF/Word/PPT). Default 3.")] int cardRows = 0,
+            [AgentParam("First N rows after cache is chosen. 0 = all.")] int limit = 0,
+            [AgentParam("PDF/Word/PPT cards layout, e.g. 2x2.")] string pageGrid = null,
+            [AgentParam("Cards per page for PDF/Word/PPT.")] int cardsPerPage = 0,
+            [AgentParam("Required when layout is kpi|chart|dashboard.")] string specJson = null,
+            [AgentParam("Optional document title.")] string exportTitle = null)
             => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".html", false, pageGrid, cardsPerPage, specJson, exportTitle);
 
-        public Task<string> ExportCsv(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null, string exportTitle = null)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("export_csv", "Write UTF-8 CSV. No template. Pass dataset_name for the full cache.")]
+        public Task<string> ExportCsv(
+            AgentToolContext context, CancellationToken ct,
+            [AgentParam("File name or session-relative path.", isRequired: true)] string path,
+            [AgentParam("Form JSON. Omit when dataset_name is set.")] string content = null,
+            [AgentParam("Session file when dataset_name and content are omitted.")] string sourcePath = null,
+            [AgentParam("Chat session cache name.")] string dataset_name = null,
+            [AgentParam("form, table, cards, kpi, chart, or dashboard.")] string layout = null,
+            [AgentParam("Card records when dataset_name is omitted.")] string records = null,
+            [AgentParam("Preview only — do not write file.")] bool preview = false,
+            [AgentParam("Cards per row. 1-6.")] int cardsPerRow = 0,
+            [AgentParam("Card rows per page.")] int cardRows = 0,
+            [AgentParam("First N rows. 0 = all.")] int limit = 0,
+            [AgentParam("Page grid for card layouts.")] string pageGrid = null,
+            [AgentParam("Cards per page.")] int cardsPerPage = 0,
+            [AgentParam("kpi|chart|dashboard specJson.")] string specJson = null,
+            [AgentParam("Optional document title.")] string exportTitle = null)
             => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".csv", false, pageGrid, cardsPerPage, specJson, exportTitle);
 
-        public Task<string> ExportExcel(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null, string exportTitle = null)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("export_excel", "Write one .xlsx sheet with the fixed style table. Pass dataset_name for the full cache.")]
+        public Task<string> ExportExcel(
+            AgentToolContext context, CancellationToken ct,
+            [AgentParam("File name or session-relative path.", isRequired: true)] string path,
+            [AgentParam("Form JSON. Omit when dataset_name is set.")] string content = null,
+            [AgentParam("Session file when dataset_name and content are omitted.")] string sourcePath = null,
+            [AgentParam("Chat session cache name.")] string dataset_name = null,
+            [AgentParam("form, table, cards, kpi, chart, or dashboard.")] string layout = null,
+            [AgentParam("Card records when dataset_name is omitted.")] string records = null,
+            [AgentParam("Preview only — do not write file.")] bool preview = false,
+            [AgentParam("Cards per row. 1-6.")] int cardsPerRow = 0,
+            [AgentParam("Card rows per page.")] int cardRows = 0,
+            [AgentParam("First N rows. 0 = all.")] int limit = 0,
+            [AgentParam("Page grid for card layouts.")] string pageGrid = null,
+            [AgentParam("Cards per page.")] int cardsPerPage = 0,
+            [AgentParam("kpi|chart|dashboard specJson.")] string specJson = null,
+            [AgentParam("Optional document title.")] string exportTitle = null)
             => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".xlsx", false, pageGrid, cardsPerPage, specJson, exportTitle);
 
-        public Task<string> ExportDocx(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null, string exportTitle = null)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("export_docx", "Write Word. Pass dataset_name for the full cache. For 2x2 card pages pass pageGrid=2x2.")]
+        public Task<string> ExportDocx(
+            AgentToolContext context, CancellationToken ct,
+            [AgentParam("File name or session-relative path.", isRequired: true)] string path,
+            [AgentParam("Form JSON. Omit when dataset_name is set.")] string content = null,
+            [AgentParam("Session file when dataset_name and content are omitted.")] string sourcePath = null,
+            [AgentParam("Chat session cache name.")] string dataset_name = null,
+            [AgentParam("form, table, cards, kpi, chart, or dashboard.")] string layout = null,
+            [AgentParam("Card records when dataset_name is omitted.")] string records = null,
+            [AgentParam("Preview only — do not write file.")] bool preview = false,
+            [AgentParam("Cards per row. 1-6.")] int cardsPerRow = 0,
+            [AgentParam("Card rows per page.")] int cardRows = 0,
+            [AgentParam("First N rows. 0 = all.")] int limit = 0,
+            [AgentParam("Page grid, e.g. 2x2.")] string pageGrid = null,
+            [AgentParam("Cards per page.")] int cardsPerPage = 0,
+            [AgentParam("kpi|chart|dashboard specJson.")] string specJson = null,
+            [AgentParam("Optional document title.")] string exportTitle = null)
             => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".docx", true, pageGrid, cardsPerPage, specJson, exportTitle);
 
-        public Task<string> ExportPdf(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null, string exportTitle = null)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("export_pdf", "Write PDF. Pass dataset_name for the full cache. For 2x2 card pages pass pageGrid=2x2.")]
+        public Task<string> ExportPdf(
+            AgentToolContext context, CancellationToken ct,
+            [AgentParam("File name or session-relative path.", isRequired: true)] string path,
+            [AgentParam("Form JSON. Omit when dataset_name is set.")] string content = null,
+            [AgentParam("Session file when dataset_name and content are omitted.")] string sourcePath = null,
+            [AgentParam("Chat session cache name.")] string dataset_name = null,
+            [AgentParam("form, table, cards, kpi, chart, or dashboard.")] string layout = null,
+            [AgentParam("Card records when dataset_name is omitted.")] string records = null,
+            [AgentParam("Preview only — do not write file.")] bool preview = false,
+            [AgentParam("Cards per row. 1-6.")] int cardsPerRow = 0,
+            [AgentParam("Card rows per page.")] int cardRows = 0,
+            [AgentParam("First N rows. 0 = all.")] int limit = 0,
+            [AgentParam("Page grid, e.g. 2x2.")] string pageGrid = null,
+            [AgentParam("Cards per page.")] int cardsPerPage = 0,
+            [AgentParam("kpi|chart|dashboard specJson.")] string specJson = null,
+            [AgentParam("Optional document title.")] string exportTitle = null)
             => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".pdf", true, pageGrid, cardsPerPage, specJson, exportTitle);
 
-        public Task<string> ExportPptx(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0, string specJson = null, string exportTitle = null)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("export_pptx", "Write PowerPoint. Pass dataset_name for the full cache.")]
+        public Task<string> ExportPptx(
+            AgentToolContext context, CancellationToken ct,
+            [AgentParam("File name or session-relative path.", isRequired: true)] string path,
+            [AgentParam("Form JSON. Omit when dataset_name is set.")] string content = null,
+            [AgentParam("Session file when dataset_name and content are omitted.")] string sourcePath = null,
+            [AgentParam("Chat session cache name.")] string dataset_name = null,
+            [AgentParam("form, table, cards, kpi, chart, or dashboard.")] string layout = null,
+            [AgentParam("Card records when dataset_name is omitted.")] string records = null,
+            [AgentParam("Preview only — do not write file.")] bool preview = false,
+            [AgentParam("Cards per row. 1-6.")] int cardsPerRow = 0,
+            [AgentParam("Card rows per page.")] int cardRows = 0,
+            [AgentParam("First N rows. 0 = all.")] int limit = 0,
+            [AgentParam("Page grid, e.g. 2x1 or 2x2.")] string pageGrid = null,
+            [AgentParam("Cards per page.")] int cardsPerPage = 0,
+            [AgentParam("kpi|chart|dashboard specJson.")] string specJson = null,
+            [AgentParam("Optional document title.")] string exportTitle = null)
             => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".pptx", true, pageGrid, cardsPerPage, specJson, exportTitle);
 
-        public Task<string> ConvertDocxToPdf(AgentToolContext context, CancellationToken ct, string sourcePath, string path)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("convert_docx_to_pdf", "Convert a session .docx to PDF via LibreOffice.")]
+        public Task<string> ConvertDocxToPdf(
+            AgentToolContext context,
+            CancellationToken ct,
+            [AgentParam("Session-relative .docx path.", isRequired: true)] string sourcePath,
+            [AgentParam("PDF file name. A bare name is saved under output/.")] string path)
         {
             try
             {
@@ -56,13 +164,28 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
         }
 
-        public Task<string> ReadHtml(AgentToolContext context, CancellationToken ct, string path)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("read_html", "Read an HTML form this library wrote. Returns the form tree. Preview is capped at 500 data rows.")]
+        public Task<string> ReadHtml(
+            AgentToolContext context,
+            CancellationToken ct,
+            [AgentParam("Session-relative file path.", isRequired: true)] string path)
             => Read(context, path, bytes => Documents.HtmlForm.Read(System.Text.Encoding.UTF8.GetString(bytes)));
 
-        public Task<string> ReadCsv(AgentToolContext context, CancellationToken ct, string path)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("read_csv", "Read a CSV this library wrote back into a form tree.")]
+        public Task<string> ReadCsv(
+            AgentToolContext context,
+            CancellationToken ct,
+            [AgentParam("Session-relative file path.", isRequired: true)] string path)
             => Read(context, path, Documents.CsvForm.Read);
 
-        public Task<string> ReadExcel(AgentToolContext context, CancellationToken ct, string path)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("read_excel", "Read an .xlsx form this library wrote. .xls is read with GemBox as a single grid.")]
+        public Task<string> ReadExcel(
+            AgentToolContext context,
+            CancellationToken ct,
+            [AgentParam("Session-relative file path.", isRequired: true)] string path)
         {
             try
             {
@@ -81,7 +204,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
         }
 
-        public Task<string> ReadDocx(AgentToolContext context, CancellationToken ct, string path)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("read_docx", "Read a Word file this library wrote. LibreOffice converts it back to HTML and the form tree is read from data-role.")]
+        public Task<string> ReadDocx(
+            AgentToolContext context,
+            CancellationToken ct,
+            [AgentParam("Session-relative file path.", isRequired: true)] string path)
         {
             try
             {
@@ -97,7 +225,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
         }
 
-        public Task<string> ReadPdf(AgentToolContext context, CancellationToken ct, string path)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("read_pdf", "Read plain text from a PDF with PdfPig. Text is capped. Does not return the form tree.")]
+        public Task<string> ReadPdf(
+            AgentToolContext context,
+            CancellationToken ct,
+            [AgentParam("Session-relative file path.", isRequired: true)] string path)
         {
             try
             {
@@ -119,7 +252,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
         }
 
-        public Task<string> ReadPptx(AgentToolContext context, CancellationToken ct, string path)
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("read_pptx", "Read titles, text, and tables from a PowerPoint file. Pictures and charts are skipped.")]
+        public Task<string> ReadPptx(
+            AgentToolContext context,
+            CancellationToken ct,
+            [AgentParam("Session-relative file path.", isRequired: true)] string path)
             => Read(context, path, Documents.PptxForm.Read);
 
         private static void FormDocumentLike(string path, byte[] bytes, out Documents.FormDocument doc)

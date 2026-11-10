@@ -19,15 +19,19 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     /// </summary>
     public class AgentAskUserPlugin
     {
+        // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
+        [AgentTool("ask_user",
+            "Ask the user a question and wait. mode=text|single_choice|multi_choice. "
+            + "Choices require optionsJson [{id,display}] and optional ui=button_group|radio|dropdown. Do not list choices only in prompt text.")]
         public async Task<string> AskUser(
-            string prompt,
+            [AgentParam("Question shown to the user", isRequired: true)] string prompt,
             AgentToolContext context,
-            string mode = "text",
-            string fieldsJson = null,
-            string optionsJson = null,
-            string contextKey = null,
-            string ui = "radio",
-            string layout = "vertical")
+            [AgentParam("text | single_choice | multi_choice")] string mode = "text",
+            [AgentParam("JSON array of {name,label,required?,type?,options?} — type=text|select|radio.")] string fieldsJson = null,
+            [AgentParam("REQUIRED for single_choice/multi_choice: JSON array [{id,display}].")] string optionsJson = null,
+            [AgentParam("Optional shared-context key to merge answers into.")] string contextKey = null,
+            [AgentParam("single_choice UI: button_group | radio | dropdown.")] string ui = "radio",
+            [AgentParam("button_group layout: vertical (default) | horizontal")] string layout = "vertical")
         {
             if (context != null && context.IsDeterministic)
             {

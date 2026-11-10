@@ -5,7 +5,9 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using App.BL.AIAgent.GenericAgent;
 using APP.Components.Dto;
+using APP.Components.EntityDto;
 using APP.Framework;
 using APP.Framework.Plugin;
 using Newtonsoft.Json;
@@ -154,9 +156,11 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
                 return allDefaultCtor.Invoke(invokeArgs);
             }
 
-            // 4. Constructor whose first parameter is a Func/delegate (callback passed as null)
+            // 4. Constructor whose first parameter is a Func/delegate (HITL gate)
             //    and all remaining parameters have default values
             //    e.g. (Func<AgentPlanEvent, Task<bool>> onPlanReady, int? dataSourceId = null)
+            //    Inject OnPlanReady / OnSchemaReady from AgentHitlBridge (same pattern as ask_user),
+            //    so Managed agents get real ConfirmPlan / ConfirmSchema instead of silent auto-approve.
             var funcFirstCtor = type.GetConstructors()
                 .FirstOrDefault(c => c.GetParameters().Length >= 1 &&
                                      typeof(Delegate).IsAssignableFrom(c.GetParameters()[0].ParameterType) &&
@@ -165,7 +169,7 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
             {
                 var ps = funcFirstCtor.GetParameters();
                 var invokeArgs = new object[ps.Length];
-                invokeArgs[0] = null; // null callback — plugin will not invoke the gate
+                invokeArgs[0] = ResolveHitlCallback(ps[0].ParameterType, context);
                 for (var i = 1; i < ps.Length; i++)
                 {
                     if (ps[i].Name == "dataSourceId" &&
@@ -179,6 +183,23 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
             }
 
             return Activator.CreateInstance(type);
+        }
+
+        /// <summary>
+        /// Maps plugin ctor Func parameters to the run's HITL callbacks (plan / schema gates).
+        /// Returns null when the Interactive chat did not bind callbacks (Deterministic / unit tests).
+        /// </summary>
+        private static object ResolveHitlCallback(Type funcType, AgentToolContext context)
+        {
+            if (funcType == null) return null;
+            var callbacks = AgentHitlBridge.Resolve(context?.ChatSessionKey);
+            if (callbacks == null) return null;
+
+            if (funcType == typeof(Func<AgentPlanEvent, Task<bool>>))
+                return callbacks.OnPlanReady;
+            if (funcType == typeof(Func<AgentSchemaEvent, Task<AgentSchemaResponse>>))
+                return callbacks.OnSchemaReady;
+            return null;
         }
 
         private static object[] BuildParams(
