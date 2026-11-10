@@ -1,31 +1,25 @@
 # App Configurator Agent — Design
 
-**Status:** Requirements locked (2026-11-10). Implementation **blocked** until Agent Management `app-builder` is repaired and its prompt / tools / BuiltIn definitions are trusted enough to clone from.  
-**Date:** 2026-11-10  
+**Status:** Requirements locked (2026-11-10). **§0 gate passed** — managed `app-builder` accepted as clone source. Ready for implementation planning / coding.  
+**Date:** 2026-11-10 (decisions amended same day)  
 **Parent (data path):** [TransactionForm-AiAgent-Plan.md](./TransactionForm-AiAgent-Plan.md)  
 **Related:** [MyApplicationEditor-AiAgent-Design.md](./MyApplicationEditor-AiAgent-Design.md) (Config shell embeds full `app-builder`), [Agent-Integration-Playbook.md](./Agent-Integration-Playbook.md), [SharedAgentEngine-Architecture.md](./SharedAgentEngine-Architecture.md)  
 **Supersedes:** `TransactionForm-AiAgent-ConfigDesign.md` (deleted) — that draft put config tools on Form Agent; this design does **not**.
 
 ---
 
-## 0. Dependency / revisit gate (read first)
+## 0. Dependency / revisit gate
 
-Agent Management already has **App Builder Agent** (`SkillKey = app-builder`). It is the intended **source of truth** for configuration-oriented tools (transaction, unit, field, search, entity, schema, menu, etc.).
+Agent Management **App Builder Agent** (`SkillKey = app-builder`) is the **source of truth** for configuration-oriented tools (transaction, unit, field, search, entity, schema, menu, etc.).
 
-**Current reality:** that managed `app-builder` still fails often and behaves worse than the **hardcoded** App Builder Agent UI (`/app-builder-agent`). Until it is fixed, this Configurator design must stay a **draft target**, not an implementation checklist to execute blindly.
+**§0 status (2026-11-10): PASSED.** Managed `app-builder` (V076 prompt/tools + plugin hardening) is accepted as healthy enough to clone-and-narrow into `app-configurator`. Hardcoded `/app-builder-agent` remains a short-term reference / fallback, not a blocker.
 
-Before implementing Configurator (or when revisiting this doc), complete and then sync back here:
+Before / during Configurator implementation, still sync back here as tools land:
 
-1. Repair Agent Management **`app-builder`**: system prompt, selected libraries/tools, exclusions, limits.
-2. Stabilize each **configuration BuiltIn** it uses (schema, descriptions, `ToolConfig` TypeName/MethodName, parameter contracts, HITL).
-3. Re-run end-to-end App Builder flows in Agent Management Test Run until quality is acceptable vs hardcoded.
-4. **Return to this document** and update:
-   - Seeded tool list for `platform-form-config` (which wrappers exist vs reuse read-only tools)
-   - Default subscriptions / exclusions for `app-configurator`
-   - System prompt text (clone-and-narrow from the fixed `app-builder` prompt)
-   - Any HostContext fields the working tools actually need
-
-Do **not** treat today’s broken `app-builder` prompt/tool set as the final Configurator surface.
+1. Concrete seeded tool list for `platform-form-config` (wrappers vs read-only reuse).
+2. Default subscriptions / exclusions for `app-configurator`.
+3. System prompt text (clone-and-narrow from current managed `app-builder` prompt).
+4. HostContext fields the working tools actually need.
 
 ---
 
@@ -58,7 +52,6 @@ The agent can inspect and change durable app config for that context: Transactio
 - Deleting the open transaction / application from Configurator.
 - Listing Configurator in the left menu / Chat Management (form/search-hosted only; Agent Management Test Run allowed).
 - Making Configurator and Form Agent share one chat session.
-- Implementing before `app-builder` (Agent Management) is repaired (§0).
 
 ---
 
@@ -66,38 +59,83 @@ The agent can inspect and change durable app config for that context: Transactio
 
 | # | Topic | Decision |
 |---|--------|----------|
-| 1 | Agent identity | **New skill** `app-configurator` (display name **App Configurator Agent**). Clone-and-narrow from managed `app-builder` once that agent is healthy. Not the same skill as `app-builder`; not a Child-Agent shell. |
-| 2 | Visibility | Same gate as Configuration button. Tab **hidden** (not greyed) when gate fails. May coexist with Assistant. **Separate** chat session from Form Agent. |
+| 1 | Agent identity | **New skill** `app-configurator` (display name **App Configurator Agent**). Clone-and-narrow from managed `app-builder`. Not the same skill as `app-builder`; not a Child-Agent shell. |
+| 2 | Visibility | See §3.1 / §4. Tab **hidden** (not greyed) when gate fails. May coexist with Form Assistant. **Separate** chat session from Form Agent. |
 | 3 | Scope | Current Form/Search binding + closely related objects. No greenfield / cross-app create; no delete TX/app. |
 | 4 | Existing UI | **Parallel** — keep Configuration menu and field gears. |
 | 5 | Write + refresh | Durable writes require **`ask_user`**. After success, host prompts **Reload** (preserve unsaved FormData when possible), matching today’s “Configuration has been changed…” flow. |
 | 6 | Tools | New scoped library **`platform-form-config`** (server forces ids from HostContext). Optional **read-only** reuse of existing tools. Do **not** wholesale subscribe `platform-transaction` / `platform-search`. AppConfigPack = Phase 3 escape hatch. |
+| 7 | Capability breadth (v1) | **Scaffold the full road**: Field Setting, Unit, Layout, Formula, Commands, Linked Search / Link Target, Entity attach/create, Search criteria/columns, light DB when needed. Polish edge cases iteratively. |
+| 8 | Search surface | **Runtime Search** (`AppSearch`) Configurator — **after** Form Configurator and My Application Editor Assistant are accepted. Same gates/patterns as Form; not a separate product. |
+| 9 | Field “remove” | **Prefer soft hide / deactivate** as default; hard metadata delete (+ optional column drop) only via explicit `ask_user`. See §13. |
+| 10 | AI-off + Configuration-on | **Yes** — show **Configurator-only** dock for admins (Form Assistant still gated by form AI flags). |
+
+### 3.1 Cross-cutting AI visibility: `IsAiConfigured`
+
+**Product rule:** every UI that depends on an LLM / AI agent is **invisible** unless `UserContext.IsAiConfigured === true`.
+
+| Item | Rule |
+|------|------|
+| Meaning | Tenant AI Config has a usable LLM for the default provider (today: `AIConfigSettingBL.IsConfigured()` — non-empty API key; may later also require resolvable model). |
+| Login | Already set at login / `GetUserContextBySessionId` on `UserContext.IsAiConfigured`. **Never** send the raw API key. |
+| Naming | **Keep `IsAiConfigured`** — do **not** introduce `IsAiModelReady`. |
+| UI usage | `visible = IsAiConfigured && <surface-specific gates>`. If false, **hide** AI docks / agent tabs / “Generate with AI” (not greyed stubs). |
+| Applies to | Form Assistant, Form/Search Configurator, My Application Editor Assistant, Agent Chat / menu agents that call LLM, DbGenie AI, Skill Test Run needing LLM, productized App Builder entry, etc. |
+| Rollout | **Apply this gate last** (after Form Configurator + Editor Assistant work). Until then, new docks may follow surface-specific gates only; then retrofit `IsAiConfigured` across all AI surfaces in one pass. |
+
+Configurator full gate (when gate work lands):
+
+```
+IsAiConfigured
+AND EnableConfigurationMode
+AND isAdminUser
+AND NOT draft
+```
+
+Form Assistant (when gate work lands):
+
+```
+IsAiConfigured
+AND IsEnableTransactionAiAgent
+AND (other existing form AI flags)
+```
 
 ---
 
 ## 4. Trigger & UX
 
-### Visibility gate (existing platform rule)
+### Visibility gate
 
-Reuse the same gate as the Configuration button:
+Configuration button (unchanged product rule, still no LLM required):
 
 ```
-EnableConfigurationMode === true   // tenant Application Setting (DictAppSetup)
-AND isAdminUser                    // adminPermissionHelper / Angular parity
-AND NOT draft                      // form draft hides Configuration today
+EnableConfigurationMode === true
+AND isAdminUser
+AND NOT draft
+```
+
+Configurator tab / AI config dock (LLM required; full expression after gate pass):
+
+```
+IsAiConfigured
+AND EnableConfigurationMode
+AND isAdminUser
+AND NOT draft
 ```
 
 Sources today:
 
 - Setting: `EnableConfigurationMode` (`adminPermissionHelper.isEnableConfigurationModeForUser`)
 - Admin: `isAdminUserFromContext`
-- UI: `FormMainMenus.renderConfigurationMenu`, List Edit, `AppSearch`
+- AI ready: `UserContext.IsAiConfigured` (§3.1) — retrofit last
+- UI: `FormMainMenus.renderConfigurationMenu`, List Edit, `AppSearch` (runtime Search = last slice)
 
-When the gate passes:
+When the Configurator gate passes:
 
-1. Form / Search top-left **Configuration** button remains as today.
-2. Right dock shows **Configurator** next to **Assistant** (when AI / side panel is present).
-3. When the gate fails, Configurator tab is absent — same as no Configuration button.
+1. Form / Search top-left **Configuration** button remains as today (still follows Configuration-only gate).
+2. Right dock shows **Configurator** next to **Assistant** when each tab’s own gate passes.
+3. When Configurator gate fails, Configurator tab is absent.
+4. When Configuration is on but Form AI is off: open dock with **Configurator only** (decision #10); after gate pass also requires `IsAiConfigured`.
 
 ### Dock tabs (conceptual)
 
@@ -107,9 +145,7 @@ When the gate passes:
 | Assistant | `app-transaction-form-agent` | FormData / actions on open form |
 | Configurator | `app-configurator` | Durable config of open Form/Search context |
 
-Configurator does not require Transaction Graphic Editor “Enable AI Agent” if product later wants config-only admins; **v1 recommendation:** show Configurator whenever the Configuration gate passes **and** the form/search already hosts the right dock (AI and/or Communication). Exact coupling to `IsEnableTransactionAiAgent` is an implementation detail to confirm at build time — prefer: if dock exists for Assistant, add Configurator under the same gate; if AI is off but Configuration is on, still show a dock with Configurator-only (admin config without data agent).
-
-**Recommendation to implement:** Admin + `EnableConfigurationMode` → ensure a right dock can open with at least Configurator; Assistant still gated by existing AI flags.
+**Implement (Form first):** Admin + `EnableConfigurationMode` → ensure a right dock can open with at least Configurator; Assistant still gated by existing form AI flags. Fold in `IsAiConfigured` in the final gate pass.
 
 ### Session
 
@@ -133,9 +169,8 @@ Configurator does not require Transaction Graphic Editor “Enable AI Agent” i
 │  └──────────────┘  └────────────────┘                       │
 └─────────────────────────────────────────────────────────────┘
 
-Side menu / Agent Management:
-  app-builder  → full App Builder (greenfield + broad config)
-                 MUST be fixed before cloning into app-configurator (§0)
+Side menu / Agent Management / My Application Editor Assistant:
+  app-builder  → full App Builder (greenfield + broad config); §0 passed — clone source for app-configurator
 ```
 
 | Agent | SkillKey | Host | Writes |
@@ -279,46 +314,57 @@ Link from Transaction Graphic Editor / Search editor: “Configure Configurator 
 
 ---
 
-## 10. Search surface
+## 10. Search surface (runtime Search — last)
 
-v1 includes Search when Configuration is visible:
+**Scope:** runtime **`AppSearch`** (end-user / admin Search screen with Configuration button) — **not** My Application Editor “Report & View” section (that uses Editor Assistant / `app-builder`).
 
-- Configurator tab on Search right dock (or equivalent panel if Search AI dock differs — confirm UI hook at implement time).
+**Schedule:** after Form Configurator **and** My Application Editor Assistant are accepted.
+
+- Configurator tab on Search right dock (or equivalent panel — discover UI hook then).
 - HostContext `surface: "search"`.
 - Tools focus on search criteria/columns/views and bound transaction linkage; full TX layout edits may open related TX context or tell user to open the form.
-
-Exact Search dock component parity with Form is an implementation discovery item; behavior gate is the same Configuration visibility rule.
+- Gate: same as Form Configurator (`IsAiConfigured` + Configuration rule) once the final gate pass is done.
 
 ---
 
 ## 11. Out of scope / deferred
 
-- Fixing hardcoded vs managed App Builder parity (prerequisite project, tracked outside this file except §0).
-- Replacing graphic layout designer for pixel-perfect drag.
+- Replacing graphic layout designer for pixel-perfect drag inside chat.
 - Headless FormData writes from Configurator.
 - Per-transaction agent binding table.
-- Auto-sync of this doc’s tool table from DB (manual update after builder fix).
+- Auto-sync of this doc’s tool table from DB (manual update as tools land).
+- Retiring hardcoded `/app-builder-agent` (tracked with My Application Editor dock; not a Configurator blocker).
 
 ---
 
-## 12. Implementation order (after §0 gate)
+## 12. Implementation order (locked)
 
-1. Stabilize Agent Management `app-builder` (prompt, tools, BuiltIn contracts) and update §7 with concrete tool names/schemas.
-2. React: Configurator tab under Configuration visibility gate; separate session; HostContext builder for form (+ search).
-3. Seed `app-configurator` + `platform-form-config` + protections.
-4. Plugin BL wrappers + HITL + reload signal.
-5. Prompt polish; Agent Management “Configure Configurator” link.
-6. (Later) Phase 3 AppConfigPack; optional read-only library subscriptions.
+1. **Form Configurator** — inventory builder tools → seed `app-configurator` + `platform-form-config` → React Form dock tab + HostContext + HITL/reload + prompt clone-and-narrow. Configurator-only dock when Form AI off. Accept Form slice first.
+2. **My Application Editor Assistant** — shell dock, skill `app-builder`, HostContext, session per `saasApplicationId`, refresh + open-editor host tools. Accept Editor slice.
+3. **Runtime Search Configurator** — same `app-configurator` on `AppSearch`; HostContext `surface: "search"`. Only after 1–2 accepted.
+4. **`IsAiConfigured` gate pass (last)** — retrofit all AI-related windows to require `UserContext.IsAiConfigured` as the first visibility condition (Form Assistant, Form/Search Configurator, Editor Assistant, Agent Chat, DbGenie AI, etc.).
+5. (Later) Phase 3 AppConfigPack; optional read-only library subscriptions; polish.
 
 ---
 
-## 13. Open points (resolve at implement / after builder fix)
+## 13. Field remove policy + remaining implement notes
 
-1. If AI Agent is off but Configuration is on: always show Configurator-only dock? (**Lean yes** for admins.)
-2. Final list of `platform-form-config` methods after inventory of working `app-builder` tools.
-3. How much layout mutate goes through flex-layout BL vs reopening Design Layout UI.
-4. Search dock host component and whether Search shares Form’s `FormSidePanel` patterns.
-5. Whether soft-delete / deactivate of fields is allowed vs hard remove in v1.
+### Field remove (locked recommendation)
+
+| Action | When | HITL |
+|--------|------|------|
+| **Soft** — hide / deactivate on form (visibility / layout off; keep Field + column) | Default for “remove this field from the form” | `ask_user` once |
+| **Hard** — delete field metadata from transaction | User explicitly asks to delete the field definition | `ask_user` with strong wording |
+| **DDL** — drop / alter physical column | Only when user explicitly asks for schema change | Separate `ask_user`; prefer light-DB tools already used by builder |
+
+Do not make hard delete the default synonym of “remove”.
+
+### Still finalize at implement (non-blocking)
+
+1. Exact `platform-form-config` method list / ParameterSchemaJson (from builder inventory).
+2. How much layout mutate goes through flex-layout BL vs telling user to open Design Layout for pixel work.
+3. Search dock host component parity with Form `FormSidePanel`.
+4. Exact Search dock host component when runtime Search slice starts.
 
 ---
 
@@ -327,3 +373,5 @@ Exact Search dock component parity with Form is an implementation discovery item
 | Date | Change |
 |------|--------|
 | 2026-11-10 | New design: separate `app-configurator`; Configuration-gate UX; scoped `platform-form-config`; parallel UI; HITL + reload. Explicit dependency on repairing managed `app-builder` before implement / before finalizing tool+prompt sections. Supersedes deleted Form-Agent-config draft. |
+| 2026-11-10 | §0 **passed**. Locked: Configurator-only dock; full v1 capability scaffold; soft-hide default for field remove; **`IsAiConfigured`** (no `IsAiModelReady`); order = Form Config → Editor Assistant → runtime Search → gate retrofit last. |
+| 2026-11-10 | **Form slice started:** V077 seed `app-configurator` + `platform-form-config`; `FormConfigPlugin`; Form/ListEdit Configurator tab; HostContext mode=configurator; `request_form_reload`. Layout/formula/command mutate tools still to expand. |

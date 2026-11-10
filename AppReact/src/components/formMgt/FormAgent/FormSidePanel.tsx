@@ -4,13 +4,18 @@ import ConversationEditorEmbedded from '../../message/ConversationEditorEmbedded
 import AgentUiChatHost from '../../aiskill/AgentUiChatHost';
 import { genericAgentSvc } from '../../../webapi/genericAgentSvc';
 import { FORM_AGENT_SKILL_KEY, FormAgentHostContext, type FormAgentHostSlots } from './formAgentHost';
+import { FORM_CONFIG_SKILL_KEY, buildFormConfigContext } from './formConfigHost';
 import { FormGroupAgentHostsContext, FormGroupDockSlotContext, formGroupDockShowsNav } from './formGroupDock';
 
-type TabId = 'messages' | 'ai';
+type TabId = 'messages' | 'ai' | 'configurator';
 
 interface Props {
   showMessages: boolean;
   showAgent: boolean;
+  showConfigurator?: boolean;
+  configTransaction?: any;
+  configFormKind?: 'master' | 'list';
+  onConfigReload?: () => void;
   transactionId: string;
   messageRootId?: string;
   messageScopeType?: number | null;
@@ -23,6 +28,10 @@ interface Props {
 const FormSidePanel: React.FC<Props> = ({
   showMessages,
   showAgent,
+  showConfigurator = false,
+  configTransaction,
+  configFormKind = 'master',
+  onConfigReload,
   transactionId,
   messageRootId,
   messageScopeType,
@@ -44,8 +53,12 @@ const FormSidePanel: React.FC<Props> = ({
   const hostHeaderCls = formGroupDockShowsNav(formGroupDockEl)
     ? `flex shrink-0 items-center gap-1 px-2 py-1 text-xs border-b ${theme.mainHeader}`
     : `flex items-center gap-1 px-2 h-10 flex-shrink-0 box-border border-b ${t('border_mainContentSection')} ${theme.mainContentSection}`;
-  const [tab, setTab] = useState<TabId>(initialTab || (showMessages ? 'messages' : 'ai'));
+
+  const defaultTab: TabId = initialTab
+    || (showAgent ? 'ai' : showConfigurator ? 'configurator' : 'messages');
+  const [tab, setTab] = useState<TabId>(defaultTab);
   const [chatKey, setChatKey] = useState<string | null>(null);
+  const [configChatKey, setConfigChatKey] = useState<string | null>(null);
   const storageKey = `formSideTab:${transactionId || 'unknown'}`;
 
   useEffect(() => {
@@ -53,10 +66,11 @@ const FormSidePanel: React.FC<Props> = ({
       const saved = localStorage.getItem(storageKey);
       if (saved === 'messages' && showMessages) setTab('messages');
       else if (saved === 'ai' && showAgent) setTab('ai');
+      else if (saved === 'configurator' && showConfigurator) setTab('configurator');
     } catch {
       /* ignore */
     }
-  }, [storageKey, showMessages, showAgent]);
+  }, [storageKey, showMessages, showAgent, showConfigurator]);
 
   useEffect(() => {
     try { localStorage.setItem(storageKey, tab); } catch { /* ignore */ }
@@ -71,11 +85,22 @@ const FormSidePanel: React.FC<Props> = ({
     return () => { cancelled = true; };
   }, [showAgent, transactionId, chatScope]);
 
-  const both = showMessages && showAgent;
+  useEffect(() => {
+    if (!showConfigurator || !transactionId || !chatScope) return;
+    let cancelled = false;
+    genericAgentSvc.EnsureFormConfigChat(Number(transactionId), `config:${chatScope}`)
+      .then((key) => { if (!cancelled) setConfigChatKey(key); })
+      .catch(() => { if (!cancelled) setConfigChatKey(null); });
+    return () => { cancelled = true; };
+  }, [showConfigurator, transactionId, chatScope]);
+
+  const tabCount = [showMessages, showAgent, showConfigurator].filter(Boolean).length;
+  const both = tabCount > 1;
   const isBottom = dockPlacement === 'bottom';
   const showMessagesPane = showMessages && (!both || tab === 'messages');
   const showAgentPane = showAgent && (!both || tab === 'ai');
-  const showHostHeader = both || (isBottom && !!onHidePanel);
+  const showConfigPane = showConfigurator && (!both || tab === 'configurator');
+  const showHostHeader = both || (isBottom && !!onHidePanel) || (showConfigurator && !showMessages && !showAgent);
 
   const hideBtn = onHidePanel ? (
     <button
@@ -89,17 +114,103 @@ const FormSidePanel: React.FC<Props> = ({
     </button>
   ) : null;
 
+  const tabBtn = (id: TabId, label: string) => (
+    <button
+      type="button"
+      className={`px-2 py-1 text-xs rounded-[4px] ${tab === id ? `${theme.tab_active} font-medium` : theme.tab}`}
+      onClick={() => setTab(id)}
+    >
+      {label}
+    </button>
+  );
+
+  const handleFormAgentHostTool = async (toolName: string, args: any) => {
+    const hosts = listFormHosts();
+    if (hosts.length === 0) return { ok: false, error: 'This tool only runs inside an open transaction form.' };
+    const gridNotOnForm = (err: unknown) => /grid unit was not found/i.test(String(err || ''));
+    const hostOwnsGrid = (slots: FormAgentHostSlots) => {
+      const ctx: any = slots.getContext?.();
+      const units = Array.isArray(ctx?.units) ? ctx.units : [];
+      const raw = args?.unitId ?? args?.UnitId;
+      if (raw == null || String(raw).trim() === '') {
+        return units.some((u: any) => Number(u?.level) === 2 || Number(u?.level) === 3);
+      }
+      const key = String(raw).trim().toLowerCase();
+      return units.some((u: any) => {
+        if (Number(u?.level) !== 2 && Number(u?.level) !== 3) return false;
+        if (String(u?.unitId ?? '') === String(raw)) return true;
+        const path = String(u?.path || '').toLowerCase();
+        return path === key || path.endsWith(key) || path.split('/').pop()?.trim() === key;
+      });
+    };
+    const callHosts = async (
+      targets: typeof hosts,
+      fn: (slots: FormAgentHostSlots) => Promise<unknown> | unknown,
+    ) => {
+      const results: any[] = [];
+      for (const h of targets) {
+        const raw = { formRole: h.role, formName: h.name, ...(await Promise.resolve(fn(h.slots)) as any) };
+        if (toolName === 'update_grid' && raw?.ok === false && gridNotOnForm(raw.error)) continue;
+        results.push(raw);
+      }
+      const ok = results.some((r) => r?.ok === true);
+      if (results.length === 0) {
+        return { ok: false, error: 'Grid unit was not found. Use unitId or the unit name from HostContextJson.' };
+      }
+      return results.length === 1 ? results[0] : { ok, results };
+    };
+    if (toolName === 'get_form_state' || toolName === 'set_fields' || toolName === 'update_grid') {
+      const targets = toolName === 'update_grid' && hosts.length > 1
+        ? (() => {
+            const owned = hosts.filter((h) => hostOwnsGrid(h.slots));
+            return owned.length ? owned : hosts;
+          })()
+        : hosts;
+      return callHosts(targets, (s) => s.applyTool?.(toolName, args)
+        ?? (toolName === 'set_fields' ? s.setFields?.(args) : toolName === 'update_grid' ? s.updateGrid?.(args) : { ok: false, error: `${toolName} is not available.` })
+        ?? { ok: false, error: `${toolName} is not available.` });
+    }
+    if (toolName === 'describe_action') {
+      for (const h of hosts) {
+        const r: any = h.slots.describeAction?.(args);
+        if (r?.ok) return r;
+      }
+      return { ok: false, error: 'Action not found on this form group.' };
+    }
+    const primary = hosts.find((h) => h.role === 'main')?.slots ?? hosts[0].slots;
+    if (toolName === 'open_linked_search') return primary.openLinkedSearch?.(args) ?? { ok: false, error: 'open_linked_search is not available on this form.' };
+    if (toolName === 'open_link_target') return primary.openLinkTarget?.(args) ?? { ok: false, error: 'open_link_target is not available on this form.' };
+    if (toolName === 'run_command') return primary.runCommand?.(args) ?? { ok: false, error: 'run_command is not available on this form.' };
+    return { ok: false, error: `${toolName} is not a form host tool.` };
+  };
+
+  const handleConfigHostTool = async (toolName: string, _args: any) => {
+    if (toolName === 'request_form_reload') {
+      const reload = onConfigReload;
+      if (!reload) {
+        return { ok: false, error: 'Reload is not wired on this form host.' };
+      }
+      const ok = window.confirm('Configuration has been changed. Do you want to reload current form?');
+      if (ok) reload();
+      return { ok: true, reloaded: ok };
+    }
+    return { ok: false, error: `${toolName} is not a configurator host tool.` };
+  };
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
       {showHostHeader && (
         <div className={hostHeaderCls}>
           {both ? (
             <>
-              <button type="button" className={`px-2 py-1 text-xs rounded-[4px] ${tab === 'messages' ? `${theme.tab_active} font-medium` : theme.tab}`} onClick={() => setTab('messages')}>Conversation</button>
-              <button type="button" className={`px-2 py-1 text-xs rounded-[4px] ${tab === 'ai' ? `${theme.tab_active} font-medium` : theme.tab}`} onClick={() => setTab('ai')}>Assistant</button>
+              {showMessages && tabBtn('messages', 'Conversation')}
+              {showAgent && tabBtn('ai', 'Assistant')}
+              {showConfigurator && tabBtn('configurator', 'Configurator')}
             </>
           ) : (
-            <span className={`text-xs ${theme.label}`}>{showMessages ? 'Conversation' : 'Assistant'}</span>
+            <span className={`text-xs ${theme.label}`}>
+              {showConfigurator ? 'Configurator' : showAgent ? 'Assistant' : 'Conversation'}
+            </span>
           )}
           {hideBtn}
         </div>
@@ -144,68 +255,33 @@ const FormSidePanel: React.FC<Props> = ({
                   })),
                 });
               }}
-              onHostTool={async (toolName, args) => {
-                const hosts = listFormHosts();
-                if (hosts.length === 0) return { ok: false, error: 'This tool only runs inside an open transaction form.' };
-                const gridNotOnForm = (err: unknown) => /grid unit was not found/i.test(String(err || ''));
-                const hostOwnsGrid = (slots: FormAgentHostSlots) => {
-                  const ctx: any = slots.getContext?.();
-                  const units = Array.isArray(ctx?.units) ? ctx.units : [];
-                  const raw = args?.unitId ?? args?.UnitId;
-                  if (raw == null || String(raw).trim() === '') {
-                    return units.some((u: any) => Number(u?.level) === 2 || Number(u?.level) === 3);
-                  }
-                  const key = String(raw).trim().toLowerCase();
-                  return units.some((u: any) => {
-                    if (Number(u?.level) !== 2 && Number(u?.level) !== 3) return false;
-                    if (String(u?.unitId ?? '') === String(raw)) return true;
-                    const path = String(u?.path || '').toLowerCase();
-                    return path === key || path.endsWith(key) || path.split('/').pop()?.trim() === key;
-                  });
-                };
-                const callHosts = async (
-                  targets: typeof hosts,
-                  fn: (slots: FormAgentHostSlots) => Promise<unknown> | unknown,
-                ) => {
-                  const results: any[] = [];
-                  for (const h of targets) {
-                    const raw = { formRole: h.role, formName: h.name, ...(await Promise.resolve(fn(h.slots)) as any) };
-                    if (toolName === 'update_grid' && raw?.ok === false && gridNotOnForm(raw.error)) continue;
-                    results.push(raw);
-                  }
-                  const ok = results.some((r) => r?.ok === true);
-                  if (results.length === 0) {
-                    return { ok: false, error: 'Grid unit was not found. Use unitId or the unit name from HostContextJson.' };
-                  }
-                  return results.length === 1 ? results[0] : { ok, results };
-                };
-                if (toolName === 'get_form_state' || toolName === 'set_fields' || toolName === 'update_grid') {
-                  const targets = toolName === 'update_grid' && hosts.length > 1
-                    ? (() => {
-                        const owned = hosts.filter((h) => hostOwnsGrid(h.slots));
-                        return owned.length ? owned : hosts;
-                      })()
-                    : hosts;
-                  return callHosts(targets, (s) => s.applyTool?.(toolName, args)
-                    ?? (toolName === 'set_fields' ? s.setFields?.(args) : toolName === 'update_grid' ? s.updateGrid?.(args) : { ok: false, error: `${toolName} is not available.` })
-                    ?? { ok: false, error: `${toolName} is not available.` });
-                }
-                if (toolName === 'describe_action') {
-                  for (const h of hosts) {
-                    const r: any = h.slots.describeAction?.(args);
-                    if (r?.ok) return r;
-                  }
-                  return { ok: false, error: 'Action not found on this form group.' };
-                }
-                const primary = hosts.find((h) => h.role === 'main')?.slots ?? hosts[0].slots;
-                if (toolName === 'open_linked_search') return primary.openLinkedSearch?.(args) ?? { ok: false, error: 'open_linked_search is not available on this form.' };
-                if (toolName === 'open_link_target') return primary.openLinkTarget?.(args) ?? { ok: false, error: 'open_link_target is not available on this form.' };
-                if (toolName === 'run_command') return primary.runCommand?.(args) ?? { ok: false, error: 'run_command is not available on this form.' };
-                return { ok: false, error: `${toolName} is not a form host tool.` };
-              }}
+              onHostTool={handleFormAgentHostTool}
             />
           ) : (
             <div className={`p-3 text-xs ${theme.label}`}>Opening form agent…</div>
+          )}
+        </div>
+      )}
+      {showConfigPane && (
+        <div className="h-1 min-h-0 w-full flex-auto overflow-hidden">
+          {configChatKey ? (
+            <AgentUiChatHost
+              skillKey={FORM_CONFIG_SKILL_KEY}
+              chatSessionKey={configChatKey}
+              showChatListButton={false}
+              squareChrome
+              onHidePanel={both || isBottom ? undefined : onHidePanel}
+              getHostContext={() => {
+                const ctx = buildFormConfigContext({
+                  mode: configFormKind,
+                  transaction: configTransaction,
+                });
+                return JSON.stringify(ctx);
+              }}
+              onHostTool={handleConfigHostTool}
+            />
+          ) : (
+            <div className={`p-3 text-xs ${theme.label}`}>Opening configurator…</div>
           )}
         </div>
       )}

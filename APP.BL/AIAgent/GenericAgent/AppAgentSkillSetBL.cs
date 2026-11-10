@@ -66,7 +66,7 @@ namespace App.BL.AIAgent.GenericAgent
                 if (string.IsNullOrWhiteSpace(code)) return false;
                 dto.AgentCode = code;
 
-                if (dto.AgentId <= 0 && FormAgentConstants.IsFormAgentKey(code))
+                if (dto.AgentId <= 0 && (FormAgentConstants.IsFormAgentKey(code) || FormConfigConstants.IsFormConfigKey(code)))
                     return false;
 
                 if (dto.AgentId > 0)
@@ -79,7 +79,9 @@ namespace App.BL.AIAgent.GenericAgent
                         var existingCode = codeTable.Rows[0]["AgentCode"] as string ?? "";
                         if (FormAgentConstants.IsFormAgentKey(existingCode))
                             dto.AgentCode = code = FormAgentConstants.SkillKey;
-                        else if (FormAgentConstants.IsFormAgentKey(code))
+                        else if (FormConfigConstants.IsFormConfigKey(existingCode))
+                            dto.AgentCode = code = FormConfigConstants.SkillKey;
+                        else if (FormAgentConstants.IsFormAgentKey(code) || FormConfigConstants.IsFormConfigKey(code))
                             return false;
                     }
                 }
@@ -162,6 +164,11 @@ ELSE IF @AgentID <= 0
             if (FormAgentConstants.IsFormAgentKey(skillKey))
             {
                 error = "App Form Agent is built in and cannot be deleted.";
+                return false;
+            }
+            if (FormConfigConstants.IsFormConfigKey(skillKey))
+            {
+                error = "App Configurator Agent is built in and cannot be deleted.";
                 return false;
             }
             try

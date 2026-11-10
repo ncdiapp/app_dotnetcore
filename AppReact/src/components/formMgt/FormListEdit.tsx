@@ -1505,10 +1505,11 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
     dataModel.currentFormStructure?.IsDraft ?? dataModel.currentFormStructure?.isDraft
   );
   const showConfigurationButton = enableConfigurationMode && isAdminUser && !isDraft;
+  const showConfigurator = showConfigurationButton;
   const listTransaction = dataModel.transactionExDto || dataModel.currentFormStructure;
   const listCommunicationOn = Boolean(listTransaction?.IsNeedToSetComunication);
   const listAiOn = Boolean(listTransaction?.OtherOptions?.IsEnableTransactionAiAgent);
-  const listSideOn = listCommunicationOn || listAiOn;
+  const listSideOn = listCommunicationOn || listAiOn || showConfigurator;
   listAgentHostRef.current.getContext = () => buildFormAgentContext({
     mode: 'list',
     transaction: listTransaction,
@@ -2514,11 +2515,21 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
         <FormSidePanel
           showMessages={listCommunicationOn}
           showAgent={listAiOn}
+          showConfigurator={showConfigurator}
+          configTransaction={listTransaction}
+          configFormKind="list"
+          onConfigReload={() => loadData?.()}
           transactionId={String(transactionId)}
           messageRootId={LIST_COMMUNICATION_ROOT}
           messageScopeType={emMessageScopeTypeTransaction}
           chatScope="list"
-          initialTab={listAiOn && !listCommunicationOn ? 'ai' : 'messages'}
+          initialTab={
+            showConfigurator && !listAiOn && !listCommunicationOn
+              ? 'configurator'
+              : listAiOn && !listCommunicationOn
+                ? 'ai'
+                : 'messages'
+          }
           onHidePanel={() => setListSideExpanded(false)}
         />
       </div>

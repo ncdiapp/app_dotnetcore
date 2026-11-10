@@ -387,6 +387,10 @@ const handleSave = async () => {
             setError('app-transaction-form-agent is reserved for the App Form Agent.');
             return;
         }
+        if (!selected && key.toLowerCase() === 'app-configurator') {
+            setError('app-configurator is reserved for the App Configurator Agent.');
+            return;
+        }
         dispatch(setIsBusy()); setError(null);
         try {
             if (isGeneralAgentKey(key)) {
@@ -436,7 +440,9 @@ const handleSave = async () => {
     };
 
     const handleDelete = async () => {
-        if (!selected || isGeneralAgentKey(selected.AgentCode) || selected.AgentCode?.toLowerCase() === FORM_AGENT_SKILL_KEY) return;
+        if (!selected || isGeneralAgentKey(selected.AgentCode)
+            || selected.AgentCode?.toLowerCase() === FORM_AGENT_SKILL_KEY
+            || selected.AgentCode?.toLowerCase() === 'app-configurator') return;
         dispatch(setIsBusy());
         setError(null);
         try {
@@ -735,7 +741,9 @@ const handleSave = async () => {
                                     </div>
                                 )}
                             </div>
-                            {selected && !isGeneralAgentKey(selected.AgentCode) && selected.AgentCode?.toLowerCase() !== FORM_AGENT_SKILL_KEY && (
+                            {selected && !isGeneralAgentKey(selected.AgentCode)
+                              && selected.AgentCode?.toLowerCase() !== FORM_AGENT_SKILL_KEY
+                              && selected.AgentCode?.toLowerCase() !== 'app-configurator' && (
                                 <button type="button" className={btn} onClick={() => setConfirmDelete(true)}>
                                     <i className="fa-solid fa-trash mr-1" />Delete
                                 </button>

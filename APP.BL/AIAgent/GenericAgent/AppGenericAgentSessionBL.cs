@@ -57,12 +57,28 @@ IF COL_LENGTH('dbo.AppGenericAgentSession', 'AgentID') IS NOT NULL
         {
             if (!FormAgentConstants.IsFormHostChatKeyForUser(sessionKey, userId) || dataSourceId <= 0)
                 return false;
+            return EnsureHostedSkillSession(sessionKey, userId, dataSourceId, FormAgentConstants.SkillKey, nameof(EnsureFormHostSession));
+        }
+
+        /// <summary>
+        /// Insert an empty form-config chat row if missing. Key must be form-config:{userId}:...
+        /// </summary>
+        public static bool EnsureFormConfigSession(string sessionKey, int userId, int dataSourceId)
+        {
+            if (!FormConfigConstants.IsFormConfigChatKeyForUser(sessionKey, userId) || dataSourceId <= 0)
+                return false;
+            return EnsureHostedSkillSession(sessionKey, userId, dataSourceId, FormConfigConstants.SkillKey, nameof(EnsureFormConfigSession));
+        }
+
+        static bool EnsureHostedSkillSession(
+            string sessionKey, int userId, int dataSourceId, string skillKey, string logName)
+        {
             try
             {
                 var fixture = Fixture(dataSourceId);
                 if (fixture == null) return false;
                 EnsureSchema(fixture);
-                if (!AppAgentLookup.TryResolveSessionAgentId(fixture, FormAgentConstants.SkillKey, out var agentId))
+                if (!AppAgentLookup.TryResolveSessionAgentId(fixture, skillKey, out var agentId))
                     return false;
                 if (agentId == null) return false;
 
@@ -80,7 +96,7 @@ IF NOT EXISTS (SELECT 1 FROM dbo.AppGenericAgentSession WHERE SessionKey=@K)
             }
             catch (Exception ex)
             {
-                NLog.LogManager.GetCurrentClassLogger().Error(ex, nameof(EnsureFormHostSession));
+                NLog.LogManager.GetCurrentClassLogger().Error(ex, logName);
                 return false;
             }
         }

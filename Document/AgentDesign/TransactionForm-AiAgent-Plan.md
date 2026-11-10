@@ -4,7 +4,7 @@
 **Date:** 2026-11-03  
 **Scope:** Master Detail and List Edit transaction forms. One shared Specialist. First delivery includes the AI panel, List Edit Communication, host tools, and seeded libraries.  
 **Related:** Entity Lookup semantic match (exact → vector) is designed in `SharedAgentEngine-VectorStore-Architecture.md` (not implemented yet). Field/grid *addressing* still uses the unit catalog plus server-side match, not embeddings.  
-**Sub-plan (config / design):** Config is **not** on Form Agent. Separate **App Configurator Agent** — [`AppConfigurator-AiAgent-Design.md`](./AppConfigurator-AiAgent-Design.md). Implementation gated on repairing Agent Management `app-builder` first.
+**Sub-plan (config / design):** Config is **not** on Form Agent. Separate **App Configurator Agent** — [`AppConfigurator-AiAgent-Design.md`](./AppConfigurator-AiAgent-Design.md). Managed `app-builder` §0 **passed** (2026-11-10); start with **Form** Configurator, then My Application Editor Assistant, then **runtime Search**, then retrofit **`IsAiConfigured`** as the shared AI visibility gate (keep existing name; no `IsAiModelReady`).
 
 ---
 

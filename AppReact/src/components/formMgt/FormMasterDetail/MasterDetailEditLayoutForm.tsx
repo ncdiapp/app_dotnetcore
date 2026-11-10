@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback, useContext } from 'react';
 import { createPortal } from 'react-dom';
+import { useSelector } from 'react-redux';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { useEnumEntry, useEnumValues } from '../../../hooks/useEnumDictionary';
 import MasterDetailFlexLayoutForm from './MasterDetailFlexLayoutForm';
@@ -18,11 +19,13 @@ import {
   type FormAgentHostSlots,
 } from '../FormAgent/formAgentHost';
 import { appTransactionService } from '../../../webapi/apptransactionsvc';
+import { isAdminUserFromContext, isEnableConfigurationModeForUser } from '../../../helper/adminPermissionHelper';
 import {
   FormMasterDetailRuntimeConfigProvider,
   emptyFormMasterDetailRuntimeConfigApi,
   type FormMasterDetailRuntimeConfigApi,
 } from './formMasterDetailRuntimeConfig';
+import type { RootState } from '../../../redux/store';
 
 interface MasterDetailEditLayoutFormProps {
   controllerModel: any;
@@ -150,9 +153,14 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
         : null;
 
   // Spec (Angular): conversation can dock Right or Bottom; default dock is Right when not set.
+  const userContext = useSelector((s: RootState) => s.userSession?.userContext);
   const isConversationEnabled = Boolean(transactionDto?.IsNeedToSetComunication);
   const isAiEnabled = Boolean(transactionDto?.OtherOptions?.IsEnableTransactionAiAgent);
-  const isSidePanelEnabled = isConversationEnabled || isAiEnabled;
+  const isDraftForm = Boolean(transactionDto?.IsDraft ?? transactionDto?.isDraft ?? controllerModel?.isDraft);
+  const showConfigurator = isEnableConfigurationModeForUser(userContext)
+    && isAdminUserFromContext(userContext)
+    && !isDraftForm;
+  const isSidePanelEnabled = isConversationEnabled || isAiEnabled || showConfigurator;
   const aiDockPos: number | null =
     typeof transactionDto?.OtherOptions?.AiAgentDockPosition === 'number'
       ? transactionDto.OtherOptions.AiAgentDockPosition
@@ -171,6 +179,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
   const openConversationByDefault = Boolean(
     (isConversationEnabled && (transactionDto?.OtherOptions?.IsOpenCommunicationByDefault ?? transactionDto?.IsOpenCommunicationByDefault))
     || (isAiEnabled && transactionDto?.OtherOptions?.IsOpenAiAgentByDefault)
+    || (showConfigurator && !isConversationEnabled && !isAiEnabled)
   );
   const hostTransaction = transactionExDto || transactionDto || dataModel?.currentFormStructure;
   const hostSlotsRef = useRef<FormAgentHostSlots>({});
@@ -223,11 +232,21 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
     <FormSidePanel
       showMessages={isConversationEnabled}
       showAgent={isAiEnabled}
+      showConfigurator={showConfigurator}
+      configTransaction={hostTransaction}
+      configFormKind="master"
+      onConfigReload={onReloadCurrentForm}
       transactionId={runtimeTransactionId}
       messageRootId={runtimeTransactionRootValueId}
       messageScopeType={emMessageScopeTypeTransaction}
       chatScope={chatScope}
-      initialTab={isAiEnabled && !isConversationEnabled ? 'ai' : 'messages'}
+      initialTab={
+        showConfigurator && !isAiEnabled && !isConversationEnabled
+          ? 'configurator'
+          : isAiEnabled && !isConversationEnabled
+            ? 'ai'
+            : 'messages'
+      }
       dockPlacement={placement}
       onHidePanel={placement === 'bottom'
         ? () => setIsBottomConversationExpanded(false)
@@ -650,7 +669,11 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
                 title="Expand panel"
                 aria-label="Expand panel"
               >
-                <span>{isConversationEnabled && isAiEnabled ? 'Conversation / Assistant' : isAiEnabled ? 'Assistant' : 'Conversation'}</span>
+                <span>{[
+                  isConversationEnabled ? 'Conversation' : null,
+                  isAiEnabled ? 'Assistant' : null,
+                  showConfigurator ? 'Configurator' : null,
+                ].filter(Boolean).join(' / ') || 'Panel'}</span>
                 <i className="fa-solid fa-chevron-up" aria-hidden />
               </button>
             )}

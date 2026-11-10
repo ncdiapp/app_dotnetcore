@@ -419,6 +419,20 @@ class GenericAgentService {
         return String(data?.Object || '');
     }
 
+    async EnsureFormConfigChat(transactionId: number, scope: string): Promise<string> {
+        const res = await fetch(`${BASE}/EnsureFormConfigChat`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ TransactionId: transactionId, Scope: scope }),
+        });
+        const data = await res.json();
+        if (!res.ok || data?.ValidationResult?.IsValid === false) {
+            const msg = data?.ValidationResult?.Items?.[0]?.Message || 'Could not open the configurator chat.';
+            throw new Error(msg);
+        }
+        return String(data?.Object || '');
+    }
+
     async ConfirmHostTool(sessionId: string, resultJson: string): Promise<void> {
         await fetch(`${BASE}/ConfirmHostTool`, {
             method: 'POST',

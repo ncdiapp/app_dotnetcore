@@ -173,7 +173,30 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 var hasFormHost = !string.IsNullOrWhiteSpace(hostContextJson);
                 if (hasFormHost)
                 {
-                    systemPrompt += @"
+                    var isConfigurator = false;
+                    try
+                    {
+                        var mode = Newtonsoft.Json.Linq.JObject.Parse(hostContextJson.Trim())["mode"]?.ToString();
+                        isConfigurator = string.Equals(mode, "configurator", StringComparison.OrdinalIgnoreCase);
+                    }
+                    catch { /* treat as form-data host */ }
+
+                    if (isConfigurator)
+                    {
+                        systemPrompt += @"
+
+## Open form Configurator
+You configure durable metadata for the open Form/Search (fields, visibility, entities, commands listing). HostContextJson below is the config catalog — not business FormData.
+Do NOT fill business field values. For FormData edits, tell the user to use the Assistant tab (App Form Agent).
+Do NOT create applications, propose/execute schemas, create_hierarchy, or delete the open transaction/application.
+Workflow: inspect (get_current_transaction_config / get_unit_fields) → ask_user → mutate (update_field_setting / set_field_entity / set_field_visibility) → request_form_reload.
+Prefer soft-hide (set_field_visibility isVisible=false) over deleting fields. Server forces transactionId from HostContext.
+
+" + hostContextJson.Trim();
+                    }
+                    else
+                    {
+                        systemPrompt += @"
 
 ## Open transaction form
 The user is editing an open transaction form. The JSON below is a catalog of units and fields (db + label), not live values. Call get_form_state with unitId and fields (JSON array of the db names or labels you need). Do not request the whole unit. Do not assume grid rows are in this JSON.
@@ -185,6 +208,7 @@ Linked Search and Link Target open the existing popup via open_linked_search and
 A render button click arrives as a user message. If the user picked a row or a file, write it onto the form with set_fields or update_grid.
 
 " + hostContextJson.Trim();
+                    }
                 }
 
                 var userId    = identity.HasValue && identity.Value.UserId != null                      ? Convert.ToInt32(identity.Value.UserId)                      : 0;
