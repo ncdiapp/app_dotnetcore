@@ -1,0 +1,40 @@
+How App Builder Agent Was Tweaked To Work
+（App Builder Agent 如何调到可用）
+========================================
+
+在 Agent Management 里配置 Generic Agent（SystemPrompt + Library 工具）时对照。
+Hardcoded 能跑通的实现 → Generic Agent：不要粘贴长文，按下面做。
+
+
+1. 列出场景
+   Agent 不止一件事。本例：新建应用、改库表、改已有 Transaction、单独做 Search、
+   删除应用、门控确认等。把支持的场景先写全。
+
+2. 配好这个 Agent 能用哪些工具
+   本例：工具从 Hardcoded App Builder Agent 的 Plugin 抄到 Generic Agent
+   配其它 Agent 时：场景真正会用到的才订，没用到的不要订； 
+
+3. 每个场景抽三样
+   - 成功时的工具顺序（工具名 + 下一步看返回值哪些字段）
+   - 禁止做什么 / 可做什么（短硬规则）
+   - 若有领域分叉，单独写清（本例新建应用：单据主从 vs 参考表 lookup，外键住哪张表）
+
+4. 写 SystemPrompt（一篇，但有块）
+   - 开头：几行概念
+   - 接着：默认或最难场景的编号工具顺序（本例先写「新建应用」，并先调通它）
+   - 然后：其它场景各一小段短序列
+   - 共用禁令放一起
+   - 分步说明里写的「何时调、下一步看什么」，要和该工具在库里的 Description
+     说法一致，不能互相矛盾（模型会同时读这两处）
+
+
+5. 分场景调通
+   每个场景固定一个验收剧本，一次先跑通一个（建议先最难的）。
+   看 AgentLoop 工具序列，不看聊天气泡。
+   - 点错工具 / 参数乱 → 改订阅或 Description
+   - 顺序错 / 禁令弱 → Prompt 加一句，不写小作文
+   - 返回值骗人 / 结构错 → 改 Plugin
+   每轮只修一类，对比新 run。同类错两次以上 → 优先 Plugin 硬挡。
+
+6. 固化
+   Prompt 与订阅定稿；记下各场景剧本、成功时的工具序列特征、已知缺口。
