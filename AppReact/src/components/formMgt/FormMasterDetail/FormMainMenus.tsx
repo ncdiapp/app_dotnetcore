@@ -159,6 +159,8 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
   const { addTabAndNavigate } = useTabNavigation();
   const isMobilePopup = layoutVariant === 'mobilePopup';
   const [configMenuOpen, setConfigMenuOpen] = useState(false);
+  /** Hover/click submenu key under Configuration: 'Transaction' | 'Form' | 'TransactionCommandActionSetting' */
+  const [configSubmenuKey, setConfigSubmenuKey] = useState<string | null>(null);
   const [reportMenuOpen, setReportMenuOpen] = useState(false);
   const configMenuRef = useRef<HTMLDivElement | null>(null);
   const reportMenuRef = useRef<HTMLDivElement | null>(null);
@@ -274,6 +276,20 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
     const n = Number(raw);
     return raw != null && raw !== '' && Number.isFinite(n) && n > 0 ? n : null;
   })();
+
+  /** Main + Template Header transactions for Configuration submenu (preview form group only). */
+  const templateConfigTargets = (() => {
+    const raw = controllerModel?.param2Obj?.templateConfigTargets;
+    if (!Array.isArray(raw)) return [] as Array<{ kind: string; transactionId: number; transactionName: string }>;
+    return raw
+      .map((t: any) => ({
+        kind: String(t?.kind || ''),
+        transactionId: Number(t?.transactionId),
+        transactionName: String(t?.transactionName || `Transaction ${t?.transactionId ?? ''}`),
+      }))
+      .filter((t) => Number.isFinite(t.transactionId) && t.transactionId > 0);
+  })();
+  const hasMultipleTemplateConfigTargets = templateConfigTargets.length > 1;
   
   // Check if read-only
   const isReadOnly = transactionDto?.IsReadOnly === true;
@@ -1155,7 +1171,12 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
               ? 'w-full px-3 h-8 bg-gray-400 text-white rounded-[4px] text-sm hover:bg-gray-500 flex items-center justify-start gap-2'
               : 'px-2 h-6 bg-gray-400 text-white rounded-[4px] text-xs hover:bg-gray-500 flex items-center gap-1'
           }
-          onClick={() => setConfigMenuOpen(!configMenuOpen)}
+          onClick={() => {
+            setConfigMenuOpen((open) => {
+              if (open) setConfigSubmenuKey(null);
+              return !open;
+            });
+          }}
           title="Configuration"
         >
           <i className="fa fa-gears" aria-hidden="true"></i>
@@ -1177,6 +1198,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
                     onClick={() => {
                       onToggleFormConfigButtons?.();
                       setConfigMenuOpen(false);
+                      setConfigSubmenuKey(null);
                     }}
                   >
                     <span className="min-w-0 flex-1 truncate">Enable Field Setting Buttons</span>
@@ -1216,41 +1238,22 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
                       Edit Data Model Template
                     </button>
                   )}
-                  <button
-                    type="button"
-                    className={`w-full min-w-0 px-3 py-2 text-left text-sm whitespace-nowrap ${theme.contextMenu}`}
-                    onClick={() => {
-                      // Angular: OpenConfiguration(null, true) => defaultSectionCode 'Transaction'
-                      openTransactionBuilder('Transaction', true);
-                      setConfigMenuOpen(false);
-                    }}
-                  >
-                    Edit Data Model
-                  </button>
-                  <button
-                    type="button"
-                    className={`w-full min-w-0 px-3 py-2 text-left text-sm whitespace-nowrap ${theme.contextMenu}`}
-                    onClick={() => {
-                      // Angular: OpenFormEditor() => OpenConfiguration('Form', true)
-                      openTransactionBuilder('Form', true);
-                      setConfigMenuOpen(false);
-                    }}
-                  >
-                    Design Layout
-                  </button>
-                  {!hideEditCommands && (
-                    <button
-                      type="button"
-                      className={`w-full min-w-0 px-3 py-2 text-left text-sm whitespace-nowrap ${theme.contextMenu}`}
-                      onClick={() => {
-                        // Angular: OpenCommandEditor() => OpenConfiguration('TransactionCommandActionSetting', false)
-                        openTransactionBuilder('TransactionCommandActionSetting', false);
-                        setConfigMenuOpen(false);
-                      }}
-                    >
-                      Edit Commands
-                    </button>
+                  {renderTemplateAwareConfigAction(
+                    'Edit Data Model',
+                    'Transaction',
+                    true
                   )}
+                  {renderTemplateAwareConfigAction(
+                    'Design Layout',
+                    'Form',
+                    true
+                  )}
+                  {!hideEditCommands &&
+                    renderTemplateAwareConfigAction(
+                      'Edit Commands',
+                      'TransactionCommandActionSetting',
+                      false
+                    )}
                 </>
               )}
 
@@ -1262,6 +1265,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
                 onClick={() => {
                   (onReloadCurrentForm ?? onRefresh)?.();
                   setConfigMenuOpen(false);
+                  setConfigSubmenuKey(null);
                 }}
               >
                 Reload Current Form
@@ -1273,6 +1277,84 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
     );
   };
 
+  /** Edit Data Model / Design Layout / Edit Commands — when form-group has Main+Header, show hover submenu. */
+  function renderTemplateAwareConfigAction(
+    label: string,
+    defaultSectionCode: string,
+    reloadOnClose: boolean
+  ) {
+    const openForTarget = (transactionId?: number | null) => {
+      void openTransactionBuilder(defaultSectionCode, reloadOnClose, undefined, transactionId);
+      setConfigMenuOpen(false);
+      setConfigSubmenuKey(null);
+    };
+
+    if (!hasMultipleTemplateConfigTargets) {
+      return (
+        <button
+          key={defaultSectionCode}
+          type="button"
+          className={`w-full min-w-0 px-3 py-2 text-left text-sm whitespace-nowrap ${theme.contextMenu}`}
+          onClick={() => openForTarget(templateConfigTargets[0]?.transactionId ?? null)}
+        >
+          {label}
+        </button>
+      );
+    }
+
+    const submenuOpen = configSubmenuKey === defaultSectionCode;
+    return (
+      <div
+        key={defaultSectionCode}
+        className="relative"
+        onMouseEnter={() => {
+          if (!isMobilePopup) setConfigSubmenuKey(defaultSectionCode);
+        }}
+        onMouseLeave={() => {
+          if (!isMobilePopup) setConfigSubmenuKey((k) => (k === defaultSectionCode ? null : k));
+        }}
+      >
+        <button
+          type="button"
+          className={`flex w-full min-w-0 items-center justify-between gap-2 px-3 py-2 text-left text-sm whitespace-nowrap ${theme.contextMenu}`}
+          onClick={(e) => {
+            if (isMobilePopup) {
+              e.preventDefault();
+              e.stopPropagation();
+              setConfigSubmenuKey((k) => (k === defaultSectionCode ? null : defaultSectionCode));
+              return;
+            }
+            // Desktop: keep open on click; selection happens in submenu.
+            e.preventDefault();
+            setConfigSubmenuKey(defaultSectionCode);
+          }}
+        >
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          <i className="fa-solid fa-caret-right shrink-0 opacity-70" aria-hidden />
+        </button>
+        {submenuOpen && (
+          <div
+            className={`absolute z-[60] py-1 min-w-[14rem] max-w-[min(22rem,calc(100vw-16px))] rounded border shadow-lg ${
+              isMobilePopup ? 'left-0 right-0 top-full mt-0.5' : 'left-full top-0 ml-0.5'
+            } ${theme.mainContentSection} ${t('border_mainContentSection')}`}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {templateConfigTargets.map((target) => (
+              <button
+                key={`${defaultSectionCode}_${target.kind}_${target.transactionId}`}
+                type="button"
+                className={`w-full min-w-0 px-3 py-2 text-left text-sm whitespace-nowrap ${theme.contextMenu}`}
+                onClick={() => openForTarget(target.transactionId)}
+              >
+                {target.kind} : {target.transactionName}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // Auto-close dropdowns when clicking elsewhere.
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
@@ -1280,6 +1362,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
 
       if (configMenuOpen && configMenuRef.current && !configMenuRef.current.contains(target)) {
         setConfigMenuOpen(false);
+        setConfigSubmenuKey(null);
       }
 
       if (reportMenuOpen && reportMenuRef.current && !reportMenuRef.current.contains(target)) {
@@ -1331,9 +1414,10 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
           layoutItemId?: string | number;
           isGrid?: boolean;
         } | null;
-      }
+      },
+      transactionIdOverride?: number | null
     ) => {
-      const tid = controllerModel?.transactionId;
+      const tid = transactionIdOverride ?? controllerModel?.transactionId;
       if (!tid) return;
       try {
         dispatch(setIsBusy());
@@ -1349,19 +1433,28 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
 
         const applicationId =
           transactionData?.SaasApplicationId ?? transactionData?.saasApplicationId ?? null;
+        const modelName =
+          transactionData?.TransactionName ||
+          (Number(tid) === Number(controllerModel?.transactionId) ? transactionName : null) ||
+          String(tid);
 
         setConfigBuilderProps({
           defaultSectionCode,
           applicationId: applicationId != null ? String(applicationId) : null,
           transactionId: tid,
-          transactionType: transactionData?.TransactionOrganizedType ?? transactionDto?.TransactionOrganizedType ?? null,
+          transactionType:
+            transactionData?.TransactionOrganizedType ??
+            (Number(tid) === Number(controllerModel?.transactionId)
+              ? transactionDto?.TransactionOrganizedType
+              : null) ??
+            null,
           workflowId: transactionData?.MasterWorkflowId ?? null,
           formLayoutType:
             transactionData?.FormLayoutType ??
             transactionData?.ForeignAppFormExDto?.LayoutType ??
             null,
           formId: transactionData?.FormId ?? null,
-          modelName: String(tid),
+          modelName: String(modelName),
           reloadOnClose,
           initialNeedToEditUnitId: extras?.initialNeedToEditUnitId ?? null,
           initialFormDesignFieldFocus: extras?.initialFormDesignFieldFocus ?? null,
@@ -1374,7 +1467,13 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
         dispatch(setIsNotBusy());
       }
     },
-    [controllerModel?.transactionId, transactionDto?.TransactionOrganizedType, dispatch, showError]
+    [
+      controllerModel?.transactionId,
+      transactionDto?.TransactionOrganizedType,
+      transactionName,
+      dispatch,
+      showError,
+    ]
   );
 
   /** Open Data Model Template Editor (TransactionGroupEditor) for the hosting template search. */

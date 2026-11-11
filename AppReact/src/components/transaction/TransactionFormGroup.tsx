@@ -13,6 +13,7 @@ import {
   buildEmbeddedFormParam2,
   buildLinkedSearchCriteriaDict,
   buildLinkTargetsFromBusinessTemplateGroup,
+  buildTemplateConfigTargets,
   buildTemplateItemLists,
   EmAppLinkTargetActionType,
   EmAppTemplateHeaderVisibility,
@@ -505,6 +506,20 @@ const TransactionFormGroup: React.FC = () => {
 
       if (effectiveLinkTarget.LinkTargetTransactionId) {
         const cfg = buildFormEmbedded(effectiveLinkTarget, row, false);
+        if (cfg) {
+          // Configuration menu (FormMainMenus) reads this to offer Main/Header submenus.
+          const headerTargetsForConfig = buildHeaders
+            ? templateHeaderList.filter((hdr: any) => hdr.LinkTargetTransactionId)
+            : [];
+          cfg.param2 = {
+            ...cfg.param2,
+            templateConfigTargets: buildTemplateConfigTargets(
+              effectiveLinkTarget,
+              cfg.transactionId,
+              headerTargetsForConfig,
+            ),
+          };
+        }
         setMainForm(cfg);
       } else if (effectiveLinkTarget.LinkTargetSearchId) {
         const cfg = buildSearchEmbedded(effectiveLinkTarget, row, false);

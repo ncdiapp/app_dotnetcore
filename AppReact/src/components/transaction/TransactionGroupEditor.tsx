@@ -24,6 +24,7 @@ import { useEnumValues } from '../../hooks/useEnumDictionary';
 import SearchFilterEditor from '../search/SearchFilterEditor';
 import DataSetEditor from '../dbmgt/DataSetEditor';
 import TemplateFolderNavigationSection from './TemplateFolderNavigationSection';
+import ApplicationFormBuilder from './ApplicationFormBuilder';
 
 const LINK_TARGET_USAGE_FORM = 1;
 const LINK_TARGET_USAGE_SEARCH = 3;
@@ -264,6 +265,19 @@ const TransactionGroupEditor: React.FC = () => {
   /** Datasource Selector popup: which filter row is selecting entity; when set, modal is open */
   const [entitySelectionItem, setEntitySelectionItem] = useState<any | null>(null);
   const [datasourceSelectorSelectedId, setDatasourceSelectorSelectedId] = useState<number | null>(null);
+
+  /** Open Application Form Builder → Transaction Editor for a Main/Shared Data Model row. */
+  const [txnBuilderOpen, setTxnBuilderOpen] = useState(false);
+  const [txnBuilderMountKey, setTxnBuilderMountKey] = useState(0);
+  const [txnBuilderProps, setTxnBuilderProps] = useState<{
+    applicationId: string | null;
+    transactionId: number;
+    transactionType: number | null;
+    workflowId: number | null;
+    formLayoutType: number | null;
+    formId: number | null;
+    modelName: string | null;
+  } | null>(null);
 
   useEffect(() => {
     let p: TransactionGroupEditorParam = {};
@@ -521,6 +535,57 @@ const TransactionGroupEditor: React.FC = () => {
       }
     },
     [transactionPkFieldsByTransactionId]
+  );
+
+  const openTransactionEditor = useCallback(
+    async (transactionId: number | null | undefined, fallbackName?: string | null) => {
+      if (transactionId == null || !Number.isFinite(Number(transactionId)) || Number(transactionId) <= 0) {
+        showWarning('Select a Data Model first.');
+        return;
+      }
+      const tid = Number(transactionId);
+      try {
+        dispatch(setIsBusy());
+        const transactionData = await appTransactionService.getOneHierarchyTransaction(
+          String(tid),
+          false,
+          '',
+          '',
+          '',
+          false,
+          ''
+        );
+        const applicationId =
+          transactionData?.SaasApplicationId ??
+          transactionData?.saasApplicationId ??
+          currentSearch?.SaasApplicationId ??
+          null;
+        const modelName =
+          transactionData?.TransactionName ||
+          fallbackName ||
+          transactionList.find((t) => t.Id === tid)?.TransactionName ||
+          String(tid);
+        setTxnBuilderProps({
+          applicationId: applicationId != null ? String(applicationId) : null,
+          transactionId: tid,
+          transactionType: transactionData?.TransactionOrganizedType ?? null,
+          workflowId: transactionData?.MasterWorkflowId ?? null,
+          formLayoutType:
+            transactionData?.FormLayoutType ??
+            transactionData?.ForeignAppFormExDto?.LayoutType ??
+            null,
+          formId: transactionData?.FormId ?? null,
+          modelName: String(modelName),
+        });
+        setTxnBuilderMountKey((k) => k + 1);
+        setTxnBuilderOpen(true);
+      } catch (err) {
+        showError('Failed to open Transaction Editor: ' + ((err as Error)?.message || String(err)));
+      } finally {
+        dispatch(setIsNotBusy());
+      }
+    },
+    [currentSearch?.SaasApplicationId, dispatch, showError, showWarning, transactionList]
   );
 
   useEffect(() => {
@@ -1357,8 +1422,8 @@ const TransactionGroupEditor: React.FC = () => {
                         <div
                           className={
                             isSearchType
-                              ? 'flex items-center justify-center self-center'
-                              : 'flex items-center justify-center w-[60px] shrink-0 pb-1'
+                              ? 'flex flex-col items-center justify-center gap-1 self-center'
+                              : 'flex flex-col items-center justify-center gap-1 w-[60px] shrink-0 pb-1'
                           }
                           style={isSearchType ? { gridColumn: 1, gridRow: '1 / -1' } : undefined}
                         >
@@ -1370,6 +1435,24 @@ const TransactionGroupEditor: React.FC = () => {
                           >
                             <i className={`fa-solid fa-trash text-xs ${theme.label}`} aria-hidden />
                           </button>
+                          {!isSearchType && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void openTransactionEditor(
+                                  item.TransactionId,
+                                  item.NavigationActionName ||
+                                    transactionList.find((t) => t.Id === item.TransactionId)?.TransactionName
+                                )
+                              }
+                              disabled={item.TransactionId == null}
+                              className={`p-1.5 rounded ${theme.button_default} disabled:opacity-40`}
+                              title="Open Transaction Editor"
+                              aria-label="Open Transaction Editor"
+                            >
+                              <i className={`fa-solid fa-gear text-xs ${theme.label}`} aria-hidden />
+                            </button>
+                          )}
                         </div>
                         <div
                           className={
@@ -1632,12 +1715,30 @@ const TransactionGroupEditor: React.FC = () => {
                         }
                       >
                         <div
-                          className={isSearchType ? 'flex items-center justify-center self-center' : 'flex items-center justify-center w-[60px] shrink-0 pb-1'}
+                          className={isSearchType ? 'flex flex-col items-center justify-center gap-1 self-center' : 'flex flex-col items-center justify-center gap-1 w-[60px] shrink-0 pb-1'}
                           style={isSearchType ? { gridColumn: 1, gridRow: '1 / -1' } : undefined}
                         >
                           <button type="button" onClick={() => handleDeleteSharedItem(idx)} className={`p-1.5 rounded ${theme.button_default}`} aria-label="Delete">
                             <i className={`fa-solid fa-trash text-xs ${theme.label}`} aria-hidden />
                           </button>
+                          {!isSearchType && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void openTransactionEditor(
+                                  item.TransactionId,
+                                  item.NavigationActionName ||
+                                    transactionList.find((t) => t.Id === item.TransactionId)?.TransactionName
+                                )
+                              }
+                              disabled={item.TransactionId == null}
+                              className={`p-1.5 rounded ${theme.button_default} disabled:opacity-40`}
+                              title="Open Transaction Editor"
+                              aria-label="Open Transaction Editor"
+                            >
+                              <i className={`fa-solid fa-gear text-xs ${theme.label}`} aria-hidden />
+                            </button>
+                          )}
                         </div>
                         <div
                           className={isSearchType ? 'flex flex-col self-center' : 'flex flex-col w-[140px] shrink-0'}
@@ -1993,6 +2094,28 @@ const TransactionGroupEditor: React.FC = () => {
             />
           </div>
         </div>
+      )}
+
+      {txnBuilderOpen && txnBuilderProps && typeof document !== 'undefined' && createPortal(
+        <ApplicationFormBuilder
+          key={`tge-afb-${txnBuilderMountKey}`}
+          isOpen={txnBuilderOpen}
+          onClose={() => {
+            setTxnBuilderOpen(false);
+            setTxnBuilderProps(null);
+          }}
+          onRefresh={undefined}
+          applicationId={txnBuilderProps.applicationId}
+          defaultSectionCode="Transaction"
+          isCreateNewItem={false}
+          formId={txnBuilderProps.formId}
+          transactionId={txnBuilderProps.transactionId}
+          workflowId={txnBuilderProps.workflowId}
+          transactionType={txnBuilderProps.transactionType}
+          formLayoutType={txnBuilderProps.formLayoutType}
+          modelName={txnBuilderProps.modelName}
+        />,
+        document.body
       )}
 
       {/* Datasource Selector popup – choose entity for Entity List of Value (when Control Type is DDL) */}

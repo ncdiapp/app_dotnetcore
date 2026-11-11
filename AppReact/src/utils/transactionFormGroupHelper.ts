@@ -654,6 +654,69 @@ export function buildFormGroupOpenPayload(
   return { tabTitle, sessionKey, param2, sessionData };
 }
 
+/** Targets for Configuration → Edit Data Model / Layout / Commands submenus (Main + Template Headers). */
+export type TemplateConfigTargetKind = 'Main' | 'Header';
+
+export type TemplateConfigTarget = {
+  kind: TemplateConfigTargetKind;
+  transactionId: number;
+  transactionName: string;
+};
+
+export function resolveLinkTargetTransactionName(
+  linkTarget: any,
+  transactionId?: number | null,
+): string {
+  const id =
+    transactionId != null && Number.isFinite(Number(transactionId))
+      ? Number(transactionId)
+      : linkTarget?.LinkTargetTransactionId != null
+        ? Number(linkTarget.LinkTargetTransactionId)
+        : null;
+  const name =
+    linkTarget?.TransactionName ||
+    linkTarget?.ForeignAppTransaction?.TransactionName ||
+    linkTarget?.ForeignAppTransactionItemExDto?.TransactionName ||
+    linkTarget?.ForeignAppTransactionItem?.TransactionName ||
+    linkTarget?.display ||
+    linkTarget?.NavigationActionName ||
+    linkTarget?.DisplayText ||
+    null;
+  if (name != null && String(name).trim() !== '') return String(name).trim();
+  return id != null && Number.isFinite(id) ? `Transaction ${id}` : 'Transaction';
+}
+
+export function buildTemplateConfigTargets(
+  mainLinkTarget: any | null | undefined,
+  mainTransactionId: number | null | undefined,
+  headerLinkTargets: any[] | null | undefined,
+): TemplateConfigTarget[] {
+  const targets: TemplateConfigTarget[] = [];
+  // Headers first, Main last (submenu display order).
+  (headerLinkTargets || []).forEach((hdr) => {
+    const tid =
+      hdr?.LinkTargetTransactionId != null ? Number(hdr.LinkTargetTransactionId) : NaN;
+    if (!Number.isFinite(tid) || tid <= 0) return;
+    targets.push({
+      kind: 'Header',
+      transactionId: tid,
+      transactionName: resolveLinkTargetTransactionName(hdr, tid),
+    });
+  });
+  const mainTid =
+    mainTransactionId != null && Number.isFinite(Number(mainTransactionId))
+      ? Number(mainTransactionId)
+      : null;
+  if (mainTid != null && mainTid > 0) {
+    targets.push({
+      kind: 'Main',
+      transactionId: mainTid,
+      transactionName: resolveLinkTargetTransactionName(mainLinkTarget, mainTid),
+    });
+  }
+  return targets;
+}
+
 export function buildEmbeddedFormParam2(
   linkTarget: any,
   row: any,
