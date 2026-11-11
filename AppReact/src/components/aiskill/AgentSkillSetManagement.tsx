@@ -964,7 +964,7 @@ const handleSave = async () => {
                                                 </div>
                                             )}
                                             <div className={`flex items-center pb-1 mb-2 border-b shrink-0 ${borderCls}`}>
-                                                <span className={`text-xs font-semibold ${theme.title} shrink-0`}>System Prompt</span>
+                                                <span className={`text-xs font-semibold ${theme.title} shrink-0`}>Agent Instruction</span>
                                                 <div className="relative ml-2 flex items-center gap-1 shrink-0">
                                                     <button type="button" className={`text-xs px-1.5 py-0.5 rounded ${theme.button_default} flex items-center gap-1 ${promptHistory.length === 0 ? 'opacity-40' : ''}`} onClick={(e) => { e.stopPropagation(); promptHistory.length > 0 && setShowHistory(o => !o); }}>
                                                         <i className="fa-solid fa-clock-rotate-left" />History{promptHistory.length > 0 && <span className="ml-0.5 opacity-60">({promptHistory.length})</span>}
@@ -1304,7 +1304,7 @@ const handleSave = async () => {
                             <>
                                 <div className="px-4 py-3 flex flex-col gap-2">
                                     <p className={`text-xs opacity-60 ${theme.label}`}>
-                                        Describe what this agent should do. The AI will generate the system prompt
+                                        Describe what this agent should do. The AI will generate the Agent Instruction
                                         and recommend relevant tool sets and built-in tools.
                                     </p>
                                     <textarea
@@ -1331,7 +1331,7 @@ const handleSave = async () => {
                             <>
                                 <div className="px-4 py-3 flex flex-col gap-3 overflow-y-auto" style={{ maxHeight: '70vh' }}>
                                     <div className="flex flex-col gap-1">
-                                        <div className={`text-xs font-semibold ${theme.title}`}>Generated System Prompt:</div>
+                                        <div className={`text-xs font-semibold ${theme.title}`}>Generated Agent Instruction:</div>
                                         <textarea
                                             className={`w-full px-2 py-1.5 text-xs border ${theme.inputBox} font-mono resize-none opacity-80`}
                                             rows={8}
@@ -1437,7 +1437,7 @@ const handleSave = async () => {
                 </div>
             )}
 
-            {/* AI Edit System Prompt modal */}
+            {/* AI Edit Agent Instruction modal */}
             {showAiEdit && (
                 <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50"
                      onClick={e => { if (e.target === e.currentTarget) { setShowAiEdit(false); } }}>
@@ -1445,7 +1445,7 @@ const handleSave = async () => {
                         <div className={`flex items-center px-4 py-2 border-b border-gray-200`}>
                             <i className="fa-solid fa-pencil mr-2 text-blue-500" />
                             <span className={`text-sm font-semibold ${theme.title} flex-auto`}>
-                                {aiEditResult ? 'Review Edited Prompt' : 'AI Edit System Prompt'}
+                                {aiEditResult ? 'Review Edited Instruction' : 'AI Edit Agent Instruction'}
                             </span>
                             <button className={btn} onClick={() => setShowAiEdit(false)}><i className="fa-solid fa-xmark" /></button>
                         </div>
@@ -1484,7 +1484,7 @@ const handleSave = async () => {
                         ) : (
                             <>
                                 <div className="px-4 py-3 flex flex-col gap-2 overflow-y-auto" style={{ maxHeight: '70vh' }}>
-                                    <div className={`text-xs font-semibold ${theme.title}`}>Edited System Prompt:</div>
+                                    <div className={`text-xs font-semibold ${theme.title}`}>Edited Agent Instruction:</div>
                                     <textarea
                                         className={`w-full px-2 py-1.5 text-xs border ${theme.inputBox} font-mono resize-none`}
                                         rows={16}
