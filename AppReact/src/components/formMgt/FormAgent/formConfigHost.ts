@@ -56,6 +56,7 @@ export function buildFormConfigMultiContext(
     transactionId: number | string;
     transactionName?: string;
   }>,
+  opts?: { saasApplicationId?: number | string | null },
 ): unknown {
   const list = (forms || [])
     .map((f) => {
@@ -75,11 +76,18 @@ export function buildFormConfigMultiContext(
       transactionName?: string;
     }>;
 
+  const saasRaw = opts?.saasApplicationId;
+  const saasApplicationId =
+    saasRaw != null && String(saasRaw).trim() !== '' && Number(saasRaw) > 0
+      ? Number(saasRaw)
+      : undefined;
+
   return {
     surface: 'form',
     mode: 'configurator',
     multiTransaction: list.length > 1,
     forms: list,
     transactionId: list.length === 1 ? list[0].transactionId : undefined,
+    saasApplicationId,
   };
 }

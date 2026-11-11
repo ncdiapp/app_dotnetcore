@@ -278,8 +278,13 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
         {
             var type = FindType(typeName);
             if (type == null) return null;
-            var method = type.GetMethod(methodName,
-                BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.IgnoreCase);
+            // Prefer FirstOrDefault over GetMethod(..., Instance|Static) — the latter can throw
+            // AmbiguousMatchException or miss optional-parameter methods depending on runtime.
+            var flags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.IgnoreCase;
+            var method = type.GetMethods(flags)
+                .FirstOrDefault(m =>
+                    !m.IsSpecialName
+                    && string.Equals(m.Name, methodName, StringComparison.OrdinalIgnoreCase));
             return method != null ? (type, method) : null;
         }
 

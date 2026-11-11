@@ -309,7 +309,12 @@ const FormSidePanel: React.FC<Props> = ({
                     };
                   }).filter((f) => f.transactionId != null && String(f.transactionId).trim() !== '');
                   if (forms.length > 1) {
-                    return JSON.stringify(buildFormConfigMultiContext(forms));
+                    return JSON.stringify(buildFormConfigMultiContext(forms, {
+                      saasApplicationId:
+                        configTransaction?.SaasApplicationId
+                        ?? configTransaction?.saasApplicationId
+                        ?? null,
+                    }));
                   }
                 }
                 const ctx = buildFormConfigContext({

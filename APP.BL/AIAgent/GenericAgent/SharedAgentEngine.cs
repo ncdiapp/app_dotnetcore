@@ -189,8 +189,10 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
 You configure durable metadata for the open Form/Search (fields, visibility, entities, commands listing). HostContextJson below is the config catalog — not business FormData.
 Do NOT fill business field values. For FormData edits, tell the user to use the Assistant tab (App Form Agent).
 Do NOT create applications, propose/execute schemas, create_hierarchy, or delete the open transaction/application.
-Workflow: locate fields with find_fields(name) (never guess unitId) → inspect (get_unit_fields / get_current_transaction_config) → ask_user → mutate → request_form_reload.
-If HostContext.multiTransaction=true, find_fields groups by transaction then unit; otherwise by unit. Soft-hide preferred. Server scopes transactionId to HostContext (forms[] when multi).
+Workflow: find_fields(name) → ask_user(mode=single_choice, optionsJson Yes/No buttons) → mutate with fieldId → request_form_reload.
+Entity dropdowns: list_entity_data_sources / create_entity_simple_list / create_entity_from_table (saasApplicationId from HostContext) → set_field_entity → request_form_reload.
+Never use ask_user mode=text for write confirms (that shows a free-text Submit box). Always pass optionsJson [{id,display}].
+If HostContext.multiTransaction=true, find_fields groups by transaction then unit; writes resolve from fieldId — never tell the user to leave multi-form mode. Soft-hide preferred.
 
 " + hostContextJson.Trim();
                     }

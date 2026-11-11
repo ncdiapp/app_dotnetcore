@@ -212,11 +212,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             AgentToolContext context,
             [AgentParam("Field id (preferred).", isRequired: true)] int? fieldId = null,
             [AgentParam("JSON of properties to change.", isRequired: true)] string changesJson = null,
-            [AgentParam("Required when HostContext lists multiple transactions.")] int? transactionId = null,
+            [AgentParam("Optional when fieldId uniquely identifies the field; required only if ambiguous across open forms.")] int? transactionId = null,
             [AgentParam("Fallback when fieldId unknown.")] string fieldName = null,
             [AgentParam("Unit scope for fieldName.")] string unitName = null)
         {
-            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err, fieldId))
                 return Fail(err);
             if (string.IsNullOrWhiteSpace(changesJson))
                 return Fail("changesJson is required.");
@@ -265,11 +265,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             AgentToolContext context,
             [AgentParam("Field id (preferred).", isRequired: true)] int? fieldId = null,
             [AgentParam("Entity id; null removes the link.")] int? entityId = null,
-            [AgentParam("Required when HostContext lists multiple transactions.")] int? transactionId = null,
+            [AgentParam("Optional when fieldId uniquely identifies the field; required only if ambiguous across open forms.")] int? transactionId = null,
             [AgentParam("Fallback field name.")] string fieldName = null,
             [AgentParam("Unit scope for fieldName.")] string unitName = null)
         {
-            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err, fieldId))
                 return Fail(err);
             return _modifier.SetFieldEntity(txnId, fieldId, fieldName, unitName, entityId);
         }
@@ -280,11 +280,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             AgentToolContext context,
             [AgentParam("Field id (preferred).", isRequired: true)] int? fieldId = null,
             [AgentParam("true = show, false = hide.", isRequired: true)] bool? isVisible = null,
-            [AgentParam("Required when HostContext lists multiple transactions.")] int? transactionId = null,
+            [AgentParam("Optional when fieldId uniquely identifies the field; required only if ambiguous across open forms.")] int? transactionId = null,
             [AgentParam("Fallback field name.")] string fieldName = null,
             [AgentParam("Unit scope for fieldName.")] string unitName = null)
         {
-            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err, fieldId))
                 return Fail(err);
             if (!isVisible.HasValue) return Fail("isVisible is required.");
             var changes = new JObject { ["isVisible"] = isVisible.Value };
@@ -356,6 +356,62 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             "does not block on the user dialog.")]
         public Task<string> RequestFormReload(AgentToolContext context) =>
             AskHost(context, "request_form_reload", new { });
+
+        static EntityDataSourcePlugin EntitiesFor(AgentToolContext context) =>
+            new EntityDataSourcePlugin(context?.DataSourceId > 0 ? context.DataSourceId : (int?)null);
+
+        [AgentTool("list_entity_data_sources",
+            "List Entity Data Sources (SimpleList and DatabaseTable dropdowns). " +
+            "Call before create_entity_* to avoid duplicates, or to find an entityId for set_field_entity.")]
+        public string ListEntityDataSources(AgentToolContext context) =>
+            EntitiesFor(context).ListEntityDataSources();
+
+        [AgentTool("create_entity_simple_list",
+            "Create a SimpleList Entity Data Source (fixed dropdown items, e.g. UD Country: USA,Canada). " +
+            "saasApplicationId defaults from HostContext. After create, ask_user then set_field_entity(fieldId, entityId) " +
+            "and request_form_reload.")]
+        public string CreateEntitySimpleList(
+            AgentToolContext context,
+            [AgentParam("Entity name/code, e.g. UD Country.", isRequired: true)] string entityCode = null,
+            [AgentParam("Comma-separated item labels in order, e.g. USA,Canada.", isRequired: true)] string items = null,
+            [AgentParam("Optional; defaults to HostContext.saasApplicationId.")] int? saasApplicationId = null,
+            [AgentParam("Optional description.")] string description = null)
+        {
+            if (string.IsNullOrWhiteSpace(entityCode)) return Fail("entityCode is required.");
+            if (string.IsNullOrWhiteSpace(items)) return Fail("items is required.");
+            if (!TryResolveSaasApplicationId(context, saasApplicationId, out var appId, out var err))
+                return Fail(err);
+            return EntitiesFor(context).CreateEntitySimpleList(entityCode.Trim(), items, appId, description);
+        }
+
+        [AgentTool("create_entity_from_table",
+            "Create a DatabaseTable Entity Data Source (dropdown from an existing DB table). " +
+            "Table must already exist. saasApplicationId defaults from HostContext. " +
+            "Then ask_user → set_field_entity(fieldId, entityId) → request_form_reload.")]
+        public string CreateEntityFromTable(
+            AgentToolContext context,
+            [AgentParam("Entity name/code.", isRequired: true)] string entityCode = null,
+            [AgentParam("Database table name without schema.", isRequired: true)] string tableName = null,
+            [AgentParam("Schema owner, e.g. dbo.", isRequired: true)] string schemaOwner = null,
+            [AgentParam("PK / value column name.", isRequired: true)] string identityField = null,
+            [AgentParam("Primary display column.", isRequired: true)] string displayField1 = null,
+            [AgentParam("Optional; defaults to HostContext.saasApplicationId.")] int? saasApplicationId = null,
+            [AgentParam("Optional secondary display column.")] string displayField2 = null,
+            [AgentParam("Optional tertiary display column.")] string displayField3 = null,
+            [AgentParam("Optional description.")] string description = null)
+        {
+            if (string.IsNullOrWhiteSpace(entityCode)) return Fail("entityCode is required.");
+            if (string.IsNullOrWhiteSpace(tableName)) return Fail("tableName is required.");
+            if (string.IsNullOrWhiteSpace(schemaOwner)) return Fail("schemaOwner is required.");
+            if (string.IsNullOrWhiteSpace(identityField)) return Fail("identityField is required.");
+            if (string.IsNullOrWhiteSpace(displayField1)) return Fail("displayField1 is required.");
+            if (!TryResolveSaasApplicationId(context, saasApplicationId, out var appId, out var err))
+                return Fail(err);
+            return EntitiesFor(context).CreateEntityFromTable(
+                entityCode.Trim(), tableName.Trim(), schemaOwner.Trim(),
+                identityField.Trim(), displayField1.Trim(), appId,
+                displayField2, displayField3, description);
+        }
 
         static string ApplyVisibilityAndFlags(
             int txnId, int? fieldId, string fieldName, string unitName, JObject changes)
@@ -486,6 +542,55 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             return false;
         }
 
+        static bool TryResolveSaasApplicationId(
+            AgentToolContext context, int? clientAppId, out int saasApplicationId, out string error)
+        {
+            saasApplicationId = 0;
+            error = null;
+            if (clientAppId.HasValue && clientAppId.Value > 0)
+            {
+                saasApplicationId = clientAppId.Value;
+                return true;
+            }
+
+            var hostJson = FormHostContextStore.Get(context?.ChatSessionKey);
+            if (!string.IsNullOrWhiteSpace(hostJson))
+            {
+                try
+                {
+                    var root = JToken.Parse(hostJson);
+                    var fromHost = (root["saasApplicationId"] ?? root["SaasApplicationId"])?.Value<int?>();
+                    if (fromHost.HasValue && fromHost.Value > 0)
+                    {
+                        saasApplicationId = fromHost.Value;
+                        return true;
+                    }
+                }
+                catch { /* fall through to transaction lookup */ }
+            }
+
+            if (TryResolveHostTransactions(context, out var hosts, out _) && hosts.Count > 0)
+            {
+                foreach (var host in hosts)
+                {
+                    try
+                    {
+                        var tx = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(host.TransactionId)
+                            ?? AppTransactionBL.GetHierarchyTranscationFromDatabase(host.TransactionId);
+                        if (tx?.SaasApplicationId != null && tx.SaasApplicationId.Value > 0)
+                        {
+                            saasApplicationId = tx.SaasApplicationId.Value;
+                            return true;
+                        }
+                    }
+                    catch { /* try next */ }
+                }
+            }
+
+            error = "saasApplicationId missing. Pass it or ensure HostContext.saasApplicationId / open transaction has SaasApplicationId.";
+            return false;
+        }
+
         static bool TryResolveHostTransactions(
             AgentToolContext context, out List<HostTxnInfo> hosts, out string error)
         {
@@ -552,11 +657,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
         /// <summary>
         /// Resolves one transaction for read/write tools.
-        /// Multi-transaction HostContext: client must pass a transactionId that appears in forms[].
+        /// Multi-transaction HostContext: prefer client transactionId; else locate fieldId on open forms.
         /// Single: HostContext transactionId wins; client id must match if provided.
         /// </summary>
         static bool TryResolveTransactionId(
-            AgentToolContext context, int? clientTxnId, out int txnId, out string error)
+            AgentToolContext context, int? clientTxnId, out int txnId, out string error,
+            int? fieldId = null)
         {
             txnId = 0;
             error = null;
@@ -565,18 +671,43 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
             if (hosts.Count > 1)
             {
-                if (!clientTxnId.HasValue || clientTxnId.Value <= 0)
+                if (clientTxnId.HasValue && clientTxnId.Value > 0)
                 {
-                    error = "HostContext has multiple transactions. Pass transactionId from HostContext.forms / find_fields.";
+                    if (!hosts.Any(h => h.TransactionId == clientTxnId.Value))
+                    {
+                        error = $"transactionId {clientTxnId.Value} is not in the open form group. Use HostContext.forms / find_fields.";
+                        return false;
+                    }
+                    txnId = clientTxnId.Value;
+                    return true;
+                }
+
+                if (fieldId.HasValue && fieldId.Value > 0)
+                {
+                    var owners = new List<HostTxnInfo>();
+                    foreach (var host in hosts)
+                    {
+                        if (HostOwnsField(host.TransactionId, fieldId.Value))
+                            owners.Add(host);
+                    }
+                    if (owners.Count == 1)
+                    {
+                        txnId = owners[0].TransactionId;
+                        return true;
+                    }
+                    if (owners.Count > 1)
+                    {
+                        error = $"fieldId {fieldId.Value} exists on multiple open transactions (" +
+                                string.Join(", ", owners.Select(o => $"{o.TransactionName ?? "?"}={o.TransactionId}")) +
+                                "). Pass transactionId from find_fields.";
+                        return false;
+                    }
+                    error = $"fieldId {fieldId.Value} was not found on any open HostContext transaction. Call find_fields first.";
                     return false;
                 }
-                if (!hosts.Any(h => h.TransactionId == clientTxnId.Value))
-                {
-                    error = $"transactionId {clientTxnId.Value} is not in the open form group. Use HostContext.forms.";
-                    return false;
-                }
-                txnId = clientTxnId.Value;
-                return true;
+
+                error = "HostContext has multiple transactions. Pass fieldId (preferred) or transactionId from find_fields — do not ask the user to leave multi-form mode.";
+                return false;
             }
 
             var hostId = hosts[0].TransactionId;
@@ -587,6 +718,25 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
             txnId = hostId;
             return true;
+        }
+
+        static bool HostOwnsField(int transactionId, int fieldId)
+        {
+            try
+            {
+                var tx = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionId)
+                    ?? AppTransactionBL.GetHierarchyTranscationFromDatabase(transactionId);
+                if (tx == null) return false;
+                var units = EntityMapWiring.FlattenUnits(
+                    tx.AppTransactionUnitList ?? Enumerable.Empty<AppTransactionUnitExDto>());
+                return units
+                    .SelectMany(u => u.AppTransactionFieldList ?? Enumerable.Empty<AppTransactionFieldExDto>())
+                    .Any(f => Convert.ToInt32(f.Id) == fieldId);
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         static async Task<string> AskHost(AgentToolContext context, string toolName, object args)
