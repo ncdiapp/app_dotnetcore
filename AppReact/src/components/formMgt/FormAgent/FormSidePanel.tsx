@@ -1,10 +1,11 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
+import { useAlertConfirm } from '../../common/AlertConfirmProvider';
 import ConversationEditorEmbedded from '../../message/ConversationEditorEmbedded';
 import AgentUiChatHost from '../../aiskill/AgentUiChatHost';
 import { genericAgentSvc } from '../../../webapi/genericAgentSvc';
 import { FORM_AGENT_SKILL_KEY, FormAgentHostContext, type FormAgentHostSlots } from './formAgentHost';
-import { FORM_CONFIG_SKILL_KEY, buildFormConfigContext } from './formConfigHost';
+import { FORM_CONFIG_SKILL_KEY, buildFormConfigContext, buildFormConfigMultiContext } from './formConfigHost';
 import { FormGroupAgentHostsContext, FormGroupDockSlotContext, formGroupDockShowsNav } from './formGroupDock';
 
 type TabId = 'messages' | 'ai' | 'configurator';
@@ -41,6 +42,10 @@ const FormSidePanel: React.FC<Props> = ({
   dockPlacement = 'right',
 }) => {
   const { theme, t } = useTheme();
+  const { showConfirm } = useAlertConfirm();
+  const pendingReloadPromptRef = useRef(false);
+  const onConfigReloadRef = useRef(onConfigReload);
+  onConfigReloadRef.current = onConfigReload;
   const hostRef = useContext(FormAgentHostContext);
   const formGroupAgentHostsRef = useContext(FormGroupAgentHostsContext);
   const formGroupDockEl = useContext(FormGroupDockSlotContext);
@@ -186,16 +191,36 @@ const FormSidePanel: React.FC<Props> = ({
 
   const handleConfigHostTool = async (toolName: string, _args: any) => {
     if (toolName === 'request_form_reload') {
-      const reload = onConfigReload;
-      if (!reload) {
+      if (!onConfigReloadRef.current) {
         return { ok: false, error: 'Reload is not wired on this form host.' };
       }
-      const ok = window.confirm('Configuration has been changed. Do you want to reload current form?');
-      if (ok) reload();
-      return { ok: true, reloaded: ok };
+      // Do not block the agent turn on the dialog. Cache was already refreshed on save.
+      // After the run completes (onRunComplete), show confirm → handleReloadCurrentForm.
+      pendingReloadPromptRef.current = true;
+      return { ok: true, deferredPrompt: true };
     }
     return { ok: false, error: `${toolName} is not a configurator host tool.` };
   };
+
+  const handleConfigRunComplete = useCallback(() => {
+    if (!pendingReloadPromptRef.current) return;
+    pendingReloadPromptRef.current = false;
+    const reload = onConfigReloadRef.current;
+    if (!reload) return;
+    void (async () => {
+      const ok = await showConfirm(
+        'Configuration has been changed. Reload the current form to apply it?',
+        {
+          title: 'Reload Form',
+          confirmLabel: 'Reload',
+          cancelLabel: 'Later',
+        },
+      );
+      if (ok) {
+        try { reload(); } catch { /* ignore */ }
+      }
+    })();
+  }, [showConfirm]);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
@@ -272,6 +297,21 @@ const FormSidePanel: React.FC<Props> = ({
               squareChrome
               onHidePanel={both || isBottom ? undefined : onHidePanel}
               getHostContext={() => {
+                const hosts = listFormHosts();
+                if (hosts.length > 1) {
+                  const forms = hosts.map((h) => {
+                    const c: any = h.slots.getContext?.() ?? {};
+                    return {
+                      formRole: h.role ?? c.formRole,
+                      formName: h.name ?? c.form,
+                      transactionId: c.transactionId,
+                      transactionName: c.form ?? h.name,
+                    };
+                  }).filter((f) => f.transactionId != null && String(f.transactionId).trim() !== '');
+                  if (forms.length > 1) {
+                    return JSON.stringify(buildFormConfigMultiContext(forms));
+                  }
+                }
                 const ctx = buildFormConfigContext({
                   mode: configFormKind,
                   transaction: configTransaction,
@@ -279,6 +319,7 @@ const FormSidePanel: React.FC<Props> = ({
                 return JSON.stringify(ctx);
               }}
               onHostTool={handleConfigHostTool}
+              onRunComplete={handleConfigRunComplete}
             />
           ) : (
             <div className={`p-3 text-xs ${theme.label}`}>Opening configurator…</div>

@@ -1,0 +1,12 @@
+---
+description: Never dump NuGet packages into the repo without explicit user approval
+alwaysApply: true
+---
+
+# No local NuGet package dumps
+
+- **Never** set `NUGET_PACKAGES`, `RestorePackagesPath`, or `globalPackagesFolder` to any path inside this repository (including `.nuget-packages/`).
+- **Never** create or modify a project `nuget.config` / `NuGet.Config` that redirects the package cache into the repo unless the user explicitly asks and confirms.
+- Use the default user NuGet cache (`%USERPROFILE%\.nuget\packages`) for `dotnet restore` / `dotnet build` / `dotnet test`.
+- If a previous shell still has `NUGET_PACKAGES` pointing into the repo, clear it (`Remove-Item Env:NUGET_PACKAGES`) before any restore/build/test.
+- Do **not** “fix” accidental package dumps by only adding `.gitignore` — remove the env override and delete the generated folder; ask before any cache-path change.

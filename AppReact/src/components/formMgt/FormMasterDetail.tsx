@@ -1022,33 +1022,43 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
                 className={`${isTemplateHeader ? 'w-full h-auto overflow-visible' : 'flex-auto h-full overflow-auto'} ${theme.mainContentSection} ${controllerModel?.isFilePropertyEdit ? 'border-l-0' : ''}`}
                 style={isTemplateHeader ? undefined : { flex: '1 0' }}
             >
-                {/* Show loading state */}
-                {dataModel.isLoading && (
+                {/* Initial load only: keep the form (and Configurator chat) mounted during reload
+                    so host-tool callbacks can finish and labels/metadata can refresh in place. */}
+                {dataModel.isLoading && !hasFormStructure && (
                     <div className="flex items-center justify-center h-full">
                         <div className="text-gray-500">Loading form data...</div>
                     </div>
                 )}
 
-                {/* Show form when data is loaded */}
-                {!dataModel.isLoading && hasFormStructure && (
-                    <MasterDetailEditLayoutForm
-                        controllerModel={controllerModel}
-                        dataModel={dataModel}
-                        formStructureData={formStructureDataRef.current}
-                        transactionExDto={transactionExDtoRef.current}
-                        onDataModelChange={setDataModel}
-                        onRefresh={handleRefresh}
-                        onReloadCurrentForm={handleReloadCurrentForm}
-                        onSave={handleAfterSave}
-                        onApplyWorkflowCommandFormData={applyWorkflowCommandFormData}
-                        onOpenWorkflowExecutionMonitor={openWorkflowExecutionMonitor}
-                        onToggleFormConfigButtons={toggleFormConfigButtons}
-                        onFormActionApiReady={onFormActionApiReady}
-                        additionalFormActionApis={additionalFormActionApis}
-                        additionalFormCanSave={additionalFormCanSave}
-                        additionalFormIsDirty={additionalFormIsDirty}
-                        onTemplateHeaderContainerReady={handleTemplateHeaderContainerReady}
-                    />
+                {hasFormStructure && (
+                    <div className={`relative ${isTemplateHeader ? 'w-full h-auto' : 'h-full w-full'}`}>
+                        {dataModel.isLoading && (
+                            <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/10 pointer-events-none">
+                                <div className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.mainContentSection}`}>
+                                    Reloading form…
+                                </div>
+                            </div>
+                        )}
+                        <MasterDetailEditLayoutForm
+                            controllerModel={controllerModel}
+                            dataModel={dataModel}
+                            formStructureData={formStructureDataRef.current || dataModel.currentFormStructure}
+                            transactionExDto={transactionExDtoRef.current}
+                            onDataModelChange={setDataModel}
+                            onRefresh={handleRefresh}
+                            onReloadCurrentForm={handleReloadCurrentForm}
+                            onConfigReload={handleReloadCurrentForm}
+                            onSave={handleAfterSave}
+                            onApplyWorkflowCommandFormData={applyWorkflowCommandFormData}
+                            onOpenWorkflowExecutionMonitor={openWorkflowExecutionMonitor}
+                            onToggleFormConfigButtons={toggleFormConfigButtons}
+                            onFormActionApiReady={onFormActionApiReady}
+                            additionalFormActionApis={additionalFormActionApis}
+                            additionalFormCanSave={additionalFormCanSave}
+                            additionalFormIsDirty={additionalFormIsDirty}
+                            onTemplateHeaderContainerReady={handleTemplateHeaderContainerReady}
+                        />
+                    </div>
                 )}
 
                 {templateHeaderContainerEl && templateHeaderForms.length > 0 && templateHeaderForms.map((hdr) =>

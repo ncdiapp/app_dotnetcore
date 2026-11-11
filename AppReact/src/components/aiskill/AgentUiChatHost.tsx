@@ -14,6 +14,7 @@ interface Props {
   onAutoRunStarted?: () => void;
   getHostContext?: () => string | undefined;
   onHostTool?: (toolName: string, args: any) => Promise<unknown>;
+  onRunComplete?: () => void;
   squareChrome?: boolean;
   onHidePanel?: () => void;
 }
@@ -31,6 +32,7 @@ const AgentUiChatHost: React.FC<Props> = ({
   onAutoRunStarted,
   getHostContext,
   onHostTool,
+  onRunComplete,
   squareChrome,
   onHidePanel,
 }) => (
@@ -46,6 +48,7 @@ const AgentUiChatHost: React.FC<Props> = ({
     onAutoRunStarted={onAutoRunStarted}
     getHostContext={getHostContext}
     onHostTool={onHostTool}
+    onRunComplete={onRunComplete}
     squareChrome={squareChrome}
     onHidePanel={onHidePanel}
   />

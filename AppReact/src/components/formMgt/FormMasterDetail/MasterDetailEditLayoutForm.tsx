@@ -38,6 +38,8 @@ interface MasterDetailEditLayoutFormProps {
   onApplyWorkflowCommandFormData?: (serverFormData: any) => void;
   onOpenWorkflowExecutionMonitor?: () => void;
   onReloadCurrentForm?: () => void;
+  /** Same as Configuration → Reload Current Form. */
+  onConfigReload?: () => void;
   onToggleFormConfigButtons?: () => void;
   onFormActionApiReady?: (api: { save: () => Promise<void>; refresh: () => void; reload: () => void }) => void;
   additionalFormActionApis?: Array<{ save: () => Promise<void>; refresh: () => void; reload: () => void }>;
@@ -57,6 +59,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
   onApplyWorkflowCommandFormData,
   onOpenWorkflowExecutionMonitor,
   onReloadCurrentForm,
+  onConfigReload,
   onToggleFormConfigButtons,
   onFormActionApiReady,
   additionalFormActionApis,
@@ -235,7 +238,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
       showConfigurator={showConfigurator}
       configTransaction={hostTransaction}
       configFormKind="master"
-      onConfigReload={onReloadCurrentForm}
+      onConfigReload={onConfigReload ?? onReloadCurrentForm}
       transactionId={runtimeTransactionId}
       messageRootId={runtimeTransactionRootValueId}
       messageScopeType={emMessageScopeTypeTransaction}

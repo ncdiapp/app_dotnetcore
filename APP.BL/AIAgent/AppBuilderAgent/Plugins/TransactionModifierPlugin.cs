@@ -192,6 +192,9 @@ namespace App.BL.AppBuilderAgent.Plugins
                 }
 
                 field.IsModified = true;
+                // SaveAppTransactionFieldExDto refreshes cache via field.TransactionId — ensure it is set.
+                if (!field.TransactionId.HasValue || field.TransactionId.Value <= 0)
+                    field.TransactionId = transactionId;
 
                 if (changes["displayName"] != null)
                     field.DisplayName = changes["displayName"].Value<string>();
@@ -221,6 +224,10 @@ namespace App.BL.AppBuilderAgent.Plugins
                         Error = msgs != null && msgs.Count > 0 ? string.Join("; ", msgs) : "Save failed"
                     });
                 }
+
+                // Same as Form Configuration / Transaction Editor save: refresh hierarchy cache
+                // with the known transactionId so runtime TransactionForm sees new DisplayName etc.
+                AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId);
 
                 return JsonConvert.SerializeObject(new
                 {
@@ -274,6 +281,8 @@ namespace App.BL.AppBuilderAgent.Plugins
                     return JsonConvert.SerializeObject(new { IsSuccess = false, Error = $"Could not load field Id={fieldSummary.Id}" });
 
                 field.IsModified  = true;
+                if (!field.TransactionId.HasValue || field.TransactionId.Value <= 0)
+                    field.TransactionId = transactionId;
                 field.EntityId    = entityId;
                 // When linking → DDL control; when removing → revert to TextBox (2)
                 field.ControlType = entityId.HasValue ? 1 : 2;
@@ -290,6 +299,8 @@ namespace App.BL.AppBuilderAgent.Plugins
                         Error = msgs != null && msgs.Count > 0 ? string.Join("; ", msgs) : "Save failed"
                     });
                 }
+
+                AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId);
 
                 return JsonConvert.SerializeObject(new
                 {

@@ -325,6 +325,8 @@ interface Props {
     onAutoRunStarted?: () => void;
     getHostContext?: () => string | undefined;
     onHostTool?: (toolName: string, args: any) => Promise<unknown>;
+    /** Fired when a run ends (Done / Error) — polling already stopped. */
+    onRunComplete?: () => void;
     /** Form dock: square panel chrome. Full Agent Chat page stays rounded. */
     squareChrome?: boolean;
     onHidePanel?: () => void;
@@ -655,6 +657,7 @@ const SharedAgentChat: React.FC<Props> = ({
     onAutoRunStarted,
     getHostContext,
     onHostTool,
+    onRunComplete,
     squareChrome,
     onHidePanel,
 }) => {
@@ -834,6 +837,8 @@ const SharedAgentChat: React.FC<Props> = ({
     getHostContextRef.current = getHostContext;
     const onHostToolRef = useRef(onHostTool);
     onHostToolRef.current = onHostTool;
+    const onRunCompleteRef = useRef(onRunComplete);
+    onRunCompleteRef.current = onRunComplete;
 
     useEffect(() => {
         const el = scrollRef.current;
@@ -1193,6 +1198,7 @@ const SharedAgentChat: React.FC<Props> = ({
             setIsRunning(false);
             isRunningRef.current = false;
             onConversationChangedRef.current?.();
+            try { onRunCompleteRef.current?.(); } catch { /* ignore */ }
         },
         onError: (m: string) => {
             if (!mountedRef.current) return;
@@ -1200,6 +1206,7 @@ const SharedAgentChat: React.FC<Props> = ({
             setPendingAskUser(null);
             setIsRunning(false);
             isRunningRef.current = false;
+            try { onRunCompleteRef.current?.(); } catch { /* ignore */ }
         },
         onSessionGone: () => {
             if (!mountedRef.current) return;

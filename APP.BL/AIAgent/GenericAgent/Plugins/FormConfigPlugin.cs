@@ -21,10 +21,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         readonly TransactionModifierPlugin _modifier = new TransactionModifierPlugin();
 
         [AgentTool("get_current_transaction_config",
-            "Inspect the open form's transaction configuration (units, fields, commands, linked searches). Uses HostContext transactionId.")]
-        public string GetCurrentTransactionConfig(AgentToolContext context)
+            "Inspect one open form's transaction configuration (units, fields, commands, linked searches). " +
+            "When HostContext.multiTransaction=true, pass transactionId from HostContext.forms / find_fields.")]
+        public string GetCurrentTransactionConfig(
+            AgentToolContext context,
+            [AgentParam("Required when HostContext lists multiple transactions.")] int? transactionId = null)
         {
-            if (!TryResolveTransactionId(context, null, out var txnId, out var err))
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
                 return Fail(err);
             try
             {
@@ -37,13 +40,15 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         [AgentTool("get_unit_fields",
-            "List fields for one unit of the open transaction. Prefer unitId; unitName is a fallback.")]
+            "List fields for one unit of the open transaction. Prefer unitId; unitName is a fallback. " +
+            "Do NOT guess unitId when looking up a field by name — use find_fields instead.")]
         public string GetUnitFields(
             AgentToolContext context,
-            [AgentParam("Unit id from HostContext / get_current_transaction_config.")] int? unitId = null,
-            [AgentParam("Unit display or table name when unitId is unknown.")] string unitName = null)
+            [AgentParam("Unit id from HostContext / get_current_transaction_config / find_fields.")] int? unitId = null,
+            [AgentParam("Unit display or table name when unitId is unknown.")] string unitName = null,
+            [AgentParam("Required when HostContext is multi-transaction and unitId alone is ambiguous.")] int? transactionId = null)
         {
-            if (!TryResolveTransactionId(context, null, out var txnId, out var err))
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
                 return Fail(err);
             try
             {
@@ -60,7 +65,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         EntityMapWiring.UnitOrTableMatches(u.UnitDisplayName, unitName) ||
                         EntityMapWiring.UnitOrTableMatches(u.DataBaseTableName, unitName));
                 if (unit == null)
-                    return Fail("Unit not found. Pass unitId from get_current_transaction_config.");
+                    return Fail("Unit not found. Pass unitId from find_fields or get_current_transaction_config.");
 
                 var fields = (unit.AppTransactionFieldList ?? Enumerable.Empty<AppTransactionFieldExDto>())
                     .Select(SummarizeField)
@@ -78,6 +83,127 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             catch (Exception ex) { return Fail(ex.Message); }
         }
 
+        [AgentTool("find_fields",
+            "Search the open form(s) for fields by display name or DB column name across ALL units. " +
+            "Use this when the user asks which table/column a field is on — do NOT guess unitId. " +
+            "Template multi-transaction hosts: results grouped by transaction then unit. " +
+            "Single transaction: grouped by unit only. If multiple matches, list them all or ask_user.")]
+        public string FindFields(
+            AgentToolContext context,
+            [AgentParam("Display name or DB column name to search (e.g. Country Of Origin, Country_Of_Origin).", isRequired: true)]
+            string name = null)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return Fail("name is required.");
+            if (!TryResolveHostTransactions(context, out var hosts, out var err))
+                return Fail(err);
+
+            try
+            {
+                var needle = name.Trim();
+                var multi = hosts.Count > 1;
+                var matchCount = 0;
+                var txnGroups = new List<object>();
+
+                foreach (var host in hosts)
+                {
+                    AppCacheManagerBL.RefreshOnetHierarchyTranscation(host.TransactionId);
+                    var tx = AppTransactionBL.GetHierarchyTranscationFromDatabase(host.TransactionId);
+                    if (tx == null) continue;
+
+                    var units = EntityMapWiring.FlattenUnits(
+                        tx.AppTransactionUnitList ?? Enumerable.Empty<AppTransactionUnitExDto>());
+                    var unitGroups = new List<object>();
+
+                    foreach (var u in units)
+                    {
+                        var hits = (u.AppTransactionFieldList ?? Enumerable.Empty<AppTransactionFieldExDto>())
+                            .Where(f => FieldNameMatches(f, needle))
+                            .Select(f => new
+                            {
+                                fieldId = f.Id,
+                                name = f.DisplayName,
+                                dbName = f.DataBaseFieldName,
+                                controlType = f.ControlType,
+                                entityId = f.EntityId,
+                                isVisible = f.IsVisible
+                            })
+                            .ToList();
+                        if (hits.Count == 0) continue;
+                        matchCount += hits.Count;
+                        unitGroups.Add(new
+                        {
+                            unitId = u.Id,
+                            unitName = u.UnitDisplayName,
+                            table = u.DataBaseTableName,
+                            fields = hits
+                        });
+                    }
+
+                    if (unitGroups.Count == 0) continue;
+
+                    if (multi)
+                    {
+                        txnGroups.Add(new
+                        {
+                            transactionId = host.TransactionId,
+                            transactionName = host.TransactionName
+                                ?? tx.TransactionName
+                                ?? host.TransactionId.ToString(),
+                            formRole = host.FormRole,
+                            units = unitGroups
+                        });
+                    }
+                    else
+                    {
+                        // Single transaction: group by unit only
+                        return JsonConvert.SerializeObject(new
+                        {
+                            ok = true,
+                            multiTransaction = false,
+                            transactionId = host.TransactionId,
+                            transactionName = host.TransactionName ?? tx.TransactionName,
+                            matchCount,
+                            query = needle,
+                            units = unitGroups,
+                            note = matchCount > 1
+                                ? "Multiple matches — use fieldId + table/unit from the list; ask_user if ambiguous."
+                                : null
+                        }, Formatting.Indented);
+                    }
+                }
+
+                if (multi)
+                {
+                    string multiNote = null;
+                    if (matchCount == 0)
+                        multiNote = "No fields matched across open transactions. Try another name.";
+                    else if (matchCount > 1)
+                        multiNote = "Multiple matches across transactions/units — pick fieldId (and transactionId for writes); ask_user if ambiguous.";
+                    return JsonConvert.SerializeObject(new
+                    {
+                        ok = true,
+                        multiTransaction = true,
+                        matchCount,
+                        query = needle,
+                        transactions = txnGroups,
+                        note = multiNote
+                    }, Formatting.Indented);
+                }
+
+                return JsonConvert.SerializeObject(new
+                {
+                    ok = true,
+                    multiTransaction = false,
+                    matchCount = 0,
+                    query = needle,
+                    units = Array.Empty<object>(),
+                    note = "No fields matched. Try another name or get_current_transaction_config."
+                }, Formatting.Indented);
+            }
+            catch (Exception ex) { return Fail(ex.Message); }
+        }
+
         [AgentTool("update_field_setting",
             "Update durable field settings on the open transaction. Pass only changed keys in changesJson: " +
             "displayName, controlType, entityId, defaultValue, isVisible, isReadonly, isAllowEmpty. " +
@@ -86,7 +212,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             AgentToolContext context,
             [AgentParam("Field id (preferred).", isRequired: true)] int? fieldId = null,
             [AgentParam("JSON of properties to change.", isRequired: true)] string changesJson = null,
-            [AgentParam("Optional; ignored when HostContext has transactionId.")] int? transactionId = null,
+            [AgentParam("Required when HostContext lists multiple transactions.")] int? transactionId = null,
             [AgentParam("Fallback when fieldId unknown.")] string fieldName = null,
             [AgentParam("Unit scope for fieldName.")] string unitName = null)
         {
@@ -120,8 +246,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             {
                 var vis = ApplyVisibilityAndFlags(txnId, fieldId, fieldName, unitName, changes);
                 if (IsFail(vis)) return vis;
+                // ApplyVisibilityAndFlags already refreshes; keep MergeOk for combined payload.
                 return MergeOk(coreResult, vis, txnId);
             }
+
+            // UpdateTransactionField refreshes; belt-and-suspenders with known host txnId.
+            if (!IsFail(coreResult))
+                AppCacheManagerBL.RefreshOneHierarchyTransaction(txnId);
 
             return string.IsNullOrWhiteSpace(coreResult)
                 ? Fail("No supported keys in changesJson.")
@@ -134,7 +265,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             AgentToolContext context,
             [AgentParam("Field id (preferred).", isRequired: true)] int? fieldId = null,
             [AgentParam("Entity id; null removes the link.")] int? entityId = null,
-            [AgentParam("Optional; ignored when HostContext has transactionId.")] int? transactionId = null,
+            [AgentParam("Required when HostContext lists multiple transactions.")] int? transactionId = null,
             [AgentParam("Fallback field name.")] string fieldName = null,
             [AgentParam("Unit scope for fieldName.")] string unitName = null)
         {
@@ -149,7 +280,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             AgentToolContext context,
             [AgentParam("Field id (preferred).", isRequired: true)] int? fieldId = null,
             [AgentParam("true = show, false = hide.", isRequired: true)] bool? isVisible = null,
-            [AgentParam("Optional; ignored when HostContext has transactionId.")] int? transactionId = null,
+            [AgentParam("Required when HostContext lists multiple transactions.")] int? transactionId = null,
             [AgentParam("Fallback field name.")] string fieldName = null,
             [AgentParam("Unit scope for fieldName.")] string unitName = null)
         {
@@ -162,9 +293,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
         [AgentTool("get_commands",
             "List commands configured on the open transaction.")]
-        public string GetCommands(AgentToolContext context)
+        public string GetCommands(
+            AgentToolContext context,
+            [AgentParam("Required when HostContext lists multiple transactions.")] int? transactionId = null)
         {
-            if (!TryResolveTransactionId(context, null, out var txnId, out var err))
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
                 return Fail(err);
             try
             {
@@ -183,9 +316,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
         [AgentTool("get_linked_searches",
             "List Linked Search configurations on units of the open transaction.")]
-        public string GetLinkedSearches(AgentToolContext context)
+        public string GetLinkedSearches(
+            AgentToolContext context,
+            [AgentParam("Required when HostContext lists multiple transactions.")] int? transactionId = null)
         {
-            if (!TryResolveTransactionId(context, null, out var txnId, out var err))
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
                 return Fail(err);
             try
             {
@@ -216,7 +351,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         [AgentTool("request_form_reload",
-            "Ask the form host to prompt the user to reload metadata after configuration changes. Call after successful writes.")]
+            "Call after successful configuration writes (cache is already refreshed by the save path). " +
+            "Signals the form host to prompt Reload Current Form after this agent turn finishes — " +
+            "does not block on the user dialog.")]
         public Task<string> RequestFormReload(AgentToolContext context) =>
             AskHost(context, "request_form_reload", new { });
 
@@ -261,6 +398,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 var field = AppTransactionBL.RetrieveOneAppTransactionFieldExDto(Convert.ToInt32(summary.Id));
                 if (field == null) return Fail($"Could not load field Id={summary.Id}");
                 field.IsModified = true;
+                // Parity with Form Configuration / Transaction Editor save: cache refresh keys off TransactionId.
+                if (!field.TransactionId.HasValue || field.TransactionId.Value <= 0)
+                    field.TransactionId = txnId;
                 if (changes["isVisible"] != null)
                     field.IsVisible = changes["isVisible"].Value<bool>();
                 if (changes["isReadonly"] != null)
@@ -275,6 +415,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     var msgs = result?.ValidationResult?.Items?.Select(i => i.Message).ToList();
                     return Fail(msgs != null && msgs.Count > 0 ? string.Join("; ", msgs) : "Save failed");
                 }
+                // Explicit refresh with known txnId (same as editor save path).
+                AppCacheManagerBL.RefreshOneHierarchyTransaction(txnId);
                 return JsonConvert.SerializeObject(new
                 {
                     IsSuccess = true,
@@ -329,10 +471,25 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             defaultValue = f.DefaultValue
         };
 
-        static bool TryResolveTransactionId(
-            AgentToolContext context, int? clientTxnId, out int txnId, out string error)
+        sealed class HostTxnInfo
         {
-            txnId = 0;
+            public int TransactionId;
+            public string TransactionName;
+            public string FormRole;
+        }
+
+        static bool FieldNameMatches(AppTransactionFieldExDto f, string needle)
+        {
+            if (f == null || string.IsNullOrWhiteSpace(needle)) return false;
+            if (EntityMapWiring.UnitOrTableMatches(f.DisplayName, needle)) return true;
+            if (EntityMapWiring.UnitOrTableMatches(f.DataBaseFieldName, needle)) return true;
+            return false;
+        }
+
+        static bool TryResolveHostTransactions(
+            AgentToolContext context, out List<HostTxnInfo> hosts, out string error)
+        {
+            hosts = new List<HostTxnInfo>();
             error = null;
             var hostJson = FormHostContextStore.Get(context?.ChatSessionKey);
             if (string.IsNullOrWhiteSpace(hostJson))
@@ -343,24 +500,47 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             try
             {
                 var root = JToken.Parse(hostJson);
-                var hostId = root.Type == JTokenType.Object
-                    ? (root["transactionId"] ?? root["TransactionId"])?.Value<int?>()
-                    : null;
-                if (root.Type == JTokenType.Object && root["forms"] is JArray forms && forms.Count > 0)
+                if (root.Type != JTokenType.Object)
                 {
-                    hostId ??= (forms[0]["transactionId"] ?? forms[0]["TransactionId"])?.Value<int?>();
-                }
-                if (!hostId.HasValue || hostId.Value <= 0)
-                {
-                    error = "HostContext is missing transactionId.";
+                    error = "Invalid HostContextJson.";
                     return false;
                 }
-                if (clientTxnId.HasValue && clientTxnId.Value > 0 && clientTxnId.Value != hostId.Value)
+
+                if (root["forms"] is JArray forms && forms.Count > 0)
                 {
-                    error = $"transactionId mismatch: host={hostId.Value}, args={clientTxnId.Value}. Use the open form only.";
+                    foreach (var f in forms)
+                    {
+                        var id = (f["transactionId"] ?? f["TransactionId"])?.Value<int?>();
+                        if (!id.HasValue || id.Value <= 0) continue;
+                        if (hosts.Any(h => h.TransactionId == id.Value)) continue;
+                        hosts.Add(new HostTxnInfo
+                        {
+                            TransactionId = id.Value,
+                            TransactionName = (f["transactionName"] ?? f["TransactionName"] ?? f["formName"])?.ToString(),
+                            FormRole = (f["formRole"] ?? f["FormRole"])?.ToString()
+                        });
+                    }
+                }
+
+                if (hosts.Count == 0)
+                {
+                    var hostId = (root["transactionId"] ?? root["TransactionId"])?.Value<int?>();
+                    if (hostId.HasValue && hostId.Value > 0)
+                    {
+                        hosts.Add(new HostTxnInfo
+                        {
+                            TransactionId = hostId.Value,
+                            TransactionName = (root["transactionName"] ?? root["TransactionName"])?.ToString(),
+                            FormRole = (root["formRole"] ?? root["FormRole"])?.ToString()
+                        });
+                    }
+                }
+
+                if (hosts.Count == 0)
+                {
+                    error = "HostContext is missing transactionId / forms[].transactionId.";
                     return false;
                 }
-                txnId = hostId.Value;
                 return true;
             }
             catch (Exception ex)
@@ -368,6 +548,45 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 error = "Invalid HostContextJson: " + ex.Message;
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Resolves one transaction for read/write tools.
+        /// Multi-transaction HostContext: client must pass a transactionId that appears in forms[].
+        /// Single: HostContext transactionId wins; client id must match if provided.
+        /// </summary>
+        static bool TryResolveTransactionId(
+            AgentToolContext context, int? clientTxnId, out int txnId, out string error)
+        {
+            txnId = 0;
+            error = null;
+            if (!TryResolveHostTransactions(context, out var hosts, out error))
+                return false;
+
+            if (hosts.Count > 1)
+            {
+                if (!clientTxnId.HasValue || clientTxnId.Value <= 0)
+                {
+                    error = "HostContext has multiple transactions. Pass transactionId from HostContext.forms / find_fields.";
+                    return false;
+                }
+                if (!hosts.Any(h => h.TransactionId == clientTxnId.Value))
+                {
+                    error = $"transactionId {clientTxnId.Value} is not in the open form group. Use HostContext.forms.";
+                    return false;
+                }
+                txnId = clientTxnId.Value;
+                return true;
+            }
+
+            var hostId = hosts[0].TransactionId;
+            if (clientTxnId.HasValue && clientTxnId.Value > 0 && clientTxnId.Value != hostId)
+            {
+                error = $"transactionId mismatch: host={hostId}, args={clientTxnId.Value}. Use the open form only.";
+                return false;
+            }
+            txnId = hostId;
+            return true;
         }
 
         static async Task<string> AskHost(AgentToolContext context, string toolName, object args)
