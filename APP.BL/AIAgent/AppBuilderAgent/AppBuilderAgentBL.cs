@@ -247,7 +247,9 @@ FIELD IDENTIFICATION RULE — CRITICAL:
 
 update_transaction_field changesJson keys:
   displayName   (string)  — rename the field label shown in the form
-  controlType   (int)     — 2=TextBox, 20=Numeric, 7=Date, 13=CheckBox, 1=DDL(dropdown), 34=Time
+  controlType   (int|name)— EmAppControlType (NO 3): 1=DDL, 2=TextBox, 4=Memo, 5=Image, 7=Date, 9=File,
+                            10=Label, 13=CheckBox, 20=Numeric, 26=RichText, 34=Time, 37=ImageBinary,
+                            38=AutoComplete, 48=SearchAbleDDL, 53=MultiSelectDDL. Memo=4 not 3.
   entityId      (int)     — link to an Entity Data Source for DDL fields
   defaultValue  (string)  — pre-fill value
 

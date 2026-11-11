@@ -207,6 +207,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         [AgentTool("update_field_setting",
             "Update durable field settings on the open transaction. Pass only changed keys in changesJson: " +
             "displayName, controlType, entityId, defaultValue, isVisible, isReadonly, isAllowEmpty. " +
+            "controlType EmAppControlType (no 3): 1=DDL, 2=TextBox, 4=Memo, 5=Image, 7=Date, 9=File, 10=Label, " +
+            "13=CheckBox, 20=Numeric, 26=RichText, 34=Time, 37=ImageBinary, 38=AutoComplete, 48=SearchAbleDDL, " +
+            "50=ExternalImageUrl, 53=MultiSelectDDL. Memo=4 (not 3). Name strings like \"Memo\" also accepted. " +
             "Prefer fieldId. Call ask_user before writing. After success, call request_form_reload.")]
         public string UpdateFieldSetting(
             AgentToolContext context,

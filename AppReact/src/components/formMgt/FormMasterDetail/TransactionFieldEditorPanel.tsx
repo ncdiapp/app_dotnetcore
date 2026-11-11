@@ -699,30 +699,35 @@ const TransactionFieldEditorPanel: React.FC<TransactionFieldEditorPanelProps> = 
       {entityPickerOpen && (
         <div
           data-prevent-field-setting-dismiss
-          className="fixed inset-0 z-[7000] flex items-start justify-center pt-20 px-4 bg-black/40"
+          className="fixed inset-0 z-[7000] flex items-center justify-center px-4 bg-black/40"
           onMouseDown={(e) => e.target === e.currentTarget && setEntityPickerOpen(false)}
         >
+          {/* Explicit height required: max-h alone leaves flex-auto body at ~0 (header-only strip). */}
           <div
-            className={`w-full max-w-sm max-h-[70vh] overflow-hidden flex flex-col rounded border shadow-lg ${theme.mainContentSection}`}
+            className={`w-full max-w-lg h-[min(70vh,420px)] overflow-hidden flex flex-col rounded border shadow-lg ${theme.mainContentSection}`}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className={`px-2 py-1 border-b flex justify-between items-center ${theme.mainContentSection}`}>
+            <div className={`px-3 py-2 border-b flex justify-between items-center shrink-0 ${theme.mainContentSection}`}>
               <span className={`text-sm font-semibold ${theme.title}`}>Datasource Selector</span>
               <button type="button" className={theme.button_default} onClick={() => setEntityPickerOpen(false)}>
                 ×
               </button>
             </div>
-            <div className="h-1 flex-auto overflow-y-auto p-2 space-y-1">
-              {entityRows.map((e: any) => (
-                <button
-                  key={e.Id}
-                  type="button"
-                  className={`w-full text-left px-2 py-1 rounded truncate ${theme.button_default}`}
-                  onClick={() => datasourceSelectedHandler(e.Id)}
-                >
-                  {e.EntityCode ?? e.Display ?? e.Id}
-                </button>
-              ))}
+            <div className="h-1 flex-auto min-h-0 overflow-y-auto p-2 space-y-1">
+              {entityRows.length === 0 ? (
+                <div className={`px-2 py-3 text-xs ${theme.label}`}>No entities available.</div>
+              ) : (
+                entityRows.map((e: any) => (
+                  <button
+                    key={e.Id}
+                    type="button"
+                    className={`w-full text-left px-2 py-1.5 text-sm rounded truncate ${theme.button_default}`}
+                    onClick={() => datasourceSelectedHandler(e.Id)}
+                  >
+                    {e.EntityCode ?? e.Display ?? e.Id}
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </div>

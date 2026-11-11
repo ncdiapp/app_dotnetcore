@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using App.BL;
+using APP.Components.Dto;
 using APP.Components.EntityDto;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -146,8 +148,10 @@ namespace App.BL.AppBuilderAgent.Plugins
             "Use this after create_application or when the user asks to rename a label, " +
             "change a field to a dropdown, set a default value, or link a field to an entity. " +
             "Pass only the properties you want to change in changesJson — omit unchanged ones. " +
-            "Supported keys: displayName (string), controlType (int), entityId (int), defaultValue (string). " +
-            "controlType values: 2=TextBox, 20=Numeric, 7=Date, 13=CheckBox, 1=DDL(dropdown), 34=Time. " +
+            "Supported keys: displayName (string), controlType (int or name), entityId (int), defaultValue (string). " +
+            "controlType EmAppControlType (NO value 3): 1=DDL, 2=TextBox, 4=Memo, 5=Image, 7=Date, 9=File, 10=Label, " +
+            "13=CheckBox, 20=Numeric, 26=RichText, 27=DateTimeDetail, 34=Time, 37=ImageBinary, 38=AutoComplete, " +
+            "48=SearchAbleDDL, 50=ExternalImageUrl, 53=MultiSelectDDL. Pass 4 or \"Memo\" for multiline text — never invent ids. " +
             "IMPORTANT: fieldId is unique and always preferred. fieldName alone is NOT unique across a hierarchy — " +
             "the same column name can exist in the master and child units. " +
             "Use get_transaction_details to find the exact fieldId before calling this tool. " +
@@ -200,7 +204,11 @@ namespace App.BL.AppBuilderAgent.Plugins
                     field.DisplayName = changes["displayName"].Value<string>();
 
                 if (changes["controlType"] != null)
-                    field.ControlType = changes["controlType"].Value<int>();
+                {
+                    if (!TryResolveControlType(changes["controlType"], out var resolvedControlType, out var ctError))
+                        return JsonConvert.SerializeObject(new { IsSuccess = false, Error = ctError });
+                    field.ControlType = resolvedControlType;
+                }
 
                 if (changes["entityId"] != null)
                 {
@@ -364,6 +372,90 @@ namespace App.BL.AppBuilderAgent.Plugins
             {
                 return JsonConvert.SerializeObject(new { IsSuccess = false, Error = ex.Message });
             }
+        }
+
+        /// <summary>
+        /// EmAppControlType has gaps (e.g. no 3 between TextBox=2 and Memo=4). Agents often invent 3 for Memo.
+        /// Accept int or name; reject undefined values with an explicit allow-list message.
+        /// </summary>
+        private static readonly Dictionary<string, int> ControlTypeByName =
+            new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["DDL"] = (int)EmAppControlType.DDL,
+                ["Dropdown"] = (int)EmAppControlType.DDL,
+                ["DropdownList"] = (int)EmAppControlType.DDL,
+                ["TextBox"] = (int)EmAppControlType.TextBox,
+                ["Text"] = (int)EmAppControlType.TextBox,
+                ["Memo"] = (int)EmAppControlType.Memo,
+                ["TextArea"] = (int)EmAppControlType.Memo,
+                ["Multiline"] = (int)EmAppControlType.Memo,
+                ["Image"] = (int)EmAppControlType.Image,
+                ["Date"] = (int)EmAppControlType.Date,
+                ["File"] = (int)EmAppControlType.File,
+                ["Label"] = (int)EmAppControlType.Label,
+                ["CheckBox"] = (int)EmAppControlType.CheckBox,
+                ["Checkbox"] = (int)EmAppControlType.CheckBox,
+                ["Numeric"] = (int)EmAppControlType.Numeric,
+                ["Number"] = (int)EmAppControlType.Numeric,
+                ["RichText"] = (int)EmAppControlType.RichText,
+                ["DateTimeDetail"] = (int)EmAppControlType.DateTimeDetail,
+                ["DateTime"] = (int)EmAppControlType.DateTimeDetail,
+                ["Time"] = (int)EmAppControlType.Time,
+                ["ImageBinary"] = (int)EmAppControlType.ImageBinary,
+                ["AutoComplete"] = (int)EmAppControlType.AutoComplete,
+                ["SearchAbleDDL"] = (int)EmAppControlType.SearchAbleDDL,
+                ["SearchableDDL"] = (int)EmAppControlType.SearchAbleDDL,
+                ["ExternalImageUrl"] = (int)EmAppControlType.ExternalImageUrl,
+                ["MultiSelectDDL"] = (int)EmAppControlType.MultiSelectDDL,
+            };
+
+        private const string ControlTypeAllowList =
+            "1=DDL, 2=TextBox, 4=Memo, 5=Image, 7=Date, 9=File, 10=Label, 13=CheckBox, 20=Numeric, " +
+            "26=RichText, 27=DateTimeDetail, 34=Time, 37=ImageBinary, 38=AutoComplete, 48=SearchAbleDDL, " +
+            "50=ExternalImageUrl, 53=MultiSelectDDL (there is no controlType=3; Memo is 4)";
+
+        private static bool TryResolveControlType(JToken token, out int controlType, out string error)
+        {
+            controlType = 0;
+            error = null;
+            if (token == null || token.Type == JTokenType.Null)
+            {
+                error = "controlType is required. " + ControlTypeAllowList;
+                return false;
+            }
+
+            if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
+            {
+                controlType = token.Value<int>();
+            }
+            else
+            {
+                var raw = (token.Type == JTokenType.String ? token.Value<string>() : token.ToString())?.Trim();
+                if (string.IsNullOrEmpty(raw))
+                {
+                    error = "controlType is empty. " + ControlTypeAllowList;
+                    return false;
+                }
+
+                if (int.TryParse(raw, out controlType))
+                {
+                    // parsed as int
+                }
+                else if (!ControlTypeByName.TryGetValue(raw, out controlType))
+                {
+                    error = $"Unknown controlType '{raw}'. " + ControlTypeAllowList;
+                    return false;
+                }
+            }
+
+            if (!Enum.IsDefined(typeof(EmAppControlType), controlType)
+                || controlType == (int)EmAppControlType.InvalidControlType)
+            {
+                error = $"Invalid controlType {controlType}. " + ControlTypeAllowList;
+                return false;
+            }
+
+            return true;
         }
     }
 }
