@@ -133,6 +133,11 @@ namespace APP.Components.EntityDto
 
         public static bool IsValidFormulaExpression(string formulaExpression)
         {
+            if (string.IsNullOrWhiteSpace(formulaExpression))
+            {
+                return false;
+            }
+
             int leftParen = 0;
             int rightParen = 0;
             int leftBracket = 0;
@@ -144,7 +149,12 @@ namespace APP.Components.EntityDto
             {
                 return false;
             }
-            if (leftBracket == 0)
+
+            // Field refs are either Formula Editor display tokens [DbName_Id] / [Table.Db_Id]
+            // or runtime storage tokens transactionfieldid_{id}. Both are valid for Assignment.
+            bool hasDisplayFieldToken = leftBracket > 0;
+            bool hasRuntimeFieldToken = formulaExpression.IndexOf("transactionfieldid_", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (!hasDisplayFieldToken && !hasRuntimeFieldToken)
             {
                 return false;
             }

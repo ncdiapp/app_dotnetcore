@@ -232,6 +232,8 @@ Selection model: library subscription + `AppAgentToolExclusion` (opt-out). Clear
 | DB has formula; Formula Editor empty | Formula stored on **Master Sibling** unitId; Editor only shows Root Master list |
 | Agent says “formula set”; Editor unchanged | Wrote `defaultValue` via `update_field_setting` |
 | Tokens look like `[Table.Field_Id]` | Master Sibling field — correct FormulaDisplayName shape |
+| Editor shows formula; runtime no new value | (1) After save, DB must store `transactionfieldid_{id}` (InFormat). Sibling `[Table.Field_id]` is editor display only. (2) React runs formulas on **Calculate** / **Save**, not every keystroke. |
+| `Expression Is Invalid, On Unit [{0}] Formular Sort [{1}]` | `IsValidFormulaExpression` requires `[...]` field tokens (or `transactionfieldid_`). Do **not** strip brackets before `SaveAppTransactionUnitFormulaSetDto` validates — keep display tokens; InFormat converts after validate. |
 | Generate wiped custom layout | Expected for `mode=generate`; use `backup` + confirm; prefer `patch` for surgical edits |
 | Aggregate not in `AppTransactionUnitFormula` | By design — stored on field AggFunction / cross-relation |
 

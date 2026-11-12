@@ -439,7 +439,26 @@ namespace App.BL
             {
                 string fieldFormularDisplayName = matchList[i].Value.ToString().Trim();
 
-                AppTransactionFieldExDto aAppTransactionFieldDto = transactionFieldList.FirstOrDefault(o => o.FormulaDisplayName.ToLower().Trim() == fieldFormularDisplayName.ToLower().Trim());
+                AppTransactionFieldExDto aAppTransactionFieldDto = transactionFieldList.FirstOrDefault(o =>
+                    !string.IsNullOrWhiteSpace(o.FormulaDisplayName)
+                    && o.FormulaDisplayName.ToLower().Trim() == fieldFormularDisplayName.ToLower().Trim());
+
+                // Master-sibling tokens look like [Table.DbName_123]. Exact FormulaDisplayName
+                // match can miss; fall back to trailing _id inside the brackets.
+                if (aAppTransactionFieldDto == null)
+                {
+                    var inner = fieldFormularDisplayName.Length >= 2
+                        ? fieldFormularDisplayName.Substring(1, fieldFormularDisplayName.Length - 2)
+                        : fieldFormularDisplayName;
+                    var us = inner.LastIndexOf('_');
+                    if (us >= 0 && us < inner.Length - 1
+                        && int.TryParse(inner.Substring(us + 1), out var fieldId))
+                    {
+                        aAppTransactionFieldDto = transactionFieldList.FirstOrDefault(o =>
+                            o.Id != null && Convert.ToInt32(o.Id) == fieldId);
+                    }
+                }
+
                 if (aAppTransactionFieldDto != null)
                 {
                     expression = expression.Replace(fieldFormularDisplayName, TransactionFieldFormulaPrefix + aAppTransactionFieldDto.Id.ToString());

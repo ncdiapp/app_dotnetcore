@@ -674,6 +674,10 @@ const SharedAgentChat: React.FC<Props> = ({
     const autoOpenedRender = useRef<string | null>(null);
     const liveResultOpen = useRef(false);
     const [isRunning, setIsRunning] = useState(false);
+    /** False until tab-cache / LoadChat (or LoadSession) hydration finishes — locks composer + welcome. */
+    const [historyReady, setHistoryReady] = useState(false);
+    const historyReadyRef = useRef(false);
+    historyReadyRef.current = historyReady;
     const [pendingPlan, setPendingPlan] = useState<PlanEvent | null>(null);
     const [pendingSchema, setPendingSchema] = useState<SchemaConfirmEventDto | null>(null);
     const [pendingAskUser, setPendingAskUser] = useState<AskUserEvent | null>(null);
@@ -1226,6 +1230,14 @@ const SharedAgentChat: React.FC<Props> = ({
     useEffect(() => {
         let cancelled = false;
         mountedRef.current = true;
+        setHistoryReady(false);
+        historyReadyRef.current = false;
+
+        const markHistoryReady = () => {
+            if (cancelled) return;
+            historyReadyRef.current = true;
+            setHistoryReady(true);
+        };
 
         const applySnapshot = (): boolean => {
             if (testMode) return false;
@@ -1382,11 +1394,18 @@ const SharedAgentChat: React.FC<Props> = ({
             const keepLiveCache = restored
                 && (isRunningRef.current || !!pendingAskUserRef.current)
                 && genericAgentSvc.isPolling();
-            if (keepLiveCache) return;
-            if (restored && !chatSessionKey) return;
+            if (keepLiveCache) {
+                markHistoryReady();
+                return;
+            }
+            if (restored && !chatSessionKey) {
+                markHistoryReady();
+                return;
+            }
 
             if (testMode && !chatSessionKey) {
                 fireSessionStartIfAllowed(mode, allowFirstTurn);
+                markHistoryReady();
                 return;
             }
 
@@ -1555,6 +1574,8 @@ const SharedAgentChat: React.FC<Props> = ({
                 }
             } catch {
                 if (!cancelled) fireSessionStartIfAllowed(mode, allowFirstTurn);
+            } finally {
+                markHistoryReady();
             }
         };
 
@@ -1580,7 +1601,7 @@ const SharedAgentChat: React.FC<Props> = ({
         historyBase?: ChatMessage[];
     }) => {
         const msg = opts.userMessage.trim();
-        if (!msg || isRunningRef.current) return;
+        if (!msg || isRunningRef.current || !historyReadyRef.current) return;
         liveResultOpen.current = true;
         setError(null);
         setIsRunning(true);
@@ -2153,7 +2174,7 @@ const SharedAgentChat: React.FC<Props> = ({
         askMode === 'single_choice'
         && askUi === 'button_group'
         && (pendingAskUser?.Options?.length ?? 0) > 0;
-    const blocked = isRunning || !!pendingAskUser || !!pendingPlan || !!pendingSchema;
+    const blocked = !historyReady || isRunning || !!pendingAskUser || !!pendingPlan || !!pendingSchema;
     const handoffGate = isHandoffGateAsk(pendingAskUser);
     const skillLabel = isGeneralAgent ? 'General Agent' : (skillDisplayNames[skillKey] || skillKey || 'Agent');
     const hasRealUserTurn = messages.some(m =>
@@ -2166,7 +2187,12 @@ const SharedAgentChat: React.FC<Props> = ({
         if ((m.dataRenders?.length ?? 0) > 0) return true;
         return false;
     });
-    const showWelcome = !hasConversation && !isRunning && !pendingAskUser && !pendingPlan && !pendingSchema;
+    const showWelcome = historyReady
+        && !hasConversation
+        && !isRunning
+        && !pendingAskUser
+        && !pendingPlan
+        && !pendingSchema;
     const hour = new Date().getHours();
     const greetingWord = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
     const firstName = (displayName || '').trim().split(/\s+/)[0];
@@ -2383,6 +2409,14 @@ const SharedAgentChat: React.FC<Props> = ({
                     )}
                 </div>
                 <div ref={scrollRef} className={`w-full h-1 flex-auto overflow-auto flex flex-col ${dockScrollCls}`}>
+                    {!historyReady && !hasConversation && !pendingAskUser && !pendingPlan && !pendingSchema && (
+                        <div className={`w-full max-w-3xl mx-auto h-1 flex-auto flex flex-col items-center justify-center ${dockCompact ? 'gap-2 py-4' : 'gap-3 py-8'}`}>
+                            <i className={`fa-solid fa-spinner fa-spin ${dockCompact ? 'text-sm' : 'text-lg'} ${theme.label}`} aria-hidden />
+                            <div className={`${dockCompact ? 'text-xs' : 'text-sm'} ${theme.label}`}>
+                                Loading conversation…
+                            </div>
+                        </div>
+                    )}
                     {showWelcome && (
                         <div className={`w-full max-w-3xl mx-auto h-1 flex-auto flex flex-col items-center justify-center ${dockCompact ? 'gap-3 py-4' : 'gap-6 py-8'}`}>
                             <div className={`${dockCompact ? 'w-9 h-9 rounded-xl text-sm' : 'w-14 h-14 rounded-2xl text-xl'} flex items-center justify-center ${theme.button_default}`}>
@@ -2848,7 +2882,7 @@ const SharedAgentChat: React.FC<Props> = ({
                         className={`w-full px-0 py-1 ${dockMsgCls} bg-transparent border-0 focus:outline-none resize-none ${isRunning || pendingAskUser ? 'pr-16' : 'pr-10'}`}
                         rows={dockCompact ? 1 : 2}
                         value={input}
-                        placeholder="Type your request here..."
+                        placeholder={historyReady ? 'Type your request here...' : 'Loading conversation…'}
                         onChange={e => setInput(e.target.value)}
                         onFocus={() => setComposerFocus(true)}
                         onBlur={() => setComposerFocus(false)}
@@ -2871,9 +2905,11 @@ const SharedAgentChat: React.FC<Props> = ({
                         className={`${dockIconBtn} ${theme.button_default}`}
                         onClick={handleSend}
                         disabled={blocked || !input.trim()}
-                        title="Send"
+                        title={historyReady ? 'Send' : 'Loading conversation…'}
                     >
-                        {isRunning ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
+                        {!historyReady || isRunning
+                            ? <i className="fa-solid fa-spinner fa-spin" />
+                            : <i className="fa-solid fa-paper-plane" />}
                     </button>
                     </div>
                     </div>

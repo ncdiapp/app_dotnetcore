@@ -291,19 +291,37 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
                 if (target == null)
                 {
+                    var maxRootSort = working
+                        .Where(f => !f.ChildTransactionUnitId.HasValue && f.CaculationFlowSort.HasValue)
+                        .Select(f => f.CaculationFlowSort.Value)
+                        .DefaultIfEmpty(0)
+                        .Max();
                     target = new AppTransactionUnitFormulaDto
                     {
                         TransactionUnitId = Convert.ToInt32(unit.Id),
-                        CaculationFlowSort = (working.Where(f => f.CaculationFlowSort.HasValue).Select(f => f.CaculationFlowSort.Value).DefaultIfEmpty(0).Max()) + 1
+                        CaculationFlowSort = maxRootSort + 1
                     };
                     working.Add(target);
                 }
             }
 
+            // ValidateDto requires Assignment expressions to contain [field] display tokens
+            // (or transactionfieldid_N). Keep display form here; SaveAppTransactionUnitFormulaSetDto
+            // runs InFormat → transactionfieldid_N for runtime storage.
             target.OperationType = op;
             target.FormulaExpression = resolve.ResolvedExpression;
             target.AssignToTransFieldId = resolve.AssignToFieldId;
             target.TransactionUnitId = Convert.ToInt32(unit.Id);
+            // Prefer sort among root (non-grid-placeholder) formulas so Assignment runs with root flow.
+            if (!target.CaculationFlowSort.HasValue || target.CaculationFlowSort.Value <= 0)
+            {
+                var maxRootSort = working
+                    .Where(f => !f.ChildTransactionUnitId.HasValue && f.CaculationFlowSort.HasValue)
+                    .Select(f => f.CaculationFlowSort.Value)
+                    .DefaultIfEmpty(0)
+                    .Max();
+                target.CaculationFlowSort = maxRootSort + 1;
+            }
             if (!string.IsNullOrWhiteSpace(warningMessage))
                 target.WarningMessage = warningMessage;
             if (warningHighlightFieldId.HasValue)
@@ -319,6 +337,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 return Fail(JoinErrors(save.ValidationResult));
 
             AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId);
+
+            // Preview what runtime storage looks like (InFormat + sibling _id fallback).
+            var runtimePreview = ToRuntimeFormulaExpression(resolve.ResolvedExpression, fields);
+
             return Ok(new
             {
                 IsSuccess = true,
@@ -330,8 +352,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 action,
                 operationType = op,
                 resolvedExpression = resolve.ResolvedExpression,
+                runtimeExpression = runtimePreview,
                 assignToFieldId = resolve.AssignToFieldId,
-                NextStep = "Call request_form_reload (Configurator) or refresh Formula Editor."
+                NextStep = "Call request_form_reload, then on the open form click Calculate (or Save) — formulas do not auto-run on every keystroke."
             });
         }
 
@@ -1168,6 +1191,54 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             !string.IsNullOrWhiteSpace(f.FormulaDisplayName)
                 ? f.FormulaDisplayName
                 : $"[{f.DataBaseFieldName}_{f.Id}]";
+
+        /// <summary>
+        /// Convert Formula Editor / agent display tokens to runtime storage form.
+        /// Runtime AssignmentLeftSideFieldId uses the substring after the FIRST '_' —
+        /// so [Table.Field_124] must become transactionfieldid_124 before save.
+        /// </summary>
+        static string ToRuntimeFormulaExpression(string expression, List<AppTransactionFieldExDto> fields)
+        {
+            if (string.IsNullOrEmpty(expression)) return expression;
+            var prefix = AppTransactionFormulaSetupBL.TransactionFieldFormulaPrefix;
+            if (fields == null) fields = new List<AppTransactionFieldExDto>();
+
+            // Protect quoted string literals
+            var protectedMap = new Dictionary<string, string>();
+            var work = QuotedString.Replace(expression, m =>
+            {
+                var key = $"__Q{protectedMap.Count}__";
+                protectedMap[key] = m.Value;
+                return key;
+            });
+
+            work = BracketToken.Replace(work, m =>
+            {
+                var tok = m.Value.Trim();
+                var byDisplay = fields.FirstOrDefault(f =>
+                    !string.IsNullOrWhiteSpace(f.FormulaDisplayName)
+                    && string.Equals(f.FormulaDisplayName.Trim(), tok, StringComparison.OrdinalIgnoreCase));
+                if (byDisplay != null)
+                    return prefix + byDisplay.Id;
+
+                // [..._123] → id from trailing _digits (handles sibling [Table.Db_123])
+                var inner = tok.Length >= 2 ? tok.Substring(1, tok.Length - 2) : tok;
+                var us = inner.LastIndexOf('_');
+                if (us >= 0 && us < inner.Length - 1
+                    && int.TryParse(inner.Substring(us + 1), out var id)
+                    && fields.Any(f => Convert.ToInt32(f.Id) == id))
+                {
+                    return prefix + id;
+                }
+
+                return tok;
+            });
+
+            foreach (var kv in protectedMap)
+                work = work.Replace(kv.Key, kv.Value);
+
+            return work;
+        }
 
         static string StripBrackets(string s)
         {

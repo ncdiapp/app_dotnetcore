@@ -2,9 +2,12 @@
  * Guard Wijmo grid against null refs when queued microtasks run after dispose/re-render.
  * - editRange: DirectiveCellFactoryBase._autoSizeIfRequired runs in queueMicrotask; guard when this.grid or editRange is invalid.
  * - finishEditing: FlexGrid.refresh() calls finishEditing(); guard when internal editor ref is null.
+ * - refresh while typing: CollectionView/React/FlexGridAddOn often call refresh(); Wijmo
+ *   refresh starts with finishEditing() and steals cell focus (~0.5s). Skip only when
+ *   activeEditor is present — do NOT use editRange (often a non-null CellRange while idle;
+ *   skipping on editRange blanked Formula grids).
  *
- * IMPORTANT: Always wrap the true original methods (saved once). HMR must not stack
- * wrappers — a previous bad "skip refresh while editing" patch left Formula grids blank.
+ * IMPORTANT: Always wrap the true original methods (saved once). HMR must not stack wrappers.
  */
 
 import { Control } from '@mescius/wijmo';
@@ -12,7 +15,7 @@ import * as wjcInteropGrid from '@mescius/wijmo.interop.grid';
 import * as wjcGrid from '@mescius/wijmo.grid';
 
 // Visible in DevTools: confirms this safe patch build is loaded (not a stacked HMR wrapper).
-(window as any).__APPAI_WIJMO_PATCH__ = 'safe-refresh-v3';
+(window as any).__APPAI_WIJMO_PATCH__ = 'safe-refresh-v4';
 
 // Our license key is legitimate (RSA-valid) but was issued for v5.20213; the
 // ±10 minor-version window doesn't reach v5.20252. Pre-seeding Control._wme
@@ -43,7 +46,7 @@ if (interopProto && typeof interopProto._autoSizeIfRequired === 'function') {
   };
 }
 
-// 2) Guard FlexGrid.finishEditing / refresh — catch only; never skip healthy refresh.
+// 2) Guard FlexGrid.finishEditing / refresh.
 const flexGridProto = (wjcGrid as { FlexGrid?: { prototype: unknown } }).FlexGrid?.prototype as {
   finishEditing?: (cancel?: boolean) => boolean;
   refresh?: (fullUpdate?: boolean) => void;
@@ -66,14 +69,17 @@ if (flexGridProto && typeof flexGridProto.finishEditing === 'function') {
 
 if (flexGridProto && typeof flexGridProto.refresh === 'function') {
   const p = flexGridProto as any;
-  // Prefer first-seen original. If a prior session stacked a bad wrapper without
-  // saving the original, peel one level when possible.
+  // Prefer first-seen original so HMR does not stack wrappers.
   if (!p.__appaiOrigRefresh) {
     p.__appaiOrigRefresh = flexGridProto.refresh;
   }
   const origRefresh = p.__appaiOrigRefresh as (fullUpdate?: boolean) => void;
-  flexGridProto.refresh = function (this: unknown, fullUpdate?: boolean) {
+  flexGridProto.refresh = function (this: any, fullUpdate?: boolean) {
     try {
+      if (!this || this.isDisposed || !this.hostElement) return;
+      // Keep the in-cell editor if a refresh is queued while the user is typing.
+      // activeEditor only — editRange stays set when idle and must not block refresh.
+      if (this.activeEditor) return;
       return origRefresh.call(this, fullUpdate);
     } catch (e: any) {
       const msg = String(e?.message ?? '');

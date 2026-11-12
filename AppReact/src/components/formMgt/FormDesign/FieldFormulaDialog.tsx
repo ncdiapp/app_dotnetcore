@@ -65,6 +65,17 @@ function getFormulaDisplayName(field: any, unit: any): string {
   return name;
 }
 
+/** List label: hide `Table.` prefix so sibling tokens fit; insert/title still use full name. */
+function getFormulaTokenShortLabel(fullDisplay: string): string {
+  const raw = String(fullDisplay || '');
+  const m = raw.match(/^\[([^\]]+)\]$/);
+  if (!m) return raw;
+  const inner = m[1];
+  const dot = inner.indexOf('.');
+  if (dot < 0 || dot >= inner.length - 1) return raw;
+  return `[${inner.slice(dot + 1)}]`;
+}
+
 const FieldFormulaDialog: React.FC<FieldFormulaDialogProps> = ({
   isOpen,
   transactionData,
@@ -88,6 +99,7 @@ const FieldFormulaDialog: React.FC<FieldFormulaDialogProps> = ({
   });
 
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [maximized, setMaximized] = useState(false);
 
   // autocomplete
   const [isFilterVisible, setIsFilterVisible] = useState<boolean>(false);
@@ -97,6 +109,7 @@ const FieldFormulaDialog: React.FC<FieldFormulaDialogProps> = ({
   useEffect(() => {
     if (!isOpen) return;
 
+    setMaximized(false);
     setFormulaText(initialFormulaText ?? '');
 
     const fieldDto = transactionData?.dictTransactionFieldIdAndDto?.[currentFieldId];
@@ -506,8 +519,14 @@ const FieldFormulaDialog: React.FC<FieldFormulaDialogProps> = ({
       onClick={handleBackdropClick}
     >
       <div
-        className={`${theme.mainContentSection} rounded-lg shadow-xl border flex flex-col overflow-hidden`}
-        style={{ width: '1000px', height: '700px', maxWidth: '95vw', maxHeight: '95vh' }}
+        className={`${theme.mainContentSection} shadow-xl border flex flex-col overflow-hidden ${
+          maximized ? 'h-full w-full rounded-none' : 'rounded-lg'
+        }`}
+        style={
+          maximized
+            ? { width: '100%', height: '100%', maxWidth: '100vw', maxHeight: '100vh' }
+            : { width: '1000px', height: '700px', maxWidth: '95vw', maxHeight: '95vh' }
+        }
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -515,19 +534,26 @@ const FieldFormulaDialog: React.FC<FieldFormulaDialogProps> = ({
           <div className="flex flex-col">
             <h3 className={`text-sm font-semibold ${theme.title}`}>Formula Builder</h3>
           </div>
-          <button
-            onClick={onClose}
-            className={`p-1 ${theme.button_default} rounded transition-all duration-200 hover:bg-opacity-80 active:scale-95`}
-            title="Close"
-          >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setMaximized((m) => !m)}
+              className={`rounded-[4px] p-1.5 ${theme.button_default}`}
+              title={maximized ? 'Exit full screen' : 'Full screen'}
+              aria-label={maximized ? 'Exit full screen' : 'Full screen'}
+            >
+              <i className={`fa-solid ${maximized ? 'fa-compress' : 'fa-expand'}`} aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className={`rounded-[4px] p-1.5 ${theme.button_default}`}
+              title="Close"
+              aria-label="Close"
+            >
+              <i className="fa-solid fa-xmark" aria-hidden />
+            </button>
+          </div>
         </div>
 
         {/* Body */}
@@ -555,7 +581,7 @@ const FieldFormulaDialog: React.FC<FieldFormulaDialogProps> = ({
           <div className="h-[calc(100%-25px)] relative">
             {formulaType === 'Calculation' && (
               <div className="h-full flex flex-col">
-                <div style={{ height: '60px' }}>
+                <div style={{ height: maximized ? '120px' : '60px' }} className="shrink-0">
                   <textarea
                     ref={textareaRef}
                     className={`w-full h-full border ${theme.inputBox}`}
@@ -574,7 +600,7 @@ const FieldFormulaDialog: React.FC<FieldFormulaDialogProps> = ({
                   />
                 </div>
 
-                <div className="flex-1 pt-2 flex overflow-hidden">
+                <div className="h-1 flex-auto pt-2 flex overflow-hidden">
                   {/* Tokens */}
                   <div className="w-1/2 pr-2 overflow-auto">
                     {tokenGroups.map((g) => (
@@ -596,9 +622,12 @@ const FieldFormulaDialog: React.FC<FieldFormulaDialogProps> = ({
                                 )
                               }))
                               .sort((a: any, b: any) => (a.display || '').localeCompare(b.display || ''))
-                              .map(({ field, display }: any) => (
+                              .map(({ field, display }: any) => {
+                                const shortLabel = getFormulaTokenShortLabel(display);
+                                return (
                                 <div key={display} style={{ width: '150px', flex: '1 1 auto', padding: '2px' }}>
                                   <button
+                                    type="button"
                                     className="btn-default"
                                     style={{
                                       textAlign: 'left',
@@ -610,15 +639,17 @@ const FieldFormulaDialog: React.FC<FieldFormulaDialogProps> = ({
                                       backgroundColor: '#f7f7f7',
                                       overflow: 'hidden',
                                       textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap',
                                       fontSize: '11px'
                                     }}
                                     title={display}
                                     onClick={() => insertAtCursor(display, false)}
                                   >
-                                    {display}
+                                    {shortLabel}
                                   </button>
                                 </div>
-                              ))}
+                                );
+                              })}
                           </div>
                         </div>
                       </div>
