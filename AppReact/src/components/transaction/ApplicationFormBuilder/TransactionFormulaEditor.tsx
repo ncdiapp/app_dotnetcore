@@ -231,13 +231,16 @@ const TransactionFormulaEditor: React.FC<TransactionFormulaEditorProps> = ({
   }, []);
 
   const transactionOrganizedTypeList = useMemo(() => {
-    const EmTransactionOrganizedType = { MasterDetail: 1, List: 3, FolderList: 5 };
     return [
       { Id: 1, Display: 'MasterDetail' },
       { Id: 3, Display: 'List' },
       { Id: 5, Display: 'FolderList' },
     ];
   }, []);
+  const transactionOrganizedTypeCV = useMemo(
+    () => new CollectionView(transactionOrganizedTypeList),
+    [transactionOrganizedTypeList]
+  );
 
   const appFormularFunctionTypeList = useMemo(() => {
     if (!emAppFormularFunctionType) return [];
@@ -452,13 +455,23 @@ const TransactionFormulaEditor: React.FC<TransactionFormulaEditorProps> = ({
                 const s = typeof f.CaculationFlowSort === 'number' ? f.CaculationFlowSort : parseInt(f.CaculationFlowSort, 10);
                 return isNaN(s) ? m : Math.max(m, s);
               }, 0);
+              const childName = child.UnitDisplayName || child.DataBaseTableName || child.Id;
               (aUnit.currentUnitFormulaList as any[]).push({
                 CaculationFlowSort: maxSort + 1,
                 TransactionUnitId: aUnit.Id,
                 ChildTransactionUnitId: child.Id,
-                FormulaExpression: '',
+                FormulaExpression: `Grid ${childName} Formulars`,
                 AssignToTransFieldId: null,
               });
+            } else {
+              // Keep placeholder label in a normal cell (no absolute overlay — that caused row flicker).
+              const existing = (aUnit.currentUnitFormulaList as any[]).find(
+                (f: any) => f.ChildTransactionUnitId === child.Id
+              );
+              if (existing && !existing.FormulaExpression) {
+                const childName = child.UnitDisplayName || child.DataBaseTableName || child.Id;
+                existing.FormulaExpression = `Grid ${childName} Formulars`;
+              }
             }
           });
           aUnit.currentUnitFormulaList.sort((a: any, b: any) => {
@@ -1310,7 +1323,7 @@ const TransactionFormulaEditor: React.FC<TransactionFormulaEditorProps> = ({
           <label className={`text-xs ${theme.label}`}>Data Model Type</label>
           <div className="max-w-md">
             <ComboBox
-              itemsSource={new CollectionView(transactionOrganizedTypeList)}
+              itemsSource={transactionOrganizedTypeCV}
               displayMemberPath="Display"
               selectedValuePath="Id"
               selectedValue={appTransactionData?.TransactionOrganizedType ?? null}
@@ -1342,6 +1355,11 @@ const TransactionFormulaEditor: React.FC<TransactionFormulaEditorProps> = ({
             </div>
           </div>
           <div className="overflow-auto px-4 pb-2" style={{ minHeight: 280 }} id="FormularGridContainer">
+            {!rootUnitFormulaCV && (
+              <div className={`text-xs px-1 py-3 ${theme.label}`}>
+                No formula grid data for the root unit. Click Refresh, or verify this data model has units.
+              </div>
+            )}
             {rootUnitFormulaCV && (
               <FlexGrid
                 ref={rootGridRef}
@@ -1362,19 +1380,6 @@ const TransactionFormulaEditor: React.FC<TransactionFormulaEditorProps> = ({
                   }
                 }}
                 headersVisibility="Column"
-                itemFormatter={(panel: any, r: number, c: number, cell: HTMLElement) => {
-                  try {
-                    if (panel?.cellType !== 1) return; // Cell
-                    const col = panel.columns?.[c];
-                    if (col?.binding === '__gridOverlay') {
-                      // Anchor absolute overlay to the cell itself and allow it to cover following cells.
-                      cell.style.position = 'relative';
-                      cell.style.overflow = 'visible';
-                    }
-                  } catch {
-                    // ignore
-                  }
-                }}
               >
                 <FlexGridColumn header="" binding="" width={40} allowSorting={false} isReadOnly={true}>
                   <FlexGridCellTemplate
@@ -1403,38 +1408,6 @@ const TransactionFormulaEditor: React.FC<TransactionFormulaEditorProps> = ({
                   />
                 </FlexGridColumn>
                 <FlexGridColumn binding="CaculationFlowSort" header="Calculation Flow" width={180} />
-                <FlexGridColumn header="" binding="__gridOverlay" width={1} allowSorting={false} isReadOnly={true}>
-                  <FlexGridCellTemplate
-                    cellType="Cell"
-                    template={(cell: any) => {
-                      const item = cell?.item;
-                      const childUnitId = item?.ChildTransactionUnitId;
-                      if (!childUnitId) return <div className="w-full h-full" />;
-                      const childUnit = dictUnitIdAndDto?.[Number(childUnitId)];
-                      const name = childUnit?.UnitDisplayName || childUnit?.DataBaseTableName || childUnitId;
-                      return (
-                        <div
-                          className={`${theme.mainContentSection}`}
-                          style={{
-                            position: 'absolute',
-                            left: 0,
-                            top: 0,
-                            height: '100%',
-                            width: '9999px',
-                            zIndex: 50,
-                            display: 'flex',
-                            alignItems: 'center',
-                            pointerEvents: 'none',
-                            paddingLeft: '8px'
-                          }}
-                        >
-                          <i className="fa-solid fa-table-cells mr-2" aria-hidden="true" />
-                          {`Grid ${name} Formulars`}
-                        </div>
-                      );
-                    }}
-                  />
-                </FlexGridColumn>
                 <FlexGridColumn
                   binding="OperationType"
                   header="Operation Type"
@@ -1606,19 +1579,6 @@ const TransactionFormulaEditor: React.FC<TransactionFormulaEditorProps> = ({
                       }}
                       headersVisibility="Column"
                       className="w-full h-full"
-                      itemFormatter={(panel: any, r: number, c: number, cell: HTMLElement) => {
-                        try {
-                          if (panel?.cellType !== 1) return; // Cell
-                          const col = panel.columns?.[c];
-                          if (col?.binding === '__gridOverlay') {
-                            // Anchor absolute overlay to the cell itself and allow it to cover following cells.
-                            cell.style.position = 'relative';
-                            cell.style.overflow = 'visible';
-                          }
-                        } catch {
-                          // ignore
-                        }
-                      }}
                     >
                       <FlexGridColumn header="" binding="" width={40} allowSorting={false} isReadOnly={true}>
                         <FlexGridCellTemplate
@@ -1648,38 +1608,6 @@ const TransactionFormulaEditor: React.FC<TransactionFormulaEditorProps> = ({
                       </FlexGridColumn>
 
                       <FlexGridColumn binding="CaculationFlowSort" header="Calculation Flow" width={180} />
-                      <FlexGridColumn header="" binding="__gridOverlay" width={1} allowSorting={false} isReadOnly={true}>
-                        <FlexGridCellTemplate
-                          cellType="Cell"
-                          template={(cell: any) => {
-                            const item = cell?.item;
-                            const childUnitId = item?.ChildTransactionUnitId;
-                            if (!childUnitId) return <div className="w-full h-full" />;
-                            const childUnit = dictUnitIdAndDto?.[Number(childUnitId)];
-                            const name = childUnit?.UnitDisplayName || childUnit?.DataBaseTableName || childUnitId;
-                            return (
-                              <div
-                                className={`${theme.mainContentSection}`}
-                                style={{
-                                  position: 'absolute',
-                                  left: 0,
-                                  top: 0,
-                                  height: '100%',
-                                  width: '9999px',
-                                  zIndex: 50,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  pointerEvents: 'none',
-                                  paddingLeft: '8px'
-                                }}
-                              >
-                                <i className="fa-solid fa-table-cells mr-2" aria-hidden="true" />
-                                {`Grid ${name} Formulars`}
-                              </div>
-                            );
-                          }}
-                        />
-                      </FlexGridColumn>
                       <FlexGridColumn
                         binding="OperationType"
                         header="Operation Type"

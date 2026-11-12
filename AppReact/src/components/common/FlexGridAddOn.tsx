@@ -65,8 +65,8 @@ const FlexGridAddOn: React.FC<FlexGridAddOnProps> = ({
         return raw?.control ?? raw;
     }, [grid, gridRef]);
 
-    const isGridEditing = (g: any): boolean =>
-        Boolean(g && (g.activeEditor || g.editRange));
+    // editRange is often a non-null CellRange even when idle — only trust activeEditor.
+    const isGridEditing = (g: any): boolean => Boolean(g?.activeEditor);
 
     const readPersisted = useCallback((): PersistedState | null => {
         if (!storageKey) return null;

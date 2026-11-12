@@ -81,7 +81,8 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
     };
     const refreshFieldGridIfIdle = () => {
         const g = getFieldGridControl();
-        if (g?.activeEditor || g?.editRange) return;
+        // editRange is often a non-null CellRange even when idle — only trust activeEditor.
+        if (g?.activeEditor) return;
         try {
             fieldCollectionViewRef.current?.refresh();
         } catch {
@@ -519,7 +520,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         const origCvRefresh = cv.refresh.bind(cv);
         cv.refresh = () => {
             const g = getFieldGridControl();
-            if (g?.activeEditor || g?.editRange) return;
+            if (g?.activeEditor) return;
             origCvRefresh();
         };
         setFieldCollectionView(cv);

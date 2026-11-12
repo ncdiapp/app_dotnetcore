@@ -2,7 +2,7 @@ import './resizeObserverPatch';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
-import './wijmoPatches';
+import './wijmoPatches'; // safe refresh wrap only — do not skip refresh during init/edit
 import App from './App';
 import { Provider } from 'react-redux';
 import { store } from './redux/store';

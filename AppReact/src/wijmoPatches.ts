@@ -2,11 +2,17 @@
  * Guard Wijmo grid against null refs when queued microtasks run after dispose/re-render.
  * - editRange: DirectiveCellFactoryBase._autoSizeIfRequired runs in queueMicrotask; guard when this.grid or editRange is invalid.
  * - finishEditing: FlexGrid.refresh() calls finishEditing(); guard when internal editor ref is null.
+ *
+ * IMPORTANT: Always wrap the true original methods (saved once). HMR must not stack
+ * wrappers — a previous bad "skip refresh while editing" patch left Formula grids blank.
  */
 
 import { Control } from '@mescius/wijmo';
 import * as wjcInteropGrid from '@mescius/wijmo.interop.grid';
 import * as wjcGrid from '@mescius/wijmo.grid';
+
+// Visible in DevTools: confirms this safe patch build is loaded (not a stacked HMR wrapper).
+(window as any).__APPAI_WIJMO_PATCH__ = 'safe-refresh-v3';
 
 // Our license key is legitimate (RSA-valid) but was issued for v5.20213; the
 // ±10 minor-version window doesn't reach v5.20252. Pre-seeding Control._wme
@@ -22,25 +28,33 @@ const interopProto = (wjcInteropGrid as { DirectiveCellFactoryBase?: { prototype
   .DirectiveCellFactoryBase?.prototype as { _autoSizeIfRequired?: () => void } | undefined;
 
 if (interopProto && typeof interopProto._autoSizeIfRequired === 'function') {
-  const orig = interopProto._autoSizeIfRequired;
+  const p = interopProto as any;
+  if (!p.__appaiOrigAutoSize) {
+    p.__appaiOrigAutoSize = interopProto._autoSizeIfRequired;
+  }
+  const origAutoSize = p.__appaiOrigAutoSize as () => void;
   interopProto._autoSizeIfRequired = function (this: { grid: unknown }) {
     try {
       if (!this.grid) return;
-      return orig.call(this);
+      return origAutoSize.call(this);
     } catch {
       // grid disposed or editRange getter threw
     }
   };
 }
 
-// 2) Guard FlexGrid.finishEditing (finishEditing error when refresh() runs after dispose)
+// 2) Guard FlexGrid.finishEditing / refresh — catch only; never skip healthy refresh.
 const flexGridProto = (wjcGrid as { FlexGrid?: { prototype: unknown } }).FlexGrid?.prototype as {
   finishEditing?: (cancel?: boolean) => boolean;
   refresh?: (fullUpdate?: boolean) => void;
 } | undefined;
 
 if (flexGridProto && typeof flexGridProto.finishEditing === 'function') {
-  const origFinish = flexGridProto.finishEditing;
+  const p = flexGridProto as any;
+  if (!p.__appaiOrigFinishEditing) {
+    p.__appaiOrigFinishEditing = flexGridProto.finishEditing;
+  }
+  const origFinish = p.__appaiOrigFinishEditing as (cancel?: boolean) => boolean;
   flexGridProto.finishEditing = function (this: unknown, cancel?: boolean) {
     try {
       return origFinish.call(this, cancel);
@@ -50,15 +64,16 @@ if (flexGridProto && typeof flexGridProto.finishEditing === 'function') {
   };
 }
 
-// 3) Guard FlexGrid.refresh (scrollPosition setter can read host.scrollLeft after dispose)
 if (flexGridProto && typeof flexGridProto.refresh === 'function') {
-  const origRefresh = flexGridProto.refresh;
-  flexGridProto.refresh = function (this: any, fullUpdate?: boolean) {
+  const p = flexGridProto as any;
+  // Prefer first-seen original. If a prior session stacked a bad wrapper without
+  // saving the original, peel one level when possible.
+  if (!p.__appaiOrigRefresh) {
+    p.__appaiOrigRefresh = flexGridProto.refresh;
+  }
+  const origRefresh = p.__appaiOrigRefresh as (fullUpdate?: boolean) => void;
+  flexGridProto.refresh = function (this: unknown, fullUpdate?: boolean) {
     try {
-      if (!this || this.isDisposed || !this.hostElement) return;
-      // React / CollectionView / FlexGridAddOn refresh() starts with finishEditing().
-      // Keep the in-cell editor if a refresh is queued while the user is typing.
-      if (this.activeEditor || this.editRange) return;
       return origRefresh.call(this, fullUpdate);
     } catch (e: any) {
       const msg = String(e?.message ?? '');
@@ -74,15 +89,8 @@ if (flexGridProto && typeof flexGridProto.refresh === 'function') {
   };
 }
 
-// CollectionView.sort can still call FlexGrid._sortConverter after the host is gone.
-if (flexGridProto && typeof (flexGridProto as any).getColumn === 'function') {
-  const origGetColumn = (flexGridProto as any).getColumn;
-  (flexGridProto as any).getColumn = function (this: any, ...args: unknown[]) {
-    try {
-      if (!this || this.isDisposed || !this.hostElement) return null;
-      return origGetColumn.apply(this, args);
-    } catch {
-      return null;
-    }
-  };
+// Remove any prior getColumn monkey-patch from older hot-reload sessions.
+if (flexGridProto && (flexGridProto as any).__appaiOrigGetColumn) {
+  (flexGridProto as any).getColumn = (flexGridProto as any).__appaiOrigGetColumn;
+  delete (flexGridProto as any).__appaiOrigGetColumn;
 }
