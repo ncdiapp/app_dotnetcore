@@ -59,8 +59,35 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
     const [isModified, setIsModified] = useState(false);
     const isModifiedRef = React.useRef(false);
     const originalUnitDataRef = React.useRef<any>(null);
+    const transactionDataRef = React.useRef(transactionData);
+    transactionDataRef.current = transactionData;
+    const unitPropRef = React.useRef(unit);
+    unitPropRef.current = unit;
+    const onSaveRef = React.useRef(onSave);
+    onSaveRef.current = onSave;
+    const onCloseRef = React.useRef(onClose);
+    onCloseRef.current = onClose;
+    const onEditTableRef = React.useRef(onEditTable);
+    onEditTableRef.current = onEditTable;
+    const loadedUnitKeyRef = React.useRef<string | null>(null);
+    const fieldListForGridRef = React.useRef<any[] | null>(null);
+    const fieldGridControlRef = React.useRef<any>(null);
+    const fieldCollectionViewRef = React.useRef<CollectionView | null>(null);
+    fieldCollectionViewRef.current = fieldCollectionView;
     const flexGridRef = React.useRef<any>(null);
-    const [fieldGridControl, setFieldGridControl] = useState<any>(null);
+    const getFieldGridControl = () => {
+        const raw = fieldGridControlRef.current ?? flexGridRef.current?.control ?? flexGridRef.current;
+        return raw?.control ?? raw;
+    };
+    const refreshFieldGridIfIdle = () => {
+        const g = getFieldGridControl();
+        if (g?.activeEditor || g?.editRange) return;
+        try {
+            fieldCollectionViewRef.current?.refresh();
+        } catch {
+            // disposed or not attached
+        }
+    };
     const [tableColumnSelectorDialog, setTableColumnSelectorDialog] = useState<{ isOpen: boolean }>({ isOpen: false });
     const addExistingFieldsInFlightRef = React.useRef(false);
     const [isDataLoadDialogOpen, setIsDataLoadDialogOpen] = useState(false);
@@ -387,7 +414,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                 Name: c.Name ?? c.Display ?? String(c.Id)
             }));
         return new DataMap(items, 'Id', 'Name');
-    }, [transactionData]);
+    }, [transactionData?.CommandActionList]);
 
     // Aggregation type DataMap (for pivot columns)
     const aggregationTypeDataMap = React.useMemo(() => {
@@ -415,18 +442,27 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         return new DataMap(aggList, 'Value', 'Display');
     }, [emAppAggregationFunctionType]);
 
-    // Load unit data when opened
+    // Load unit data when the editor opens (or the target unit id changes). Do not depend on
+    // transactionData identity — parent re-renders were resetting the grid and killing cell edit.
     useEffect(() => {
         const loadUnitData = async () => {
-            if (!isOpen || !unit) return;
+            if (!isOpen) {
+                loadedUnitKeyRef.current = null;
+                fieldListForGridRef.current = null;
+                return;
+            }
+            const currentUnit = unitPropRef.current;
+            if (!currentUnit) return;
+            const unitKey = String(currentUnit.Id ?? currentUnit.uiId ?? 'new');
+            if (loadedUnitKeyRef.current === unitKey) return;
+            loadedUnitKeyRef.current = unitKey;
 
-            // Helper function to find unit in transactionData (which may have unsaved changes)
             const findUnitInTransactionData = (unitList: any[], targetId: number | null, targetUnit: any): any | null => {
                 for (const u of unitList) {
-                    if (targetId && u.Id === targetId) {
+                    if (targetId != null && u?.Id != null && Number(u.Id) === Number(targetId)) {
                         return u;
                     }
-                    if (!targetId && u === targetUnit) {
+                    if (targetId == null && u === targetUnit) {
                         return u;
                     }
                     if (u.Children) {
@@ -437,101 +473,76 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                 return null;
             };
 
-            // Check if unit exists in transactionData (which may have unsaved changes)
+            const txn = transactionDataRef.current;
             let unitFromTransactionData: any = null;
-            if (transactionData && transactionData.AppTransactionUnitList) {
+            if (txn && txn.AppTransactionUnitList) {
                 unitFromTransactionData = findUnitInTransactionData(
-                    transactionData.AppTransactionUnitList,
-                    unit.Id || null,
-                    unit
+                    txn.AppTransactionUnitList,
+                    currentUnit.Id != null ? Number(currentUnit.Id) : null,
+                    currentUnit
                 );
             }
 
-            let loadedData: any = null;
-
-            // If unit exists in transactionData, use it (preserves unsaved changes)
-            // Otherwise, load from server for existing units
-            if (unitFromTransactionData) {
-                // Use unit from transactionData to preserve any unsaved changes
-                loadedData = { ...unitFromTransactionData };
-                setUnitData(loadedData);
-                setIsModified(false);
-                isModifiedRef.current = false;
-            } else if (unit.Id) {
-                // Existing unit not found in transactionData - load from server
-                dispatch(setIsBusy());
-                try {
-                    const unitExDto = await appTransactionService.retrieveOneAppTransactionUnitExDto(unit.Id.toString());
-                    loadedData = unitExDto;
-                    setUnitData(unitExDto);
-                    setIsModified(false);
-                    isModifiedRef.current = false;
-                } catch (error: any) {
-                    showError(error.message || 'Failed to load unit data');
-                    // Fallback to local unit data
-                    loadedData = { ...unit };
-                    setUnitData(loadedData);
-                    setIsModified(false);
-                    isModifiedRef.current = false;
-                } finally {
-                    dispatch(setIsNotBusy());
-                }
-            } else {
-                // New unit - use local data
-                loadedData = { ...unit };
-                setUnitData(loadedData);
-                setIsModified(false);
-                isModifiedRef.current = false;
+            // Always paint from the in-memory unit (diagram / last save). Do not block the field
+            // grid on retrieveOneAppTransactionUnitExDto — that call is 5–6s when the tree lookup
+            // used to miss because Id was number vs string.
+            const immediate = unitFromTransactionData || currentUnit;
+            const loadedData = { ...immediate };
+            if (!Array.isArray(loadedData.AppTransactionFieldList)) {
+                loadedData.AppTransactionFieldList = [];
             }
+            setUnitData(loadedData);
+            setIsModified(false);
+            isModifiedRef.current = false;
 
-            // Store original data for comparison after data is loaded
             if (loadedData) {
                 originalUnitDataRef.current = JSON.parse(JSON.stringify(loadedData));
             }
         };
 
-        loadUnitData();
-    }, [isOpen, unit, transactionData, dispatch, showError]);
+        void loadUnitData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, unit?.Id, unit?.uiId]);
 
-    // Initialize field collection view
+    // Initialize field collection view only when the field list instance changes.
     useEffect(() => {
-        if (unitData && unitData.AppTransactionFieldList) {
-            const cv = new CollectionView(unitData.AppTransactionFieldList);
-            cv.sortDescriptions.push(new SortDescription('SortOrder', true));
-            setFieldCollectionView(cv);
-        } else {
+        const list = unitData?.AppTransactionFieldList;
+        if (!list) {
+            fieldListForGridRef.current = null;
             setFieldCollectionView(null);
+            return;
         }
-    }, [unitData]);
+        if (fieldListForGridRef.current === list) return;
+        fieldListForGridRef.current = list;
+        const cv = new CollectionView(list);
+        cv.sortDescriptions.push(new SortDescription('SortOrder', true));
+        const origCvRefresh = cv.refresh.bind(cv);
+        cv.refresh = () => {
+            const g = getFieldGridControl();
+            if (g?.activeEditor || g?.editRange) return;
+            origCvRefresh();
+        };
+        setFieldCollectionView(cv);
+    }, [unitData?.AppTransactionFieldList]);
 
-    // Angular initialTransactionField: populate ParentPKFieldGuid from DictCurrentPKOrFKLinkToParentKeyGuidMap (by RowIdentityGuid)
+    // Angular initialTransactionField: populate ParentPKFieldGuid in place (do not replace the field list).
     useEffect(() => {
-        if (!unitData?.AppTransactionFieldList?.length) return;
+        const list = unitData?.AppTransactionFieldList;
         const dict = transactionData?.DictCurrentPKOrFKLinkToParentKeyGuidMap ?? null;
-        if (!dict) return;
-
-        const need = unitData.AppTransactionFieldList.some(
-            (f: any) =>
-                f?.RowIdentityGuid &&
-                dict[f.RowIdentityGuid] &&
-                (f.ParentPKFieldGuid == null || f.ParentPKFieldGuid === '')
-        );
-        if (!need) return;
-
-        const updated = unitData.AppTransactionFieldList.map((f: any) => {
-            if (!f?.RowIdentityGuid) return f;
+        if (!list?.length || !dict) return;
+        let changed = false;
+        for (const f of list) {
+            if (!f?.RowIdentityGuid) continue;
             const mapped = dict[f.RowIdentityGuid];
-            if (!mapped) return f;
-            if (f.ParentPKFieldGuid != null && f.ParentPKFieldGuid !== '') return f;
-            return {
-                ...f,
-                ParentPKFieldGuid: mapped,
-                IsLinkToParentPrimaryKey: true
-            };
-        });
-
-        setUnitData({ ...unitData, AppTransactionFieldList: updated });
-    }, [unitData, transactionData]);
+            if (!mapped) continue;
+            if (f.ParentPKFieldGuid != null && f.ParentPKFieldGuid !== '') continue;
+            f.ParentPKFieldGuid = mapped;
+            f.IsLinkToParentPrimaryKey = true;
+            changed = true;
+        }
+        if (changed) refreshFieldGridIfIdle();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [unitData?.AppTransactionFieldList, transactionData?.DictCurrentPKOrFKLinkToParentKeyGuidMap, fieldCollectionView]);
 
     // Ensure EntityIdSelector text is populated after reload (Standalone: EntityId; Tab 2: DdlForeignUnitId)
     useEffect(() => {
@@ -540,9 +551,12 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                 return;
             }
 
-            const needEntityPopulate = unitData.AppTransactionFieldList.some(
-                (f: any) => f.EntityId && !f.EntityIdSelector
-            );
+            const isEntityIdOnlyDatasourceLabel = (f: any) => {
+                if (!f?.EntityId) return false;
+                const sel = String(f.EntityIdSelector ?? '').trim();
+                return !sel || sel === String(f.EntityId);
+            };
+            const needEntityPopulate = unitData.AppTransactionFieldList.some(isEntityIdOnlyDatasourceLabel);
             const needForeignUnitPopulate = transactionData && unitData.AppTransactionFieldList.some(
                 (f: any) => f.DdlForeignUnitId != null && f.DdlForeignUnitId !== '' && !f.EntityIdSelector
             );
@@ -613,15 +627,15 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                         ? entityList
                         : [];
                     if (safeList.length > 0) {
-                        const dict = new Map<number, { Id: number; EntityCode?: string; Name?: string }>();
-                        safeList.forEach((e) => dict.set(e.Id, e));
+                        const dict = new Map<number, string>();
+                        safeList.forEach((e) => {
+                            if (e?.Id == null) return;
+                            dict.set(Number(e.Id), e.EntityCode || e.Name || String(e.Id));
+                        });
                         updatedFields = updatedFields.map((f: any) => {
-                            if (f.EntityId && !f.EntityIdSelector) {
-                                const match = dict.get(f.EntityId);
-                                const display = match?.EntityCode || match?.Name || String(f.EntityId);
-                                return { ...f, EntityIdSelector: display, EntityDisplay: display };
-                            }
-                            return f;
+                            if (!isEntityIdOnlyDatasourceLabel(f)) return f;
+                            const display = dict.get(Number(f.EntityId)) || f.EntityDisplay || f.EntityCode || String(f.EntityId);
+                            return { ...f, EntityIdSelector: display, EntityDisplay: display };
                         });
                     }
                 } catch {
@@ -629,13 +643,23 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                 }
             }
 
-            if (updatedFields !== unitData.AppTransactionFieldList) {
-                setUnitData({ ...unitData, AppTransactionFieldList: updatedFields });
+            if (updatedFields === unitData.AppTransactionFieldList) return;
+            const list = unitData.AppTransactionFieldList;
+            for (let i = 0; i < list.length; i++) {
+                const next = updatedFields[i];
+                const cur = list[i];
+                if (!next || next === cur) continue;
+                if (next.EntityIdSelector && cur.EntityIdSelector !== next.EntityIdSelector) {
+                    cur.EntityIdSelector = next.EntityIdSelector;
+                    cur.EntityDisplay = next.EntityDisplay;
+                }
             }
+            refreshFieldGridIfIdle();
         };
 
-        ensureEntityDisplay();
-    }, [unitData, transactionData]);
+        void ensureEntityDisplay();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [unitData?.AppTransactionFieldList, fieldCollectionView]);
 
     // Find parent unit for foreign key map
     const getParentUnit = useCallback((): any | null => {
@@ -670,7 +694,12 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
     }, [transactionData, unitData]);
 
     const parentUnit = getParentUnit();
-    const parentPkFields = parentUnit?.masterKeyList || parentUnit?.AppTransactionFieldList?.filter((f: any) => f.IsPrimaryKey) || [];
+    const parentPkFields = useMemo(() => {
+        if (Array.isArray(parentUnit?.masterKeyList) && parentUnit.masterKeyList.length > 0) {
+            return parentUnit.masterKeyList;
+        }
+        return parentUnit?.AppTransactionFieldList?.filter((f: any) => f.IsPrimaryKey) || [];
+    }, [parentUnit]);
     // Angular: availableSourceUnitList = parent.Children where IsUsedForLoadingAvailableSource (not for master sibling).
     const availableSourceUnitOptions = useMemo(() => {
         if (!unitData || unitData.IsMasterSiblingUnit || !parentUnit) return [];
@@ -705,76 +734,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         [resolvedAvailableSourceUnit]
     );
 
-    const [resolvedParentPkFields, setResolvedParentPkFields] = useState<any[]>([]);
-    // Ensure parentUnit's PK fields are available for FK DataMap (Angular uses parentUnit.masterKeyList)
-    useEffect(() => {
-        let cancelled = false;
-        const run = async () => {
-            if (!isOpen || !unitData || !transactionData) return;
-            if (!transactionData.IsPhysicalModelTableCreated) {
-                setResolvedParentPkFields([]);
-                return;
-            }
-            const isRootMasterUnit = !unitData.IsMasterSiblingUnit && !parentUnit;
-            if (isRootMasterUnit) {
-                setResolvedParentPkFields([]);
-                return;
-            }
-            if (!parentUnit) {
-                setResolvedParentPkFields([]);
-                return;
-            }
-
-            // Prefer masterKeyList if present; otherwise build from AppTransactionFieldList (PK)
-            if (Array.isArray(parentUnit.masterKeyList) && parentUnit.masterKeyList.length > 0) {
-                // Still try to load full parent unit to match Angular behavior (parent PK list comes from parent.AppTransactionFieldList)
-                // Fall back to masterKeyList immediately for faster UX.
-                setResolvedParentPkFields(parentUnit.masterKeyList);
-            }
-            if (Array.isArray(parentUnit.AppTransactionFieldList) && parentUnit.AppTransactionFieldList.length > 0) {
-                const built = parentUnit.AppTransactionFieldList
-                    .filter((f: any) => f?.IsPrimaryKey)
-                    .map((f: any) => ({
-                        RowIdentityGuid: f.RowIdentityGuid,
-                        DataBaseFieldName: f.DataBaseFieldName,
-                        Id: f.Id
-                    }))
-                    .filter((k: any) => k.RowIdentityGuid);
-                setResolvedParentPkFields(built);
-            }
-
-            if (parentUnit.Id == null) {
-                setResolvedParentPkFields([]);
-                return;
-            }
-
-            try {
-                const full = await appTransactionService.retrieveOneAppTransactionUnitExDto(String(parentUnit.Id));
-                if (cancelled) return;
-                // Match Angular: build PK list from parent unit's AppTransactionFieldList(IsPrimaryKey)
-                const list = Array.isArray(full?.AppTransactionFieldList)
-                    ? full.AppTransactionFieldList
-                        .filter((f: any) => f?.IsPrimaryKey)
-                        .map((f: any) => ({
-                            RowIdentityGuid: f.RowIdentityGuid,
-                            DataBaseFieldName: f.DataBaseFieldName,
-                            Id: f.Id
-                        }))
-                        // keep items even if RowIdentityGuid missing; DataMap normalizer will fall back to Id
-                        .filter((k: any) => k.RowIdentityGuid || k.Id != null)
-                    : (Array.isArray(full?.masterKeyList) ? full.masterKeyList : []);
-                setResolvedParentPkFields(list);
-            } catch {
-                if (!cancelled) {
-                    setResolvedParentPkFields([]);
-                }
-            }
-        };
-        run();
-        return () => {
-            cancelled = true;
-        };
-    }, [isOpen, unitData, transactionData, parentUnit]);
+    const resolvedParentPkFields = parentPkFields;
 
     // Ensure Parent Data Source Mapping display text is populated after reload (Angular shows "Cascading From: <Table> . <Field>")
     useEffect(() => {
@@ -803,36 +763,16 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
 
             // Pre-load parent units needed for display so we don't use await inside map()
             const parentUnitById = new Map<number, any>();
-            const ensureUnitFieldsLoaded = async (u: any | null): Promise<any | null> => {
-                if (!u) return null;
-                if (u.AppTransactionFieldList?.length) return u;
-                if (u.Id == null) return u;
-                try {
-                    const full = await appTransactionService.retrieveOneAppTransactionUnitExDto(String(u.Id));
-                    return full || u;
-                } catch {
-                    return u;
-                }
-            };
-
-            const parentIdsToLoad = new Set<number>();
             unitData.AppTransactionFieldList.forEach((f: any) => {
                 if (f?.DdlparentLevelId == null || f.DdlparentLevelId === '' || f.DdlparentLevelIdSelector) return;
                 const fieldUnitId = f.TransactionUnitId != null ? Number(f.TransactionUnitId) : null;
                 const currentEditUnit = fieldUnitId != null ? findUnitByIdInTree(unitList, fieldUnitId) : null;
                 const unitForField = currentEditUnit ?? unitData;
                 const p = unitForField?.Id != null ? findParentOfUnit(unitList, Number(unitForField.Id)) : null;
-                if (p?.Id != null && (!p.AppTransactionFieldList || p.AppTransactionFieldList.length === 0)) {
-                    parentIdsToLoad.add(Number(p.Id));
+                if (p?.Id != null && p.AppTransactionFieldList?.length) {
+                    parentUnitById.set(Number(p.Id), p);
                 }
             });
-
-            for (const pid of Array.from(parentIdsToLoad)) {
-                if (cancelled) return;
-                const pRef = findUnitByIdInTree(unitList, pid);
-                const full = await ensureUnitFieldsLoaded(pRef);
-                if (full?.Id != null) parentUnitById.set(Number(full.Id), full);
-            }
 
             const newList = unitData.AppTransactionFieldList.map((f: any) => {
                 if (f?.DdlparentLevelId == null || f.DdlparentLevelId === '' || f.DdlparentLevelIdSelector) return f;
@@ -863,16 +803,24 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                 return { ...f, DdlparentLevelIdSelector: label };
             });
 
-            if (!cancelled && changed) {
-                setUnitData({ ...unitData, AppTransactionFieldList: newList });
+            if (cancelled || !changed) return;
+            const list = unitData.AppTransactionFieldList;
+            for (let i = 0; i < list.length; i++) {
+                const next = newList[i];
+                const cur = list[i];
+                if (next?.DdlparentLevelIdSelector && cur && !cur.DdlparentLevelIdSelector) {
+                    cur.DdlparentLevelIdSelector = next.DdlparentLevelIdSelector;
+                }
             }
+            refreshFieldGridIfIdle();
         };
 
-        ensureParentMappingDisplay();
+        void ensureParentMappingDisplay();
         return () => {
             cancelled = true;
         };
-    }, [unitData, parentUnit]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [unitData?.AppTransactionFieldList, parentUnit?.Id, fieldCollectionView]);
 
     // Collect all units from transaction tree (optionally by level). Used for Tab 2 foreign unit list.
     const collectUnitsFromTree = useCallback((units: any[], level?: number): any[] => {
@@ -921,6 +869,13 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
     // Derived values (used in callbacks)
     const isPhysicalModelTableCreated = transactionData?.IsPhysicalModelTableCreated || false;
     const isReadOnly = transactionData?.IsReadOnly || false;
+    const lockedTableColumnNames = useMemo(
+        () =>
+            (unitData?.AppTransactionFieldList || [])
+                .filter((f: any) => f.DataBaseFieldName && !f.IsTempVariable)
+                .map((f: any) => f.DataBaseFieldName as string),
+        [unitData?.AppTransactionFieldList]
+    );
 
     const handleUnitPropertyChange = (property: string, value: any) => {
         if (!unitData) return;
@@ -1543,14 +1498,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
             : null;
 
         const ensureUnitFieldsLoaded = async (aUnit: any | null | undefined): Promise<any | null> => {
-            if (!aUnit || aUnit.AppTransactionFieldList?.length) return aUnit || null;
-            if (!aUnit.Id) return aUnit || null;
-            try {
-                const fullUnit = await appTransactionService.retrieveOneAppTransactionUnitExDto(String(aUnit.Id));
-                return fullUnit || aUnit;
-            } catch {
-                return aUnit || null;
-            }
+            return aUnit || null;
         };
 
         const pushFromUnit = (aUnit: any | null | undefined) => {
@@ -1918,9 +1866,10 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
     }, []);
 
     const handleCellEditEnded = (sender: any, e: any) => {
-        // Mark unit as modified when any cell is edited
-        setIsModified(true);
-        isModifiedRef.current = true;
+        if (!isModifiedRef.current) {
+            isModifiedRef.current = true;
+            setIsModified(true);
+        }
 
         // ChildUnitPivotColumns: IsPivotColumn (exactly one) and IsPivotRow (Column Group) must be different fields.
         const childPivotColsVal = Number(emAppTransactionGridDisplayType?.ChildUnitPivotColumns ?? 7);
@@ -1963,6 +1912,27 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
             }
         }
     };
+
+    const handleFieldGridInitialized = useCallback((g: any) => {
+        fieldGridControlRef.current = g;
+    }, []);
+
+    const handleFieldCellEditEnding = useCallback((s: any, e: any) => {
+        const col = s.columns?.[e.col];
+        if (col?.binding !== 'GroupByLevel') return;
+        const raw = s.activeEditor?.value;
+        if (raw === '' || raw == null) {
+            e.cancel = true;
+            const item = s.rows?.[e.row]?.dataItem;
+            if (item) {
+                item.GroupByLevel = null;
+                if (!isModifiedRef.current) {
+                    isModifiedRef.current = true;
+                    setIsModified(true);
+                }
+            }
+        }
+    }, []);
 
     // Helper to get max sort order
     const getMaxSortOrder = useCallback((): number => {
@@ -2276,8 +2246,8 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         if (!unitData) return;
 
         let savedUnit: any = null;
-        if (onSave) {
-            savedUnit = await onSave(unitData, true);
+        if (onSaveRef.current) {
+            savedUnit = await onSaveRef.current(unitData, true);
         }
 
         // After server save, prefer reloaded unit (fields now have Ids) so a later
@@ -2295,7 +2265,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
 
     const handleSaveAndClose = async () => {
         await handleSave();
-        onClose();
+        onCloseRef.current();
     };
 
     const handleClose = async () => {
@@ -2313,20 +2283,20 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         }
 
         if (!hasChanges && !dataChanged) {
-            onClose();
+            onCloseRef.current();
             return;
         }
 
         // Unsaved changes: push to parent local state only (do not save to server).
         // Prefer not to overwrite parent with no-Id field copies after a successful Save —
         // only push when there are real unsaved edits.
-        if (unitData && onSave) {
-            await onSave(unitData, false);
+        if (unitData && onSaveRef.current) {
+            await onSaveRef.current(unitData, false);
         }
         setIsModified(false);
         isModifiedRef.current = false;
         originalUnitDataRef.current = JSON.parse(JSON.stringify(unitData));
-        onClose();
+        onCloseRef.current();
     };
 
     const handleBackdropClick = (e: React.MouseEvent) => {
@@ -2771,7 +2741,6 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                         <div className="flex items-center gap-2">
                             <div className={`text-sm font-semibold ${theme.title}`}>Unit Fields</div>
                             <FlexGridAddOn
-                                grid={fieldGridControl}
                                 gridRef={flexGridRef}
                                 defaultFrozenColumns={3}
                                 storageKey="txnUnitFieldGrid"
@@ -2782,7 +2751,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                             {/* Alter Table / Edit Query Button */}
                             {isPhysicalModelTableCreated && unitData?.DataBaseTableName && !isReadOnly && onEditTable && (
                                 <button
-                                    onClick={() => onEditTable(unitData)}
+                                    onClick={() => onEditTableRef.current?.(unitData)}
                                     className={`px-3 py-1 ${theme.button_default} rounded-[4px] text-xs hover:shadow-sm active:scale-95`}
                                     title="Alter Table"
                                 >
@@ -2792,7 +2761,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                             )}
                             {isReadOnly && onEditTable && (
                                 <button
-                                    onClick={() => onEditTable(unitData)}
+                                    onClick={() => onEditTableRef.current?.(unitData)}
                                     className={`px-3 py-1 ${theme.button_default} rounded-[4px] text-xs hover:shadow-sm active:scale-95`}
                                     title="Edit Query"
                                 >
@@ -2879,27 +2848,8 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                 selectionMode="ListBox"
                                 style={{ height: '100%', border: 'none' }}
                                 cellEditEnded={handleCellEditEnded}
-                                cellEditEnding={(s: any, e: any) => {
-                                    // GroupByLevel is nullable (null = no ORDER BY). Empty cell must become null, not 0.
-                                    const col = s.columns?.[e.col];
-                                    if (col?.binding !== 'GroupByLevel') return;
-                                    const raw = s.activeEditor?.value;
-                                    if (raw === '' || raw == null) {
-                                        e.cancel = true;
-                                        const item = s.rows?.[e.row]?.dataItem;
-                                        if (item) {
-                                            item.GroupByLevel = null;
-                                            setIsModified(true);
-                                            isModifiedRef.current = true;
-                                            try {
-                                                fieldCollectionView?.refresh?.();
-                                            } catch {
-                                                // ignore
-                                            }
-                                        }
-                                    }
-                                }}
-                                initialized={(g: any) => setFieldGridControl(g)}
+                                cellEditEnding={handleFieldCellEditEnding}
+                                initialized={handleFieldGridInitialized}
                             >
                                 <FlexGridFilter />
                                 <FlexGridCellTemplate
@@ -3529,9 +3479,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                     tableName={unitData.DataBaseTableName || ''}
                     schemaOwner={unitData.SchemaOwner || null}
                     dataSourceRegisterId={transactionData?.DataSourceFrom || dataSourceRegisterId}
-                    lockedColumnNames={(unitData.AppTransactionFieldList || [])
-                        .filter((f: any) => f.DataBaseFieldName && !f.IsTempVariable)
-                        .map((f: any) => f.DataBaseFieldName)}
+                    lockedColumnNames={lockedTableColumnNames}
                     onClose={() => setTableColumnSelectorDialog({ isOpen: false })}
                     onSelect={handleTableColumnsSelected}
                 />
@@ -4668,4 +4616,10 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
     );
 };
 
-export default TransactionUnitEditor;
+export default React.memo(TransactionUnitEditor, (prev, next) => (
+    prev.isOpen === next.isOpen
+    && prev.unit === next.unit
+    && prev.transactionData === next.transactionData
+    && prev.dataSourceRegisterId === next.dataSourceRegisterId
+    && prev.applicationId === next.applicationId
+));

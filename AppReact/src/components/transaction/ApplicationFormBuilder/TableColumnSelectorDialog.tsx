@@ -1,8 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../../redux/hooks/useErrorMessage';
-import { setIsBusy, setIsNotBusy } from '../../../redux/features/ui/feedback/busyLoaderSlice';
-import { useDispatch } from 'react-redux';
 import { schemaMetadataService } from '../../../webapi/schemaMetaDataSvc';
 import { FlexGrid, FlexGridColumn } from '@mescius/wijmo.react.grid';
 import { FlexGridFilter } from '@mescius/wijmo.react.grid.filter';
@@ -37,58 +35,57 @@ const TableColumnSelectorDialog: React.FC<TableColumnSelectorDialogProps> = ({
 }) => {
     const { theme } = useTheme();
     const { showError } = useErrorMessage();
-    const dispatch = useDispatch();
-    const [columns, setColumns] = useState<any[]>([]);
-    const [columnCollectionView, setColumnCollectionView] = useState<CollectionView | null>(null);
+    const [allColumns, setAllColumns] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [selectionChanged, setSelectionChanged] = useState(0); // Force re-render on selection change
     const flexGridRef = useRef<any>(null);
+    const loadGenRef = useRef(0);
 
-    // Load table columns
+    const lockedKey = (lockedColumnNames || []).join('\0');
+    const lockedNameSet = useMemo(
+        () => new Set((lockedColumnNames || []).map((n) => String(n))),
+        [lockedKey]
+    );
+
+    // Load once per table identity. Do not depend on lockedColumnNames / showError:
+    // parent rebuilds that array every render and setIsBusy was retriggering a fetch loop.
     useEffect(() => {
-        const loadColumns = async () => {
-            if (!isOpen || !tableName || dataSourceRegisterId === null) return;
-
-            setLoading(true);
-            dispatch(setIsBusy());
+        if (!isOpen || !tableName || dataSourceRegisterId === null) return;
+        const gen = ++loadGenRef.current;
+        let cancelled = false;
+        setLoading(true);
+        void (async () => {
             try {
                 const tableData = await schemaMetadataService.getOneDatabaseTableSchema(
                     tableName,
                     dataSourceRegisterId,
                     schemaOwner
                 );
-
-                if (tableData && tableData.Columns) {
-                    // Filter out columns that are already added (don't show them)
-                    const availableColumns = tableData.Columns.filter((col: any) =>
-                        !lockedColumnNames.includes(col.Name) && !isSystemTimestampColumn(col)
-                    );
-                    setColumns(availableColumns);
-                } else {
-                    setColumns([]);
-                }
+                if (cancelled || gen !== loadGenRef.current) return;
+                setAllColumns(Array.isArray(tableData?.Columns) ? tableData.Columns : []);
             } catch (error: any) {
+                if (cancelled || gen !== loadGenRef.current) return;
                 showError(error.message || 'Failed to load table columns');
-                setColumns([]);
+                setAllColumns([]);
             } finally {
-                setLoading(false);
-                dispatch(setIsNotBusy());
+                if (!cancelled && gen === loadGenRef.current) setLoading(false);
             }
+        })();
+        return () => {
+            cancelled = true;
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, tableName, schemaOwner, dataSourceRegisterId]);
 
-        loadColumns();
-    }, [isOpen, tableName, schemaOwner, dataSourceRegisterId, lockedColumnNames, dispatch, showError]);
-
-    // Initialize column collection view
-    useEffect(() => {
-        if (columns.length > 0) {
-            const cv = new CollectionView(columns);
-            cv.sortDescriptions.push(new SortDescription('Name', true));
-            setColumnCollectionView(cv);
-        } else {
-            setColumnCollectionView(null);
-        }
-    }, [columns]);
+    const columnCollectionView = useMemo(() => {
+        const availableColumns = (allColumns || []).filter(
+            (col: any) => !lockedNameSet.has(col?.Name) && !isSystemTimestampColumn(col)
+        );
+        if (availableColumns.length === 0) return null;
+        const cv = new CollectionView(availableColumns);
+        cv.sortDescriptions.push(new SortDescription('Name', true));
+        return cv;
+    }, [allColumns, lockedNameSet]);
 
     const handleSelectionChanged = () => {
         // Force re-render to update check icons

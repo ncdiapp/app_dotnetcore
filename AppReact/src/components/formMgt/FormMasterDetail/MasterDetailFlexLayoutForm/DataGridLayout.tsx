@@ -2099,14 +2099,21 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       if (col) col.dataMap = dm;
     });
 
-    flexGridControl.invalidate();
-    flexGridControl.refresh();
+    const handle = window.setTimeout(() => {
+      try {
+        if ((flexGridControl as any).isDisposed || !flexGridControl.hostElement) return;
+        flexGridControl.invalidate();
+        flexGridControl.refresh();
+      } catch {
+        // grid may already be disposed
+      }
+    }, 0);
+    return () => window.clearTimeout(handle);
   }, [
     getDataMapForField,
     dataModel?.currentFormData?.DictCascadingFiledDataSource,
     dataModel?.currentFormStructure?.DictStandAloneEntityDataSource,
     dataModel?.currentFormStructure?.DictStandAloneFiledIDMappingEntityID,
-    dataModel?.currentFormStructure,
     fields,
     emAppControlTypeEnum,
     isDdLikeControlType,

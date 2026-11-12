@@ -53,15 +53,36 @@ if (flexGridProto && typeof flexGridProto.finishEditing === 'function') {
 // 3) Guard FlexGrid.refresh (scrollPosition setter can read host.scrollLeft after dispose)
 if (flexGridProto && typeof flexGridProto.refresh === 'function') {
   const origRefresh = flexGridProto.refresh;
-  flexGridProto.refresh = function (this: unknown, fullUpdate?: boolean) {
+  flexGridProto.refresh = function (this: any, fullUpdate?: boolean) {
     try {
+      if (!this || this.isDisposed || !this.hostElement) return;
+      // React / CollectionView / FlexGridAddOn refresh() starts with finishEditing().
+      // Keep the in-cell editor if a refresh is queued while the user is typing.
+      if (this.activeEditor || this.editRange) return;
       return origRefresh.call(this, fullUpdate);
     } catch (e: any) {
       const msg = String(e?.message ?? '');
-      if (msg.includes('scrollLeft') || msg.includes('scrollPosition')) {
+      if (
+        msg.includes('scrollLeft') ||
+        msg.includes('scrollPosition') ||
+        msg.includes('hasColumnGroups')
+      ) {
         return;
       }
       throw e;
+    }
+  };
+}
+
+// CollectionView.sort can still call FlexGrid._sortConverter after the host is gone.
+if (flexGridProto && typeof (flexGridProto as any).getColumn === 'function') {
+  const origGetColumn = (flexGridProto as any).getColumn;
+  (flexGridProto as any).getColumn = function (this: any, ...args: unknown[]) {
+    try {
+      if (!this || this.isDisposed || !this.hostElement) return null;
+      return origGetColumn.apply(this, args);
+    } catch {
+      return null;
     }
   };
 }

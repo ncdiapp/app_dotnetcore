@@ -61,8 +61,12 @@ const FlexGridAddOn: React.FC<FlexGridAddOnProps> = ({
     const [columns, setColumns] = useState<ColumnInfo[]>([]);
 
     const getGrid = useCallback((): any => {
-        return grid || gridRef?.current?.control || null;
+        const raw = grid || gridRef?.current?.control || gridRef?.current || null;
+        return raw?.control ?? raw;
     }, [grid, gridRef]);
+
+    const isGridEditing = (g: any): boolean =>
+        Boolean(g && (g.activeEditor || g.editRange));
 
     const readPersisted = useCallback((): PersistedState | null => {
         if (!storageKey) return null;
@@ -101,6 +105,11 @@ const FlexGridAddOn: React.FC<FlexGridAddOnProps> = ({
             const g = getGrid();
             if (!g || !g.columns || g.columns.length === 0) {
                 if (attempt < 40) setTimeout(() => apply(attempt + 1), 50);
+                return;
+            }
+            // frozenColumns / visibility refresh finishEditing — wait until the cell is idle.
+            if (isGridEditing(g)) {
+                setTimeout(() => apply(attempt), 100);
                 return;
             }
             appliedDefaultRef.current = true;

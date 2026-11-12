@@ -119,13 +119,18 @@ const TransactionFormGroup: React.FC = () => {
     }
     if (data) {
       data = repairFormGroupSession(data, param2Obj);
-      cacheFormGroupSession(dispatch, sessionKey, data);
       setSessionData(data);
     } else {
       setSessionData(null);
     }
     setSessionResolved(true);
-  }, [dispatch, param2Obj, sessionKey]);
+  }, [param2Obj, sessionKey]);
+
+  // Persist outside render/updaters — dispatch(setDataModelToCache) during setState updates Header.
+  useEffect(() => {
+    if (!sessionKey || !sessionData) return;
+    cacheFormGroupSession(dispatch, sessionKey, sessionData);
+  }, [dispatch, sessionKey, sessionData]);
 
   // When Open carries LinkTargetTransactionGroupId (Business Template), expand group items into MainItems.
   useEffect(() => {
@@ -184,7 +189,6 @@ const TransactionFormGroup: React.FC = () => {
           linkTargetDto: preferred,
         };
         businessTemplateExpandAttemptedRef.current = groupId;
-        cacheFormGroupSession(dispatch, sessionKey, next);
         setSessionData(next);
       } catch (err) {
         console.error('Failed to expand business template group', err);
@@ -199,7 +203,7 @@ const TransactionFormGroup: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [dispatch, sessionData, sessionKey, sessionResolved, showError]);
+  }, [sessionData, sessionKey, sessionResolved, showError]);
 
   const { linkTargetList, templateHeaderList } = useMemo(() => {
     if (!sessionData || !businessTemplateReady) return { linkTargetList: [], templateHeaderList: [] };
@@ -373,13 +377,11 @@ const TransactionFormGroup: React.FC = () => {
       if (sessionKey) {
         setSessionData((prev) => {
           if (!prev) return prev;
-          const next = {
+          return {
             ...prev,
             linkTargetDto: sessionData?.linkTargetDto ?? prev.linkTargetDto,
             selecedDataRow: row,
           };
-          cacheFormGroupSession(dispatch, sessionKey, next);
-          return next;
         });
       }
 
@@ -419,7 +421,6 @@ const TransactionFormGroup: React.FC = () => {
       adaptTemplateItemForCreate,
       buildFormEmbedded,
       buildSearchEmbedded,
-      dispatch,
       linkTargetList,
       sessionData?.linkTargetDto,
       sessionKey,
@@ -462,13 +463,11 @@ const TransactionFormGroup: React.FC = () => {
       if (sessionKey) {
         setSessionData((prev) => {
           if (!prev) return prev;
-          const next = {
+          return {
             ...prev,
             linkTargetDto: effectiveLinkTarget,
             selecedDataRow: row,
           };
-          cacheFormGroupSession(dispatch, sessionKey, next);
-          return next;
         });
       }
 
@@ -530,7 +529,6 @@ const TransactionFormGroup: React.FC = () => {
       buildFormEmbedded,
       buildNavigationObj,
       buildSearchEmbedded,
-      dispatch,
       linkTargetList,
       sessionData?.searchResultRowList,
       sessionKey,
