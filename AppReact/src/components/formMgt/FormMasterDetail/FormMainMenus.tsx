@@ -1263,7 +1263,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
                 type="button"
                 className={`w-full min-w-0 px-3 py-2 text-left text-sm whitespace-nowrap ${theme.contextMenu}`}
                 onClick={() => {
-                  (onReloadCurrentForm ?? onRefresh)?.();
+                  reloadRef.current();
                   setConfigMenuOpen(false);
                   setConfigSubmenuKey(null);
                 }}
@@ -2249,7 +2249,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
                     className={`rounded-[4px] px-3 py-1.5 text-sm ${theme.button_default}`}
                     onClick={() => {
                       setRefreshConfirmOpen(false);
-                      (onReloadCurrentForm ?? onRefresh)?.();
+                      reloadRef.current();
                     }}
                   >
                     Yes

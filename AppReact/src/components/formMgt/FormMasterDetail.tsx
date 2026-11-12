@@ -294,6 +294,7 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
     const transactionExDtoRef = useRef<any>(null);
 
     const lastLoadedKeyRef = useRef<string | null>(null);
+    const [headerReloadNonce, setHeaderReloadNonce] = useState(0);
 
     const [workflowMonitorPopup, setWorkflowMonitorPopup] = useState<{
         popupZIndex: number;
@@ -683,6 +684,7 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
         transactionExDtoRef.current = null;
         formStructureDataRef.current = null;
         lastLoadedKeyRef.current = null;
+        setHeaderReloadNonce((n) => n + 1);
 
         setDataModel((prev: any) => ({
             ...prev,
@@ -863,7 +865,7 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
                 : tabKey)
             : null;
 
-        if (dataModelKey) {
+        if (dataModelKey && !param2Obj?.skipFormTabCache) {
             const cachedDataModel = getDataModelFromCache(dataModelKey);
             if (cachedDataModel) {
                 // Only use cache if it's for the same transactionId and rootPrimaryKeyValue
@@ -907,7 +909,7 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
         // Load from server (will use transactionExDtoRef if already loaded)
         loadDataFromServer();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [transactionId, rootPrimaryKeyValue, isEmbedded, param2Obj?.isEmbeddedByOtherPage, param2Obj?.isTemplateHeader, param2Obj?.isHideHeaderAndFooter]);
+    }, [transactionId, rootPrimaryKeyValue, isEmbedded, param2Obj?.isEmbeddedByOtherPage, param2Obj?.isTemplateHeader, param2Obj?.isHideHeaderAndFooter, param2Obj?.skipFormTabCache]);
 
     // Snapshot for tab cache — keep reactive so useTabDataAutoCache sees field edits.
     const formCachePayload = useMemo(() => {
@@ -1061,20 +1063,29 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
                     </div>
                 )}
 
-                {templateHeaderContainerEl && templateHeaderForms.length > 0 && templateHeaderForms.map((hdr) =>
-                    createPortal(
+                {templateHeaderContainerEl && templateHeaderForms.length > 0 && templateHeaderForms.map((hdr) => {
+                    const portalKey = `${hdr.key}#${headerReloadNonce}`;
+                    const hdrForReload: TemplateHeaderEmbeddedForm = {
+                        ...hdr,
+                        key: portalKey,
+                        param2: {
+                            ...(hdr.param2 || {}),
+                            skipFormTabCache: headerReloadNonce > 0,
+                        },
+                    };
+                    return createPortal(
                         <TemplateHeaderEmbeddedForm
-                            key={hdr.key}
-                            hdr={hdr}
+                            key={portalKey}
+                            hdr={hdrForReload}
                             onApiReady={registerHeaderFormApi}
                             onApiUnmount={unregisterHeaderFormApi}
                             onSaveStateChange={handleHeaderSaveStateChange}
                             forceEnableFormConfigButtons={controllerModel.isEnableFormConfigButtons}
                         />,
                         templateHeaderContainerEl,
-                        hdr.key,
-                    ),
-                )}
+                        portalKey,
+                    );
+                })}
 
                 {/* Show message when no form structure and not loading */}
                 {!dataModel.isLoading && !hasFormStructure && !dataModel.doing_async && (
