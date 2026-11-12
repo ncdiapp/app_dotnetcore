@@ -3,7 +3,7 @@
 **Status:** Requirements locked (2026-11-10). **§0 gate passed** — managed `app-builder` accepted as clone source. Ready for implementation planning / coding.  
 **Date:** 2026-11-10 (decisions amended same day)  
 **Parent (data path):** [TransactionForm-AiAgent-Plan.md](./TransactionForm-AiAgent-Plan.md)  
-**Related:** [MyApplicationEditor-AiAgent-Design.md](./MyApplicationEditor-AiAgent-Design.md) (Config shell embeds full `app-builder`), [Agent-Integration-Playbook.md](./Agent-Integration-Playbook.md), [SharedAgentEngine-Architecture.md](./SharedAgentEngine-Architecture.md)  
+**Related:** [MyApplicationEditor-AiAgent-Design.md](./MyApplicationEditor-AiAgent-Design.md) (Config shell embeds full `app-builder`), [Agent-Integration-Playbook.md](./Agent-Integration-Playbook.md), [SharedAgentEngine-Architecture.md](./SharedAgentEngine-Architecture.md), [AppConfigurator-Formula-FormLayout-Tools.md](./AppConfigurator-Formula-FormLayout-Tools.md) (Formula + Form Layout BuiltIn tools)  
 **Supersedes:** `TransactionForm-AiAgent-ConfigDesign.md` (deleted) — that draft put config tools on Form Agent; this design does **not**.
 
 ---

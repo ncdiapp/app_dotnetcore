@@ -67,13 +67,21 @@ export const store = configureStore({
   reducer: rootReducer,
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
+      // FormMasterDetail / TransactionFormGroup cache large session trees in tabnav.
+      // Dev-only invariant middleware walks the store on every dispatch; default warnAfter=32ms
+      // fires constantly with open forms even when the cache path itself is ignored.
       serializableCheck: {
-        // Ignore these action types
-        ignoredActions: ['tabnav/setDataModelToCache'],
-        //// Ignore these field paths in all actions
-        //ignoredActionPaths: ['payload.dataModel.userDataCV', 'payload.dataModel.languageDataMap'],
-        // Ignore these paths in the state
+        ignoredActions: [
+          'tabnav/setDataModelToCache',
+          'tabnav/setCurrentTabDataToCache',
+        ],
+        ignoredActionPaths: ['payload.dataModel', 'meta.arg'],
         ignoredPaths: ['tabnav.dictDataModelKeyAndCachedData'],
+        warnAfter: 128,
+      },
+      immutableCheck: {
+        ignoredPaths: ['tabnav.dictDataModelKeyAndCachedData'],
+        warnAfter: 128,
       },
     }).concat(tabsPersistenceMiddleware),
   devTools: process.env.NODE_ENV !== 'production',

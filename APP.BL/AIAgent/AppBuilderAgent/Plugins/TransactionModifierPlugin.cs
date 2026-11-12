@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using App.BL;
+using App.BL.AIAgent.GenericAgent.Plugins;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
 using Newtonsoft.Json;
@@ -325,6 +326,62 @@ namespace App.BL.AppBuilderAgent.Plugins
                 return JsonConvert.SerializeObject(new { IsSuccess = false, Error = ex.Message });
             }
         }
+
+        [AgentTool("get_unit_formulas",
+            "List Calculation Validation Flow formulas for a unit (Assignment/Warning/Error/Aggregate/Subscribe). " +
+            "defaultValue is NOT a formula.")]
+        public string GetUnitFormulas(
+            [AgentParam("Transaction id.", isRequired: true)] int transactionId,
+            [AgentParam("Unit id (preferred).")] int? unitId = null,
+            [AgentParam("Unit display/table name fallback.")] string unitName = null)
+            => FormConfigFormulaLayoutService.GetUnitFormulas(transactionId, unitId, unitName);
+
+        [AgentTool("update_unit_formula",
+            "Add/update/delete unit formulas. operationType: 1=Assignment 2=Warning 3=Error 4=Aggregate 5=Subscribe. " +
+            "Display-name expressions are resolved to [DbName_Id]; ambiguous → needsDisambiguation. " +
+            "Preview first, ask_user, then confirmed=true. Optional dryRun.")]
+        public string UpdateUnitFormula(
+            [AgentParam("Transaction id.", isRequired: true)] int transactionId,
+            [AgentParam("add | update | delete", isRequired: true)] string action = null,
+            [AgentParam("Unit id.")] int? unitId = null,
+            [AgentParam("Unit name.")] string unitName = null,
+            [AgentParam("Formula id for update/delete.")] int? formulaId = null,
+            [AgentParam("1=Assignment 2=Warning 3=Error 4=Aggregate 5=Subscribe")] int? operationType = null,
+            [AgentParam("Expression (display names OK).")] string expression = null,
+            [AgentParam("Assign-to field id.")] int? assignToFieldId = null,
+            [AgentParam("Assign-to field name.")] string assignToFieldName = null,
+            [AgentParam("Aggregate source / Subscribe parent field id.")] int? sourceFieldId = null,
+            [AgentParam("Source field name.")] string sourceFieldName = null,
+            [AgentParam("1=SUM 2=AVG 3=MIN 4=MAX 5=COUNT")] int? aggregationType = null,
+            [AgentParam("Warning/Error message.")] string warningMessage = null,
+            [AgentParam("Highlight field id.")] int? warningHighlightFieldId = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("Preview only.")] bool? dryRun = null)
+            => FormConfigFormulaLayoutService.UpdateUnitFormula(
+                transactionId, action, unitId, unitName, formulaId, operationType, expression,
+                assignToFieldId, assignToFieldName, sourceFieldId, sourceFieldName,
+                aggregationType, warningMessage, warningHighlightFieldId, confirmed, dryRun);
+
+        [AgentTool("get_form_layout",
+            "Inspect Flex form layout tree for a transaction (FormId).")]
+        public string GetFormLayout(
+            [AgentParam("Transaction id.", isRequired: true)] int transactionId)
+            => FormConfigFormulaLayoutService.GetFormLayout(transactionId);
+
+        [AgentTool("design_form_layout",
+            "Generate (N-col default / full rebuild) or patch Flex layout. " +
+            "Overwrite requires confirmed=true; optional backup/dryRun. " +
+            "patch ops: setHeight, moveField, setContainer, setColumns.")]
+        public string DesignFormLayout(
+            [AgentParam("Transaction id.", isRequired: true)] int transactionId,
+            [AgentParam("generate | patch", isRequired: true)] string mode = null,
+            [AgentParam("Column count for generate.")] int? nbColumns = null,
+            [AgentParam("JSON array of patch ops.")] string patchesJson = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("Preview only.")] bool? dryRun = null,
+            [AgentParam("Include layout backup summary.")] bool? backup = null)
+            => FormConfigFormulaLayoutService.DesignFormLayout(
+                transactionId, mode, nbColumns, patchesJson, confirmed, dryRun, backup);
 
         // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("delete_transaction",

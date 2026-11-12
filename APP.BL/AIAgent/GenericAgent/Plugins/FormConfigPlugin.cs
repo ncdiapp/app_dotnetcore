@@ -353,6 +353,85 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             catch (Exception ex) { return Fail(ex.Message); }
         }
 
+        [AgentTool("get_unit_formulas",
+            "List Calculation Validation Flow formulas for a unit: Assignment, Warning, Error, Aggregate, Subscribe. " +
+            "Prefer unitId. defaultValue is NOT a formula — use this tool / update_unit_formula instead.")]
+        public string GetUnitFormulas(
+            AgentToolContext context,
+            [AgentParam("Unit id (preferred).")] int? unitId = null,
+            [AgentParam("Unit display/table name fallback.")] string unitName = null,
+            [AgentParam("Required when HostContext is multi-transaction.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigFormulaLayoutService.GetUnitFormulas(txnId, unitId, unitName);
+        }
+
+        [AgentTool("update_unit_formula",
+            "Add/update/delete a unit formula (Assignment=1, Warning=2, Error=3, Aggregate=4, Subscribe=5). " +
+            "User may name fields by display name — tool resolves to [DbName_Id] tokens. " +
+            "If ambiguous, returns needsDisambiguation (ask_user which field). " +
+            "Always preview first (confirmed omitted/false), ask_user Yes/No, then call again with confirmed=true. " +
+            "Optional dryRun=true. After success call request_form_reload. " +
+            "Do NOT use update_field_setting.defaultValue for Calculation Flow formulas.")]
+        public string UpdateUnitFormula(
+            AgentToolContext context,
+            [AgentParam("add | update | delete", isRequired: true)] string action = null,
+            [AgentParam("Unit id (preferred).")] int? unitId = null,
+            [AgentParam("Unit name fallback.")] string unitName = null,
+            [AgentParam("Existing formula id (update/delete Assignment/Warning/Error).")] int? formulaId = null,
+            [AgentParam("1=Assignment 2=Warning 3=Error 4=Aggregate 5=Subscribe")] int? operationType = null,
+            [AgentParam("Human or token expression, e.g. Description = Product Code + \" - \" + Nomenclature")] string expression = null,
+            [AgentParam("Assign-to field id (preferred).")] int? assignToFieldId = null,
+            [AgentParam("Assign-to display/DB name when id unknown.")] string assignToFieldName = null,
+            [AgentParam("Aggregate source child field id / Subscribe parent field id.")] int? sourceFieldId = null,
+            [AgentParam("Source field name fallback.")] string sourceFieldName = null,
+            [AgentParam("Aggregate: 1=SUM 2=AVG 3=MIN 4=MAX 5=COUNT")] int? aggregationType = null,
+            [AgentParam("Warning/Error message text.")] string warningMessage = null,
+            [AgentParam("Optional highlight field id for Warning/Error.")] int? warningHighlightFieldId = null,
+            [AgentParam("Must be true to persist after ask_user.")] bool? confirmed = null,
+            [AgentParam("Preview only; do not write.")] bool? dryRun = null,
+            [AgentParam("Required when HostContext is multi-transaction.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err, assignToFieldId))
+                return Fail(err);
+            return FormConfigFormulaLayoutService.UpdateUnitFormula(
+                txnId, action, unitId, unitName, formulaId, operationType, expression,
+                assignToFieldId, assignToFieldName, sourceFieldId, sourceFieldName,
+                aggregationType, warningMessage, warningHighlightFieldId, confirmed, dryRun);
+        }
+
+        [AgentTool("get_form_layout",
+            "Inspect the Flex form layout tree for the open transaction (containers, fields, heights, collapsible, tabs).")]
+        public string GetFormLayout(
+            AgentToolContext context,
+            [AgentParam("Required when HostContext is multi-transaction.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigFormulaLayoutService.GetFormLayout(txnId);
+        }
+
+        [AgentTool("design_form_layout",
+            "Generate or patch Flex form layout. mode=generate: N-column or default layout (REPLACES existing — ask_user + confirmed=true; optional backup/dryRun). " +
+            "mode=patch: patchesJson ops setHeight, moveField, setContainer, setColumns(alone→generate). " +
+            "After success call request_form_reload.")]
+        public string DesignFormLayout(
+            AgentToolContext context,
+            [AgentParam("generate | patch", isRequired: true)] string mode = null,
+            [AgentParam("Column count for generate / setColumns.")] int? nbColumns = null,
+            [AgentParam("JSON array of patch ops.")] string patchesJson = null,
+            [AgentParam("Must be true to persist after ask_user.")] bool? confirmed = null,
+            [AgentParam("Preview only; do not write.")] bool? dryRun = null,
+            [AgentParam("Include current layout summary before overwrite.")] bool? backup = null,
+            [AgentParam("Required when HostContext is multi-transaction.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigFormulaLayoutService.DesignFormLayout(
+                txnId, mode, nbColumns, patchesJson, confirmed, dryRun, backup);
+        }
+
         [AgentTool("request_form_reload",
             "Call after successful configuration writes (cache is already refreshed by the save path). " +
             "Signals the form host to prompt Reload Current Form after this agent turn finishes — " +
