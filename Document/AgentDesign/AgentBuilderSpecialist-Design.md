@@ -96,6 +96,8 @@ using SharedAgentEngine + authoring tools. Changes stage into the **open editor 
 | 7 | Methodology / Instruction shape | HowAppBuilder + §9.2 blocks are the source of truth (scenarios → subscribe tools → per-scenario sequences → tune via AgentLoop → harden). **Not** Generate’s four H2s. |
 | 8 | AI gate | Respect `UserContext.IsAiConfigured` when that gate pass lands (same product rule as other AI surfaces). |
 | 9 | Superset + migrate | Designer is a **functional superset** of AI + AI Edit (§9.7). Useful hardcoded knowledge migrates via §9.8 into seed (ask_user细则 mandatory). Legacy rules that conflict with §3.1 are **dropped**, not migrated. |
+| 10 | One designer, many chats | There is **one** SkillSet `agent-instruction-designer`. Each edit-target gets its own **chat session**, not its own Designer SkillSet row (§5.1). |
+| 11 | Improve-the-designer loop | Make Designer better by editing **its** SkillSet (prompt / authoring tools / descriptions) from dogfood evidence — not by forking a Designer per target (§5.2). |
 
 ### 3.1 Precedence — new demand wins over legacy buttons
 
@@ -148,6 +150,55 @@ On the Agent Instruction toolbar, **next to** AI / AI Edit, add an entry (workin
 - Opens a side/right **chat panel** bound to the agent currently being edited.
 - Does not close or replace the Prompt / Tools editors; user can see draft update after Apply.
 - Separate `sessionId` from Test Run and from any other agent chat.
+
+### 5.1 Session model — one Designer agent, one chat per edit-target
+
+**No:** editing agent X does **not** create a new SkillSet row that is “a Designer object for X”.  
+**Yes:** opening Instruction Designer while editing X opens (or resumes) a **chat session** whose HostContext.target = X.
+
+| Concept | What it is | How many |
+|---------|------------|----------|
+| Designer SkillSet | `agent-instruction-designer` definition (its SystemPrompt + authoring tools) | **One** per tenant (seeded / protected) |
+| Target draft | The agent row being edited in Agent Management (`app-configurator`, `app-builder`, …) | One open editor at a time in the UI |
+| Chat session | Conversation with the Designer about that target (`sessionId` / ChatSessionKey) | **One stable session per (user + targetAgentCode)** (and a distinct key for unsaved-new drafts, e.g. user + `new:{clientDraftId}`) |
+| Test Run session | Running the **target** agent | Separate from Designer chat |
+
+Rules:
+
+1. Switching the left-list selection from agent A to agent B switches the Designer panel to B’s session (HostContext retargets). Do not mix A’s transcript into B.
+2. Designer chat ≠ Test Run of the target; different sessionIds.
+3. Closing the panel may keep the session for resume; deleting the target agent can GC or orphan that Designer session (implement detail).
+4. The Designer never becomes “owned by” the target — it only **authors** the target draft via apply-to-draft.
+
+```
+SkillSet: agent-instruction-designer  (single definition)
+    │
+    ├─ chat session S1  HostContext.target = app-configurator
+    ├─ chat session S2  HostContext.target = app-builder
+    └─ chat session S3  HostContext.target = new:draft-17
+```
+
+### 5.2 How the Designer gets better over time (iteration loop)
+
+Goal: the more we use it (and learn in Cursor), the more accurate/efficient **the same** `agent-instruction-designer` becomes — without spawning per-target Designer clones.
+
+| Layer | What to improve | When |
+|-------|-----------------|------|
+| **A. Designer SystemPrompt** | §9 methodology, ask_user contracts, anti-patterns, scenario templates | After dogfood: wrong Instruction shape, weak bans, missing ask_user detail → add **one** hard line (same repair map as §9.4, applied to the Designer itself) |
+| **B. Authoring tools** | `search_tool_catalog`, propose/apply, validate alignment, Descriptions / ParameterSchema | Wrong tool picks, invented names, bad apply payloads → fix tool/plugin, not a novel in the prompt |
+| **C. Catalog quality** | Library tool Descriptions the Designer reads when planning | Target agents fail because Descriptions lie → fix catalog/plugin (Designer then plans better for everyone) |
+| **D. Capture evidence** | Note acceptance scripts, successful tool sequences, known gaps (HowAppBuilder step 6) — store in Designer prompt appendix or internal notes doc linked from seed | After a scenario is proven |
+| **E. Do not** | Fork a Designer SkillSet per target; only patch C# `GenerateAgentDesign` metaPrompt; tune chat tone while tool sequence is wrong | — |
+
+**Operating cadence (product):**
+
+1. Use Designer on a real target → Save → Test Run the **target** → read AgentLoop.
+2. Classify failure (§9.4): subscription/Description vs Designer prompt vs authoring plugin.
+3. Fix **one class**; prefer updating `agent-instruction-designer` SkillSet in Agent Management (eat our own dogfood: open Designer on the Designer itself only for careful meta-edits, or edit its prompt tab directly).
+4. Re-run the same acceptance script; keep a short changelog on the Designer SkillSet description or this design doc §16.
+5. Periodically fold Cursor-side learnings into A/B — that is how in-app AI capability rises.
+
+Optional later (not v1 blockers): memory/vector recall of past successful designs; “Save as pattern” snippets — only if they feed the **single** Designer SkillSet, not per-target clones.
 
 ### Visibility
 
@@ -452,6 +503,7 @@ v1 does **not** rewrite controller metaPrompts to match §9.2 (avoid dual mainte
 1. Exact panel chrome: split view vs slide-over vs dock tab.
 2. Whether apply tools push events to React via SignalR/host callback vs returning a structured “draft patch” the panel applies.
 3. Whether targeting an **unsaved new** agent (no AgentCode yet) allows BuiltIn UpsertTool or only library subscriptions until first Save (mirror Generate’s current warning).
+4. Session GC policy when a target agent is deleted (orphan Designer chats).
 
 ---
 
@@ -463,3 +515,4 @@ v1 does **not** rewrite controller metaPrompts to match §9.2 (avoid dual mainte
 | 2026-11-12 | Expanded §9 from HowAppBuilder reference: operating loop, required prompt block structure, checklist, AgentLoop repair map, anti-patterns, seed duties for the designer itself. |
 | 2026-11-12 | Added §9.7 functional superset vs AI/AI Edit; §9.8 hardcoded knowledge migration checklist (ask_user contracts G2–G5 mandatory in seed). |
 | 2026-11-12 | Conflict pass: §3.1 new-demand-wins; HowAppBuilder §9.2 beats four-H2; E3 preserve no longer default; coexist = toolbar only; G9 not migrated as requirement; dogfood/acceptance aligned. |
+| 2026-11-12 | Locked §5.1 one Designer SkillSet + chat-per-target; §5.2 improve-the-designer loop (prompt/tools/catalog dogfood). |
