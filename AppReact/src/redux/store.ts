@@ -67,22 +67,21 @@ export const store = configureStore({
   reducer: rootReducer,
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
-      // FormMasterDetail / TransactionFormGroup cache large session trees in tabnav.
-      // Dev-only invariant middleware walks the store on every dispatch; default warnAfter=32ms
-      // fires constantly with open forms even when the cache path itself is ignored.
+      // FormMasterDetail / TransactionFormGroup put large session trees in
+      // tabnav.dictDataModelKeyAndCachedData. RTK's serializable check still walks that
+      // subtree via isNestedFrozen even when ignoredPaths skips it for the value scan,
+      // so open forms make every dispatch exceed warnAfter (32→128→still 167ms+).
+      // Keep action checks; skip state walk. immutableCheck disabled for the same reason.
+      // Both are already off in production builds.
       serializableCheck: {
+        ignoreState: true,
         ignoredActions: [
           'tabnav/setDataModelToCache',
           'tabnav/setCurrentTabDataToCache',
         ],
         ignoredActionPaths: ['payload.dataModel', 'meta.arg'],
-        ignoredPaths: ['tabnav.dictDataModelKeyAndCachedData'],
-        warnAfter: 128,
       },
-      immutableCheck: {
-        ignoredPaths: ['tabnav.dictDataModelKeyAndCachedData'],
-        warnAfter: 128,
-      },
+      immutableCheck: false,
     }).concat(tabsPersistenceMiddleware),
   devTools: process.env.NODE_ENV !== 'production',
 });
