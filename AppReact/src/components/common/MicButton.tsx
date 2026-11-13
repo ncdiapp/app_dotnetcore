@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTheme } from '../../redux/hooks/useTheme';
-import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { useVoiceInput, type VoiceEngine } from '../../hooks/useVoiceInput';
 
 export type MicButtonProps = {
   onTranscript: (text: string) => void;
@@ -10,18 +10,35 @@ export type MicButtonProps = {
   title?: string;
 };
 
+/** Idle icon differs by engine so power users can tell which path is active. */
+function idleMicIcon(engine: VoiceEngine): string {
+  // Whisper (server): classic mic
+  // Web Speech (browser fallback): mic-lines (waveform)
+  if (engine === 'webspeech') return 'fa-microphone-lines';
+  return 'fa-microphone';
+}
+
+function engineLabel(engine: VoiceEngine): string {
+  if (engine === 'whisper') return 'Voice input (Whisper)';
+  if (engine === 'webspeech') return 'Voice input (browser)';
+  return 'Voice input unavailable';
+}
+
 /**
- * Always visible mic next to Send. Click starts/stops MediaRecorder → Whisper/Gemini STT.
- * Errors are shown under the button so failures are not silent.
+ * Agent mic: Whisper when tenant server voice is enabled; otherwise Web Speech fallback.
+ * Icons differ slightly by engine (`fa-microphone` vs `fa-microphone-lines`).
  */
 export function MicButton({
   onTranscript,
   disabled,
   className,
+  tenantEnabled,
   title,
 }: MicButtonProps) {
   const { theme } = useTheme();
-  const voice = useVoiceInput(onTranscript);
+  const voice = useVoiceInput(onTranscript, { tenantEnabled });
+
+  if (!voice.supported) return null;
 
   const busy = voice.isListening;
   const tip =
@@ -31,8 +48,8 @@ export function MicButton({
       : voice.isTranscribing
         ? 'Transcribing…'
         : voice.isRecording
-          ? 'Stop recording'
-          : 'Voice input');
+          ? 'Stop'
+          : engineLabel(voice.engine));
 
   return (
     <div className="relative flex flex-col items-center shrink-0">
@@ -53,6 +70,7 @@ export function MicButton({
         aria-label={tip}
         aria-pressed={voice.isRecording}
         data-testid="agent-mic-button"
+        data-voice-engine={voice.engine}
       >
         <i
           className={[
@@ -61,7 +79,7 @@ export function MicButton({
               ? 'fa-spinner fa-spin'
               : voice.isRecording
                 ? 'fa-stop'
-                : 'fa-microphone',
+                : idleMicIcon(voice.engine),
           ].join(' ')}
           aria-hidden
         />

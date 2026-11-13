@@ -9,7 +9,7 @@
 
 | # | Decision |
 |---|---|
-| 1 | **STT:** MediaRecorder → server **Whisper** (rewrite clean AppAI code; not a PLM port) |
+| 1 | **STT:** Prefer MediaRecorder → server **Whisper/Gemini**; if server voice **not enabled**, fallback **Web Speech API**. Icons differ: `fa-microphone` (Whisper) vs `fa-microphone-lines` (browser). |
 | 2 | **Language:** auto-detect (omit Whisper `language` / let model detect) |
 | 3 | **Unsupported:** **hide** Mic |
 | 4 | **Scope:** SharedAgentChat + refactor existing + Data Integration / Query / Workflow **same batch** |
@@ -355,6 +355,7 @@ No backend change for Option A v1.
 | 2026-11-13 | Draft created | Awaiting answers to §8 |
 | 2026-11-13 | §8 locked | Whisper rewrite; auto language; hide unsupported; same-batch surfaces; toggle UX; browser + tenant AI (`AIConfigEnableVoiceInput` + OpenAI key + `IsAiConfigured`) |
 | 2026-11-13 | Implemented v1 | `VoiceInputController` / `WhisperSpeechToTextService`; `MicButton` + `useVoiceInput` (MediaRecorder); SharedAgentChat + standalone agents; Memo deferred (hook only) |
+| 2026-11-13 | Web Speech fallback | When `IsAiVoiceInputEnabled` / server STT gate is off → browser `SpeechRecognition`; Mic idle icon `fa-microphone-lines`; tooltip / `data-voice-engine` expose path |
 
 ### Implemented touch list
 
