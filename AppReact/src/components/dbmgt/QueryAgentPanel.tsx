@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { AgentMessage, AgentStepEvent } from '../../webapi/appbuilderagentsvc';
 import { QueryAgentDoneEvent, queryAgentService } from '../../webapi/queryAgentSvc';
+import { MicButton } from '../common/MicButton';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Persistence keys
@@ -649,6 +650,14 @@ export const QueryAgentPanel: React.FC<Props> = ({
             onMouseDown={e => e.stopPropagation()}
             disabled={isRunning}
             rows={2}
+          />
+          <MicButton
+            onTranscript={t => {
+              setInput(prev => (prev ? `${prev} ${t}` : t));
+              inputRef.current?.focus();
+            }}
+            disabled={isRunning}
+            className="w-8 h-8 rounded-[4px]"
           />
           <button
             onClick={sendMessage}

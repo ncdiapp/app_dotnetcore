@@ -10,6 +10,7 @@ import {
   workflowAutomationAgentService,
 } from '../../webapi/workflowautomationagentsvc';
 import appHelper from '../../helper/appHelper';
+import { MicButton } from '../common/MicButton';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Local types
@@ -543,6 +544,14 @@ export const WorkflowAutomationAgentPanel: React.FC<Props> = ({
             onKeyDown={handleKeyDown}
             disabled={isRunning || hasPendingPlan}
             rows={2}
+          />
+          <MicButton
+            onTranscript={t => {
+              setInput(prev => (prev ? `${prev} ${t}` : t));
+              inputRef.current?.focus();
+            }}
+            disabled={isRunning || hasPendingPlan}
+            className="w-8 h-8 rounded-[4px]"
           />
           <button
             onClick={sendMessage}

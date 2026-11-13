@@ -24,6 +24,7 @@ namespace APP.Components.Dto
         public static readonly string IsSystemAdminProperty = ObjectInfoHelper.GetName<UserContext, bool>(o => o.IsInSysAdminDomain);
         public static readonly string DictAppSetupProperty = ObjectInfoHelper.GetName<UserContext, Dictionary<string, string>>(o => o.DictAppSetup);
         public static readonly string IsAiConfiguredProperty = ObjectInfoHelper.GetName<UserContext, bool>(o => o.IsAiConfigured);
+        public static readonly string IsAiVoiceInputEnabledProperty = ObjectInfoHelper.GetName<UserContext, bool>(o => o.IsAiVoiceInputEnabled);
         public static readonly string IsLoginFailedProperty = ObjectInfoHelper.GetName<UserContext, bool>(o => o.IsLoginFailed);
         public static readonly string IsExceededMaximumSessionProperty = ObjectInfoHelper.GetName<UserContext, bool>(o => o.IsExceededMaximumSession);
         public static readonly string ResourceIdProperty = ObjectInfoHelper.GetName<UserContext, Nullable<System.Int32>>(o => o.ResourceId);
@@ -132,6 +133,17 @@ namespace APP.Components.Dto
         {
             get { return GetValue<bool>(IsAiConfiguredProperty); }
             set { SetValue(IsAiConfiguredProperty, value); }
+        }
+
+        /// <summary>
+        /// True when mic voice input is allowed for this tenant: AI configured, AIConfigEnableVoiceInput on,
+        /// and OpenAI (Whisper) or Gemini STT key present. Backend re-checks AIConfigSettingBL.IsAiVoiceInputAvailable().
+        /// </summary>
+        [DataMember]
+        public bool IsAiVoiceInputEnabled
+        {
+            get { return GetValue<bool>(IsAiVoiceInputEnabledProperty); }
+            set { SetValue(IsAiVoiceInputEnabledProperty, value); }
         }
 
         /// <summary> The IsSystemAdmin property of the UserContext</summary>

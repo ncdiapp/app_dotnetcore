@@ -2,6 +2,11 @@ import React from 'react';
 import { useTheme } from '../../../../../redux/hooks/useTheme';
 import { getOneToOneFieldValue, buildFormDataWithOneToOneValue } from './formDataBindingHelper';
 
+/**
+ * Form memo textarea. Voice mic (MediaRecorder → Whisper / MicButton) is intentionally
+ * not wired here yet — see Document/Design/AI-Agent-Voice-Input-Design.md §6.4.
+ * Future: append MicButton with onTranscript → buildFormDataWithOneToOneValue.
+ */
 interface MemoControlProps {
   layoutItemExDto: any;
   fieldDto: any;

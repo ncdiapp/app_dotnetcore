@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { MicButton } from '../common/MicButton';
 import { useDispatch } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
@@ -49,11 +49,6 @@ const DbaGenieChat: React.FC<DbaGenieChatProps> = ({
     const [dataSources, setDataSources] = useState<DataSourceOptionDto[]>([]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef       = useRef<HTMLTextAreaElement>(null);
-
-    const voice = useVoiceInput((transcript) => {
-        setInputMessage(prev => prev ? `${prev} ${transcript}` : transcript);
-        inputRef.current?.focus();
-    });
 
     // Load data sources on mount
     useEffect(() => {
@@ -609,20 +604,14 @@ const DbaGenieChat: React.FC<DbaGenieChatProps> = ({
                         className={`flex-auto p-2 text-sm border rounded resize-none ${theme.inputBox}`}
                         disabled={isThinking}
                     />
-                    {voice.supported && (
-                        <button
-                            onClick={voice.toggle}
-                            disabled={isThinking}
-                            className={`w-9 h-9 flex items-center justify-center rounded-[4px] shrink-0 self-end transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                                voice.isListening
-                                    ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
-                                    : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300'
-                            }`}
-                            title={voice.isListening ? 'Stop listening' : 'Voice input'}
-                        >
-                            <i className={`fa-solid ${voice.isListening ? 'fa-stop' : 'fa-microphone'} text-sm`} />
-                        </button>
-                    )}
+                    <MicButton
+                        onTranscript={t => {
+                            setInputMessage(prev => (prev ? `${prev} ${t}` : t));
+                            inputRef.current?.focus();
+                        }}
+                        disabled={isThinking}
+                        className="w-9 h-9 rounded-[4px] self-end"
+                    />
                     <button
                         onClick={handleSendMessage}
                         disabled={!inputMessage.trim() || isThinking}

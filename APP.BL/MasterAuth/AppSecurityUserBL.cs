@@ -545,10 +545,12 @@ namespace App.BL
             try
             {
                 aUserContext.IsAiConfigured = App.BL.GenericAgent.AIConfigSettingBL.IsConfigured();
+                aUserContext.IsAiVoiceInputEnabled = App.BL.GenericAgent.AIConfigSettingBL.IsAiVoiceInputAvailable();
             }
             catch
             {
                 aUserContext.IsAiConfigured = false;
+                aUserContext.IsAiVoiceInputEnabled = false;
             }
 
             return aUserContext;
