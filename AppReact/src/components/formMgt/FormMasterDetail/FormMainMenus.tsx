@@ -115,10 +115,20 @@ interface FormMainMenusProps {
   onRefresh?: () => void;
   /** Reload current form like reopening it: re-fetch layout + data (Angular: refresh/reopen). */
   onReloadCurrentForm?: () => void;
-  /** Expose save/refresh actions to a parent (e.g. My Profile toolbar). */
-  onFormActionApiReady?: (api: { save: () => Promise<void>; refresh: () => void; reload: () => void }) => void;
+  /** Expose save/refresh/calculate actions to a parent (e.g. My Profile toolbar / form-group header). */
+  onFormActionApiReady?: (api: {
+    save: () => Promise<void>;
+    refresh: () => void;
+    reload: () => void;
+    calculate: () => Promise<void>;
+  }) => void;
   /** Template form-group header forms: run their actions before main (Angular: shared top menu). */
-  additionalFormActionApis?: Array<{ save: () => Promise<void>; refresh: () => void; reload: () => void }>;
+  additionalFormActionApis?: Array<{
+    save: () => Promise<void>;
+    refresh: () => void;
+    reload: () => void;
+    calculate: () => Promise<void>;
+  }>;
   /** Template header forms have unsaved changes or are new — enable main toolbar Save. */
   additionalFormCanSave?: boolean;
   additionalFormIsDirty?: boolean;
@@ -155,7 +165,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
   const { theme, t } = useTheme();
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { showError } = useErrorMessage();
+  const { showError, showValidationMessages } = useErrorMessage();
   const { addTabAndNavigate } = useTabNavigation();
   const isMobilePopup = layoutVariant === 'mobilePopup';
   const [configMenuOpen, setConfigMenuOpen] = useState(false);
@@ -498,50 +508,30 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
     }
   };
 
-  // Expose action API to parent callers.
-  // In embedded mode the parent toolbar must call the *latest* save/refresh logic,
-  // so keep refs updated and expose stable wrappers.
-  const saveRef = useRef(handleSave);
-  const refreshRef = useRef(handleRefresh);
-  const reloadRef = useRef<() => void>(() => {
-    additionalFormActionApis?.forEach((api) => api.reload());
-    (onReloadCurrentForm ?? onRefresh)?.();
-  });
-
-  useEffect(() => {
-    saveRef.current = handleSave;
-    refreshRef.current = handleRefresh;
-    reloadRef.current = () => {
-      additionalFormActionApis?.forEach((api) => api.reload());
-      (onReloadCurrentForm ?? onRefresh)?.();
-    };
-  });
-
-  useEffect(() => {
-    if (!onFormActionApiReady) return;
-    onFormActionApiReady({
-      save: async () => await saveRef.current(),
-      refresh: () => refreshRef.current(),
-      reload: () => reloadRef.current(),
-    });
-  }, [onFormActionApiReady]);
-  
-  // Handle Calculate
+  // Handle Calculate — same form-group order as Save: header transaction(s) first, then main.
   const handleCalculate = async () => {
     if (isLocked) return;
-    if (!dataModel.currentFormData) return;
 
     // If parent provided a custom calculate hook, run it.
     if (onCalculate) return onCalculate();
 
     try {
+      // Template header forms share the main toolbar; Calculation must hit them too
+      // (Save already loops additionalFormActionApis before main SaveTransactionData).
+      if (additionalFormActionApis?.length) {
+        for (const api of additionalFormActionApis) {
+          await api.calculate();
+        }
+      }
+
+      if (!dataModel.currentFormData) return;
+
       dispatch(setIsBusy());
       const result = await appTransactionService.validateAndCalculateTransactionData(dataModel.currentFormData);
 
-      const items = result?.ValidationResult?.Items ?? [];
-      const errorItems = items.filter((item: any) => item?.ItemType === 1);
-      if (errorItems.length > 0) {
-        showError(errorItems.map((e: any) => e?.LocalizedMessage || e?.Message || e?.Key).join('\n'));
+      // Errors + assignment/eval warnings (previously silent on the server).
+      if (result?.ValidationResult?.Items?.length) {
+        showValidationMessages(result.ValidationResult, true);
       }
 
       if (result?.Object) {
@@ -557,6 +547,37 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
       dispatch(setIsNotBusy());
     }
   };
+
+  // Expose action API to parent callers.
+  // In embedded mode the parent toolbar must call the *latest* save/refresh/calculate logic,
+  // so keep refs updated and expose stable wrappers.
+  const saveRef = useRef(handleSave);
+  const refreshRef = useRef(handleRefresh);
+  const calculateRef = useRef(handleCalculate);
+  const reloadRef = useRef<() => void>(() => {
+    additionalFormActionApis?.forEach((api) => api.reload());
+    (onReloadCurrentForm ?? onRefresh)?.();
+  });
+
+  useEffect(() => {
+    saveRef.current = handleSave;
+    refreshRef.current = handleRefresh;
+    calculateRef.current = handleCalculate;
+    reloadRef.current = () => {
+      additionalFormActionApis?.forEach((api) => api.reload());
+      (onReloadCurrentForm ?? onRefresh)?.();
+    };
+  });
+
+  useEffect(() => {
+    if (!onFormActionApiReady) return;
+    onFormActionApiReady({
+      save: async () => await saveRef.current(),
+      refresh: () => refreshRef.current(),
+      reload: () => reloadRef.current(),
+      calculate: async () => await calculateRef.current(),
+    });
+  }, [onFormActionApiReady]);
   
   // Handle Print
   const handlePrint = () => {

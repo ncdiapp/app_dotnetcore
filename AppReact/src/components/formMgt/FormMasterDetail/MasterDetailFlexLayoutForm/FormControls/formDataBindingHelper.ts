@@ -4,7 +4,10 @@
 function getSiblingUnitId(currentFormData: any, fieldDto: any, layoutItemExDto?: any): number | null | undefined {
   const rootUnitId = currentFormData?.RootUnitId;
   const unitId = fieldDto?.TransactionUnitId ?? layoutItemExDto?.GridTransactionUnitId;
-  if (unitId == null || unitId === rootUnitId) return null;
+  // RootUnitId is typed as object on the server — JSON may be number or string.
+  // Strict === would treat sibling/root incorrectly and read the wrong dict after Calculate.
+  if (unitId == null || rootUnitId == null) return unitId == null ? null : unitId;
+  if (String(unitId) === String(rootUnitId)) return null;
   return unitId;
 }
 

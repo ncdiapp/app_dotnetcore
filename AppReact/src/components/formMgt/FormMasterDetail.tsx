@@ -27,6 +27,8 @@ export type FormMasterDetailActionApi = {
     save: () => Promise<void>;
     refresh: () => void;
     reload: () => void;
+    /** Template form-group: main toolbar Calculation must run header forms too (Save already did). */
+    calculate: () => Promise<void>;
 };
 
 export type TemplateHeaderEmbeddedForm = {
