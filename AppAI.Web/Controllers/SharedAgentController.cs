@@ -105,10 +105,20 @@ public class SharedAgentController : SecureBaseController
                     ValidationItemType.Error, "Configurator chat does not belong to the signed-in user."));
                 return result;
             }
+            if (chatSessionKey.StartsWith(AgentInstructionDesignerConstants.ChatKeyPrefix, StringComparison.OrdinalIgnoreCase)
+                && !AgentInstructionDesignerConstants.IsDesignerChatKeyForUser(chatSessionKey, agentUserId))
+            {
+                result.ValidationResult.Items.Add(new ValidationItem(
+                    typeof(SharedAgentController), "GenericAgent_BadChat",
+                    ValidationItemType.Error, "Instruction Designer chat does not belong to the signed-in user."));
+                return result;
+            }
             if (FormAgentConstants.IsFormHostChatKeyForUser(chatSessionKey, agentUserId))
                 SessionBL.EnsureFormHostSession(chatSessionKey, agentUserId, agentDsId);
             if (FormConfigConstants.IsFormConfigChatKeyForUser(chatSessionKey, agentUserId))
                 SessionBL.EnsureFormConfigSession(chatSessionKey, agentUserId, agentDsId);
+            if (AgentInstructionDesignerConstants.IsDesignerChatKeyForUser(chatSessionKey, agentUserId))
+                SessionBL.EnsureInstructionDesignerSession(chatSessionKey, agentUserId, agentDsId);
             if (agentUserId > 0 &&
                 !SessionBL.IsFixedKey(chatSessionKey, request.SkillKey.Trim(), agentUserId) &&
                 SessionBL.LoadBySessionKey(chatSessionKey, request.SkillKey.Trim(), agentUserId, agentDsId) == null)
@@ -571,6 +581,42 @@ public class SharedAgentController : SecureBaseController
             result.ValidationResult.Items.Add(new ValidationItem(
                 typeof(SharedAgentController), "EnsureFormConfigChat",
                 ValidationItemType.Error, "App Configurator Agent is not installed for this tenant."));
+            return result;
+        }
+        result.Object = key;
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<string> EnsureInstructionDesignerChat([FromBody] InstructionDesignerChatRequestDto request)
+    {
+        var result = new OperationCallResult<string>();
+        var targetCode = (request?.TargetAgentCode ?? "").Trim();
+        var draftId = (request?.ClientDraftId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(targetCode) && string.IsNullOrWhiteSpace(draftId))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(SharedAgentController), "EnsureInstructionDesignerChat",
+                ValidationItemType.Error, "TargetAgentCode or ClientDraftId is required."));
+            return result;
+        }
+        if (ServerContext.Instance.CurrnetClientIdentity is not AppClientIdentity ai || ai.UserId == null)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(SharedAgentController), "EnsureInstructionDesignerChat",
+                ValidationItemType.Error, "Sign in is required."));
+            return result;
+        }
+        var userId = Convert.ToInt32(ai.UserId);
+        var scope = !string.IsNullOrWhiteSpace(targetCode)
+            ? targetCode
+            : "new:" + draftId;
+        var key = AgentInstructionDesignerConstants.MakeChatKey(userId, scope);
+        if (!SessionBL.EnsureInstructionDesignerSession(key, userId, ai.DataSourceId))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(SharedAgentController), "EnsureInstructionDesignerChat",
+                ValidationItemType.Error, "Agent Instruction Designer is not installed for this tenant."));
             return result;
         }
         result.Object = key;
@@ -1535,7 +1581,8 @@ public class SharedAgentController : SecureBaseController
             .Where(a => a != null
                 && !GeneralAgentConstants.IsGeneralAgentKey(a.SkillKey)
                 && !FormAgentConstants.IsFormAgentKey(a.SkillKey)
-                && !FormConfigConstants.IsFormConfigKey(a.SkillKey))
+                && !FormConfigConstants.IsFormConfigKey(a.SkillKey)
+                && !AgentInstructionDesignerConstants.IsDesignerKey(a.SkillKey))
             .Select(a => new ActiveAgentDto
         {
             SkillKey  = a.SkillKey,

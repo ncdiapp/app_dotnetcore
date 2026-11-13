@@ -44,6 +44,15 @@ namespace APP.Components.Dto
         public string Scope { get; set; }
     }
 
+    /// <summary>Open or resume Instruction Designer chat for one Agent Management edit target.</summary>
+    public class InstructionDesignerChatRequestDto
+    {
+        /// <summary>Saved target AgentCode. Empty when drafting a new unsaved agent.</summary>
+        public string TargetAgentCode { get; set; }
+        /// <summary>Client-stable id for unsaved new drafts (used as new:{ClientDraftId} scope).</summary>
+        public string ClientDraftId { get; set; }
+    }
+
     public class FormHostToolEvent
     {
         public string RequestId { get; set; }

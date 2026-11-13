@@ -1,7 +1,7 @@
 # Agent Instruction Designer — Design
 
-**Status:** Requirements draft (2026-11-12). Locked: UX pattern A; UI coexist with AI / AI Edit in v1; identity `agent-instruction-designer`; **new requirements win** on prompt shape / knowledge / capability (§3.1). Not yet implementation-ready until this doc is reviewed.  
-**Date:** 2026-11-12  
+**Status:** Approved for implementation (2026-11-13). Locked: UX pattern A; UI coexist with AI / AI Edit in v1; identity `agent-instruction-designer`; **new requirements win** on prompt shape / knowledge / capability (§3.1); **§15 implementation locks** (host_tool draft bridge, unsaved-new rule, right split panel).  
+**Date:** 2026-11-12 (approved 2026-11-13)  
 **Related:** [AppConfigurator-AiAgent-Design.md](./AppConfigurator-AiAgent-Design.md) (specialist design template), [HowAppBuilderAGenericAgent_Example_AppBuilderAgent.txt](./HowAppBuilderAGenericAgent_Example_AppBuilderAgent.txt) (methodology to encode — **canonical** for Instruction shape), [GeneralAgent-And-SkillLibrary.md](./GeneralAgent-And-SkillLibrary.md), [SharedAgentEngine-Architecture.md](./SharedAgentEngine-Architecture.md), [AppAISkill-FromUserPrompt-Design.md](./AppAISkill-FromUserPrompt-Design.md)  
 **Supersedes:** none (does **not** adopt GenerateAgentDesign’s four-H2 output as the durable Instruction shape)
 
@@ -17,7 +17,7 @@ Before implementing:
 4. Agreement that **methodology** for authoring agents lives in this specialist’s editable SkillSet — not only in Cursor chats or hardcoded controller meta-prompts.
 5. Conflict rule locked: see **§3.1** (new demand wins over legacy button behavior).
 
-§0 is **passed for design**; implement when product accepts this doc.
+§0 is **passed**; product accepted this doc on 2026-11-13 — implement per §13 + §15 locks.
 
 ---
 
@@ -98,6 +98,9 @@ using SharedAgentEngine + authoring tools. Changes stage into the **open editor 
 | 9 | Superset + migrate | Designer is a **functional superset** of AI + AI Edit (§9.7). Useful hardcoded knowledge migrates via §9.8 into seed (ask_user细则 mandatory). Legacy rules that conflict with §3.1 are **dropped**, not migrated. |
 | 10 | One designer, many chats | There is **one** SkillSet `agent-instruction-designer`. Each edit-target gets its own **chat session**, not its own Designer SkillSet row (§5.1). |
 | 11 | Improve-the-designer loop | Make Designer better by editing **its** SkillSet (prompt / authoring tools / descriptions) from dogfood evidence — not by forking a Designer per target (§5.2). |
+| 12 | Draft bridge | FormHost-style **`onHostTool`**: all `get_draft_*` / `apply_*_to_draft` are host tools; catalog `search_*` / `list_*` / `get_library_tools` / validate / suggest are server BuiltIns (§15). |
+| 13 | Unsaved new target | Prompt + library subscription / exclusion draft only until first Save; **no** private BuiltIn UpsertTool until AgentCode exists (mirror Generate warning). |
+| 14 | Panel chrome | **Right split** beside the open editor (editor left, Designer chat right). Not slide-over / not dock tab in v1. |
 
 ### 3.1 Precedence — new demand wins over legacy buttons
 
@@ -272,18 +275,20 @@ Product agents (not replaced by this designer):
 
 ### 7.1 New library `platform-agent-authoring`
 
-`ToolType = BuiltIn`. Thin plugins over catalog BL + host draft bridge (exact method names at implement time).
+`ToolType = BuiltIn`. Thin plugins over catalog BL + host draft bridge.
 
-| Area | Working tool titles | Notes |
-|------|---------------------|--------|
-| Inspect draft | `get_draft_agent`, `get_draft_system_prompt`, `get_draft_subscriptions` | Current target from HostContext |
-| Catalog | `search_tool_catalog`, `list_libraries`, `get_library_tools` | Reuse catalog sync; shortlist like Generate |
-| Propose | `propose_system_prompt`, `propose_tool_plan` | Return structured proposal for review |
-| Apply-to-draft | `apply_system_prompt_to_draft`, `apply_subscriptions_to_draft`, `apply_exclusions_to_draft` | Host UI state only; HITL for large diffs |
-| Validate | `validate_prompt_tool_alignment` | Prompt mentions vs subscribed tools; warn mismatches |
-| Soft limits | `suggest_limit_tweaks` | e.g. MaxToolResultChars when heavy DB tools appear |
+**Host vs server (locked):** dirty `editItem` lives in React — server plugins must not read saved SkillSet as truth for inspect/apply.
 
-Dispatch: SharedAgentEngine → BuiltInToolExecutor → new plugin (e.g. `AgentAuthoringPlugin`).
+| Area | Tool titles | Where |
+|------|-------------|--------|
+| Inspect draft | `get_draft_agent`, `get_draft_system_prompt`, `get_draft_subscriptions` | **Host** (`onHostTool`) |
+| Catalog | `search_tool_catalog`, `list_libraries`, `get_library_tools` | **Server** (`AgentAuthoringPlugin` + catalog BL) |
+| Propose | `propose_system_prompt`, `propose_tool_plan` | **Server** (normalize / return proposal JSON for ask_user; no mutate) |
+| Apply-to-draft | `apply_system_prompt_to_draft`, `apply_subscriptions_to_draft`, `apply_exclusions_to_draft` | **Host** (`onHostTool`); marks dirty; no DB Upsert |
+| Validate | `validate_prompt_tool_alignment` | **Server** (args = prompt + subscription snapshot from prior host inspect) |
+| Soft limits | `suggest_limit_tweaks` | **Server** (e.g. MaxToolResultChars when heavy DB tools appear) |
+
+Dispatch: SharedAgentEngine → BuiltInToolExecutor → `AgentAuthoringPlugin` (host tools call `AskHost` like `FormHostPlugin`).
 
 ### 7.2 Do not
 
@@ -498,12 +503,14 @@ v1 does **not** rewrite controller metaPrompts to match §9.2 (avoid dual mainte
 
 ---
 
-## 15. Open questions (non-blocking for this draft)
+## 15. Implementation locks (was open questions)
 
-1. Exact panel chrome: split view vs slide-over vs dock tab.
-2. Whether apply tools push events to React via SignalR/host callback vs returning a structured “draft patch” the panel applies.
-3. Whether targeting an **unsaved new** agent (no AgentCode yet) allows BuiltIn UpsertTool or only library subscriptions until first Save (mirror Generate’s current warning).
-4. Session GC policy when a target agent is deleted (orphan Designer chats).
+| # | Topic | Locked decision (2026-11-13) |
+|---|--------|------------------------------|
+| 1 | Panel chrome | **Right split** beside the open editor while `editItem` is open. |
+| 2 | Apply / inspect bridge | FormHost-style **`onHostTool`** only. Do **not** use “return draft patch for panel to apply” as the v1 path. |
+| 3 | Unsaved new agent | Prompt + library / exclusion **draft only** until first Save. **No** private BuiltIn `UpsertTool` until `AgentCode` exists (same spirit as Generate’s warning). |
+| 4 | Session GC on delete | Non-blocking for v1 start: orphan Designer chats may remain; GC / cleanup can follow. |
 
 ---
 
@@ -516,3 +523,4 @@ v1 does **not** rewrite controller metaPrompts to match §9.2 (avoid dual mainte
 | 2026-11-12 | Added §9.7 functional superset vs AI/AI Edit; §9.8 hardcoded knowledge migration checklist (ask_user contracts G2–G5 mandatory in seed). |
 | 2026-11-12 | Conflict pass: §3.1 new-demand-wins; HowAppBuilder §9.2 beats four-H2; E3 preserve no longer default; coexist = toolbar only; G9 not migrated as requirement; dogfood/acceptance aligned. |
 | 2026-11-12 | Locked §5.1 one Designer SkillSet + chat-per-target; §5.2 improve-the-designer loop (prompt/tools/catalog dogfood). |
+| 2026-11-13 | **Approved for implementation.** Locked §15: host_tool draft bridge, unsaved-new BuiltIn rule, right-split panel; §3 rows 12–14; §7.1 host vs server table. |

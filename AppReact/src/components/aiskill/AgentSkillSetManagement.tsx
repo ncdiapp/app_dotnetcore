@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
 import { useTheme } from '../../redux/hooks/useTheme';
+import type { RootState } from '../../redux/store';
 import {
     agentSkillSetSvc,
     AppAgentSkillSetDto, AppAgentToolDomainDto, AppAgentToolLibraryDto, AppAgentPromptHistoryDto,
@@ -9,6 +10,7 @@ import {
     GenerateAgentResult, LibraryToolPreviewDto,
     agentCodeOf,
 } from '../../webapi/agentSkillSetSvc';
+import { genericAgentSvc } from '../../webapi/genericAgentSvc';
 import AgentToolRegisterTab from './AgentToolRegisterTab';
 import AgentUiChatHost from './AgentUiChatHost';
 import { chatModulesFromLibraries } from './agentUiModules';
@@ -20,6 +22,11 @@ import AgentHierarchyPanel from './AgentHierarchyPanel';
 import AgentChildAgentTab from './AgentChildAgentTab';
 import { GENERAL_AGENT_KEY, isGeneralAgentKey } from './generalAgent';
 import { FORM_AGENT_SKILL_KEY } from '../formMgt/FormAgent/formAgentHost';
+import {
+    AGENT_INSTRUCTION_DESIGNER_SKILL_KEY,
+    buildInstructionDesignerHostContext,
+    isAgentInstructionDesignerKey,
+} from './agentInstructionDesignerHost';
 
 type Tab = 'skills' | 'libraries';
 type EditorTab = 'prompt' | 'child-agent' | 'tools' | 'files' | 'limits';
@@ -64,6 +71,7 @@ const emptySkillSet = (): AppAgentSkillSetDto => ({
 const AgentSkillSetManagement: React.FC = () => {
     const { theme, t } = useTheme();
     const dispatch = useDispatch();
+    const isAiConfigured = useSelector((s: RootState) => !!(s.userSession?.userContext?.IsAiConfigured ?? (s.userSession?.userContext as any)?.isAiConfigured));
     const [activeTab, setActiveTab] = useState<Tab>('skills');
     const [editorTab, setEditorTab] = useState<EditorTab>('prompt');
     const [agents, setAgents] = useState<AppAgentSkillSetDto[]>([]);
@@ -75,6 +83,9 @@ const AgentSkillSetManagement: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [testSkillKey, setTestSkillKey] = useState<string | null>(null);
+    const [showDesigner, setShowDesigner] = useState(false);
+    const [designerChatKey, setDesignerChatKey] = useState<string | null>(null);
+    const clientDraftIdRef = useRef(`draft-${Date.now().toString(36)}`);
     const [leftPanelWidthPx, setLeftPanelWidthPx] = useState(SPLIT_LEFT_DEFAULT_PX);
     const splitContainerRef = useRef<HTMLDivElement | null>(null);
     const splitDragRef = useRef(false);
@@ -118,6 +129,18 @@ const AgentSkillSetManagement: React.FC = () => {
     const [excluded, setExcluded] = useState<Set<string>>(new Set());
     const [exclChanged, setExclChanged] = useState(false);
     const [allowedKeys, setAllowedKeys] = useState<Set<string>>(new Set());
+    const editItemRef = useRef(editItem);
+    editItemRef.current = editItem;
+    const subscribedKeysRef = useRef(subscribedKeys);
+    subscribedKeysRef.current = subscribedKeys;
+    const excludedRef = useRef(excluded);
+    excludedRef.current = excluded;
+    const isDirtyRef = useRef(isDirty);
+    isDirtyRef.current = isDirty;
+    const designerSeeded = useMemo(
+        () => agents.some(a => isAgentInstructionDesignerKey(agentCodeOf(a))),
+        [agents],
+    );
     const [allowChanged, setAllowChanged] = useState(false);
 
     const applyListAndKeepSelection = useCallback((list: AppAgentSkillSetDto[], skillKeyToKeep: string | null | undefined, syncEditFromServer: boolean) => {
@@ -216,6 +239,8 @@ const AgentSkillSetManagement: React.FC = () => {
             setIsEditing(true);
             setIsDirty(false);
             setTestSkillKey(null);
+            setShowDesigner(false);
+            setDesignerChatKey(null);
             setSubsChanged(false);
             setExclChanged(false);
             setAllowChanged(false);
@@ -238,6 +263,8 @@ const AgentSkillSetManagement: React.FC = () => {
         setIsEditing(true);
         setIsDirty(false);
         setTestSkillKey(null);
+        // Keep designer open when switching targets — effect retargets chat session.
+        setDesignerChatKey(null);
         setSubsChanged(false);
         setShowHistory(false);
         setEditorTab('prompt');
@@ -246,6 +273,124 @@ const AgentSkillSetManagement: React.FC = () => {
         loadHistory(agentCodeOf(item));
         loadUsedBy(agentCodeOf(item));
     }, [agents, loadUsedBy]);
+
+    const parseJsonArray = (raw: unknown): any[] => {
+        if (Array.isArray(raw)) return raw;
+        if (typeof raw === 'string' && raw.trim()) {
+            try {
+                const v = JSON.parse(raw);
+                return Array.isArray(v) ? v : [];
+            } catch { return []; }
+        }
+        return [];
+    };
+
+    const handleDesignerHostTool = useCallback(async (toolName: string, args: any) => {
+        const item = editItemRef.current;
+        const code = (item.AgentCode || '').trim();
+        if (toolName === 'get_draft_agent') {
+            return {
+                ok: true,
+                targetAgentCode: code || null,
+                displayName: item.DisplayName || null,
+                isNew: !code,
+                dirty: isDirtyRef.current,
+                executionMode: item.ExecutionMode || 'Interactive',
+                limits: { maxToolResultChars: item.MaxToolResultChars ?? 4000 },
+                systemPromptChars: (item.SystemPrompt || '').length,
+                subscribedLibraryCount: subscribedKeysRef.current.size,
+                excludedToolCount: excludedRef.current.size,
+            };
+        }
+        if (toolName === 'get_draft_system_prompt') {
+            return { ok: true, systemPrompt: item.SystemPrompt || '' };
+        }
+        if (toolName === 'get_draft_subscriptions') {
+            const exclusions = Array.from(excludedRef.current).map(k => {
+                const [libraryKey, toolName2] = k.split('\u0001');
+                return { libraryKey, toolName: toolName2 };
+            });
+            return {
+                ok: true,
+                hasAgentCode: !!code,
+                subscribedLibraryKeys: Array.from(subscribedKeysRef.current),
+                exclusions,
+                note: code
+                    ? null
+                    : 'Unsaved draft: library subscriptions/exclusions can stage; private BuiltIns require Save first.',
+            };
+        }
+        if (toolName === 'apply_system_prompt_to_draft') {
+            const prompt = typeof args?.systemPrompt === 'string' ? args.systemPrompt : '';
+            if (!prompt.trim()) return { ok: false, error: 'systemPrompt is required.' };
+            setEditItem(prev => ({ ...prev, SystemPrompt: prompt }));
+            setIsDirty(true);
+            return { ok: true, staged: true, chars: prompt.length };
+        }
+        if (toolName === 'apply_subscriptions_to_draft') {
+            const keys = parseJsonArray(args?.libraryKeysJson ?? args?.libraryKeys)
+                .map((x: any) => String(x || '').trim())
+                .filter(Boolean);
+            setSubscribedKeys(new Set(keys));
+            setSubsChanged(true);
+            setIsDirty(true);
+            return { ok: true, staged: true, subscribedLibraryKeys: keys };
+        }
+        if (toolName === 'apply_exclusions_to_draft') {
+            const rows = parseJsonArray(args?.exclusionsJson ?? args?.exclusions);
+            const next = new Set<string>();
+            rows.forEach((r: any) => {
+                const lib = String(r?.libraryKey ?? r?.LibraryKey ?? '').trim();
+                const name = String(r?.toolName ?? r?.ToolName ?? '').trim();
+                if (lib && name) next.add(`${lib}\u0001${name}`);
+            });
+            setExcluded(next);
+            setExclChanged(true);
+            setIsDirty(true);
+            return { ok: true, staged: true, exclusionCount: next.size };
+        }
+        return { ok: false, error: `${toolName} is not an Instruction Designer host tool.` };
+    }, []);
+
+    const getDesignerHostContext = useCallback(() => {
+        const item = editItemRef.current;
+        const code = (item.AgentCode || '').trim();
+        const exclusions = Array.from(excludedRef.current).map(k => {
+            const [libraryKey, toolName] = k.split('\u0001');
+            return { libraryKey, toolName };
+        });
+        return JSON.stringify(buildInstructionDesignerHostContext({
+            targetAgentCode: code,
+            targetDisplayName: item.DisplayName || '',
+            isNew: !code,
+            dirty: isDirtyRef.current,
+            systemPrompt: item.SystemPrompt || '',
+            subscribedLibraryKeys: Array.from(subscribedKeysRef.current),
+            excludedTools: exclusions,
+            executionMode: item.ExecutionMode,
+            maxToolResultChars: item.MaxToolResultChars,
+        }));
+    }, []);
+
+    useEffect(() => {
+        if (!showDesigner || !isEditing || isGeneralAgentKey(editItem.AgentCode)) {
+            return;
+        }
+        let cancelled = false;
+        const code = (editItem.AgentCode || '').trim();
+        genericAgentSvc.EnsureInstructionDesignerChat({
+            targetAgentCode: code || null,
+            clientDraftId: code ? null : clientDraftIdRef.current,
+        })
+            .then((key) => { if (!cancelled) setDesignerChatKey(key || null); })
+            .catch((e: unknown) => {
+                if (!cancelled) {
+                    setDesignerChatKey(null);
+                    setError(e instanceof Error ? e.message : String(e));
+                }
+            });
+        return () => { cancelled = true; };
+    }, [showDesigner, isEditing, editItem.AgentCode]);
 
     useEffect(() => {
         const onMove = (e: MouseEvent) => {
@@ -391,6 +536,10 @@ const handleSave = async () => {
             setError('app-configurator is reserved for the App Configurator Agent.');
             return;
         }
+        if (!selected && isAgentInstructionDesignerKey(key)) {
+            setError('agent-instruction-designer is reserved for the Agent Instruction Designer.');
+            return;
+        }
         dispatch(setIsBusy()); setError(null);
         try {
             if (isGeneralAgentKey(key)) {
@@ -442,7 +591,8 @@ const handleSave = async () => {
     const handleDelete = async () => {
         if (!selected || isGeneralAgentKey(selected.AgentCode)
             || selected.AgentCode?.toLowerCase() === FORM_AGENT_SKILL_KEY
-            || selected.AgentCode?.toLowerCase() === 'app-configurator') return;
+            || selected.AgentCode?.toLowerCase() === 'app-configurator'
+            || isAgentInstructionDesignerKey(selected.AgentCode)) return;
         dispatch(setIsBusy());
         setError(null);
         try {
@@ -505,6 +655,8 @@ const handleSave = async () => {
         setIsEditing(true);
         setIsDirty(false);
         setTestSkillKey(null);
+        setDesignerChatKey(null);
+        clientDraftIdRef.current = `draft-${Date.now().toString(36)}`;
         setUsedByParents([]);
         setEditorTab('prompt');
         setHeaderDetailsExpanded(true);
@@ -743,13 +895,17 @@ const handleSave = async () => {
                             </div>
                             {selected && !isGeneralAgentKey(selected.AgentCode)
                               && selected.AgentCode?.toLowerCase() !== FORM_AGENT_SKILL_KEY
-                              && selected.AgentCode?.toLowerCase() !== 'app-configurator' && (
+                              && selected.AgentCode?.toLowerCase() !== 'app-configurator'
+                              && !isAgentInstructionDesignerKey(selected.AgentCode) && (
                                 <button type="button" className={btn} onClick={() => setConfirmDelete(true)}>
                                     <i className="fa-solid fa-trash mr-1" />Delete
                                 </button>
                             )}
                             {selected && (
-                                <button type="button" className={btn} onClick={() => setTestSkillKey(selected.AgentCode)}>
+                                <button type="button" className={btn} onClick={() => {
+                                    setShowDesigner(false);
+                                    setTestSkillKey(selected.AgentCode);
+                                }}>
                                     <i className="fa-solid fa-play mr-1" />Run Test
                                 </button>
                             )}
@@ -813,7 +969,8 @@ const handleSave = async () => {
                                 </div>
                             </div>
                         ) : isEditing ? (
-                            <div className="h-full flex flex-col overflow-hidden">
+                            <div className="h-full flex flex-row overflow-hidden min-w-0">
+                            <div className="h-full min-w-0 w-1 flex-auto flex flex-col overflow-hidden">
                                 {/* Header identity — always visible; details collapsible */}
                                 <div
                                     className={`shrink-0 border-b ${borderCls}`}
@@ -975,6 +1132,20 @@ const handleSave = async () => {
                                                     <button type="button" className={`text-xs px-1.5 py-0.5 rounded ${theme.button_default} flex items-center gap-1 ${!editItem.SystemPrompt?.trim() ? 'opacity-40' : ''}`} onClick={(e) => { e.stopPropagation(); if (editItem.SystemPrompt?.trim()) { setAiEditInstruction(''); setAiEditResult(null); setShowAiEdit(true); } }}>
                                                         <i className="fa-solid fa-pencil" />AI Edit
                                                     </button>
+                                                    {isAiConfigured && designerSeeded && !isGeneralAgentKey(editItem.AgentCode) && (
+                                                        <button
+                                                            type="button"
+                                                            className={`text-xs px-1.5 py-0.5 rounded ${theme.button_default} flex items-center gap-1 ${showDesigner ? 'font-semibold' : ''}`}
+                                                            title="Design SystemPrompt + Tools with Agent Instruction Designer"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setTestSkillKey(null);
+                                                                setShowDesigner(v => !v);
+                                                            }}
+                                                        >
+                                                            <i className="fa-solid fa-comments" />Design with Agent
+                                                        </button>
+                                                    )}
                                                     <div className="relative">
                                                         <button type="button" className={`text-xs px-1.5 py-0.5 rounded ${theme.button_default} flex items-center gap-1 ${childKeysForEdit.length === 0 ? 'opacity-40' : ''}`} onClick={(e) => { e.stopPropagation(); if (childKeysForEdit.length > 0) setShowInsertCallAgent(o => !o); }} title={childKeysForEdit.length ? 'Insert call_agent for a registered Child-Agent' : 'Register Child-Agents first'}>
                                                             <i className="fa-solid fa-code" />Insert call_agent
@@ -1215,6 +1386,35 @@ const handleSave = async () => {
                                         </div>
                                     )}
                                 </div>
+                            </div>
+                            {showDesigner && (
+                                <div className={`shrink-0 w-[400px] max-w-[46%] min-w-[280px] flex flex-col overflow-hidden border-l ${borderCls} ${theme.mainContentSection}`}>
+                                    <div className={`flex items-center px-3 py-1 border-b ${borderCls}`}>
+                                        <i className="fa-solid fa-comments mr-2" />
+                                        <span className={`text-xs font-semibold ${theme.title} w-1 flex-auto`}>
+                                            Instruction Designer
+                                        </span>
+                                        <button type="button" className={btn} onClick={() => setShowDesigner(false)} title="Close">
+                                            <i className="fa-solid fa-xmark" />
+                                        </button>
+                                    </div>
+                                    <div className={`w-full h-1 flex-auto overflow-hidden ${t('bg_default')}`}>
+                                        {designerChatKey ? (
+                                            <AgentUiChatHost
+                                                skillKey={AGENT_INSTRUCTION_DESIGNER_SKILL_KEY}
+                                                chatSessionKey={designerChatKey}
+                                                showChatListButton={false}
+                                                squareChrome
+                                                getHostContext={getDesignerHostContext}
+                                                onHostTool={handleDesignerHostTool}
+                                                onHidePanel={() => setShowDesigner(false)}
+                                            />
+                                        ) : (
+                                            <div className={`p-3 text-xs ${theme.label}`}>Opening Instruction Designer…</div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                             </div>
                         ) : (
                             <div className="h-full flex items-center justify-center">

@@ -66,7 +66,9 @@ namespace App.BL.AIAgent.GenericAgent
                 if (string.IsNullOrWhiteSpace(code)) return false;
                 dto.AgentCode = code;
 
-                if (dto.AgentId <= 0 && (FormAgentConstants.IsFormAgentKey(code) || FormConfigConstants.IsFormConfigKey(code)))
+                if (dto.AgentId <= 0 && (FormAgentConstants.IsFormAgentKey(code)
+                    || FormConfigConstants.IsFormConfigKey(code)
+                    || AgentInstructionDesignerConstants.IsDesignerKey(code)))
                     return false;
 
                 if (dto.AgentId > 0)
@@ -81,7 +83,11 @@ namespace App.BL.AIAgent.GenericAgent
                             dto.AgentCode = code = FormAgentConstants.SkillKey;
                         else if (FormConfigConstants.IsFormConfigKey(existingCode))
                             dto.AgentCode = code = FormConfigConstants.SkillKey;
-                        else if (FormAgentConstants.IsFormAgentKey(code) || FormConfigConstants.IsFormConfigKey(code))
+                        else if (AgentInstructionDesignerConstants.IsDesignerKey(existingCode))
+                            dto.AgentCode = code = AgentInstructionDesignerConstants.SkillKey;
+                        else if (FormAgentConstants.IsFormAgentKey(code)
+                            || FormConfigConstants.IsFormConfigKey(code)
+                            || AgentInstructionDesignerConstants.IsDesignerKey(code))
                             return false;
                     }
                 }
@@ -169,6 +175,11 @@ ELSE IF @AgentID <= 0
             if (FormConfigConstants.IsFormConfigKey(skillKey))
             {
                 error = "App Configurator Agent is built in and cannot be deleted.";
+                return false;
+            }
+            if (AgentInstructionDesignerConstants.IsDesignerKey(skillKey))
+            {
+                error = "Agent Instruction Designer is built in and cannot be deleted.";
                 return false;
             }
             try
