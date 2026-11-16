@@ -433,6 +433,26 @@ class GenericAgentService {
         return String(data?.Object || '');
     }
 
+    async EnsureInstructionDesignerChat(args: {
+        targetAgentCode?: string | null;
+        clientDraftId?: string | null;
+    }): Promise<string> {
+        const res = await fetch(`${BASE}/EnsureInstructionDesignerChat`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({
+                TargetAgentCode: args.targetAgentCode || '',
+                ClientDraftId: args.clientDraftId || '',
+            }),
+        });
+        const data = await res.json();
+        if (!res.ok || data?.ValidationResult?.IsValid === false) {
+            const msg = data?.ValidationResult?.Items?.[0]?.Message || 'Could not open Instruction Designer chat.';
+            throw new Error(msg);
+        }
+        return String(data?.Object || '');
+    }
+
     async ConfirmHostTool(sessionId: string, resultJson: string): Promise<void> {
         await fetch(`${BASE}/ConfirmHostTool`, {
             method: 'POST',

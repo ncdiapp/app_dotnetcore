@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { RootState } from '../../redux/store';
 import { adminSvc } from '../../webapi/adminsvc';
+import { MicButton } from '../common/MicButton';
 import {
   CursorCloudAgentDoneEvent,
   CursorCloudAgentFileEvent,
@@ -1992,6 +1993,14 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
                       : 'What do you need help with?'}
                     rows={3}
                     className="w-1 flex-auto px-2 py-1 text-xs resize-none border-0 focus:outline-none bg-transparent"
+                  />
+                  <MicButton
+                    onTranscript={t => {
+                      setInput(prev => (prev ? `${prev} ${t}` : t));
+                      textareaRef.current?.focus();
+                    }}
+                    disabled={isRunning}
+                    className="w-8 h-7 ml-2 rounded-[4px]"
                   />
                   {isRunning ? (
                     <button

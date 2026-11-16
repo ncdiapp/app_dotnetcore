@@ -70,6 +70,20 @@ IF COL_LENGTH('dbo.AppGenericAgentSession', 'AgentID') IS NOT NULL
             return EnsureHostedSkillSession(sessionKey, userId, dataSourceId, FormConfigConstants.SkillKey, nameof(EnsureFormConfigSession));
         }
 
+        /// <summary>
+        /// Insert an empty Instruction Designer chat row if missing.
+        /// Key must be agent-design:{userId}:{targetScope}.
+        /// </summary>
+        public static bool EnsureInstructionDesignerSession(string sessionKey, int userId, int dataSourceId)
+        {
+            if (!AgentInstructionDesignerConstants.IsDesignerChatKeyForUser(sessionKey, userId) || dataSourceId <= 0)
+                return false;
+            return EnsureHostedSkillSession(
+                sessionKey, userId, dataSourceId,
+                AgentInstructionDesignerConstants.SkillKey,
+                nameof(EnsureInstructionDesignerSession));
+        }
+
         static bool EnsureHostedSkillSession(
             string sessionKey, int userId, int dataSourceId, string skillKey, string logName)
         {

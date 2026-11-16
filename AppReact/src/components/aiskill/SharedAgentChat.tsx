@@ -28,6 +28,7 @@ import { ReasoningLoopPanel, type ThinkingStep } from './dataRender/ReasoningLoo
 import { AgentMarkdown, FollowupChips, splitFollowups, type AgentFileLink } from './AgentMarkdown';
 import { GENERAL_AGENT_KEY, HANDOFF_CONFIRM_CONTEXT_KEY, isGeneralAgentKey, STAY_IN_GENERAL_MARKER } from './generalAgent';
 import { FormAgentResultSlotContext, FormGroupDockSlotContext, formGroupDockShowsNav } from '../formMgt/FormAgent/formGroupDock';
+import { MicButton } from '../common/MicButton';
 
 const SESSION_START = '[session_start]';
 const RUN_IN_PROGRESS = '[run_in_progress]';
@@ -2876,10 +2877,10 @@ const SharedAgentChat: React.FC<Props> = ({
                 </div>
 
                 <div className={dockComposerWrap}>
-                    <div className={`${dockComposerBox}${composerFocus ? ' ring-1' : ''}`}>
+                    <div className={`flex items-end gap-1.5 ${dockComposerBox}${composerFocus ? ' ring-1' : ''}`}>
                     <textarea
                         ref={composerRef}
-                        className={`w-full px-0 py-1 ${dockMsgCls} bg-transparent border-0 focus:outline-none resize-none ${isRunning || pendingAskUser ? 'pr-16' : 'pr-10'}`}
+                        className={`w-1 flex-auto px-0 py-1 ${dockMsgCls} bg-transparent border-0 focus:outline-none resize-none`}
                         rows={dockCompact ? 1 : 2}
                         value={input}
                         placeholder={historyReady ? 'Type your request here...' : 'Loading conversation…'}
@@ -2889,7 +2890,15 @@ const SharedAgentChat: React.FC<Props> = ({
                         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                         disabled={blocked}
                     />
-                    <div className={`absolute ${dockCompact ? 'bottom-1.5 right-1.5' : 'bottom-2 right-2'} flex items-center gap-1`}>
+                    <div className="flex items-center gap-1 shrink-0 pb-0.5">
+                    <MicButton
+                        onTranscript={t => {
+                            setInput(prev => (prev ? `${prev} ${t}` : t));
+                            composerRef.current?.focus();
+                        }}
+                        disabled={blocked}
+                        className={dockIconBtn}
+                    />
                     {(isRunning || pendingAskUser) && (
                         <button
                             type="button"

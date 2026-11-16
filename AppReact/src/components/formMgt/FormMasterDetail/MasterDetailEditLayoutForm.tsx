@@ -41,8 +41,18 @@ interface MasterDetailEditLayoutFormProps {
   /** Same as Configuration → Reload Current Form. */
   onConfigReload?: () => void;
   onToggleFormConfigButtons?: () => void;
-  onFormActionApiReady?: (api: { save: () => Promise<void>; refresh: () => void; reload: () => void }) => void;
-  additionalFormActionApis?: Array<{ save: () => Promise<void>; refresh: () => void; reload: () => void }>;
+  onFormActionApiReady?: (api: {
+    save: () => Promise<void>;
+    refresh: () => void;
+    reload: () => void;
+    calculate: () => Promise<void>;
+  }) => void;
+  additionalFormActionApis?: Array<{
+    save: () => Promise<void>;
+    refresh: () => void;
+    reload: () => void;
+    calculate: () => Promise<void>;
+  }>;
   additionalFormCanSave?: boolean;
   additionalFormIsDirty?: boolean;
   onTemplateHeaderContainerReady?: (element: HTMLElement | null) => void;

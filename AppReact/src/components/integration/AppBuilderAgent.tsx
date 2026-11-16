@@ -4,7 +4,7 @@ import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
 import { AgentCheckpoint, AgentCreatedTransaction, AgentMessage, AgentPlanEvent, AgentSchemaEvent, AgentSessionSummary, AgentStepEvent, appBuilderAgentService, deleteAgentSession, getAgentSession, getRecentAgentSessions } from '../../webapi/appbuilderagentsvc';
 import { adminSvc } from '../../webapi/adminsvc';
 import appHelper from '../../helper/appHelper';
-import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { MicButton } from '../common/MicButton';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Local types
@@ -763,12 +763,6 @@ const AppBuilderAgent: React.FC = () => {
     };
   }, []);
 
-  // ── Voice input ─────────────────────────────────────────────────────────────
-  const voice = useVoiceInput((transcript) => {
-    setInput(prev => prev ? `${prev} ${transcript}` : transcript);
-    textareaRef.current?.focus();
-  });
-
   // ── Load data sources + chat history from DB ───────────────────────────────
   const refreshChatHistory = useCallback(() => {
     getRecentAgentSessions(30).then(setChatHistory).catch(() => {});
@@ -1251,20 +1245,14 @@ const AppBuilderAgent: React.FC = () => {
                 rows={2}
                 className={`w-1 flex-auto px-3 py-2 text-xs border rounded-[4px] resize-none ${theme.inputBox}`}
               />
-              {voice.supported && (
-                <button
-                  onClick={voice.toggle}
-                  disabled={isRunning}
-                  className={`w-8 h-8 flex items-center justify-center rounded-[4px] shrink-0 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                    voice.isListening
-                      ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
-                      : theme.button_default
-                  }`}
-                  title={voice.isListening ? 'Stop listening' : 'Voice input'}
-                >
-                  <i className={`fa-solid ${voice.isListening ? 'fa-stop' : 'fa-microphone'} text-xs`} />
-                </button>
-              )}
+              <MicButton
+                onTranscript={t => {
+                  setInput(prev => (prev ? `${prev} ${t}` : t));
+                  textareaRef.current?.focus();
+                }}
+                disabled={isRunning}
+                className="w-8 h-8 rounded-[4px]"
+              />
               <button
                 onClick={handleSend}
                 disabled={isRunning || !input.trim()}

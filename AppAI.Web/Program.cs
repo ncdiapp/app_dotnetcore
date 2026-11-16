@@ -98,6 +98,9 @@ try
     builder.Services.AddScoped<IOcrService, LLMOcrService>();
     builder.Services.AddScoped<IPdfTechPackExtractor, PdfTechPackExtractor>();
 
+    // ISpeechToTextService — Whisper STT for agent microphone input
+    builder.Services.AddScoped<ISpeechToTextService, WhisperSpeechToTextService>();
+
     // IAiActionService — Generic AI Action Engine (skill-driven, multi-modal)
     builder.Services.AddScoped<IAiActionService, AiActionService>();
 

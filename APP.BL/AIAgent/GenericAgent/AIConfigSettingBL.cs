@@ -1,3 +1,4 @@
+using System;
 using APP.Components.Dto;
 using App.BL;
 
@@ -38,6 +39,29 @@ namespace App.BL.GenericAgent
 
         public static bool IsConfigured(AppClientIdentity identity)
             => !string.IsNullOrWhiteSpace(GetApiKey(identity));
+
+        /// <summary>
+        /// Tenant voice-input switch. Missing row defaults to <c>true</c> so existing tenants get mic when AI + OpenAI key are set.
+        /// </summary>
+        public static bool IsVoiceInputEnabled()
+        {
+            var raw = AppTenantSettingBL.GetStringValue(EmTenantSettings.AIConfigEnableVoiceInput);
+            if (string.IsNullOrWhiteSpace(raw)) return true;
+            return raw == "1" || string.Equals(raw.Trim(), bool.TrueString, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// STT needs OpenAI (Whisper) and/or Gemini (multimodal audio) API key.
+        /// </summary>
+        public static bool IsVoiceTranscriptionConfigured()
+            => !string.IsNullOrWhiteSpace(GetOpenAIApiKey())
+               || !string.IsNullOrWhiteSpace(GetGeminiApiKey());
+
+        /// <summary>
+        /// UI / API gate: default AI configured, voice switch on, and a transcription-capable API key.
+        /// </summary>
+        public static bool IsAiVoiceInputAvailable()
+            => IsConfigured() && IsVoiceInputEnabled() && IsVoiceTranscriptionConfigured();
 
         public static string GetApiKeyForProvider(string provider)
         {

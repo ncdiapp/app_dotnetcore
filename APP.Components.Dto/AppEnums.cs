@@ -984,6 +984,8 @@ namespace APP.Components.Dto
         GoogleDocumentAIBucket          = 3216,
         GoogleDocumentAIPollTimeoutMinutes = 3217,
         GoogleDocumentAICredentialJson    = 3218,
+        /// <summary>Tenant switch: enable AI agent microphone / Whisper voice input (default true when missing).</summary>
+        AIConfigEnableVoiceInput          = 3219,
     }
 
 

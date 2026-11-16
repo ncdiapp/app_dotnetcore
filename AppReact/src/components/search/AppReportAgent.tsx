@@ -11,7 +11,7 @@ import { adminSvc } from '../../webapi/adminsvc';
 import { dashboardService } from '../../webapi/dashboardsvc';
 import { SearchView } from './SearchView';
 import appHelper from '../../helper/appHelper';
-import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { MicButton } from '../common/MicButton';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hook: usePanelResize
@@ -356,11 +356,6 @@ const AppReportAgent: React.FC = () => {
   const [messages, setMessages] = useState<ReportChatMessage[]>([]);
   const [input, setInput] = useState('');
 
-  // ── Voice input ─────────────────────────────────────────────────────────────
-  const voice = useVoiceInput((transcript) => {
-    setInput(prev => prev ? `${prev} ${transcript}` : transcript);
-    textareaRef.current?.focus();
-  });
   const [isRunning, setIsRunning] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [conversationHistory, setConversationHistory] = useState<AgentReportMessage[]>([]);
@@ -768,20 +763,14 @@ const AppReportAgent: React.FC = () => {
                 className={`w-1 flex-auto resize-none bg-transparent text-xs outline-none ${theme.label} placeholder-gray-400 dark:placeholder-gray-600 disabled:opacity-60`}
                 style={{ maxHeight: '96px', overflowY: 'auto' }}
               />
-              {voice.supported && (
-                <button
-                  onClick={voice.toggle}
-                  disabled={isRunning}
-                  className={`w-7 h-7 flex items-center justify-center rounded-[4px] shrink-0 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                    voice.isListening
-                      ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
-                      : `${theme.button_default}`
-                  }`}
-                  title={voice.isListening ? 'Stop listening' : 'Voice input'}
-                >
-                  <i className={`fa-solid ${voice.isListening ? 'fa-stop' : 'fa-microphone'} text-xs`} />
-                </button>
-              )}
+              <MicButton
+                onTranscript={t => {
+                  setInput(prev => (prev ? `${prev} ${t}` : t));
+                  textareaRef.current?.focus();
+                }}
+                disabled={isRunning}
+                className="w-7 h-7 rounded-[4px]"
+              />
               <button
                 onClick={handleSend}
                 disabled={isRunning || !input.trim()}

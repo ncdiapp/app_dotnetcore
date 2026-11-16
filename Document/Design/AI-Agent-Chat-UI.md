@@ -24,7 +24,7 @@ Under the composer, one centered line of 12px muted text: the agent can be wrong
 
 The box is at least 100px tall, radius 8px, with the input border from the theme. The textarea sits at the top and grows with the text, up to 200px (120px when narrow), then scrolls. Placeholder is `Message {skill}…` in the muted label color. Enter sends. Shift+Enter inserts a line.
 
-Actions sit on the bottom right of the same box: Stop while a turn is running, Send when it is idle. There is no microphone and no attach button in this change.
+Actions sit on the bottom right of the same box: **Mic** (when tenant voice + MediaRecorder are available), Stop while a turn is running, Send when it is idle. Mic uses MediaRecorder → Whisper STT and appends text; there is no attach button in this change. See [`AI-Agent-Voice-Input-Design.md`](./AI-Agent-Voice-Input-Design.md).
 
 When the box has focus, the bottom edge becomes a thicker accent line and slowly shimmers, one cycle about 3 seconds. That is the waiting-and-typing frame from the reference (`chatBorderShimmer` on `.chat-input-box`). It runs only while focused. It stops when focus leaves.
 
@@ -72,7 +72,7 @@ On a narrow viewport the panel is a layer over the chat, with the same close con
 
 ## Left out
 
-Microphone, file attach, edit, retry, token counts, a CDN stylesheet, and a speech bubble on the avatar. Document export and the chat cache follow [`AI-Agent-Ui-Render-And-Document-Export.md`](AI-Agent-Ui-Render-And-Document-Export.md). A chip is not an export. LLM-built full Result pages (MCP style: template + all rows → HTML) are out; C# GENERATE merges rows. Session AI polish of TemplateContent + field structure is in scope per [`AI-Agent-Result-And-Doc-Export-UI-Layout-Redesign.md`](AI-Agent-Result-And-Doc-Export-UI-Layout-Redesign.md).
+File attach, edit, retry, token counts, a CDN stylesheet, and a speech bubble on the avatar. Microphone is in scope per [`AI-Agent-Voice-Input-Design.md`](./AI-Agent-Voice-Input-Design.md). Document export and the chat cache follow [`AI-Agent-Ui-Render-And-Document-Export.md`](AI-Agent-Ui-Render-And-Document-Export.md). A chip is not an export. LLM-built full Result pages (MCP style: template + all rows → HTML) are out; C# GENERATE merges rows. Session AI polish of TemplateContent + field structure is in scope per [`AI-Agent-Result-And-Doc-Export-UI-Layout-Redesign.md`](AI-Agent-Result-And-Doc-Export-UI-Layout-Redesign.md).
 
 ## Code
 
