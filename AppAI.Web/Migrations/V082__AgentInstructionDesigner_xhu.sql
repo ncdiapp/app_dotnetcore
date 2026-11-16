@@ -118,16 +118,27 @@ VALUES (N'platform-agent-authoring', N'list_target_chats',
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'platform-agent-authoring' AND ToolName = N'get_target_last_run')
 INSERT INTO dbo.AppAgentLibraryTool (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
 VALUES (N'platform-agent-authoring', N'get_target_last_run',
-    N'Load the target agent last user→assistant turn with ordered toolSteps from MessagesJson. Judge by tool sequence, not chat tone. Default = newest chat for current user+target.',
-    N'{"sessionKey":{"type":"string","description":"Optional SessionKey from list_target_chats"},"turnIndex":{"type":"integer","description":"0=most recent complete turn"}}',
+    N'Load the target agent recent user→assistant turn(s) with ordered toolSteps from MessagesJson. Default takeTurns=3 (last few rounds). Judge by tool sequences, not chat tone.',
+    N'{"sessionKey":{"type":"string","description":"Optional SessionKey from list_target_chats"},"takeTurns":{"type":"integer","description":"How many recent turns (default 3, max 10)"},"turnIndex":{"type":"integer","description":"Skip this many newest turns (default 0)"}}',
     N'BuiltIn', N'{"TypeName":"' + @Plugin + N'","MethodName":"GetTargetLastRun"}', 1, 14);
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'platform-agent-authoring' AND ToolName = N'explain_run_vs_instruction')
 INSERT INTO dbo.AppAgentLibraryTool (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
 VALUES (N'platform-agent-authoring', N'explain_run_vs_instruction',
-    N'Compare target last-run tool sequence to draft Instruction/subscriptions; suggest §9.4 fix class. Pass systemPrompt + libraryKeysJson from get_draft_* when possible.',
-    N'{"sessionKey":{"type":"string"},"systemPrompt":{"type":"string"},"libraryKeysJson":{"type":"string"},"exclusionsJson":{"type":"string"},"turnIndex":{"type":"integer"}}',
+    N'Compare recent target turn(s) tool sequences to draft Instruction/subscriptions; suggest §9.4 fix class. Default takeTurns=3. Pass systemPrompt + libraryKeysJson from get_draft_* when possible.',
+    N'{"sessionKey":{"type":"string"},"systemPrompt":{"type":"string"},"libraryKeysJson":{"type":"string"},"exclusionsJson":{"type":"string"},"takeTurns":{"type":"integer","description":"Recent turns to analyze (default 3, max 10)"},"turnIndex":{"type":"integer"}}',
     N'BuiltIn', N'{"TypeName":"' + @Plugin + N'","MethodName":"ExplainRunVsInstruction"}', 1, 15);
+
+-- Re-run safe: refresh debug tool contracts if an older V082 already inserted them.
+UPDATE dbo.AppAgentLibraryTool
+SET ToolDescription = N'Load the target agent recent user→assistant turn(s) with ordered toolSteps from MessagesJson. Default takeTurns=3 (last few rounds). Judge by tool sequences, not chat tone.',
+    ParameterSchemaJson = N'{"sessionKey":{"type":"string","description":"Optional SessionKey from list_target_chats"},"takeTurns":{"type":"integer","description":"How many recent turns (default 3, max 10)"},"turnIndex":{"type":"integer","description":"Skip this many newest turns (default 0)"}}'
+WHERE LibraryKey = N'platform-agent-authoring' AND ToolName = N'get_target_last_run';
+
+UPDATE dbo.AppAgentLibraryTool
+SET ToolDescription = N'Compare recent target turn(s) tool sequences to draft Instruction/subscriptions; suggest §9.4 fix class. Default takeTurns=3. Pass systemPrompt + libraryKeysJson from get_draft_* when possible.',
+    ParameterSchemaJson = N'{"sessionKey":{"type":"string"},"systemPrompt":{"type":"string"},"libraryKeysJson":{"type":"string"},"exclusionsJson":{"type":"string"},"takeTurns":{"type":"integer","description":"Recent turns to analyze (default 3, max 10)"},"turnIndex":{"type":"integer"}}'
+WHERE LibraryKey = N'platform-agent-authoring' AND ToolName = N'explain_run_vs_instruction';
 GO
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'agent-instruction-designer')
@@ -149,7 +160,7 @@ Apply-to-draft stages UI state only — the human clicks Save. You do NOT Upsert
 - Tools job = Instruction job — pick fewest real catalog tools; never invent LibraryKey/ToolName.
 - ask_user — runtime-injected for Interactive agents. NEVER recommend/register ask_user as a private BuiltIn.
 - Unsaved new agents — stage prompt + subscriptions/exclusions only; private BuiltIns need AgentCode (Save first).
-- Target Test Run evidence — MessagesJson toolSteps via get_target_last_run (current user + target only). Judge by tool sequence, not chat bubbles. No NLog file scrape.
+- Target Test Run evidence — MessagesJson toolSteps via get_target_last_run (current user + target only). Default takeTurns=3 (last few rounds). Judge by tool sequences across turns, not chat bubbles. No NLog file scrape.
 
 ━━━ 2. DEFAULT SEQUENCE — design or reshape Instruction + Tools ━━━━━━━━━━━
   1) get_draft_agent + get_draft_system_prompt + get_draft_subscriptions
@@ -177,10 +188,10 @@ D) Inspect only
 
 E) Debug why Test Run / target result looks wrong
   1) get_draft_system_prompt + get_draft_subscriptions (optional but preferred)
-  2) list_target_chats (optional) or get_target_last_run (default = newest chat for this user+target)
-  3) explain_run_vs_instruction with that prompt + libraryKeysJson
-  4) Apply ONE §9.4 fix class (subscription/Description vs one prompt sentence vs plugin) — ask_user before large overwrite
-  5) User Saves and re-runs Test on the TARGET; compare the new toolSequence
+  2) list_target_chats (optional) or get_target_last_run(takeTurns=3) — last few rounds, not only the newest turn; raise takeTurns up to 10 if needed
+  3) explain_run_vs_instruction(takeTurns=3) with that prompt + libraryKeysJson — watch repeatedFailedTools
+  4) Apply ONE §9.4 fix class (subscription/Description vs one prompt sentence vs plugin hard-block) — ask_user before large overwrite
+  5) User Saves and re-runs Test on the TARGET; compare the new toolSequence window
 
 ━━━ 4. HARD RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✓ ask_user before overwriting a long existing prompt or changing many subscriptions.
@@ -191,7 +202,7 @@ E) Debug why Test Run / target result looks wrong
   - Forms: mode=text + fieldsJson [{name,label,required?,type?,options?}]; types ONLY text|select|radio; DDL→select+options; radio→radio+options (NEVER select for radio).
   - Standalone choices: mode=single_choice|multi_choice + optionsJson [{id,display}] + ui (dropdown|radio|button_group). Never list choices only in FinalResponse prose.
 ✓ Private BuiltIns only when no library tool covers the need (0–5); still never ask_user.
-✓ When user asks why a result happened: call get_target_last_run / explain_run_vs_instruction before rewriting prose.
+✓ When user asks why a result happened: call get_target_last_run / explain_run_vs_instruction (default last 3 turns) before rewriting prose.
 ✗ Do not emit four-H2 Role/Workflow/Rules/Output without scenario tool sequences.
 ✗ Do not blindly preserve non-§9.2 essay structure.
 ✗ Do not call UpsertSkillSet / claim Save happened.
@@ -206,7 +217,7 @@ E) Debug why Test Run / target result looks wrong
 - propose_* — review helpers; still ask_user then apply_*.
 - validate_prompt_tool_alignment — fix mismatches before finishing.
 - suggest_limit_tweaks — advisory; user can set Limits tab (MaxToolResultChars).
-- list_target_chats / get_target_last_run / explain_run_vs_instruction — current user + HostContext.targetAgentCode only; toolSteps from DB.
+- list_target_chats / get_target_last_run / explain_run_vs_instruction — current user + HostContext.targetAgentCode only; toolSteps from DB; takeTurns defaults to 3.
 
 When unsure which scenario or tool, ask_user with concrete options — do not guess catalog names.',
     3, 1, 7, 1,
@@ -220,4 +231,23 @@ SELECT @AgentId = AgentID FROM dbo.AppAgentSkillSet WHERE AgentCode = N'agent-in
 
 IF @AgentId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibrarySubscription WHERE AgentID = @AgentId AND LibraryKey = N'platform-agent-authoring')
     INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey) VALUES (@AgentId, N'platform-agent-authoring');
+
+-- Upgrade stock designer prompt that already has debug tools but not takeTurns multi-turn window.
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = REPLACE(SystemPrompt,
+    N'2) list_target_chats (optional) or get_target_last_run (default = newest chat for this user+target)
+  3) explain_run_vs_instruction with that prompt + libraryKeysJson',
+    N'2) list_target_chats (optional) or get_target_last_run(takeTurns=3) — last few rounds, not only the newest turn; raise takeTurns up to 10 if needed
+  3) explain_run_vs_instruction(takeTurns=3) with that prompt + libraryKeysJson — watch repeatedFailedTools')
+WHERE AgentCode = N'agent-instruction-designer'
+  AND SystemPrompt LIKE N'%get_target_last_run%'
+  AND SystemPrompt NOT LIKE N'%takeTurns%';
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = REPLACE(SystemPrompt,
+    N'- Target Test Run evidence — MessagesJson toolSteps via get_target_last_run (current user + target only). Judge by tool sequence, not chat bubbles. No NLog file scrape.',
+    N'- Target Test Run evidence — MessagesJson toolSteps via get_target_last_run (current user + target only). Default takeTurns=3 (last few rounds). Judge by tool sequences across turns, not chat bubbles. No NLog file scrape.')
+WHERE AgentCode = N'agent-instruction-designer'
+  AND SystemPrompt LIKE N'%get_target_last_run%'
+  AND SystemPrompt NOT LIKE N'%Default takeTurns=3%';
 GO

@@ -299,7 +299,8 @@ Replaces ad-hoc Cursor SQL/`findstr` when the user asks “why did the target do
 |------|----------|
 | Evidence source (v1) | **DB only:** `MessagesJson` + persisted `toolSteps`. **Not** NLog `[AgentLoop]` files. |
 | Default scope | Current **signed-in user** + open **targetAgentCode**; default chat = newest (`ListChats` TOP 1 — usually Agent Management Test Run fixed key `{code}:{userId}`). |
-| Judge by | Ordered **tool sequence** (§9.4), not assistant chat tone. |
+| Turn window | `takeTurns` default **3** (max 10); `turnIndex` skips newest turns before the window. Return `turns[]` newest-first — not only the last turn. |
+| Judge by | Ordered **tool sequences across the window** (§9.4), including repeated failures; not assistant chat tone. |
 | Unsaved target | No AgentCode → tools return error (Save + Test Run first). |
 | Out of scope | Raw `execute_sql` on sessions; scanning other users’ chats; scraping log files (later optional). |
 
@@ -526,7 +527,7 @@ v1 does **not** rewrite controller metaPrompts to match §9.2 (avoid dual mainte
 | 2 | Apply / inspect bridge | FormHost-style **`onHostTool`** only. Do **not** use “return draft patch for panel to apply” as the v1 path. |
 | 3 | Unsaved new agent | Prompt + library / exclusion **draft only** until first Save. **No** private BuiltIn `UpsertTool` until `AgentCode` exists (same spirit as Generate’s warning). |
 | 4 | Session GC on delete | Non-blocking for v1 start: orphan Designer chats may remain; GC / cleanup can follow. |
-| 5 | Debug target run | DB `MessagesJson`/`toolSteps` only; scope = current user + targetAgentCode; default newest chat (Test Run). No AgentLoop file scrape in v1. |
+| 5 | Debug target run | DB `MessagesJson`/`toolSteps` only; scope = current user + targetAgentCode; default newest chat (Test Run); **takeTurns=3** recent turns (max 10). No AgentLoop file scrape in v1. |
 
 ---
 
@@ -541,3 +542,4 @@ v1 does **not** rewrite controller metaPrompts to match §9.2 (avoid dual mainte
 | 2026-11-12 | Locked §5.1 one Designer SkillSet + chat-per-target; §5.2 improve-the-designer loop (prompt/tools/catalog dogfood). |
 | 2026-11-13 | **Approved for implementation.** Locked §15: host_tool draft bridge, unsaved-new BuiltIn rule, right-split panel; §3 rows 12–14; §7.1 host vs server table. |
 | 2026-11-13 | Debug tools: `list_target_chats` / `get_target_last_run` / `explain_run_vs_instruction`; §7.1.1 + §15 #5 (DB toolSteps only); folded into V082 seed (no separate V083). |
+| 2026-11-16 | Debug window: `takeTurns` default 3 (max 10) on get/explain; `turns[]` + `repeatedFailedTools`; V082 tool-contract UPDATE. |
