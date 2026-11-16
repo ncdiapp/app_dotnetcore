@@ -56,6 +56,16 @@ const SearchManagement: React.FC<SearchManagementProps> = ({ menuId }) => {
   const [errorMessages, setErrorMessages] = useState<string[]>([]);
   const createDropdownRef = useRef<HTMLDivElement>(null);
   const filterDropdownRef = useRef<HTMLDivElement>(null);
+  const prevApplicationIdRef = useRef<string | null>(applicationId);
+
+  // If applicationId arrives after mount (e.g. parent started with null menuId), enable app filter.
+  useEffect(() => {
+    const prev = prevApplicationIdRef.current;
+    prevApplicationIdRef.current = applicationId;
+    if (applicationId && !prev) {
+      setIsFilterByApp(true);
+    }
+  }, [applicationId]);
 
   const emAppSearchUsageType = useEnumValues('EmAppSearchUsageType');
 

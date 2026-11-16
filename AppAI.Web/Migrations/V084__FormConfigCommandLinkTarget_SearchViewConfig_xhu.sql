@@ -146,9 +146,16 @@ VALUES (N'platform-search-view-config', N'update_search_basic_setting',
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'platform-search-view-config' AND ToolName = N'update_search_criteria')
 INSERT INTO dbo.AppAgentLibraryTool (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
 VALUES (N'platform-search-view-config', N'update_search_criteria',
-    N'CRUD AppSearchField. op=add|update|delete. Preview → ask_user → confirmed=true → request_search_reload.',
+    N'CRUD AppSearchField. op=add|update|delete. DDL needs ControlType=1 + EntityId from search_lookup_entities. Preview → ask_user → confirmed=true → request_search_reload.',
     N'{"op":{"type":"string","required":true},"searchFieldId":{"type":"integer"},"changesJson":{"type":"string"},"confirmed":{"type":"boolean"},"dryRun":{"type":"boolean"},"searchId":{"type":"integer"}}',
     N'BuiltIn', N'{"TypeName":"' + @SearchPlugin + N'","MethodName":"UpdateSearchCriteria"}', 1, 2);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'platform-search-view-config' AND ToolName = N'search_lookup_entities')
+INSERT INTO dbo.AppAgentLibraryTool (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (N'platform-search-view-config', N'search_lookup_entities',
+    N'Search AppEntityInfo for DDL EntityId (EntityCode/TableName/Description). Prefer host SaasApplicationId. NEVER use SearchId as EntityId. ask_user with id=EntityId.',
+    N'{"query":{"type":"string","required":true},"saasApplicationId":{"type":"integer"},"take":{"type":"integer"},"searchId":{"type":"integer"}}',
+    N'BuiltIn', N'{"TypeName":"' + @SearchPlugin + N'","MethodName":"SearchLookupEntities"}', 1, 13);
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'platform-search-view-config' AND ToolName = N'update_search_view_columns')
 INSERT INTO dbo.AppAgentLibraryTool (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
@@ -243,17 +250,21 @@ You change durable Search metadata only — not FormData, not Form/TX field conf
 A) Inspect: get_search_config
 B) Rename / rebind View or Dataset: update_search_basic_setting → ask_user → confirmed=true → request_search_reload
 C) Criteria CRUD: update_search_criteria(op=…) → ask_user → confirmed=true → request_search_reload
+C2) Criteria DDL Entity (ONE confirm only): search_lookup_entities(query) → ask_user pick EntityId → immediately update_search_criteria(ControlType=1, EntityId, confirmed=true) → request_search_reload. Entity pick IS the confirmation — do NOT ask_user Yes/No again / do NOT dryRun-preview after the pick.
 D) View columns: update_search_view_columns(op=…) → ask_user → confirmed=true → request_search_reload
 E) Dataset SQL: update_dataset → warn if shared → ask_user → confirmed=true → request_search_reload
 F) Link To Form/Search/…: get_search_view_link_targets → upsert_search_view_link_target → ask_user → confirmed=true → request_search_reload
 
 ━━━ 3. HARD RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✓ Always ask_user before durable writes.
+✓ Always ask_user before durable writes (except: after DDL Entity pick, call confirmed=true immediately — that ask_user already confirmed).
+✓ Never ask the user to confirm the same write 2–3 times.
 ✓ After successful writes call request_search_reload.
 ✓ Stay on HostContext searchId / matching view/dataset.
+✓ DDL / SearchAbleDDL / AutoComplete MUST use AppEntityInfo EntityId from search_lookup_entities (ControlType DDL=1, not 6/Grid).
+✗ NEVER offer SearchId / searchFieldId / list_available_searches as EntityId candidates.
 ✗ Do not create_search / greenfield apps.
 ✗ Do not edit Form TX fields / formulas / commands (send user to Form Configurator).
-✗ Do not invent ids — read from get_search_config / list tools.
+✗ Do not invent ids — read from get_search_config / search_lookup_entities / list tools.
 
 When unsure, ask_user with concrete options.',
     3, 1, 7, 1,
@@ -274,12 +285,17 @@ IF @SearchAgentId IS NOT NULL AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary 
 AND NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibrarySubscription WHERE AgentID = @SearchAgentId AND LibraryKey = N'platform-search')
     INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey) VALUES (@SearchAgentId, N'platform-search');
 
--- Exclude create/delete from platform-search if subscribed (keep list_* only when those tools exist)
+-- Exclude create/delete / broken report get_search_criteria from platform-search if subscribed
 IF @SearchAgentId IS NOT NULL
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentToolExclusion WHERE AgentID=@SearchAgentId AND LibraryKey=N'platform-search' AND ToolName=N'create_search')
         AND EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey=N'platform-search' AND ToolName=N'create_search')
         INSERT INTO dbo.AppAgentToolExclusion (AgentID, LibraryKey, ToolName) VALUES (@SearchAgentId, N'platform-search', N'create_search');
+
+    -- Report-agent get_search_criteria throws LLBL "out of sync" in this host; use get_search_config instead.
+    IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentToolExclusion WHERE AgentID=@SearchAgentId AND LibraryKey=N'platform-search' AND ToolName=N'get_search_criteria')
+        AND EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey=N'platform-search' AND ToolName=N'get_search_criteria')
+        INSERT INTO dbo.AppAgentToolExclusion (AgentID, LibraryKey, ToolName) VALUES (@SearchAgentId, N'platform-search', N'get_search_criteria');
 END
 GO
 
@@ -419,4 +435,65 @@ ask_user / propose_plan first. NEVER claim deleted unless IsSuccess=true.
 '
 WHERE AgentCode = N'app-builder'
   AND SystemPrompt NOT LIKE N'%delete_nav_menu_item%';
+GO
+
+-- Idempotent: DDL entity picker tool + prompt for already-seeded tenants
+DECLARE @SearchPlugin2 nvarchar(300) = N'App.BL.AIAgent.GenericAgent.Plugins.SearchViewConfigPlugin';
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'platform-search-view-config' AND ToolName = N'search_lookup_entities')
+INSERT INTO dbo.AppAgentLibraryTool (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (N'platform-search-view-config', N'search_lookup_entities',
+    N'Search AppEntityInfo for DDL EntityId (EntityCode/TableName/Description). Prefer host SaasApplicationId. NEVER use SearchId as EntityId. ask_user with id=EntityId.',
+    N'{"query":{"type":"string","required":true},"saasApplicationId":{"type":"integer"},"take":{"type":"integer"},"searchId":{"type":"integer"}}',
+    N'BuiltIn', N'{"TypeName":"' + @SearchPlugin2 + N'","MethodName":"SearchLookupEntities"}', 1, 13);
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+
+━━━ DDL EntityId (criteria) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+For DDL / SearchAbleDDL / AutoComplete criteria — ONE user confirmation only:
+1) search_lookup_entities(query=Customer|Client|tableName)
+2) ask_user optionsJson from entities[].askUserOption — id MUST be EntityId
+3) On selection: immediately update_search_criteria(op=update, searchFieldId, changesJson={ControlType:1,EntityId:<chosen>}, confirmed=true) → request_search_reload
+Entity pick IS the confirmation. Do NOT ask_user Yes/No again. Do NOT call update_search_criteria preview/dryRun after the pick.
+NEVER offer SearchId / searchFieldId / list_available_searches as EntityId.
+ControlType 6 is Grid, not DDL.
+
+━━━ Criteria modify vs add ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+To change an existing filter: get_search_config → op=update + searchFieldId of that row.
+NEVER op=add when SysTableFiledPath already exists (tool will reject duplicates).
+'
+WHERE AgentCode = N'app-search-view-config'
+  AND SystemPrompt NOT LIKE N'%search_lookup_entities%';
+GO
+
+-- Idempotent: tighten DDL flow to single confirmation (already-seeded tenants)
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = REPLACE(SystemPrompt,
+N'C2) Criteria DDL Entity: search_lookup_entities(query) → ask_user options id=EntityId → update_search_criteria ControlType=1 + EntityId',
+N'C2) Criteria DDL Entity (ONE confirm): search_lookup_entities → ask_user pick EntityId → immediately update_search_criteria(ControlType=1,EntityId,confirmed=true) → request_search_reload. Entity pick IS confirmation — no second Yes/No.')
+WHERE AgentCode = N'app-search-view-config'
+  AND SystemPrompt LIKE N'%C2) Criteria DDL Entity: search_lookup_entities(query)%';
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = REPLACE(SystemPrompt,
+N'1) search_lookup_entities(query=Customer|Client|tableName)
+2) ask_user optionsJson from entities[].askUserOption — id MUST be EntityId
+3) update_search_criteria with ControlType=1 and EntityId=<chosen>
+NEVER offer SearchId / searchFieldId / list_available_searches as EntityId.
+ControlType 6 is Grid, not DDL.',
+N'1) search_lookup_entities(query=Customer|Client|tableName)
+2) ask_user optionsJson from entities[].askUserOption — id MUST be EntityId
+3) On selection: immediately update_search_criteria(..., confirmed=true) → request_search_reload. Entity pick IS confirmation — no second Yes/No / no preview after pick.
+NEVER offer SearchId / searchFieldId / list_available_searches as EntityId.
+ControlType 6 is Grid, not DDL.')
+WHERE AgentCode = N'app-search-view-config'
+  AND SystemPrompt LIKE N'%3) update_search_criteria with ControlType=1 and EntityId=<chosen>%';
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = REPLACE(SystemPrompt,
+N'✓ Always ask_user before durable writes.',
+N'✓ Always ask_user before durable writes (DDL Entity pick counts — then confirmed=true immediately; never double-confirm).')
+WHERE AgentCode = N'app-search-view-config'
+  AND SystemPrompt LIKE N'%✓ Always ask_user before durable writes.%'
+  AND SystemPrompt NOT LIKE N'%never double-confirm%';
 GO

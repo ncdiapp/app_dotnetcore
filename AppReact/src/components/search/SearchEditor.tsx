@@ -199,6 +199,7 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
   const [filterColumnPickerOpen, setFilterColumnPickerOpen] = useState(false);
   const filterColumnPickerGridRef = useRef<any>(null);
   const activeViewSaveActionRef = useRef<(() => Promise<boolean>) | null>(null);
+  const [activeViewIsModified, setActiveViewIsModified] = useState(false);
   const suppressViewSavedAutoSelectRef = useRef(false);
 
   /** Resolved view type for the selected list row (API list may omit ViewType). */
@@ -1056,19 +1057,24 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
     }
   }, [param, paramObj.id, paramObj.param1, paramObj.param2, ignoreRouteParam]);
 
-  const refresh = () => loadData();
+  const refresh = useCallback(async () => {
+    await loadData();
+  }, [loadData]);
 
-  const save = useCallback(async () => {
-    if (!currentSearch?.IsModified && !activeViewSaveActionRef.current) return;
+  /** A′: return true when editor is clean or save succeeded. */
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!currentSearch?.IsModified && !activeViewIsModified && !clusterViewState?.IsModified) {
+      return true;
+    }
     dispatch(setIsBusy());
     try {
       if (activeViewSaveActionRef.current) {
         const ok = await activeViewSaveActionRef.current();
-        if (!ok) return;
+        if (!ok) return false;
       }
       if (!currentSearch?.IsModified) {
         showInfo('Saved');
-        return;
+        return true;
       }
       const payload: any = {
         ...currentSearch,
@@ -1085,16 +1091,18 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
         }
         showInfo('Saved');
         await loadData();
-      } else {
-        const msgs = data?.ValidationResult?.Items?.map((i: any) => i.ErrorMessage).filter(Boolean) || [];
-        showError(msgs.length ? msgs.join('; ') : 'Save failed');
+        return true;
       }
+      const msgs = data?.ValidationResult?.Items?.map((i: any) => i.ErrorMessage).filter(Boolean) || [];
+      showError(msgs.length ? msgs.join('; ') : 'Save failed');
+      return false;
     } catch (e) {
       showError(e instanceof Error ? e.message : 'Save failed');
+      return false;
     } finally {
       dispatch(setIsNotBusy());
     }
-  }, [currentSearch, paramObj.id, dispatch, loadData, showError, showInfo]);
+  }, [currentSearch, activeViewIsModified, clusterViewState?.IsModified, paramObj.id, dispatch, loadData, showError, showInfo]);
 
   const saveAs = useCallback(async () => {
     if (!currentSearch?.Id) return;
@@ -2125,6 +2133,7 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
                     onRegisterSaveAction={(saveAction) => {
                       activeViewSaveActionRef.current = saveAction;
                     }}
+                    onDirtyChange={setActiveViewIsModified}
                     onSaved={handleViewSaved}
                   />
                 ) : (
@@ -2611,6 +2620,8 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
           saasApplicationId={currentSearch?.SaasApplicationId ?? null}
           scope={`editor:search:${effectiveSearchId}`}
           onHidePanel={() => setShowAgentDock(false)}
+          isDirty={!!currentSearch?.IsModified || !!clusterViewState?.IsModified || activeViewIsModified}
+          onSaveDirty={save}
           onReload={refresh}
         />
       </div>

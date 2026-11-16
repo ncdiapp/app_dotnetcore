@@ -3,7 +3,7 @@
  * - Search → app-search-view-config
  * - Form / TX → app-configurator
  *
- * A′ collaboration (TX editor): if the design surface has unsaved memory changes,
+ * A′ collaboration (TX / Search editors): if the design surface has unsaved memory changes,
  * block chat until Save or Discard+Reload so Agent DB writes cannot fight local draft.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';

@@ -291,15 +291,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
                 if (target == null)
                 {
-                    var maxRootSort = working
-                        .Where(f => !f.ChildTransactionUnitId.HasValue && f.CaculationFlowSort.HasValue)
-                        .Select(f => f.CaculationFlowSort.Value)
-                        .DefaultIfEmpty(0)
-                        .Max();
+                    // Match TransactionFormulaEditor.findMaxFormulaSort: max across ALL rows
+                    // including grid placeholders (ChildTransactionUnitId set). Excluding them
+                    // made new formulas restart at Sort=1 and collide with placeholders.
                     target = new AppTransactionUnitFormulaDto
                     {
                         TransactionUnitId = Convert.ToInt32(unit.Id),
-                        CaculationFlowSort = maxRootSort + 1
+                        CaculationFlowSort = NextFormulaSort(working)
                     };
                     working.Add(target);
                 }
@@ -312,16 +310,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             target.FormulaExpression = resolve.ResolvedExpression;
             target.AssignToTransFieldId = resolve.AssignToFieldId;
             target.TransactionUnitId = Convert.ToInt32(unit.Id);
-            // Prefer sort among root (non-grid-placeholder) formulas so Assignment runs with root flow.
             if (!target.CaculationFlowSort.HasValue || target.CaculationFlowSort.Value <= 0)
-            {
-                var maxRootSort = working
-                    .Where(f => !f.ChildTransactionUnitId.HasValue && f.CaculationFlowSort.HasValue)
-                    .Select(f => f.CaculationFlowSort.Value)
-                    .DefaultIfEmpty(0)
-                    .Max();
-                target.CaculationFlowSort = maxRootSort + 1;
-            }
+                target.CaculationFlowSort = NextFormulaSort(working.Where(f => !ReferenceEquals(f, target)));
             if (!string.IsNullOrWhiteSpace(warningMessage))
                 target.WarningMessage = warningMessage;
             if (warningHighlightFieldId.HasValue)
@@ -1503,6 +1493,17 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         static string JoinErrors(APP.Framework.Validation.ValidationResult vr) =>
             vr?.Items == null ? "Save failed"
             : string.Join("; ", vr.Items.Select(i => i.Message).Where(m => !string.IsNullOrWhiteSpace(m)));
+
+        /// <summary>
+        /// Same as TransactionFormulaEditor.findMaxFormulaSort: max(CaculationFlowSort)+1 over the full list
+        /// (includes ChildTransactionUnitId placeholder rows).
+        /// </summary>
+        static int NextFormulaSort(IEnumerable<AppTransactionUnitFormulaDto> formulas) =>
+            (formulas ?? Enumerable.Empty<AppTransactionUnitFormulaDto>())
+                .Where(f => f?.CaculationFlowSort.HasValue == true)
+                .Select(f => f.CaculationFlowSort.Value)
+                .DefaultIfEmpty(0)
+                .Max() + 1;
 
         static string Ok(object payload) => JsonConvert.SerializeObject(payload, Formatting.Indented);
 

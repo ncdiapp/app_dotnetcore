@@ -72,6 +72,16 @@ const EntityManagement: React.FC<EntityManagementProps> = ({ menuId }) => {
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [createFromDbDropdown, setCreateFromDbDropdown] = useState(false);
   const createFromDbRef = useRef<HTMLDivElement>(null);
+  const prevApplicationIdRef = useRef<string | null>(applicationId);
+
+  // If applicationId arrives after mount (e.g. parent started with null menuId), enable app filter.
+  useEffect(() => {
+    const prev = prevApplicationIdRef.current;
+    prevApplicationIdRef.current = applicationId;
+    if (applicationId && !prev) {
+      setIsFilterByApp(true);
+    }
+  }, [applicationId]);
 
   const loadData = useCallback(async () => {
     dispatch(setIsBusy());

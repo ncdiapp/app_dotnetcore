@@ -107,7 +107,13 @@ const MyApplicationEditor: React.FC = () => {
   const dispatch = useDispatch();
   useTabNavigation();
   
-  const [menuId, setMenuId] = useState<string | null>(null);
+  // Init menuId from route synchronously so Entity/Search remount with the correct app filter
+  // (tab switch remounts via Outlet key; cached currentSection can restore ListOfValue/DataPresentation
+  // before a post-mount effect would set menuId).
+  const [menuId, setMenuId] = useState<string | null>(() => {
+    const paramObj = parseEditorRouteParam(param);
+    return paramObj.id != null ? String(paramObj.id) : null;
+  });
   const [applicationData, setApplicationData] = useState<any>(null);
   const [currentSection, setCurrentSection] = useState<number>(() => getInitialCurrentSection(param));
   const [agentFocus, setAgentFocus] = useState<EditorAgentFocus | null>(null);
@@ -117,10 +123,8 @@ const MyApplicationEditor: React.FC = () => {
   // Extract menu ID from route parameter; reset section when editor opens a different app (tab reuse).
   useEffect(() => {
     const paramObj = parseEditorRouteParam(param);
-    const idValue = paramObj.id || null;
-    if (idValue) {
-      setMenuId(idValue.toString());
-    }
+    const idValue = paramObj.id != null ? String(paramObj.id) : null;
+    setMenuId(idValue);
 
     if (param !== lastSectionParamRef.current) {
       lastSectionParamRef.current = param;

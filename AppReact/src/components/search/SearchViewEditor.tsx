@@ -41,6 +41,8 @@ export interface SearchViewEditorProps {
   onSaved?: (savedViewId?: number | null) => void | Promise<void>;
   /** Optional: expose save action to parent (e.g. Search save should save view first). */
   onRegisterSaveAction?: (saveAction: (() => Promise<boolean>) | null) => void;
+  /** Optional: notify parent when embedded view dirty state changes (A′ Configurator gate). */
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 const EmAppViewType = {
   GridView: 1,
@@ -98,7 +100,8 @@ const SearchViewEditor: React.FC<SearchViewEditorProps> = ({
   embedded = false,
   embedParam = null,
   onSaved,
-  onRegisterSaveAction
+  onRegisterSaveAction,
+  onDirtyChange
 }) => {
   const { param } = useParams<{ param: string }>();
   const { theme } = useTheme();
@@ -811,6 +814,11 @@ const SearchViewEditor: React.FC<SearchViewEditorProps> = ({
     onRegisterSaveAction?.(save);
     return () => onRegisterSaveAction?.(null);
   }, [onRegisterSaveAction, save]);
+
+  useEffect(() => {
+    onDirtyChange?.(!!currentSearchView?.IsModified);
+    return () => onDirtyChange?.(false);
+  }, [onDirtyChange, currentSearchView?.IsModified]);
 
   const saveAs = useCallback(async () => {
     if (!currentSearchView?.Id) return;
