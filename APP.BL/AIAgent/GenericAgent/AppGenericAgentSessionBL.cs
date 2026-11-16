@@ -84,6 +84,28 @@ IF COL_LENGTH('dbo.AppGenericAgentSession', 'AgentID') IS NOT NULL
                 nameof(EnsureInstructionDesignerSession));
         }
 
+        /// <summary>Insert empty Search View Config chat if missing. Key search-view-config:{userId}:…</summary>
+        public static bool EnsureSearchViewConfigSession(string sessionKey, int userId, int dataSourceId)
+        {
+            if (!SearchViewConfigConstants.IsSearchViewConfigChatKeyForUser(sessionKey, userId) || dataSourceId <= 0)
+                return false;
+            return EnsureHostedSkillSession(
+                sessionKey, userId, dataSourceId,
+                SearchViewConfigConstants.SkillKey,
+                nameof(EnsureSearchViewConfigSession));
+        }
+
+        /// <summary>Insert empty App Builder Editor chat if missing. Key app-builder-editor:{userId}:…</summary>
+        public static bool EnsureAppBuilderEditorSession(string sessionKey, int userId, int dataSourceId)
+        {
+            if (!AppBuilderEditorConstants.IsAppBuilderEditorChatKeyForUser(sessionKey, userId) || dataSourceId <= 0)
+                return false;
+            return EnsureHostedSkillSession(
+                sessionKey, userId, dataSourceId,
+                AppBuilderEditorConstants.SkillKey,
+                nameof(EnsureAppBuilderEditorSession));
+        }
+
         static bool EnsureHostedSkillSession(
             string sessionKey, int userId, int dataSourceId, string skillKey, string logName)
         {

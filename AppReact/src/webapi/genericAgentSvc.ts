@@ -433,6 +433,34 @@ class GenericAgentService {
         return String(data?.Object || '');
     }
 
+    async EnsureSearchViewConfigChat(searchId: number, scope: string): Promise<string> {
+        const res = await fetch(`${BASE}/EnsureSearchViewConfigChat`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ SearchId: searchId, Scope: scope }),
+        });
+        const data = await res.json();
+        if (!res.ok || data?.ValidationResult?.IsValid === false) {
+            const msg = data?.ValidationResult?.Items?.[0]?.Message || 'Could not open Search View Config chat.';
+            throw new Error(msg);
+        }
+        return String(data?.Object || '');
+    }
+
+    async EnsureAppBuilderEditorChat(saasApplicationId: number, scope: string): Promise<string> {
+        const res = await fetch(`${BASE}/EnsureAppBuilderEditorChat`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ SaasApplicationId: saasApplicationId, Scope: scope }),
+        });
+        const data = await res.json();
+        if (!res.ok || data?.ValidationResult?.IsValid === false) {
+            const msg = data?.ValidationResult?.Items?.[0]?.Message || 'Could not open App Builder editor chat.';
+            throw new Error(msg);
+        }
+        return String(data?.Object || '');
+    }
+
     async EnsureInstructionDesignerChat(args: {
         targetAgentCode?: string | null;
         clientDraftId?: string | null;

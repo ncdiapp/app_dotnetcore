@@ -1,10 +1,11 @@
 # My Application Editor — AI Agent Design
 
-**Status:** Direction agreed (2026-11-10). **§0 gate passed** with managed `app-builder`. Ready for implementation after / alongside Configurator HostContext patterns.  
-**Date:** 2026-11-10 (decisions amended same day)  
+**Status:** **Multi-agent router locked (2026-11-16)** — supersedes 2026-11-10 “always `app-builder` only” for the Editor dock. See **§11**.  
+**Date:** 2026-11-10; amended 2026-11-16  
 **Host UI:** `AppReact/src/components/admin/MyApplicationEditor.tsx` and section children under `MyApplicationEditor/` (sidebar: Application Properties, Data Model Design, Entity List Of Value, Report & View, Import Config, …). Tab title pattern: `Config: {ApplicationName}`.  
 **Related:**  
-- [AppConfigurator-AiAgent-Design.md](./AppConfigurator-AiAgent-Design.md) — Form/Search **runtime** narrow config (`app-configurator`); shared **`IsAiConfigured`** gate (retrofit last)  
+- [AppConfigurator-AiAgent-Design.md](./AppConfigurator-AiAgent-Design.md) — Form/TX **Configurator** (`app-configurator` + `platform-form-config`); also Editor drill-in for TX/Template  
+- [SearchViewConfig-AiAgent-Design.md](./SearchViewConfig-AiAgent-Design.md) — Search/View **Configurator** (`app-search-view-config`); Editor drill-in for Search  
 - [TransactionForm-AiAgent-Plan.md](./TransactionForm-AiAgent-Plan.md) — Form **data** agent  
 - [SharedAgentEngine-Architecture.md](./SharedAgentEngine-Architecture.md), [Agent-Integration-Playbook.md](./Agent-Integration-Playbook.md)
 
@@ -55,28 +56,29 @@ In My Application Editor, provide a right-side AI dock that runs **App Builder A
 
 ---
 
-## 3. Which agent (locked)
+## 3. Which agent (locked — amended 2026-11-16)
 
-| Choice | Verdict |
-|--------|---------|
-| Embed **`app-builder`** | **Yes** — application-wide create/configure is this agent’s job |
-| New skill clone | **No** for v1 — one source of truth; Form/Search uses separate narrowed `app-configurator` |
-| `app-configurator` on this page | **No** as primary — wrong scope |
-| Form Agent | **No** |
+**App / list depth** uses **`app-builder`** (Assistant). **Object drill-in** switches SkillSet — see **§11** (canonical). Short map:
+
+| Depth / focus | Skill | Dock label |
+|---------------|-------|------------|
+| App section / list (no deep object) | `app-builder` | **Assistant** |
+| Open Transaction / Form / TX Template | `app-configurator` | **Configurator** |
+| Open Search / View | `app-search-view-config` | **Configurator** |
+| Open Entity | `app-builder` (+ entity in HostContext) | **Assistant** |
+| Runtime Form data | `app-transaction-form-agent` | **Assistant** (Form only) |
 
 ```
-My Application Editor (Config: App)
-  └── dock tab "Assistant" → app-builder + HostContext(saasApplicationId, section, selection)
+My Application Editor (Config: App) — ONE chrome, skill switches by depth (§11)
+  ├── app depth     → Assistant → app-builder
+  ├── TX / Template → Configurator → app-configurator
+  └── Search / View → Configurator → app-search-view-config
 
-Form runtime (EnableConfigurationMode + Admin; + IsAiConfigured after gate pass)
-  └── Configurator tab → app-configurator (narrow; cloned from healthy app-builder)
-
-Runtime Search AppSearch (last slice, after Form + Editor accepted)
-  └── Configurator tab → same app-configurator
-
-Form runtime Assistant
-  └── app-transaction-form-agent (FormData only)
+Form runtime: Assistant = Form Agent; Configurator = app-configurator (same skill as Editor TX)
+Search runtime: Configurator = app-search-view-config (same skill as Editor Search)
 ```
+
+§4–§8 below still describe **app-builder / Assistant** host wiring; when drill-in is active, HostContext + session follow §11 instead of “always app-builder session”.
 
 ---
 
@@ -237,3 +239,94 @@ Keep the main editable prompt on the `app-builder` skill in Agent Management so 
 |------|--------|
 | 2026-11-10 | Initial design: My Application Editor hosts managed `app-builder` with app-scoped HostContext; shell-level dock; no new skill; blocked on builder repair. |
 | 2026-11-10 | §0 **passed**. Locked: tab **Assistant**; session per **`saasApplicationId`**; open existing editors via host tools (A+B); keep **`IsAiConfigured`** (no rename); build order Form Config → Editor → runtime Search → gate last. |
+| 2026-11-16 | **§11 multi-agent router** locked (E1a–d, E3). App-builder only at app depth; TX/Template → `app-configurator`; Search → `app-search-view-config`. Canonical home for Editor topology (moved out of SearchViewConfig draft). |
+
+---
+
+## 11. Multi-agent router (canonical — 2026-11-16)
+
+> Moved here from Search View Config draft. **This doc owns Editor topology.** Search View Config / App Configurator docs only link here.
+
+### 11.1 Product intent
+
+1. **App-level (list / section, no deep object):** `app-builder` manages the package for open `saasApplicationId`.
+2. **Drill-in (opened a concrete object):** HostContext = that object; active agent **matches object type**.
+
+Same right chrome; **agent + session follow selection depth**.
+
+### 11.2 Topology
+
+```
+┌─ My Application Editor ─────────────────────────────────────┐
+│ Left: sections / lists          Right: ONE chat chrome       │
+│                                                              │
+│  [no row open / app section]  →  App Builder Agent           │
+│       skill: app-builder · label: Assistant                  │
+│       scope: saasApplicationId                               │
+│                                                              │
+│  [open Transaction / Form]    →  App Configurator Agent      │
+│       skill: app-configurator · label: Configurator          │
+│       scope: transactionId (+ units/fields/formula/commands/ │
+│              data transfer / link target / linked search…)   │
+│                                                              │
+│  [open Search / View]         →  Search View Config Agent    │
+│       skill: app-search-view-config · label: Configurator    │
+│       scope: searchId / searchViewId / dataSetId             │
+│                                                              │
+│  [open Entity]                →  app-builder (+ entity HC)   │
+│  [open TX Template]           →  app-configurator (TX-shaped)│
+│  [Import Config section]      →  app-builder (pack tools)    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Principles:** SkillSet = role + object class; Library = durable tools; Host + session = where. Same specialist SkillSet may run in Editor **and** Runtime — **not** a different SkillSet per host.
+
+### 11.3 Agents & libraries
+
+| # | SkillKey | When active | Job |
+|---|----------|-------------|-----|
+| 1 | `app-builder` | App / list | Global CRUD for this app |
+| 2 | `app-configurator` | TX / Form / Template (Editor or runtime) | Durable Form/TX config — full Form Builder surface (see AppConfigurator §7) |
+| 3 | `app-search-view-config` | Search / View (Editor or runtime) | Durable Search/View/Dataset/Criteria |
+| 4 | `app-transaction-form-agent` | Runtime Form Assistant | FormData only |
+
+| Library | Subscribed by |
+|---------|---------------|
+| Builder libs (`platform-transaction`, `platform-search` create/list, pack, …) | **`app-builder`** |
+| **`platform-form-config`** | **`app-configurator` only** |
+| **`platform-search-view-config`** | **`app-search-view-config` only** |
+| `platform-form-host` | Form Agent only |
+
+Do **not** merge form-config + search-view-config. **Do** share patterns (ask_user, Id preference, HostContext force ids).
+
+### 11.4 Session & labels (E1 / E3 locked)
+
+```
+Depth = app     → app-builder
+                 session ≈ app-builder:{user}:{saasApplicationId}
+                 banner: Assistant · {App}
+
+Depth = object  → skill by type
+                 session ≈ {skill}:{user}:{objectType}:{objectId}
+                 banner: Configurator · TX:… / Template:… / Search:…
+```
+
+| # | Decision |
+|---|----------|
+| **E1a** | App → `app-builder`; TX/Form → `app-configurator`; Search → `app-search-view-config` |
+| **E1b** | Template open → `app-configurator`; Entity open → `app-builder` |
+| **E1c** | v1 router on **Editor shell only**; Form Builder popup reuses same `app-configurator` session — no in-popup chrome |
+| **E1d** | App = **Assistant**; object = **Configurator** (not everything “Configurator”) |
+| **E3** | Separate session per skill + object; resume on return |
+
+### 11.5 Application Form Builder popup (E1c detail)
+
+Shell chat stays on My Application Editor. Opening Application Form Builder does **not** add a second dock in v1; TX focus keeps `app-configurator`. In-popup section router = later.
+
+### 11.6 Overlap mitigations
+
+| Overlap | Mitigation |
+|---------|------------|
+| Builder `create_search` vs Search Config update | Different skills; Search Config default no greenfield create |
+| Builder structure vs Form Config field/layout/command | Builder: create/delete/structure; Form Config: open-TX durable detail |
+| Runtime vs Editor Form Config | Same SkillSet + library; HostContext `editorKind` / `surface` |

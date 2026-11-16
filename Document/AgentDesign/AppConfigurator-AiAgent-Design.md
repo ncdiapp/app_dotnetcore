@@ -1,9 +1,9 @@
 # App Configurator Agent — Design
 
-**Status:** Requirements locked (2026-11-10). **§0 gate passed** — managed `app-builder` accepted as clone source. Ready for implementation planning / coding.  
-**Date:** 2026-11-10 (decisions amended same day)  
+**Status:** Form slice in progress. **§0 passed.** Editor hosts TX/Template drill-in on this skill ([MyApplicationEditor §11](./MyApplicationEditor-AiAgent-Design.md)). Runtime **Search** Configurator superseded by [SearchViewConfig-AiAgent-Design.md](./SearchViewConfig-AiAgent-Design.md) (`app-search-view-config`).  
+**Date:** 2026-11-10; amended 2026-11-16  
 **Parent (data path):** [TransactionForm-AiAgent-Plan.md](./TransactionForm-AiAgent-Plan.md)  
-**Related:** [MyApplicationEditor-AiAgent-Design.md](./MyApplicationEditor-AiAgent-Design.md) (Config shell embeds full `app-builder`), [Agent-Integration-Playbook.md](./Agent-Integration-Playbook.md), [SharedAgentEngine-Architecture.md](./SharedAgentEngine-Architecture.md), [AppConfigurator-Formula-FormLayout-Tools.md](./AppConfigurator-Formula-FormLayout-Tools.md) (Formula + Form Layout BuiltIn tools)  
+**Related:** [MyApplicationEditor-AiAgent-Design.md](./MyApplicationEditor-AiAgent-Design.md) §11, [SearchViewConfig-AiAgent-Design.md](./SearchViewConfig-AiAgent-Design.md), [Agent-Integration-Playbook.md](./Agent-Integration-Playbook.md), [SharedAgentEngine-Architecture.md](./SharedAgentEngine-Architecture.md), [AppConfigurator-Formula-FormLayout-Tools.md](./AppConfigurator-Formula-FormLayout-Tools.md)  
 **Supersedes:** `TransactionForm-AiAgent-ConfigDesign.md` (deleted) — that draft put config tools on Form Agent; this design does **not**.
 
 ---
@@ -40,9 +40,9 @@ We need a third, scoped entry: chat that edits **configuration of the currently 
 
 ### Goal
 
-When tenant **Enable Configuration** is on and the user is Admin, Form and Search show the existing **Configuration** button. In that same visibility condition, the right dock gains a **Configurator** tab beside **Assistant**. That tab runs **App Configurator Agent** (`app-configurator`), scoped to the open screen’s Transaction / Search context — analogous to how Form Agent is scoped to FormData.
+When tenant **Enable Configuration** is on and the user is Admin, Form (and List Edit) show the existing **Configuration** button. In that same visibility condition, the right dock gains a **Configurator** tab beside **Assistant**. That tab runs **App Configurator Agent** (`app-configurator`), scoped to the open **Transaction** — analogous to how Form Agent is scoped to FormData. Same skill also runs when My Application Editor drills into a TX / TX Template.
 
-The agent can inspect and change durable app config for that context: Transaction, Unit, Fields, layout (position, width, height, span, visibility), Formula, Commands, Linked Search / Link Target, related Search / Entity / light DB work needed for those fields — after confirmation.
+The agent can inspect and change durable TX config aligned with Application Form Builder: Unit / Fields, Form Layout, Formula, **Operation Task (Commands) CRUD**, **Internal Data Transfer**, **Linked Search**, **Link Target**, Data Load, Conditional Lock/Hide, Entity attach/create, light DB when needed — after confirmation. **Search** criteria/columns/dataset updates belong to **`app-search-view-config`**, not this skill.
 
 ### Non-goals (v1)
 
@@ -65,8 +65,8 @@ The agent can inspect and change durable app config for that context: Transactio
 | 4 | Existing UI | **Parallel** — keep Configuration menu and field gears. |
 | 5 | Write + refresh | Durable writes require **`ask_user`**. After success, host prompts **Reload** (preserve unsaved FormData when possible), matching today’s “Configuration has been changed…” flow. |
 | 6 | Tools | New scoped library **`platform-form-config`** (server forces ids from HostContext). Optional **read-only** reuse of existing tools. Do **not** wholesale subscribe `platform-transaction` / `platform-search`. AppConfigPack = Phase 3 escape hatch. |
-| 7 | Capability breadth (v1) | **Scaffold the full road**: Field Setting, Unit, Layout, Formula, Commands, Linked Search / Link Target, Entity attach/create, Search criteria/columns, light DB when needed. Polish edge cases iteratively. |
-| 8 | Search surface | **Runtime Search** (`AppSearch`) Configurator — **after** Form Configurator and My Application Editor Assistant are accepted. Same gates/patterns as Form; not a separate product. |
+| 7 | Capability breadth | **Full Form Builder road in `platform-form-config`**: Field/Unit/Layout/Formula + **Commands CRUD** + **Data Transfer** + **Linked Search** + **Link Target** + Data Load / Condition Lock (+ Report/Navigation later). Implement tools for every area that needs agent mutate — see §7.1. Polish iteratively; do not leave Command/DT/Link as “UI only”. |
+| 8 | Search surface | **Superseded (2026-11-16):** runtime + Editor Search Configurator = **`app-search-view-config`** ([SearchViewConfig](./SearchViewConfig-AiAgent-Design.md)). This skill stays **Form/TX/(Template) only**. |
 | 9 | Field “remove” | **Prefer soft hide / deactivate** as default; hard metadata delete (+ optional column drop) only via explicit `ask_user`. See §13. |
 | 10 | AI-off + Configuration-on | **Yes** — show **Configurator-only** dock for admins (Form Assistant still gated by form AI flags). |
 
@@ -235,24 +235,176 @@ Catalog stays compact (ids, names, control types, layout item ids). Full DDL / f
 
 ## 7. Tools
 
-### 7.1 New library `platform-form-config`
+### 7.1 Library `platform-form-config` — tool inventory (required)
 
-`ToolType = BuiltIn`. Thin wrappers over existing BL (`AppTransactionBL`, form flex layout BL, command/linked-search BL, entity BL, etc.). Exact method list is **TBD after `app-builder` repair (§0)** — below is the intended capability map, not a frozen seed.
+`ToolType = BuiltIn`. Thin wrappers over existing BL (`AppTransactionBL`, `AppTransactionCommandBL`, DataTransfer BL, LinkTarget / LinkedSearch BL, flex layout, entity, …). HostContext forces `transactionId` (and template ids when Template open). All durable writes: preview → `ask_user` → `confirmed=true` → `request_form_reload`.
 
-| Capability area | Example tool names (working titles) | Notes |
-|-----------------|-------------------------------------|--------|
-| Inspect | `get_current_transaction_config`, `get_unit_fields`, `get_field_setting`, `get_form_layout`, `get_commands`, `get_linked_searches` | Read current context |
-| Transaction / Unit / Field | `update_field_setting`, `update_unit`, `add_field`, `remove_field` | Align with Field Setting + Edit Unit |
-| Layout | `update_layout_item`, `move_layout_item`, `set_layout_span` | Position, width, height, visibility |
-| Formula | `get_formula`, `set_formula` | HITL |
-| Commands | `list_commands`, `upsert_command`, `delete_command` | HITL on delete |
-| Linked Search / Link Target | `upsert_linked_search`, `upsert_link_target` | Wire existing or create related search under policy |
-| Entity | `attach_entity_to_field`, `create_entity_for_field` | Prefer attach; create needs HITL |
-| Search (when surface=search or linked) | `get_search_config`, `update_search_criteria`, `update_search_columns` | Scoped |
-| Light DB | optional wrap of alter/add column with strong HITL | Prefer existing schema tools only after builder fix |
-| Host | `request_form_reload` | Signal UI to reload metadata |
+**Status column:** Done = seeded/plugin today; Need = must add for full Configurator (user 2026-11-16: Command / Data Transfer / Link Target all required).
 
-Dispatch path unchanged: `SharedAgentEngine` → `AppAgentToolEngine` → `BuiltInToolExecutor` → plugin methods (new `FormConfigPlugin` or split plugins — decide at implement time).
+#### A. Inspect / catalog
+
+| Tool | Status | Notes |
+|------|--------|-------|
+| `get_current_transaction_config` | Done | Units + field summaries |
+| `get_unit_fields` | Done | Prefer `unitId` |
+| `find_fields` | Done | Cross-unit name search |
+| `get_field_setting` | Done / expand | Full field props when needed |
+
+#### B. Unit / Field
+
+| Tool | Status | Notes |
+|------|--------|-------|
+| `update_field_setting` | Done | Label, controlType, defaultValue (≠ formula), flags… |
+| `set_field_visibility` | Done | Soft hide |
+| `set_field_entity` | Done | Attach entity to field |
+| `create_entity_for_field` | Done | HITL create + wire |
+| `update_unit` | Need | Unit display/options (align Unit Editor) |
+| `add_field` / `remove_field` | Need | Soft-hide default for remove (§13) |
+
+#### C. Form Layout
+
+| Tool | Status | Notes |
+|------|--------|-------|
+| `get_form_layout` | Done | |
+| `design_form_layout` | Done | patch / overwrite modes |
+
+#### D. Formula (Calculation Validation Flow)
+
+| Tool | Status | Notes |
+|------|--------|-------|
+| `get_unit_formulas` | Done | |
+| `update_unit_formula` | Done | add/update/delete; op types 1–5 |
+
+#### E. Operation Task — Transaction Command CRUD (**required**)
+
+Maps Application Form Builder **Operation Task** (`TransactionCommandMgt` / `CommandEditor`). BL: `AppTransactionCommandBL.SaveOneTransactionCommandActionList` et al.
+
+| Tool | Status | Notes |
+|------|--------|-------|
+| `get_commands` | Done | Compact: id, name, actionType |
+| `get_command_detail` | Done (V084) | Full one command + ActionAttribute |
+| `upsert_command` | Done (V084) | Create/update shell + optionsJson patches |
+| `update_command_options` | Folded into upsert_command.optionsJson | Same tool |
+| `delete_command` | Done (V084) | HITL |
+| `reorder_commands` | Later | |
+
+Do **not** execute runtime commands from Configurator (`run_command` stays Form Agent / `platform-form-host`).
+
+#### F. Internal Data Transfer (**required**)
+
+Maps **Internal Data Transfer Data Model** (`TransactionDataTransferSettingMgt`). BL: `AppTransactionDataTransferSettingBL`.
+
+| Tool | Status | Notes |
+|------|--------|-------|
+| `get_data_transfers` | Done (V084) | List DT settings on open TX |
+| `get_data_transfer_detail` | Done (V084) | Header + field mappings |
+| `upsert_data_transfer` | Done (V084) | Header + mappingsJson |
+| `upsert_data_transfer_mappings` | Folded into upsert_data_transfer.mappingsJson | |
+| `delete_data_transfer` | Done (V084) | HITL |
+
+#### G. Linked Search (**required**)
+
+Maps unit **Linked Search** UI. BL: `AppTransactionUnitLinkedSearchBL`. `get_linked_searches` exists today.
+
+| Tool | Status | Notes |
+|------|--------|-------|
+| `get_linked_searches` | Done | List on units of open TX |
+| `upsert_linked_search` | Done (V084) | Bind/create linked search on unit |
+| `delete_linked_search` | Done (V084) | HITL |
+
+Creating a brand-new Search elsewhere → `app-builder` / existing `create_search`; Configurator **binds** to open TX unit.
+
+#### H. Link Target (**required**) — see also §7.6 taxonomy
+
+Same table **`AppFormLinkTarget`** as Search View menus. Source = **TransactionUnit** (`EmAppLinkTargetSourceType.TransactionUnit = 3`).  
+UI: `TransactionUnitLinkTargetEditor`. BL: `LinkTragetBL.SaveOneAppFormLinkTargetList`.
+
+| Tool | Status | Notes |
+|------|--------|-------|
+| `get_link_targets` | Done (V084) | Prefer `unitId`; optional `usageType` |
+| `get_link_target_detail` | Done (V084) | Full one row |
+| `upsert_link_target` | Done (V084) | usageType default 101; ActionType Create/Edit/Delete/Preview/… |
+| `delete_link_target` | Done (V084) | HITL by `linkTargetId` |
+
+**Not the same as Linked Search (G):** Linked Search = `AppTransactionUnitLinkedSearch` (inline LOV/search on a field). Link Target = navigation **menus** (open Form / delete / preview…).
+
+#### I. Data Load / Conditional Lock (Form Builder sections — include tools)
+
+| Tool | Status | Notes |
+|------|--------|-------|
+| `get_data_load_settings` | Need | Unit data-load rules |
+| `upsert_data_load_setting` | Need | |
+| `delete_data_load_setting` | Need | HITL |
+| `get_condition_locks` | Need | Conditional lock/hide |
+| `upsert_condition_lock` | Need | |
+| `delete_condition_lock` | Need | HITL |
+
+#### J. Later (same library, after E–I)
+
+| Area | Tools (titles) | Notes |
+|------|----------------|-------|
+| Navigation | `get_transaction_navigation`, `upsert_…` | Form Builder Navigation |
+| Report attach | `get_transaction_reports`, `upsert_…` | Bind reports to TX |
+| Print form | inspect / light mutate | Prefer open designer host tool for pixels |
+| Workflow | defer unless already on builder libs | |
+
+#### K. Host
+
+| Tool | Status | Notes |
+|------|--------|-------|
+| `request_form_reload` | Done | After every successful durable write |
+
+#### L. Explicitly **not** in this library
+
+| Concern | Where |
+|---------|--------|
+| Search basic / criteria / view columns / dataset update | **`platform-search-view-config`** / `app-search-view-config` |
+| Greenfield create TX / Search / App | **`app-builder`** |
+| FormData / run_command | **`platform-form-host`** / Form Agent |
+
+Dispatch: `SharedAgentEngine` → `AppAgentToolEngine` → `BuiltInToolExecutor` → `FormConfigPlugin` (and/or split Command/DT plugins sharing HostContext helpers).
+
+### 7.6 Link Target taxonomy (TX Unit + Search View — shared model)
+
+One entity: **`AppFormLinkTarget`**. Owner is either a **Transaction Unit** or a **Search View**.
+
+| Owner | `EmAppLinkTargetSourceType` | FK | Config agent |
+|-------|----------------------------|-----|--------------|
+| Transaction Unit | `TransactionUnit = 3` | `TransactionUnitId` | **`app-configurator`** / `platform-form-config` |
+| Search View | `SearchView = 2` | `SearchViewId` | **`app-search-view-config`** / `platform-search-view-config` |
+
+**`EmAppLinkTargetUsageType` (what you “link to”):**
+
+| Value | Name | Typical owner | Destination fields |
+|------:|------|---------------|--------------------|
+| 1 | `SearchViewLinkToForm` | Search View | `LinkTargetTransactionId` (+ optional DataTransfer, field maps) |
+| 2 | `SearchViewLinkToFormGroup` | Search View | `LinkTargetTransactionGroupId` |
+| 3 | `SearchViewLinkToSearch` | Search View | `LinkTargetSearchId` (+ view/criteria maps) |
+| 4 | `SearchViewLinkToReport` | Search View | report target fields |
+| 5 | `SearchViewLinkSystemDefinedPage` | Search View (also TX “any page”) | `LinkTargetUrlOrRouteCode` / system page enum |
+| 101 | `TransactionUnitLinkToForm` | Transaction Unit | `LinkTargetTransactionId` (+ source/target column maps) |
+
+**`ActionType` (what the menu does)** — shared `EmAppLinkTargetActionType` (Search subset vs TX Unit subset in UI):
+
+| Value | Meaning |
+|------:|---------|
+| 1 | Edit Form |
+| 2 | Create Blank Form |
+| 3 | Delete Form |
+| 5 | Preview Form |
+| 13 | Create From Existing / using current data |
+| 17 | Execute Transaction Command (Search; needs command id in OtherSettings) |
+| 6,11,12,14–16 | External / user / popup / copy-cut-paste (calendar etc.) |
+
+**Also on Search View (related, not AppFormLinkTarget):** `AppViewLinkedSeaechOrUrl` — inline linked Search/URL cards (`AppViewLinkedSeaechOrUrlBL`). Separate tools on Search View Config: `get_view_linked_search_or_url` / `upsert_…` / `delete_…` (do not conflate with Link Target menus).
+
+**Tool logic rules (both agents):**
+
+1. HostContext forces owner: TX → unit must belong to open `transactionId`; Search → `searchViewId` must belong to open `searchId` (or explicit Test Run ids).
+2. `upsert_*`: validate `usageType` vs owner (101 on TX; 1–5 on Search); require destination id for that usage; preview → `ask_user` → `confirmed=true`.
+3. Column maps: prefer field/view-column **ids** (`SourceViewColumnId*`, `TargetSearchFieldId*`, `SourceColumn*` / `TargetColumn*` for TX).
+4. After write: TX → `request_form_reload`; Search → `request_search_reload`.
+5. Shared C# helper: `AppFormLinkTargetConfigService` (sourceType + sourceId + CRUD) used by both plugins.
 
 ### 7.2 Do not wholesale subscribe
 
@@ -314,16 +466,10 @@ Link from Transaction Graphic Editor / Search editor: “Configure Configurator 
 
 ---
 
-## 10. Search surface (runtime Search — last)
+## 10. Search surface — superseded
 
-**Scope:** runtime **`AppSearch`** (end-user / admin Search screen with Configuration button) — **not** My Application Editor “Report & View” section (that uses Editor Assistant / `app-builder`).
-
-**Schedule:** after Form Configurator **and** My Application Editor Assistant are accepted.
-
-- Configurator tab on Search right dock (or equivalent panel — discover UI hook then).
-- HostContext `surface: "search"`.
-- Tools focus on search criteria/columns/views and bound transaction linkage; full TX layout edits may open related TX context or tell user to open the form.
-- Gate: same as Form Configurator (`IsAiConfigured` + Configuration rule) once the final gate pass is done.
+**2026-11-16:** Runtime Search + Editor Search drill-in use **`app-search-view-config`** / `platform-search-view-config` — see [SearchViewConfig-AiAgent-Design.md](./SearchViewConfig-AiAgent-Design.md).  
+**Do not** put Search criteria/columns/dataset mutate tools on `app-configurator`. Linked Search **binding on a TX unit** remains here (§7.1 G).
 
 ---
 
@@ -337,13 +483,13 @@ Link from Transaction Graphic Editor / Search editor: “Configure Configurator 
 
 ---
 
-## 12. Implementation order (locked)
+## 12. Implementation order (amended 2026-11-16)
 
-1. **Form Configurator** — inventory builder tools → seed `app-configurator` + `platform-form-config` → React Form dock tab + HostContext + HITL/reload + prompt clone-and-narrow. Configurator-only dock when Form AI off. Accept Form slice first.
-2. **My Application Editor Assistant** — shell dock, skill `app-builder`, HostContext, session per `saasApplicationId`, refresh + open-editor host tools. Accept Editor slice.
-3. **Runtime Search Configurator** — same `app-configurator` on `AppSearch`; HostContext `surface: "search"`. Only after 1–2 accepted.
-4. **`IsAiConfigured` gate pass (last)** — retrofit all AI-related windows to require `UserContext.IsAiConfigured` as the first visibility condition (Form Assistant, Form/Search Configurator, Editor Assistant, Agent Chat, DbGenie AI, etc.).
-5. (Later) Phase 3 AppConfigPack; optional read-only library subscriptions; polish.
+1. **Form Configurator expand** — finish §7.1 **Need** tools especially **E Commands**, **F Data Transfer**, **G Linked Search mutate**, **H Link Target** (then Data Load / Condition Lock). Prompt sequences + seed migrations.
+2. **My Application Editor multi-agent dock** — §11 router: app → `app-builder`; TX/Template → `app-configurator`; Search → `app-search-view-config`.
+3. **Search View Config Agent** — `platform-search-view-config` + runtime Search Configurator dock (parallelizable with 1 after patterns locked).
+4. **`IsAiConfigured` gate pass (last)**.
+5. (Later) Phase 3 AppConfigPack; Navigation/Report tools; polish.
 
 ---
 
@@ -361,10 +507,9 @@ Do not make hard delete the default synonym of “remove”.
 
 ### Still finalize at implement (non-blocking)
 
-1. Exact `platform-form-config` method list / ParameterSchemaJson (from builder inventory).
-2. How much layout mutate goes through flex-layout BL vs telling user to open Design Layout for pixel work.
-3. Search dock host component parity with Form `FormSidePanel`.
-4. Exact Search dock host component when runtime Search slice starts.
+1. ParameterSchemaJson for each §7.1 **Need** tool (Command options shapes are the largest).
+2. How much layout mutate stays in chat vs “open Design Layout”.
+3. Command `update_command_options` — one blob vs many typed tools per action type (prefer one upsert + typed common fields + optionsJson for remainder).
 
 ---
 
@@ -375,3 +520,4 @@ Do not make hard delete the default synonym of “remove”.
 | 2026-11-10 | New design: separate `app-configurator`; Configuration-gate UX; scoped `platform-form-config`; parallel UI; HITL + reload. Explicit dependency on repairing managed `app-builder` before implement / before finalizing tool+prompt sections. Supersedes deleted Form-Agent-config draft. |
 | 2026-11-10 | §0 **passed**. Locked: Configurator-only dock; full v1 capability scaffold; soft-hide default for field remove; **`IsAiConfigured`** (no `IsAiModelReady`); order = Form Config → Editor Assistant → runtime Search → gate retrofit last. |
 | 2026-11-10 | **Form slice started:** V077 seed `app-configurator` + `platform-form-config`; `FormConfigPlugin`; Form/ListEdit Configurator tab; HostContext mode=configurator; `request_form_reload`. Layout/formula/command mutate tools still to expand. |
+| 2026-11-16 | §7.1 full tool inventory: **Command CRUD**, **Data Transfer**, **Linked Search mutate**, **Link Target**, Data Load, Condition Lock marked required. §10 Search → `app-search-view-config`. Editor TX/Template drill-in via MyApplicationEditor §11. |

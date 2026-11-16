@@ -588,6 +588,68 @@ public class SharedAgentController : SecureBaseController
     }
 
     [HttpPost]
+    public OperationCallResult<string> EnsureSearchViewConfigChat([FromBody] SearchViewConfigChatRequestDto request)
+    {
+        var result = new OperationCallResult<string>();
+        if (request == null || request.SearchId <= 0 || string.IsNullOrWhiteSpace(request.Scope))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(SharedAgentController), "EnsureSearchViewConfigChat",
+                ValidationItemType.Error, "SearchId and Scope are required."));
+            return result;
+        }
+        if (ServerContext.Instance.CurrnetClientIdentity is not AppClientIdentity ai || ai.UserId == null)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(SharedAgentController), "EnsureSearchViewConfigChat",
+                ValidationItemType.Error, "Sign in is required."));
+            return result;
+        }
+        var userId = Convert.ToInt32(ai.UserId);
+        var key = SearchViewConfigConstants.MakeChatKey(userId, request.SearchId, request.Scope);
+        if (!SessionBL.EnsureSearchViewConfigSession(key, userId, ai.DataSourceId))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(SharedAgentController), "EnsureSearchViewConfigChat",
+                ValidationItemType.Error, "Search View Config Agent is not installed for this tenant."));
+            return result;
+        }
+        result.Object = key;
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<string> EnsureAppBuilderEditorChat([FromBody] AppBuilderEditorChatRequestDto request)
+    {
+        var result = new OperationCallResult<string>();
+        if (request == null || request.SaasApplicationId <= 0 || string.IsNullOrWhiteSpace(request.Scope))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(SharedAgentController), "EnsureAppBuilderEditorChat",
+                ValidationItemType.Error, "SaasApplicationId and Scope are required."));
+            return result;
+        }
+        if (ServerContext.Instance.CurrnetClientIdentity is not AppClientIdentity ai || ai.UserId == null)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(SharedAgentController), "EnsureAppBuilderEditorChat",
+                ValidationItemType.Error, "Sign in is required."));
+            return result;
+        }
+        var userId = Convert.ToInt32(ai.UserId);
+        var key = AppBuilderEditorConstants.MakeChatKey(userId, request.SaasApplicationId, request.Scope);
+        if (!SessionBL.EnsureAppBuilderEditorSession(key, userId, ai.DataSourceId))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(SharedAgentController), "EnsureAppBuilderEditorChat",
+                ValidationItemType.Error, "App Builder Agent is not installed for this tenant."));
+            return result;
+        }
+        result.Object = key;
+        return result;
+    }
+
+    [HttpPost]
     public OperationCallResult<string> EnsureInstructionDesignerChat([FromBody] InstructionDesignerChatRequestDto request)
     {
         var result = new OperationCallResult<string>();

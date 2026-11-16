@@ -295,30 +295,128 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         [AgentTool("get_commands",
-            "List commands configured on the open transaction.")]
+            "List Operation Task commands on the open transaction (id, name, actionType).")]
         public string GetCommands(
             AgentToolContext context,
             [AgentParam("Required when HostContext lists multiple transactions.")] int? transactionId = null)
         {
             if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
                 return Fail(err);
-            try
-            {
-                var tx = AppTransactionBL.GetHierarchyTranscationFromDatabase(txnId);
-                if (tx == null) return Fail($"Transaction {txnId} not found.");
-                var cmds = (tx.CommandActionList ?? new List<AppProjectWorkFlowActionExDto>())
-                    .Select(c => new
-                    {
-                        id = c.Id,
-                        name = c.Name ?? c.DisplayName
-                    }).ToList();
-                return JsonConvert.SerializeObject(new { ok = true, transactionId = txnId, commands = cmds }, Formatting.Indented);
-            }
-            catch (Exception ex) { return Fail(ex.Message); }
+            return FormConfigCommandDataTransferService.GetCommands(txnId);
+        }
+
+        [AgentTool("get_command_detail",
+            "Full detail for one Operation Task command (options / ActionAttribute / SQL text fields).")]
+        public string GetCommandDetail(
+            AgentToolContext context,
+            [AgentParam("Command id.", isRequired: true)] int? commandId = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!commandId.HasValue) return Fail("commandId is required.");
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigCommandDataTransferService.GetCommandDetail(txnId, commandId.Value);
+        }
+
+        [AgentTool("upsert_command",
+            "Create or update an Operation Task command shell. Preview first; ask_user; then confirmed=true. " +
+            "optionsJson may set isShowOnTopMenu, isAutoExecuteOnFormOpen, linkTargetId, linkedSearchId, actionAttribute{…}. " +
+            "After success call request_form_reload. Does NOT execute the command.")]
+        public string UpsertCommand(
+            AgentToolContext context,
+            [AgentParam("Existing command id for update; omit to create.")] int? commandId = null,
+            [AgentParam("Command display name (required on create).")] string name = null,
+            [AgentParam("EmAppTransactionCommandType value (required on create).")] int? actionType = null,
+            [AgentParam("Optional notification / SQL body depending on action type.")] string notificationMessage = null,
+            [AgentParam("JSON of advanced options / ActionAttribute patches.")] string optionsJson = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("If true, never persist.")] bool? dryRun = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigCommandDataTransferService.UpsertCommand(
+                txnId, commandId, name, actionType, notificationMessage, optionsJson, confirmed, dryRun);
+        }
+
+        [AgentTool("delete_command",
+            "Delete an Operation Task command. Preview → ask_user → confirmed=true. Then request_form_reload.")]
+        public string DeleteCommand(
+            AgentToolContext context,
+            [AgentParam("Command id.", isRequired: true)] int? commandId = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("If true, never persist.")] bool? dryRun = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!commandId.HasValue) return Fail("commandId is required.");
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigCommandDataTransferService.DeleteCommand(txnId, commandId.Value, confirmed, dryRun);
+        }
+
+        [AgentTool("get_data_transfers",
+            "List Internal Data Transfer settings on the open transaction.")]
+        public string GetDataTransfers(
+            AgentToolContext context,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigCommandDataTransferService.GetDataTransfers(txnId);
+        }
+
+        [AgentTool("get_data_transfer_detail",
+            "Detail + field mappings for one Data Transfer setting.")]
+        public string GetDataTransferDetail(
+            AgentToolContext context,
+            [AgentParam("DataTransfer setting id.", isRequired: true)] int? dataTransferId = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!dataTransferId.HasValue) return Fail("dataTransferId is required.");
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigCommandDataTransferService.GetDataTransferDetail(txnId, dataTransferId.Value);
+        }
+
+        [AgentTool("upsert_data_transfer",
+            "Create/update Internal Data Transfer header and optional mappingsJson " +
+            "([{sourceFieldId,targetFieldId,name},…]). Preview → ask_user → confirmed=true → request_form_reload.")]
+        public string UpsertDataTransfer(
+            AgentToolContext context,
+            [AgentParam("Existing id for update; omit to create.")] int? dataTransferId = null,
+            [AgentParam("Description / name (required on create).")] string description = null,
+            [AgentParam("Optional internal code.")] string internalCode = null,
+            [AgentParam("Transfer type id.")] int? transferTypeId = null,
+            [AgentParam("Destination transaction id.")] int? destinationTransactionId = null,
+            [AgentParam("JSON array of field mappings.")] string mappingsJson = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("If true, never persist.")] bool? dryRun = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigCommandDataTransferService.UpsertDataTransfer(
+                txnId, dataTransferId, description, internalCode, transferTypeId,
+                destinationTransactionId, mappingsJson, confirmed, dryRun);
+        }
+
+        [AgentTool("delete_data_transfer",
+            "Delete a Data Transfer setting. Preview → ask_user → confirmed=true → request_form_reload.")]
+        public string DeleteDataTransfer(
+            AgentToolContext context,
+            [AgentParam("DataTransfer setting id.", isRequired: true)] int? dataTransferId = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("If true, never persist.")] bool? dryRun = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!dataTransferId.HasValue) return Fail("dataTransferId is required.");
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigCommandDataTransferService.DeleteDataTransfer(txnId, dataTransferId.Value, confirmed, dryRun);
         }
 
         [AgentTool("get_linked_searches",
-            "List Linked Search configurations on units of the open transaction.")]
+            "List Linked Search configurations on units of the open transaction (not Link Target menus).")]
         public string GetLinkedSearches(
             AgentToolContext context,
             [AgentParam("Required when HostContext lists multiple transactions.")] int? transactionId = null)
@@ -351,6 +449,157 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 return JsonConvert.SerializeObject(new { ok = true, transactionId = txnId, linkedSearches = list }, Formatting.Indented);
             }
             catch (Exception ex) { return Fail(ex.Message); }
+        }
+
+        [AgentTool("upsert_linked_search",
+            "Create/update unit Linked Search binding (AppTransactionUnitLinkedSearch). " +
+            "Prefer unitId + searchId. Preview → ask_user → confirmed=true → request_form_reload. " +
+            "Not the same as Link Target (navigation menus).")]
+        public string UpsertLinkedSearch(
+            AgentToolContext context,
+            [AgentParam("Unit id.", isRequired: true)] int? unitId = null,
+            [AgentParam("Existing linked-search id for update.")] int? linkedSearchId = null,
+            [AgentParam("Display name.")] string name = null,
+            [AgentParam("Search id to bind (required on create).")] int? searchId = null,
+            [AgentParam("Optional extra DTO fields as JSON.")] string changesJson = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("If true, never persist.")] bool? dryRun = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!unitId.HasValue) return Fail("unitId is required.");
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigCommandDataTransferService.UpsertLinkedSearch(
+                txnId, unitId.Value, linkedSearchId, name, searchId, changesJson, confirmed, dryRun);
+        }
+
+        [AgentTool("delete_linked_search",
+            "Delete a unit Linked Search binding. Preview → ask_user → confirmed=true → request_form_reload.")]
+        public string DeleteLinkedSearch(
+            AgentToolContext context,
+            [AgentParam("Linked search id.", isRequired: true)] int? linkedSearchId = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("If true, never persist.")] bool? dryRun = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!linkedSearchId.HasValue) return Fail("linkedSearchId is required.");
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigCommandDataTransferService.DeleteLinkedSearch(txnId, linkedSearchId.Value, confirmed, dryRun);
+        }
+
+        [AgentTool("get_link_targets",
+            "List AppFormLinkTarget menus on a Transaction Unit (usageType 101=LinkToForm, 5=System page). " +
+            "Prefer unitId. Distinct from Linked Search.")]
+        public string GetLinkTargets(
+            AgentToolContext context,
+            [AgentParam("Unit id (preferred).")] int? unitId = null,
+            [AgentParam("Optional usageType filter (101 or 5).")] int? usageType = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            if (!unitId.HasValue)
+                return Fail("unitId is required. Pass from get_current_transaction_config.");
+            if (!UnitBelongsToOpenTxn(txnId, unitId.Value))
+                return Fail($"unitId {unitId} is not on transaction {txnId}.");
+            return AppFormLinkTargetConfigService.List(
+                (int)EmAppLinkTargetSourceType.TransactionUnit, unitId.Value, usageType);
+        }
+
+        [AgentTool("get_link_target_detail",
+            "Full AppFormLinkTarget row (mappings, destination TX/Search/route, DT id, popup…).")]
+        public string GetLinkTargetDetail(
+            AgentToolContext context,
+            [AgentParam("LinkTarget id.", isRequired: true)] int? linkTargetId = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!linkTargetId.HasValue) return Fail("linkTargetId is required.");
+            if (!TryResolveTransactionId(context, transactionId, out _, out var err))
+                return Fail(err);
+            return AppFormLinkTargetConfigService.Detail(linkTargetId.Value);
+        }
+
+        [AgentTool("upsert_link_target",
+            "Create/update Transaction Unit Link Target menu. usageType default 101 (LinkToForm) needs linkTargetTransactionId; " +
+            "5 needs linkTargetUrlOrRouteCode. actionType: 1=Edit 2=Create 3=Delete 5=Preview 13=CreateFromExisting. " +
+            "Preview → ask_user → confirmed=true → request_form_reload.")]
+        public string UpsertLinkTarget(
+            AgentToolContext context,
+            [AgentParam("Unit id.", isRequired: true)] int? unitId = null,
+            [AgentParam("Existing linkTargetId for update.")] int? linkTargetId = null,
+            [AgentParam("101=LinkToForm (default), 5=System page/route.")] int? usageType = null,
+            [AgentParam("1=Edit 2=Create 3=Delete 5=Preview 13=CreateFromExisting.")] int? actionType = null,
+            [AgentParam("Menu caption.")] string navigationActionName = null,
+            [AgentParam("Destination transaction id (LinkToForm).")] int? linkTargetTransactionId = null,
+            [AgentParam("Destination transaction group id.")] int? linkTargetTransactionGroupId = null,
+            [AgentParam("Destination search id (rare on TX unit).")] int? linkTargetSearchId = null,
+            [AgentParam("Route/URL for system page.")] string linkTargetUrlOrRouteCode = null,
+            [AgentParam("Optional Data Transfer setting id.")] int? dataTransferSettingId = null,
+            [AgentParam("Sort order.")] int? sort = null,
+            [AgentParam("Open as popup.")] bool? isPopup = null,
+            [AgentParam("Popup width.")] int? popupWidth = null,
+            [AgentParam("Popup height.")] int? popupHeight = null,
+            [AgentParam("Icon class name.")] string iconName = null,
+            [AgentParam("Menu group name.")] string groupName = null,
+            [AgentParam("Source column type enum.")] int? sourceColumnType = null,
+            [AgentParam("Source column 1 (TX field map).")] string sourceColumn1 = null,
+            [AgentParam("Source column 2.")] string sourceColumn2 = null,
+            [AgentParam("Source column 3.")] string sourceColumn3 = null,
+            [AgentParam("Target column 1.")] string targetColumn1 = null,
+            [AgentParam("Target column 2.")] string targetColumn2 = null,
+            [AgentParam("Target column 3.")] string targetColumn3 = null,
+            [AgentParam("Layout display mode.")] int? layoutDisplayMode = null,
+            [AgentParam("OtherSettings JSON.")] string otherSettingsJson = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("If true, never persist.")] bool? dryRun = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!unitId.HasValue) return Fail("unitId is required.");
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            if (!UnitBelongsToOpenTxn(txnId, unitId.Value))
+                return Fail($"unitId {unitId} is not on transaction {txnId}.");
+            return AppFormLinkTargetConfigService.Upsert(
+                (int)EmAppLinkTargetSourceType.TransactionUnit, unitId.Value, linkTargetId,
+                usageType, actionType, navigationActionName,
+                linkTargetTransactionId, linkTargetTransactionGroupId, linkTargetSearchId,
+                linkTargetUrlOrRouteCode, dataTransferSettingId, sort, isPopup, popupWidth, popupHeight,
+                iconName, groupName, sourceColumnType,
+                sourceColumn1, sourceColumn2, sourceColumn3,
+                targetColumn1, targetColumn2, targetColumn3,
+                null, null, null, null, null, null,
+                layoutDisplayMode, otherSettingsJson, confirmed, dryRun);
+        }
+
+        [AgentTool("delete_link_target",
+            "Delete a Transaction Unit Link Target. Preview → ask_user → confirmed=true → request_form_reload.")]
+        public string DeleteLinkTarget(
+            AgentToolContext context,
+            [AgentParam("Unit id that owns the menu.", isRequired: true)] int? unitId = null,
+            [AgentParam("LinkTarget id.", isRequired: true)] int? linkTargetId = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("If true, never persist.")] bool? dryRun = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!unitId.HasValue) return Fail("unitId is required.");
+            if (!linkTargetId.HasValue) return Fail("linkTargetId is required.");
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            if (!UnitBelongsToOpenTxn(txnId, unitId.Value))
+                return Fail($"unitId {unitId} is not on transaction {txnId}.");
+            return AppFormLinkTargetConfigService.Delete(
+                (int)EmAppLinkTargetSourceType.TransactionUnit, unitId.Value, linkTargetId.Value, confirmed, dryRun);
+        }
+
+        static bool UnitBelongsToOpenTxn(int transactionId, int unitId)
+        {
+            AppCacheManagerBL.RefreshOnetHierarchyTranscation(transactionId);
+            var tx = AppTransactionBL.GetHierarchyTranscationFromDatabase(transactionId);
+            if (tx == null) return false;
+            var units = EntityMapWiring.FlattenUnits(
+                tx.AppTransactionUnitList ?? Enumerable.Empty<AppTransactionUnitExDto>());
+            return units.Any(u => Convert.ToInt32(u.Id) == unitId);
         }
 
         [AgentTool("get_unit_formulas",

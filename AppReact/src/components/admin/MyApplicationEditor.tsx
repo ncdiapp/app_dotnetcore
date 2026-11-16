@@ -18,6 +18,9 @@ import SearchManagement from './MyApplicationEditor/SearchManagement';
 import ImportAppConfig from './MyApplicationEditor/ImportAppConfig';
 import DatabaseDesignManagement from '../dbmgt/DatabaseDesignManagement';
 import WorkflowAutomation from './MyApplicationEditor/WorkflowAutomation';
+import MyApplicationEditorAgentDock, {
+  EditorAgentFocus,
+} from './MyApplicationEditor/MyApplicationEditorAgentDock';
 
 // Section IDs matching EmAppApplicationBuilderSection enum
 const ApplicationBuilderSection = {
@@ -107,6 +110,8 @@ const MyApplicationEditor: React.FC = () => {
   const [menuId, setMenuId] = useState<string | null>(null);
   const [applicationData, setApplicationData] = useState<any>(null);
   const [currentSection, setCurrentSection] = useState<number>(() => getInitialCurrentSection(param));
+  const [agentFocus, setAgentFocus] = useState<EditorAgentFocus | null>(null);
+  const [showAgentDock, setShowAgentDock] = useState(true);
   const lastSectionParamRef = React.useRef<string | undefined>(param);
 
   // Extract menu ID from route parameter; reset section when editor opens a different app (tab reuse).
@@ -176,6 +181,9 @@ const MyApplicationEditor: React.FC = () => {
 
   const handleSectionClick = (sectionId: number, _sectionName: string) => {
     setCurrentSection(sectionId);
+    // Leaving a drilled-in object returns chat to app-builder Assistant.
+    // Drill-in: section children will call setAgentFocus({ kind:'transaction'|… }) next.
+    setAgentFocus(null);
   };
 
   // Render section content
@@ -263,8 +271,32 @@ const MyApplicationEditor: React.FC = () => {
         </div>
 
         {/* Content Area */}
-        <div className={`w-1 flex-auto h-full overflow-hidden rounded-r-md`}>
-          {renderSectionContent()}
+        <div className={`w-1 flex-auto h-full overflow-hidden rounded-r-md flex gap-1`}>
+          <div className="w-1 flex-auto h-full overflow-hidden">
+            {renderSectionContent()}
+          </div>
+          {showAgentDock && menuId && (
+            <div className="w-[360px] flex-none h-full overflow-hidden border-l">
+              <MyApplicationEditorAgentDock
+                saasApplicationId={Number(menuId)}
+                applicationName={applicationData?.Name || applicationData?.DisplayName}
+                sectionId={currentSection}
+                sectionName={getSectionName(currentSection)}
+                focus={agentFocus}
+                onHidePanel={() => setShowAgentDock(false)}
+              />
+            </div>
+          )}
+          {!showAgentDock && (
+            <button
+              type="button"
+              className={`flex-none w-8 h-full text-xs ${theme.button_default}`}
+              title="Show Assistant"
+              onClick={() => setShowAgentDock(true)}
+            >
+              <i className="fa-solid fa-robot" aria-hidden />
+            </button>
+          )}
         </div>
       </div>
   

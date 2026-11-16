@@ -44,6 +44,20 @@ namespace APP.Components.Dto
         public string Scope { get; set; }
     }
 
+    public class SearchViewConfigChatRequestDto
+    {
+        public int SearchId { get; set; }
+        /// <summary>Editor/runtime scope token, e.g. config:runtime or config:editor.</summary>
+        public string Scope { get; set; }
+    }
+
+    public class AppBuilderEditorChatRequestDto
+    {
+        public int SaasApplicationId { get; set; }
+        /// <summary>App-level scope, e.g. app or section:DataModelDesign.</summary>
+        public string Scope { get; set; }
+    }
+
     /// <summary>Open or resume Instruction Designer chat for one Agent Management edit target.</summary>
     public class InstructionDesignerChatRequestDto
     {
