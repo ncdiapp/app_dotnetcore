@@ -900,6 +900,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 if (!pi.CanRead || !pi.CanWrite || pi.GetIndexParameters().Length > 0) continue;
                 if (patched.Contains(pi.Name)) continue;
                 if (pi.Name is "IsChangeTrackingEnabled" or "IsNew" or "IsInitializing") continue;
+                // Only scalar DTO columns — skip navigation collections (AppFormLinkTarget__List, …).
+                if (!IsScalarPatchProperty(pi.PropertyType)) continue;
                 try
                 {
                     var baselineVal = pi.GetValue(baseline);
@@ -912,6 +914,14 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     // Skip non-assignable / indexed / computed members.
                 }
             }
+        }
+
+        static bool IsScalarPatchProperty(Type t)
+        {
+            if (t == null) return false;
+            if (t == typeof(string)) return true;
+            var u = Nullable.GetUnderlyingType(t) ?? t;
+            return u.IsValueType;
         }
 
         static void ApplySearchRootChanges(AppSearchExDto search, JObject changes)

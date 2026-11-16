@@ -177,9 +177,11 @@ namespace APP.Framework
         {
             T clone = Activator.CreateInstance<T>();
 
+            // OnInitialize may already seed collection keys (e.g. AppFormLinkTarget__List).
+            // Overwrite those instead of Dictionary.Add (duplicate key crash).
             foreach (var property in PropertyValues)
             {
-                clone.PropertyValues.Add(property.Key, property.Value);
+                clone.PropertyValues[property.Key] = property.Value;
             }
 
             return clone;
