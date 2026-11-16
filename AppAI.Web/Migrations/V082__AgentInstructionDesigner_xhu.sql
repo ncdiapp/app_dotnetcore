@@ -1,5 +1,6 @@
 -- V082: Agent Instruction Designer (agent-instruction-designer) + platform-agent-authoring tools.
--- IF NOT EXISTS only. Re-run does not overwrite prompt or subscriptions.
+-- Includes draft inspect/apply, catalog, and debug target Test Run (MessagesJson/toolSteps).
+-- IF NOT EXISTS only for library/tools/SkillSet. Re-run does not overwrite prompt or subscriptions.
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-agent-authoring')
 INSERT INTO dbo.AppAgentToolLibrary
@@ -8,7 +9,7 @@ VALUES (
     N'platform-agent-authoring',
     N'platform',
     N'BuiltIn: Agent Instruction Authoring',
-    N'Inspect/apply the open Agent Management draft and search the tool catalog. Host tools stage draft only; user Save persists.',
+    N'Inspect/apply the open Agent Management draft, search the tool catalog, and debug target Test Run toolSteps. Host tools stage draft only; user Save persists.',
     N'BuiltIn',
     1
 );
@@ -106,6 +107,27 @@ VALUES (N'platform-agent-authoring', N'suggest_limit_tweaks',
     N'Suggest MaxToolResultChars when heavy DB tools (execute_sql / stored_procedure_execute) appear.',
     N'{"currentMaxToolResultChars":{"type":"integer"},"toolNamesJson":{"type":"string"},"systemPrompt":{"type":"string"}}',
     N'BuiltIn', N'{"TypeName":"' + @Plugin + N'","MethodName":"SuggestLimitTweaks"}', 1, 12);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'platform-agent-authoring' AND ToolName = N'list_target_chats')
+INSERT INTO dbo.AppAgentLibraryTool (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (N'platform-agent-authoring', N'list_target_chats',
+    N'List recent chats for the OPEN edit target (current user). Prefer Test Run (isFixedTestSession) when debugging Agent Management runs.',
+    N'{"take":{"type":"integer","description":"Max chats (default 10, max 30)"}}',
+    N'BuiltIn', N'{"TypeName":"' + @Plugin + N'","MethodName":"ListTargetChats"}', 1, 13);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'platform-agent-authoring' AND ToolName = N'get_target_last_run')
+INSERT INTO dbo.AppAgentLibraryTool (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (N'platform-agent-authoring', N'get_target_last_run',
+    N'Load the target agent last user→assistant turn with ordered toolSteps from MessagesJson. Judge by tool sequence, not chat tone. Default = newest chat for current user+target.',
+    N'{"sessionKey":{"type":"string","description":"Optional SessionKey from list_target_chats"},"turnIndex":{"type":"integer","description":"0=most recent complete turn"}}',
+    N'BuiltIn', N'{"TypeName":"' + @Plugin + N'","MethodName":"GetTargetLastRun"}', 1, 14);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'platform-agent-authoring' AND ToolName = N'explain_run_vs_instruction')
+INSERT INTO dbo.AppAgentLibraryTool (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (N'platform-agent-authoring', N'explain_run_vs_instruction',
+    N'Compare target last-run tool sequence to draft Instruction/subscriptions; suggest §9.4 fix class. Pass systemPrompt + libraryKeysJson from get_draft_* when possible.',
+    N'{"sessionKey":{"type":"string"},"systemPrompt":{"type":"string"},"libraryKeysJson":{"type":"string"},"exclusionsJson":{"type":"string"},"turnIndex":{"type":"integer"}}',
+    N'BuiltIn', N'{"TypeName":"' + @Plugin + N'","MethodName":"ExplainRunVsInstruction"}', 1, 15);
 GO
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE AgentCode = N'agent-instruction-designer')
@@ -127,6 +149,7 @@ Apply-to-draft stages UI state only — the human clicks Save. You do NOT Upsert
 - Tools job = Instruction job — pick fewest real catalog tools; never invent LibraryKey/ToolName.
 - ask_user — runtime-injected for Interactive agents. NEVER recommend/register ask_user as a private BuiltIn.
 - Unsaved new agents — stage prompt + subscriptions/exclusions only; private BuiltIns need AgentCode (Save first).
+- Target Test Run evidence — MessagesJson toolSteps via get_target_last_run (current user + target only). Judge by tool sequence, not chat bubbles. No NLog file scrape.
 
 ━━━ 2. DEFAULT SEQUENCE — design or reshape Instruction + Tools ━━━━━━━━━━━
   1) get_draft_agent + get_draft_system_prompt + get_draft_subscriptions
@@ -152,6 +175,13 @@ C) Tools-only adjust
 D) Inspect only
   get_draft_* / list_libraries / search_tool_catalog — no apply.
 
+E) Debug why Test Run / target result looks wrong
+  1) get_draft_system_prompt + get_draft_subscriptions (optional but preferred)
+  2) list_target_chats (optional) or get_target_last_run (default = newest chat for this user+target)
+  3) explain_run_vs_instruction with that prompt + libraryKeysJson
+  4) Apply ONE §9.4 fix class (subscription/Description vs one prompt sentence vs plugin) — ask_user before large overwrite
+  5) User Saves and re-runs Test on the TARGET; compare the new toolSequence
+
 ━━━ 4. HARD RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✓ ask_user before overwriting a long existing prompt or changing many subscriptions.
 ✓ Every ToolName in the prompt must be subscribed (or ask_user runtime-injected).
@@ -161,12 +191,14 @@ D) Inspect only
   - Forms: mode=text + fieldsJson [{name,label,required?,type?,options?}]; types ONLY text|select|radio; DDL→select+options; radio→radio+options (NEVER select for radio).
   - Standalone choices: mode=single_choice|multi_choice + optionsJson [{id,display}] + ui (dropdown|radio|button_group). Never list choices only in FinalResponse prose.
 ✓ Private BuiltIns only when no library tool covers the need (0–5); still never ask_user.
+✓ When user asks why a result happened: call get_target_last_run / explain_run_vs_instruction before rewriting prose.
 ✗ Do not emit four-H2 Role/Workflow/Rules/Output without scenario tool sequences.
 ✗ Do not blindly preserve non-§9.2 essay structure.
 ✗ Do not call UpsertSkillSet / claim Save happened.
 ✗ Do not appear as a left-menu general chat agent; stay on this host draft.
 ✗ Do not dump whole libraries when three tools would do.
 ✗ Do not optimize chat tone while the tool sequence is still wrong.
+✗ Do not invent SQL against AppGenericAgentSession — use list_target_chats / get_target_last_run.
 
 ━━━ 5. TOOL NOTES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 - get_draft_* / apply_*_to_draft — host only; empty host = not in Agent Management Designer.
@@ -174,6 +206,7 @@ D) Inspect only
 - propose_* — review helpers; still ask_user then apply_*.
 - validate_prompt_tool_alignment — fix mismatches before finishing.
 - suggest_limit_tweaks — advisory; user can set Limits tab (MaxToolResultChars).
+- list_target_chats / get_target_last_run / explain_run_vs_instruction — current user + HostContext.targetAgentCode only; toolSteps from DB.
 
 When unsure which scenario or tool, ask_user with concrete options — do not guess catalog names.',
     3, 1, 7, 1,

@@ -298,6 +298,224 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             });
         }
 
+        // ── Server: debug target Test Run / chat (MessagesJson + toolSteps only) ─
+
+        [AgentTool("list_target_chats",
+            "List recent chats for the OPEN edit target (current user). Prefer Test Run (IsFixedTestSession) when debugging Agent Management runs.")]
+        public string ListTargetChats(
+            AgentToolContext context,
+            [AgentParam("Max chats (default 10, max 30).")] int? take = null)
+        {
+            try
+            {
+                if (!TryResolveTarget(context, null, out var target, out var err))
+                    return Fail(err);
+                var dsId = context?.DataSourceId ?? 0;
+                var userId = context?.UserId ?? 0;
+                if (dsId <= 0 || userId <= 0) return Fail("UserId and DataSourceId are required.");
+                var n = take.GetValueOrDefault(10);
+                if (n < 1) n = 10;
+                if (n > 30) n = 30;
+                var chats = AppGenericAgentSessionBL.ListChats(target, userId, n, dsId)
+                    .Select(c => new
+                    {
+                        sessionKey = c.SessionKey,
+                        title = c.Title,
+                        updatedAt = c.UpdatedAt,
+                        isFixedTestSession = c.IsFixedTestSession
+                    })
+                    .ToList();
+                return Ok(new
+                {
+                    targetAgentCode = target,
+                    chats,
+                    count = chats.Count,
+                    note = "Default get_target_last_run uses the newest chat (often the Test Run fixed session)."
+                });
+            }
+            catch (Exception ex) { return Fail(ex.Message); }
+        }
+
+        [AgentTool("get_target_last_run",
+            "Load the target agent's last user→assistant turn with ordered toolSteps from MessagesJson. Judge by tool sequence, not chat tone. No NLog AgentLoop files in v1.")]
+        public string GetTargetLastRun(
+            AgentToolContext context,
+            [AgentParam("Optional SessionKey from list_target_chats; default = newest chat for target.")] string sessionKey = null,
+            [AgentParam("0 = most recent complete turn, 1 = previous, … (default 0).")] int? turnIndex = null)
+        {
+            try
+            {
+                if (!TryResolveTarget(context, null, out var target, out var err))
+                    return Fail(err);
+                var dsId = context?.DataSourceId ?? 0;
+                var userId = context?.UserId ?? 0;
+                if (dsId <= 0 || userId <= 0) return Fail("UserId and DataSourceId are required.");
+
+                var key = (sessionKey ?? "").Trim();
+                if (key.Length == 0)
+                {
+                    var newest = AppGenericAgentSessionBL.ListChats(target, userId, 1, dsId).FirstOrDefault();
+                    if (newest == null || string.IsNullOrWhiteSpace(newest.SessionKey))
+                        return Fail("No chats found for target '" + target + "'. Run Test on the target agent first.");
+                    key = newest.SessionKey;
+                }
+
+                var detail = AppGenericAgentSessionBL.LoadBySessionKey(key, target, userId, dsId);
+                if (detail?.Messages == null || detail.Messages.Count == 0)
+                    return Fail("Chat is empty or not found for this user/target.");
+
+                var turns = ExtractCompleteTurns(detail.Messages);
+                if (turns.Count == 0)
+                    return Fail("No complete user→assistant turns in this chat yet.");
+
+                var idx = turnIndex.GetValueOrDefault(0);
+                if (idx < 0) idx = 0;
+                if (idx >= turns.Count)
+                    return Fail("turnIndex out of range (0.." + (turns.Count - 1) + ").");
+
+                var turn = turns[idx];
+                return Ok(new
+                {
+                    targetAgentCode = target,
+                    sessionKey = key,
+                    title = detail.Title,
+                    isFixedTestSession = string.Equals(
+                        key, AppGenericAgentSessionBL.MakeFixedKey(target, userId), StringComparison.Ordinal),
+                    turnIndex = idx,
+                    turnCount = turns.Count,
+                    userMessage = Truncate(turn.UserText, 2000),
+                    assistantText = Truncate(turn.AssistantText, 2000),
+                    toolSequence = turn.ToolSteps,
+                    toolNames = turn.ToolSteps.Select(t => (string)t["toolName"]).Where(n => !string.IsNullOrWhiteSpace(n)).ToList(),
+                    judgeHint = "Judge by toolSequence order and ok/error — not by assistantText tone. Then apply §9.4 repair map."
+                });
+            }
+            catch (Exception ex) { return Fail(ex.Message); }
+        }
+
+        [AgentTool("explain_run_vs_instruction",
+            "Compare a target last-run tool sequence to the draft Instruction/subscriptions and suggest a §9.4 fix class. Pass systemPrompt + libraryKeysJson from get_draft_* when possible.")]
+        public string ExplainRunVsInstruction(
+            AgentToolContext context,
+            [AgentParam("Optional SessionKey; default newest target chat.")] string sessionKey = null,
+            [AgentParam("Current draft SystemPrompt (from get_draft_system_prompt).")] string systemPrompt = null,
+            [AgentParam("JSON array of subscribed LibraryKey.")] string libraryKeysJson = null,
+            [AgentParam("Optional exclusions JSON [{libraryKey,toolName}].")] string exclusionsJson = null,
+            [AgentParam("0 = most recent turn.")] int? turnIndex = null)
+        {
+            try
+            {
+                var runJson = GetTargetLastRun(context, sessionKey, turnIndex);
+                var run = JObject.Parse(runJson);
+                if (run["ok"]?.Value<bool>() != true)
+                    return runJson;
+
+                var prompt = systemPrompt ?? "";
+                var toolNames = (run["toolNames"] as JArray)?.Select(t => t?.ToString()).Where(s => !string.IsNullOrWhiteSpace(s)).ToList()
+                    ?? new List<string>();
+                var steps = run["toolSequence"] as JArray ?? new JArray();
+                var failed = steps.OfType<JObject>()
+                    .Where(s => s["ok"]?.Value<bool>() == false
+                        || string.Equals(s["ok"]?.ToString(), "false", StringComparison.OrdinalIgnoreCase))
+                    .Select(s => s["toolName"]?.ToString())
+                    .Where(n => !string.IsNullOrWhiteSpace(n))
+                    .ToList();
+
+                var mentioned = ExtractLikelyToolNames(prompt);
+                var libs = ParseStringArray(libraryKeysJson);
+                var excl = new HashSet<string>(
+                    ParseExclusions(exclusionsJson).Select(e => Key(e.libraryKey, e.toolName)),
+                    StringComparer.OrdinalIgnoreCase);
+                var subscribed = new HashSet<string>(AutoInjected, StringComparer.OrdinalIgnoreCase);
+                var dsId = context?.DataSourceId ?? 0;
+                if (dsId > 0 && libs.Count > 0)
+                {
+                    foreach (var lib in libs)
+                    {
+                        foreach (var t in LibToolBL.GetByLibraryKey(dsId, lib).Where(x => x != null && x.IsActive))
+                        {
+                            if (excl.Contains(Key(lib, t.ToolName))) continue;
+                            if (!string.IsNullOrWhiteSpace(t.ToolName))
+                                subscribed.Add(t.ToolName.Trim());
+                        }
+                    }
+                }
+
+                var notInPrompt = toolNames
+                    .Where(n => !AutoInjected.Contains(n) && !prompt.Contains(n, StringComparison.OrdinalIgnoreCase))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                var inPromptNotRun = mentioned
+                    .Where(n => !toolNames.Any(t => string.Equals(t, n, StringComparison.OrdinalIgnoreCase)))
+                    .Take(15)
+                    .ToList();
+                var notSubscribed = toolNames
+                    .Where(n => libs.Count > 0 && !subscribed.Contains(n) && !AutoInjected.Contains(n))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                string fixClass;
+                string advice;
+                if (failed.Count > 0)
+                {
+                    fixClass = "plugin_or_description";
+                    advice = "Tool(s) returned ok=false: " + string.Join(", ", failed)
+                        + ". Prefer fixing tool Description/ParameterSchema or plugin hard-block — not a long prompt essay.";
+                }
+                else if (notSubscribed.Count > 0)
+                {
+                    fixClass = "subscription";
+                    advice = "Run used tools not in the draft subscription set: " + string.Join(", ", notSubscribed)
+                        + ". Subscribe (or stop inventing) those tools.";
+                }
+                else if (toolNames.Count == 0)
+                {
+                    fixClass = "prompt_sequence";
+                    advice = "No tools ran. Add a numbered scenario tool sequence for this user intent, or check bans that blocked tools.";
+                }
+                else if (notInPrompt.Count > 0 && mentioned.Count > 0)
+                {
+                    fixClass = "prompt_order_or_ban";
+                    advice = "Run tools not named in Instruction: " + string.Join(", ", notInPrompt)
+                        + ". Add one hard step/ban sentence, or exclude those tools.";
+                }
+                else if (inPromptNotRun.Count > 0)
+                {
+                    fixClass = "prompt_order_or_ban";
+                    advice = "Instruction mentions tools that did not run: " + string.Join(", ", inPromptNotRun)
+                        + ". Strengthen the numbered sequence for the hardest scenario.";
+                }
+                else
+                {
+                    fixClass = "review_result_shape";
+                    advice = "Tool sequence looks aligned. If the user outcome is still wrong, inspect truncated tool results / Description mismatch (plugin), not chat tone.";
+                }
+
+                return Ok(new
+                {
+                    targetAgentCode = run["targetAgentCode"]?.ToString(),
+                    sessionKey = run["sessionKey"]?.ToString(),
+                    turnIndex = run["turnIndex"],
+                    userMessage = run["userMessage"],
+                    toolNames,
+                    failedTools = failed,
+                    toolsRunButNotInPrompt = notInPrompt,
+                    toolsInPromptButNotRun = inPromptNotRun,
+                    toolsRunButNotSubscribed = notSubscribed,
+                    fixClass,
+                    advice,
+                    repairMap = new
+                    {
+                        wrong_tool_or_params = "subscription or tool Description/ParameterSchema",
+                        wrong_order_or_weak_ban = "add ONE prompt sentence",
+                        lying_or_wrong_shaped_returns = "plugin / tool implementation",
+                        same_error_twice = "prefer plugin hard-block over more prompt text"
+                    }
+                });
+            }
+            catch (Exception ex) { return Fail(ex.Message); }
+        }
+
         // ── helpers ───────────────────────────────────────────────────────
 
         static async Task<string> AskHost(AgentToolContext context, string toolName, object args)
@@ -380,6 +598,134 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(80)
                 .ToList();
+        }
+
+        static bool TryResolveTarget(
+            AgentToolContext context, string clientTargetAgentCode, out string targetCode, out string error)
+        {
+            targetCode = null;
+            error = null;
+            var hostJson = FormHostContextStore.Get(context?.ChatSessionKey);
+            if (string.IsNullOrWhiteSpace(hostJson))
+            {
+                error = "No HostContext. Debug tools only run inside Agent Management Instruction Designer.";
+                return false;
+            }
+            try
+            {
+                var root = JObject.Parse(hostJson);
+                var mode = (root["mode"] ?? root["Mode"])?.ToString();
+                if (!string.Equals(mode, "instruction-designer", StringComparison.OrdinalIgnoreCase))
+                {
+                    error = "HostContext.mode must be instruction-designer.";
+                    return false;
+                }
+                var isNew = root["isNew"]?.Value<bool>() == true;
+                var code = (root["targetAgentCode"] ?? root["TargetAgentCode"])?.ToString()?.Trim() ?? "";
+                if (isNew || code.Length == 0)
+                {
+                    error = "Target has no AgentCode yet. Save the agent, run Test, then debug.";
+                    return false;
+                }
+                var client = (clientTargetAgentCode ?? "").Trim();
+                if (client.Length > 0 && !string.Equals(client, code, StringComparison.OrdinalIgnoreCase))
+                {
+                    error = "targetAgentCode does not match the open draft HostContext.";
+                    return false;
+                }
+                targetCode = code;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = "Invalid HostContextJson: " + ex.Message;
+                return false;
+            }
+        }
+
+        sealed class ChatTurn
+        {
+            public string UserText { get; set; }
+            public string AssistantText { get; set; }
+            public List<JObject> ToolSteps { get; set; }
+        }
+
+        /// <summary>
+        /// Newest-first complete user→assistant turns (skips empty session_start noise).
+        /// </summary>
+        static List<ChatTurn> ExtractCompleteTurns(IList<JObject> messages)
+        {
+            var chronological = new List<ChatTurn>();
+            if (messages == null) return chronological;
+            string pendingUser = null;
+            foreach (var m in messages)
+            {
+                if (m == null) continue;
+                var role = (m["role"] ?? m["Role"])?.ToString()?.Trim().ToLowerInvariant() ?? "";
+                var content = (m["content"] ?? m["Content"] ?? m["text"] ?? m["Text"])?.ToString() ?? "";
+                if (role == "user")
+                {
+                    if (IsNoiseUser(content)) { pendingUser = null; continue; }
+                    pendingUser = content;
+                    continue;
+                }
+                if (role == "assistant" && pendingUser != null)
+                {
+                    chronological.Add(new ChatTurn
+                    {
+                        UserText = pendingUser,
+                        AssistantText = content,
+                        ToolSteps = CompactToolSteps(m["toolSteps"] as JArray ?? m["ToolSteps"] as JArray)
+                    });
+                    pendingUser = null;
+                }
+            }
+            chronological.Reverse();
+            return chronological;
+        }
+
+        static bool IsNoiseUser(string content)
+        {
+            var t = (content ?? "").Trim();
+            if (t.Length == 0) return true;
+            if (t.StartsWith("[session_start]", StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        static List<JObject> CompactToolSteps(JArray steps)
+        {
+            var list = new List<JObject>();
+            if (steps == null) return list;
+            foreach (var step in steps.OfType<JObject>().Take(40))
+            {
+                var name = (step["toolName"] ?? step["ToolName"] ?? step["name"])?.ToString()?.Trim() ?? "";
+                if (name.Length == 0) continue;
+                var okToken = step["isSuccess"] ?? step["ok"] ?? step["IsSuccess"];
+                bool? ok = null;
+                if (okToken != null && okToken.Type != JTokenType.Null)
+                {
+                    if (okToken.Type == JTokenType.Boolean) ok = okToken.Value<bool>();
+                    else if (bool.TryParse(okToken.ToString(), out var b)) ok = b;
+                }
+                var args = Truncate(OneLine((step["args"] ?? step["Args"] ?? step["arguments"])?.ToString()), 500);
+                var result = Truncate(OneLine((step["result"] ?? step["Result"])?.ToString()), 500);
+                var label = (step["label"] ?? step["Label"] ?? step["description"])?.ToString();
+                list.Add(new JObject
+                {
+                    ["toolName"] = name,
+                    ["label"] = string.IsNullOrWhiteSpace(label) ? null : Truncate(label, 120),
+                    ["args"] = args,
+                    ["result"] = result,
+                    ["ok"] = ok
+                });
+            }
+            return list;
+        }
+
+        static string OneLine(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            return Regex.Replace(s, @"\s+", " ").Trim();
         }
     }
 }

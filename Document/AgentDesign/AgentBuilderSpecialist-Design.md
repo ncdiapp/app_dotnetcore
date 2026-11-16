@@ -287,14 +287,28 @@ Product agents (not replaced by this designer):
 | Apply-to-draft | `apply_system_prompt_to_draft`, `apply_subscriptions_to_draft`, `apply_exclusions_to_draft` | **Host** (`onHostTool`); marks dirty; no DB Upsert |
 | Validate | `validate_prompt_tool_alignment` | **Server** (args = prompt + subscription snapshot from prior host inspect) |
 | Soft limits | `suggest_limit_tweaks` | **Server** (e.g. MaxToolResultChars when heavy DB tools appear) |
+| Debug target run | `list_target_chats`, `get_target_last_run`, `explain_run_vs_instruction` | **Server** — read `AppGenericAgentSession.MessagesJson` / `toolSteps` for **current user + HostContext.targetAgentCode** only |
 
 Dispatch: SharedAgentEngine → BuiltInToolExecutor → `AgentAuthoringPlugin` (host tools call `AskHost` like `FormHostPlugin`).
+
+### 7.1.1 Debug target Test Run (locked 2026-11-13)
+
+Replaces ad-hoc Cursor SQL/`findstr` when the user asks “why did the target do this?”:
+
+| Rule | Decision |
+|------|----------|
+| Evidence source (v1) | **DB only:** `MessagesJson` + persisted `toolSteps`. **Not** NLog `[AgentLoop]` files. |
+| Default scope | Current **signed-in user** + open **targetAgentCode**; default chat = newest (`ListChats` TOP 1 — usually Agent Management Test Run fixed key `{code}:{userId}`). |
+| Judge by | Ordered **tool sequence** (§9.4), not assistant chat tone. |
+| Unsaved target | No AgentCode → tools return error (Save + Test Run first). |
+| Out of scope | Raw `execute_sql` on sessions; scanning other users’ chats; scraping log files (later optional). |
 
 ### 7.2 Do not
 
 - Call `UpsertSkillSet` / `SetSubscriptions` directly from tools in v1 (bypass user Save).
 - Recommend or register `ask_user` as a private BuiltIn (runtime-injected for Interactive).
 - Invent library keys or tool names not in catalog.
+- Give Designer unrestricted SQL over `MessagesJson` / other tenants’ sessions.
 
 ### 7.3 System tool
 
@@ -371,7 +385,7 @@ Same rules as HowAppBuilder — designer should recommend the **smallest** fix c
 | Lying / wrong-shaped returns | **Plugin** / tool implementation |
 | Same class of error twice+ | Prefer **plugin hard-block** over more prompt text |
 
-Tune **one class per round**; compare the new run. Always judge by tool sequence in the AgentLoop log.
+Tune **one class per round**; compare the new run. Always judge by tool sequence — in-app via `get_target_last_run` / `explain_run_vs_instruction` (MessagesJson `toolSteps`); Cursor may still use NLog `[AgentLoop]` for deeper ops debug.
 
 ### 9.5 Anti-patterns (designer must refuse or rewrite)
 
@@ -500,6 +514,7 @@ v1 does **not** rewrite controller metaPrompts to match §9.2 (avoid dual mainte
 - AI / AI Edit buttons still open and run in v1 (legacy); no requirement that their output equals Designer’s.
 - Specialist does not appear in left-menu agent list.
 - Improving the designer’s SkillSet changes future authoring behavior without editing C# metaPrompts.
+- Designer can load the target’s latest Test Run / chat toolSteps (`get_target_last_run`) and map failures to §9.4 via `explain_run_vs_instruction`.
 
 ---
 
@@ -511,6 +526,7 @@ v1 does **not** rewrite controller metaPrompts to match §9.2 (avoid dual mainte
 | 2 | Apply / inspect bridge | FormHost-style **`onHostTool`** only. Do **not** use “return draft patch for panel to apply” as the v1 path. |
 | 3 | Unsaved new agent | Prompt + library / exclusion **draft only** until first Save. **No** private BuiltIn `UpsertTool` until `AgentCode` exists (same spirit as Generate’s warning). |
 | 4 | Session GC on delete | Non-blocking for v1 start: orphan Designer chats may remain; GC / cleanup can follow. |
+| 5 | Debug target run | DB `MessagesJson`/`toolSteps` only; scope = current user + targetAgentCode; default newest chat (Test Run). No AgentLoop file scrape in v1. |
 
 ---
 
@@ -524,3 +540,4 @@ v1 does **not** rewrite controller metaPrompts to match §9.2 (avoid dual mainte
 | 2026-11-12 | Conflict pass: §3.1 new-demand-wins; HowAppBuilder §9.2 beats four-H2; E3 preserve no longer default; coexist = toolbar only; G9 not migrated as requirement; dogfood/acceptance aligned. |
 | 2026-11-12 | Locked §5.1 one Designer SkillSet + chat-per-target; §5.2 improve-the-designer loop (prompt/tools/catalog dogfood). |
 | 2026-11-13 | **Approved for implementation.** Locked §15: host_tool draft bridge, unsaved-new BuiltIn rule, right-split panel; §3 rows 12–14; §7.1 host vs server table. |
+| 2026-11-13 | Debug tools: `list_target_chats` / `get_target_last_run` / `explain_run_vs_instruction`; §7.1.1 + §15 #5 (DB toolSteps only); folded into V082 seed (no separate V083). |
