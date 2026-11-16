@@ -129,6 +129,9 @@ string capped = CapToolResult(toolResult);   // default: 10,000 chars max
 | `delete_application` | Deletes entire application: searches → transactions → entities → optionally DROP tables → package |
 | `add_transaction_to_menu` | Adds a list-transaction link to the navigation menu |
 | `add_search_to_menu` | Adds a search/dataset link to the navigation menu |
+| `list_app_nav_menu` | Lists left-sidebar items under one SaasApplicationId |
+| `update_nav_menu_item` | Updates one sidebar node by menuId (name/sort/icon) |
+| `delete_nav_menu_item` | Deletes one sidebar node by menuId (keeps Search/TX) |
 
 #### `PlatformExplorerPlugin` — Inspect existing state
 | Tool | Description |
@@ -184,7 +187,8 @@ string capped = CapToolResult(toolResult);   // default: 10,000 chars max
 #### `SearchBuilderPlugin` — Standalone report screens
 | Tool | Description |
 |------|-------------|
-| `create_search` | Creates Dataset (SQL query) + SearchView (auto-columns) + Search record in one step |
+| `create_search` | Creates Dataset + SearchView + Search; optional `criteriaFields` + `viewType` (Grid/Card/…) |
+| `delete_search` | Deletes Search; View/Dataset only if unshared; removes sidebar shortcut |
 | `list_searches` | Lists all searches for a given application |
 
 #### `MemorySearchPlugin` — RAG memory retrieval

@@ -479,6 +479,124 @@ namespace App.BL
             return result;
         }
 
+        /// <summary>
+        /// Direct children under the app package root (left sidebar items for one SaaS application).
+        /// </summary>
+        public static List<AppListMenuExDto> ListApplicationNavMenuItems(int saasApplicationId)
+        {
+            var menuTree = RetrieveListMenuHairarchyDto(false, saasApplicationId);
+            var root = menuTree?.FirstOrDefault();
+            if (root == null) return new List<AppListMenuExDto>();
+            return (root.AppListMenu_List ?? new ObservableSet<AppListMenuExDto>()).ToList();
+        }
+
+        /// <summary>
+        /// Remove a search (or saved-search) shortcut from the app package left sidebar.
+        /// Does not delete the Search itself — only the AppListMenu node.
+        /// </summary>
+        public static OperationCallResult<object> RemoveSearchFromApplicationMenu(
+            int searchId, int saasApplicationId, bool isSavedSearch = false)
+        {
+            var result = new OperationCallResult<object>();
+            var validationResult = new ValidationResult();
+            result.ValidationResult = validationResult;
+
+            var children = ListApplicationNavMenuItems(saasApplicationId);
+            var linkValue = isSavedSearch
+                ? searchId + StringHelper.UnderscoreToken + "1"
+                : searchId.ToString();
+
+            var matches = children
+                .Where(o => o.RouteCode == ListMenus.MasterDataManagement && o.Link == linkValue)
+                .ToList();
+
+            if (matches.Count == 0)
+            {
+                validationResult.Items.Add(new ValidationItem(
+                    typeof(AppListMenuEntity),
+                    "App_ListMenuEntity_MenuNotFound_Error",
+                    ValidationItemType.Error,
+                    $"No sidebar menu item for searchId={searchId} under SaasApplicationId={saasApplicationId}."));
+                return result;
+            }
+
+            foreach (var m in matches)
+            {
+                if (m.Id == null) continue;
+                var del = DeleteOneAppListMenuTreeNode(m.Id);
+                if (del?.ValidationResult?.HasErrors == true)
+                {
+                    validationResult.Merge(del.ValidationResult);
+                    return result;
+                }
+            }
+
+            result.Object = matches.Select(m => m.Id).ToList();
+            validationResult.Items.Add(new ValidationItem(
+                typeof(AppListMenuEntity),
+                "App_ListMenuEntity_Delete_OK",
+                ValidationItemType.Message,
+                $"Removed {matches.Count} sidebar menu item(s) for searchId={searchId}."));
+            return result;
+        }
+
+        /// <summary>
+        /// Remove a List/FolderList transaction shortcut from the app package left sidebar.
+        /// </summary>
+        public static OperationCallResult<object> RemoveListTransactionFromMainMenu(int transactionId)
+        {
+            var result = new OperationCallResult<object>();
+            var validationResult = new ValidationResult();
+            result.ValidationResult = validationResult;
+
+            var transactionEntity = AppTransactionBL.RetrieveOneAppTransactionEntity(transactionId);
+            if (transactionEntity == null || !transactionEntity.SaasApplicationId.HasValue)
+            {
+                validationResult.Items.Add(new ValidationItem(
+                    typeof(AppListMenuEntity),
+                    "App_ListMenuEntity_CannotFindTransactionApplicationId_Error",
+                    ValidationItemType.Error,
+                    "Cannot find application id for the current transaction."));
+                return result;
+            }
+
+            int applicationId = transactionEntity.SaasApplicationId.Value;
+            var children = ListApplicationNavMenuItems(applicationId);
+            var linkValue = transactionId.ToString();
+            var matches = children
+                .Where(o => o.RouteCode == ListMenus.FormListEdit && o.Link == linkValue)
+                .ToList();
+
+            if (matches.Count == 0)
+            {
+                validationResult.Items.Add(new ValidationItem(
+                    typeof(AppListMenuEntity),
+                    "App_ListMenuEntity_MenuNotFound_Error",
+                    ValidationItemType.Error,
+                    $"No sidebar menu item for transactionId={transactionId}."));
+                return result;
+            }
+
+            foreach (var m in matches)
+            {
+                if (m.Id == null) continue;
+                var del = DeleteOneAppListMenuTreeNode(m.Id);
+                if (del?.ValidationResult?.HasErrors == true)
+                {
+                    validationResult.Merge(del.ValidationResult);
+                    return result;
+                }
+            }
+
+            result.Object = matches.Select(m => m.Id).ToList();
+            validationResult.Items.Add(new ValidationItem(
+                typeof(AppListMenuEntity),
+                "App_ListMenuEntity_Delete_OK",
+                ValidationItemType.Message,
+                $"Removed {matches.Count} sidebar menu item(s) for transactionId={transactionId}."));
+            return result;
+        }
+
         //internal static ValidationResult CopyListMenuStructure(object sourceMenuId, object targetMenuId)
         //{
         //    ValidationResult aValidationResult = new ValidationResult();

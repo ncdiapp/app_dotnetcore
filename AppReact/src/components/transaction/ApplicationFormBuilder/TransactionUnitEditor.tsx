@@ -2270,33 +2270,26 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
     };
 
     const handleClose = async () => {
-        // Wait 300ms to allow cell editing to complete and isModified to update
+        // Wait 300ms so in-progress grid cell edits can flip isModifiedRef.
         await new Promise(resolve => setTimeout(resolve, 300));
 
-        // Check if modified after the delay - use ref to get the latest value
-        // Also compare current data with original data as a fallback
+        // Only trust explicit edit flags — JSON.stringify vs original false-positives after
+        // CollectionView/load normalize (open+close with no edits was marking parent IsModified).
         const hasChanges = isModifiedRef.current || isModified;
-
-        // Additional check: compare current unitData with original
-        let dataChanged = false;
-        if (unitData && originalUnitDataRef.current) {
-            dataChanged = JSON.stringify(unitData) !== JSON.stringify(originalUnitDataRef.current);
-        }
-
-        if (!hasChanges && !dataChanged) {
+        if (!hasChanges) {
             onCloseRef.current();
             return;
         }
 
-        // Unsaved changes: push to parent local state only (do not save to server).
-        // Prefer not to overwrite parent with no-Id field copies after a successful Save —
-        // only push when there are real unsaved edits.
+        // Unsaved edits: push to parent local state only (do not save to server).
         if (unitData && onSaveRef.current) {
             await onSaveRef.current(unitData, false);
         }
         setIsModified(false);
         isModifiedRef.current = false;
-        originalUnitDataRef.current = JSON.parse(JSON.stringify(unitData));
+        if (unitData) {
+            originalUnitDataRef.current = JSON.parse(JSON.stringify(unitData));
+        }
         onCloseRef.current();
     };
 

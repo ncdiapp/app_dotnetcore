@@ -381,5 +381,176 @@ namespace App.BL.AppBuilderAgent.Plugins
                 return JsonConvert.SerializeObject(new { IsSuccess = false, Error = ex.Message });
             }
         }
+
+        [AgentTool("list_app_nav_menu",
+            "List left-sidebar navigation menu items under one application package (SaasApplicationId). " +
+            "Use before update_nav_menu_item / delete_nav_menu_item to see menuId, name, routeCode, link.")]
+        public string ListAppNavMenu(
+            [AgentParam("Application package id (SaasApplicationId / app root menu id).", isRequired: true)]
+            int saasApplicationId)
+        {
+            try
+            {
+                var validErr = ValidateSaasApplicationId(saasApplicationId);
+                if (validErr != null) return validErr;
+
+                var items = AppTreeListMenuBL.ListApplicationNavMenuItems(saasApplicationId)
+                    .OrderBy(m => m.Sort ?? int.MaxValue)
+                    .Select(m =>
+                    {
+                        string kind = "other";
+                        int? linkedSearchId = null;
+                        int? linkedTransactionId = null;
+                        bool? isSavedSearch = null;
+                        if (m.RouteCode == ListMenus.MasterDataManagement && !string.IsNullOrWhiteSpace(m.Link))
+                        {
+                            kind = "search";
+                            var parts = m.Link.Split('_');
+                            if (int.TryParse(parts[0], out var sid)) linkedSearchId = sid;
+                            isSavedSearch = parts.Length > 1 && parts[1] == "1";
+                        }
+                        else if (m.RouteCode == ListMenus.FormListEdit && int.TryParse(m.Link, out var tid))
+                        {
+                            kind = "listTransaction";
+                            linkedTransactionId = tid;
+                        }
+
+                        return new
+                        {
+                            menuId = m.Id,
+                            name = m.Name,
+                            routeCode = m.RouteCode,
+                            link = m.Link,
+                            sort = m.Sort,
+                            kind,
+                            linkedSearchId,
+                            isSavedSearch,
+                            linkedTransactionId
+                        };
+                    }).ToList();
+
+                return JsonConvert.SerializeObject(new
+                {
+                    ok = true,
+                    IsSuccess = true,
+                    saasApplicationId,
+                    items
+                }, Formatting.Indented);
+            }
+            catch (Exception ex)
+            {
+                return JsonConvert.SerializeObject(new { IsSuccess = false, ok = false, Error = ex.Message });
+            }
+        }
+
+        [AgentTool("update_nav_menu_item",
+            "Update one left-sidebar menu node by menuId (from list_app_nav_menu). " +
+            "Pass any of name / sort / iconName. Does not change route/link target.")]
+        public string UpdateNavMenuItem(
+            [AgentParam("AppListMenu.MenuId to update.", isRequired: true)]
+            int menuId,
+            [AgentParam("New display name.")]
+            string name = null,
+            [AgentParam("New sort order.")]
+            int? sort = null,
+            [AgentParam("New icon name.")]
+            string iconName = null)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(name) && !sort.HasValue && string.IsNullOrWhiteSpace(iconName))
+                {
+                    return JsonConvert.SerializeObject(new
+                    {
+                        IsSuccess = false,
+                        ok = false,
+                        Error = "Provide at least one of: name, sort, iconName."
+                    }, Formatting.Indented);
+                }
+
+                var dto = AppTreeListMenuBL.RetrieveOneAppListMenuExDto(menuId);
+                if (dto == null || dto.Id == null)
+                {
+                    return JsonConvert.SerializeObject(new
+                    {
+                        IsSuccess = false,
+                        ok = false,
+                        Error = $"menuId={menuId} not found."
+                    }, Formatting.Indented);
+                }
+
+                if (!string.IsNullOrWhiteSpace(name)) dto.Name = name.Trim();
+                if (sort.HasValue) dto.Sort = sort.Value;
+                if (!string.IsNullOrWhiteSpace(iconName)) dto.IconName = iconName.Trim();
+
+                var result = AppTreeListMenuBL.SaveOneAppListMenuTreeNode(dto);
+                bool success = result?.ValidationResult?.HasErrors == false;
+                var messages = result?.ValidationResult?.Items?.Select(i => i.Message).ToList();
+
+                return JsonConvert.SerializeObject(new
+                {
+                    ok = success,
+                    IsSuccess = success,
+                    menuId,
+                    name = dto.Name,
+                    sort = dto.Sort,
+                    iconName = dto.IconName,
+                    Error = success ? null : (messages != null ? string.Join("; ", messages) : "Unknown error"),
+                    Info = success ? $"Menu item {menuId} updated." : null
+                }, Formatting.Indented);
+            }
+            catch (Exception ex)
+            {
+                return JsonConvert.SerializeObject(new { IsSuccess = false, ok = false, Error = ex.Message });
+            }
+        }
+
+        [AgentTool("delete_nav_menu_item",
+            "Delete one left-sidebar menu node by menuId (from list_app_nav_menu). " +
+            "Works for Search or List shortcuts — only menuId is required. " +
+            "Does NOT delete the Search/transaction. Refuses if the node has children. Prefer ask_user before calling.")]
+        public string DeleteNavMenuItem(
+            [AgentParam("AppListMenu.MenuId to delete.", isRequired: true)]
+            int menuId,
+            [AgentParam("Optional SaasApplicationId — when set, verifies the item is a direct child of this app.")]
+            int? saasApplicationId = null)
+        {
+            try
+            {
+                if (saasApplicationId.HasValue && saasApplicationId.Value > 0)
+                {
+                    var validErr = ValidateSaasApplicationId(saasApplicationId.Value);
+                    if (validErr != null) return validErr;
+
+                    var children = AppTreeListMenuBL.ListApplicationNavMenuItems(saasApplicationId.Value);
+                    if (!children.Any(c => c.Id != null && Convert.ToInt32(c.Id) == menuId))
+                    {
+                        return JsonConvert.SerializeObject(new
+                        {
+                            IsSuccess = false,
+                            ok = false,
+                            Error = $"menuId={menuId} is not a direct child of SaasApplicationId={saasApplicationId}."
+                        }, Formatting.Indented);
+                    }
+                }
+
+                var result = AppTreeListMenuBL.DeleteOneAppListMenuTreeNode(menuId);
+                bool success = result?.ValidationResult?.HasErrors == false;
+                var messages = result?.ValidationResult?.Items?.Select(i => i.Message).ToList();
+
+                return JsonConvert.SerializeObject(new
+                {
+                    ok = success,
+                    IsSuccess = success,
+                    menuId,
+                    Error = success ? null : (messages != null ? string.Join("; ", messages) : "Unknown error"),
+                    Info = success ? $"Menu item {menuId} deleted from sidebar." : null
+                }, Formatting.Indented);
+            }
+            catch (Exception ex)
+            {
+                return JsonConvert.SerializeObject(new { IsSuccess = false, ok = false, Error = ex.Message });
+            }
+        }
     }
 }

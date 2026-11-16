@@ -1939,7 +1939,111 @@ namespace App.BL
         }
 
 
+        /// <summary>
+        /// Other Searches that still point at this SearchView (excludes <paramref name="excludeSearchId"/>).
+        /// </summary>
+        public static int CountOtherSearchesUsingSearchView(int searchViewId, object excludeSearchId = null)
+        {
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                var filter = new RelationPredicateBucket(AppSearchFields.SearchViewId == searchViewId);
+                if (excludeSearchId != null)
+                    filter.PredicateExpression.AddWithAnd(AppSearchFields.SearchId != Convert.ToInt32(excludeSearchId));
+                return adapter.GetDbCount(new EntityCollection<AppSearchEntity>(), filter);
+            }
+        }
+
+        /// <summary>
+        /// Other Searches that still point at this Dataset (excludes <paramref name="excludeSearchId"/>).
+        /// </summary>
+        public static int CountOtherSearchesUsingDataSet(int dataSetId, object excludeSearchId = null)
+        {
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                var filter = new RelationPredicateBucket(AppSearchFields.DataSetId == dataSetId);
+                if (excludeSearchId != null)
+                    filter.PredicateExpression.AddWithAnd(AppSearchFields.SearchId != Convert.ToInt32(excludeSearchId));
+                return adapter.GetDbCount(new EntityCollection<AppSearchEntity>(), filter);
+            }
+        }
+
+        /// <summary>
+        /// SearchViews that still point at this Dataset (optionally exclude one view about to be deleted).
+        /// </summary>
+        public static int CountOtherSearchViewsUsingDataSet(int dataSetId, int? excludeSearchViewId = null)
+        {
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                var filter = new RelationPredicateBucket(AppSearchViewFields.DataSetId == dataSetId);
+                if (excludeSearchViewId.HasValue)
+                    filter.PredicateExpression.AddWithAnd(AppSearchViewFields.SearchViewId != excludeSearchViewId.Value);
+                return adapter.GetDbCount(new EntityCollection<AppSearchViewEntity>(), filter);
+            }
+        }
+
+        /// <summary>
+        /// Decide whether View/Dataset may be deleted with this Search (shared refs must be kept).
+        /// </summary>
+        public static void ResolveDeleteSearchCascade(
+            object searchId,
+            int? searchViewId,
+            int? dataSetId,
+            bool wantDeleteView,
+            bool wantDeleteDataSet,
+            out bool deleteView,
+            out bool deleteDataSet,
+            out string viewKeptReason,
+            out string dataSetKeptReason)
+        {
+            deleteView = false;
+            deleteDataSet = false;
+            viewKeptReason = null;
+            dataSetKeptReason = null;
+
+            if (wantDeleteView && searchViewId.HasValue)
+            {
+                int otherSearchesOnView = CountOtherSearchesUsingSearchView(searchViewId.Value, searchId);
+                if (otherSearchesOnView > 0)
+                    viewKeptReason = $"SearchView {searchViewId} is still referenced by {otherSearchesOnView} other Search(es).";
+                else
+                    deleteView = true;
+            }
+            else if (wantDeleteView && !searchViewId.HasValue)
+            {
+                viewKeptReason = "Search has no default SearchView.";
+            }
+            else if (!wantDeleteView && searchViewId.HasValue)
+            {
+                viewKeptReason = "deleteView=false.";
+            }
+
+            if (wantDeleteDataSet && dataSetId.HasValue)
+            {
+                int otherSearchesOnDs = CountOtherSearchesUsingDataSet(dataSetId.Value, searchId);
+                // Exclude the view we are about to delete; if we keep it, it still counts as a Dataset user.
+                int? excludeViewId = deleteView ? searchViewId : null;
+                int otherViewsOnDs = CountOtherSearchViewsUsingDataSet(dataSetId.Value, excludeViewId);
+
+                if (otherSearchesOnDs > 0)
+                    dataSetKeptReason = $"Dataset {dataSetId} is still referenced by {otherSearchesOnDs} other Search(es).";
+                else if (otherViewsOnDs > 0)
+                    dataSetKeptReason = $"Dataset {dataSetId} is still referenced by {otherViewsOnDs} SearchView(s).";
+                else
+                    deleteDataSet = true;
+            }
+            else if (wantDeleteDataSet && !dataSetId.HasValue)
+            {
+                dataSetKeptReason = "Search has no Dataset.";
+            }
+            else if (!wantDeleteDataSet && dataSetId.HasValue)
+            {
+                dataSetKeptReason = "deleteDataSet=false.";
+            }
+        }
+
         //Delete a AppSearch
+        // When isDeleteDefaultView / isDeleteDataSet are true, View/Dataset are deleted only if no other
+        // Search (or SearchView) still references them.
         public static OperationCallResult<object> DeleteAppSearch(object SearchId, bool isDeleteDefaultView = false, bool isDeleteDataSet = false)
         {
             OperationCallResult<object> aValidationResult = new OperationCallResult<object>();
@@ -1947,7 +2051,24 @@ namespace App.BL
             string referMsg = string.Empty;
 
             AppSearchEntity searchEntity = RetrieveOneAppSearchEntity(SearchId);
+            if (searchEntity == null || searchEntity.SearchId <= 0)
+            {
+                aValidationResult.ValidationResult.Items.Add(new ValidationItem(
+                    typeof(AppSearchEntity), "App_SearchEntity_NotFound_Error", ValidationItemType.Error,
+                    $"Search {SearchId} not found."));
+                return aValidationResult;
+            }
 
+            ResolveDeleteSearchCascade(
+                SearchId,
+                searchEntity.SearchViewId,
+                searchEntity.DataSetId,
+                isDeleteDefaultView,
+                isDeleteDataSet,
+                out bool actuallyDeleteView,
+                out bool actuallyDeleteDataSet,
+                out string viewKeptReason,
+                out string dataSetKeptReason);
 
             using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
             {
@@ -1959,28 +2080,24 @@ namespace App.BL
 
                     adapter.DeleteEntitiesDirectly(typeof(AppTransactionNavigationEntity), new RelationPredicateBucket(AppTransactionNavigationFields.QuickSearchId == SearchId));
                     adapter.DeleteEntitiesDirectly(typeof(AppSearchFieldEntity), new RelationPredicateBucket(AppSearchFieldFields.SearchId == SearchId));
+                    adapter.DeleteEntitiesDirectly(typeof(AppSearchParameterEntity), new RelationPredicateBucket(AppSearchParameterFields.SearchId == SearchId));
                     adapter.DeleteEntitiesDirectly(typeof(AppSearchEntity), new RelationPredicateBucket(AppSearchFields.SearchId == SearchId));
 
                     try
                     {
-                        if (isDeleteDefaultView)
+                        if (actuallyDeleteView && searchEntity.SearchViewId.HasValue)
                         {
-                            if (searchEntity.SearchViewId.HasValue)
-                            {
+                            int searchViewId = searchEntity.SearchViewId.Value;
 
-                                int searchViewId = searchEntity.SearchViewId.Value;
-
-                                adapter.DeleteEntitiesDirectly(typeof(AppViewLinkedSeaechOrUrlEntity), new RelationPredicateBucket(AppViewLinkedSeaechOrUrlFields.SearchViewId == searchViewId));
-                                adapter.DeleteEntitiesDirectly(typeof(AppFormLinkTargetEntity), new RelationPredicateBucket(AppFormLinkTargetFields.SearchViewId == searchViewId));
-                                adapter.DeleteEntitiesDirectly(typeof(AppSearchViewFieldEntity), new RelationPredicateBucket(AppSearchViewFieldFields.SearchViewId == searchViewId));
-                                adapter.DeleteEntitiesDirectly(typeof(AppFormLinkTargetEntity), new RelationPredicateBucket(AppFormLinkTargetFields.SearchViewId == searchViewId));
-                                adapter.DeleteEntitiesDirectly(typeof(AppSearchViewEntity), new RelationPredicateBucket(AppSearchViewFields.SearchViewId == searchViewId));
-                            }
+                            adapter.DeleteEntitiesDirectly(typeof(AppViewLinkedSeaechOrUrlEntity), new RelationPredicateBucket(AppViewLinkedSeaechOrUrlFields.SearchViewId == searchViewId));
+                            adapter.DeleteEntitiesDirectly(typeof(AppFormLinkTargetEntity), new RelationPredicateBucket(AppFormLinkTargetFields.SearchViewId == searchViewId));
+                            adapter.DeleteEntitiesDirectly(typeof(AppSearchViewFieldEntity), new RelationPredicateBucket(AppSearchViewFieldFields.SearchViewId == searchViewId));
+                            adapter.DeleteEntitiesDirectly(typeof(AppFormLinkTargetEntity), new RelationPredicateBucket(AppFormLinkTargetFields.SearchViewId == searchViewId));
+                            adapter.DeleteEntitiesDirectly(typeof(AppSearchViewEntity), new RelationPredicateBucket(AppSearchViewFields.SearchViewId == searchViewId));
                         }
 
-                        if (isDeleteDataSet && searchEntity.DataSetId.HasValue)
+                        if (actuallyDeleteDataSet && searchEntity.DataSetId.HasValue)
                         {
-
                             adapter.DeleteEntitiesDirectly(typeof(AppDataSetParameterEntity), new RelationPredicateBucket(AppDataSetParameterFields.DataSetId == searchEntity.DataSetId.Value));
                             adapter.DeleteEntitiesDirectly(typeof(AppDataSetEntity), new RelationPredicateBucket(AppDataSetFields.DataSetId == searchEntity.DataSetId.Value));
                         }
@@ -2008,7 +2125,21 @@ namespace App.BL
                 // if no any errors
                 if (!aValidationResult.ValidationResult.HasErrors)
                 {
-                    aValidationResult.Object = SearchId;
+                    if (!string.IsNullOrEmpty(viewKeptReason))
+                        aValidationResult.ValidationResult.Items.Add(new ValidationItem(typeof(AppSearchEntity), "App_SearchEntity_ViewKept", ValidationItemType.Message, viewKeptReason));
+                    if (!string.IsNullOrEmpty(dataSetKeptReason))
+                        aValidationResult.ValidationResult.Items.Add(new ValidationItem(typeof(AppSearchEntity), "App_SearchEntity_DataSetKept", ValidationItemType.Message, dataSetKeptReason));
+
+                    aValidationResult.Object = new
+                    {
+                        SearchId,
+                        SearchViewId = searchEntity.SearchViewId,
+                        DataSetId = searchEntity.DataSetId,
+                        DeletedView = actuallyDeleteView,
+                        DeletedDataSet = actuallyDeleteDataSet,
+                        ViewKeptReason = viewKeptReason,
+                        DataSetKeptReason = dataSetKeptReason
+                    };
                 }
             }
             return aValidationResult;
@@ -3048,62 +3179,10 @@ namespace App.BL
             return aOperationCallResult;
         }
 
-        public static async Task<OperationCallResult<object>> DeleteAppSearchAsync(object SearchId, bool isDeleteDefaultView = false, bool isDeleteDataSet = false)
+        public static Task<OperationCallResult<object>> DeleteAppSearchAsync(object SearchId, bool isDeleteDefaultView = false, bool isDeleteDataSet = false)
         {
-            OperationCallResult<object> aValidationResult = new OperationCallResult<object>();
-            string referMsg = string.Empty;
-
-            AppSearchEntity searchEntity = await RetrieveOneAppSearchEntityAsync(SearchId).ConfigureAwait(false);
-
-            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
-            {
-                try
-                {
-                    adapter.StartTransaction(IsolationLevel.ReadCommitted, "StartTransaction");
-
-                    await adapter.DeleteEntitiesDirectlyAsync(typeof(AppTransactionNavigationEntity), new RelationPredicateBucket(AppTransactionNavigationFields.QuickSearchId == SearchId)).ConfigureAwait(false);
-                    await adapter.DeleteEntitiesDirectlyAsync(typeof(AppSearchFieldEntity), new RelationPredicateBucket(AppSearchFieldFields.SearchId == SearchId)).ConfigureAwait(false);
-                    await adapter.DeleteEntitiesDirectlyAsync(typeof(AppSearchEntity), new RelationPredicateBucket(AppSearchFields.SearchId == SearchId)).ConfigureAwait(false);
-
-                    try
-                    {
-                        if (isDeleteDefaultView)
-                        {
-                            if (searchEntity.SearchViewId.HasValue)
-                            {
-                                int searchViewId = searchEntity.SearchViewId.Value;
-                                await adapter.DeleteEntitiesDirectlyAsync(typeof(AppViewLinkedSeaechOrUrlEntity), new RelationPredicateBucket(AppViewLinkedSeaechOrUrlFields.SearchViewId == searchViewId)).ConfigureAwait(false);
-                                await adapter.DeleteEntitiesDirectlyAsync(typeof(AppFormLinkTargetEntity), new RelationPredicateBucket(AppFormLinkTargetFields.SearchViewId == searchViewId)).ConfigureAwait(false);
-                                await adapter.DeleteEntitiesDirectlyAsync(typeof(AppSearchViewFieldEntity), new RelationPredicateBucket(AppSearchViewFieldFields.SearchViewId == searchViewId)).ConfigureAwait(false);
-                                await adapter.DeleteEntitiesDirectlyAsync(typeof(AppSearchViewEntity), new RelationPredicateBucket(AppSearchViewFields.SearchViewId == searchViewId)).ConfigureAwait(false);
-                            }
-                        }
-
-                        if (isDeleteDataSet && searchEntity.DataSetId.HasValue)
-                        {
-                            await adapter.DeleteEntitiesDirectlyAsync(typeof(AppDataSetParameterEntity), new RelationPredicateBucket(AppDataSetParameterFields.DataSetId == searchEntity.DataSetId.Value)).ConfigureAwait(false);
-                            await adapter.DeleteEntitiesDirectlyAsync(typeof(AppDataSetEntity), new RelationPredicateBucket(AppDataSetFields.DataSetId == searchEntity.DataSetId.Value)).ConfigureAwait(false);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        aValidationResult.ValidationResult.Items.Add(new ValidationItem(typeof(AppSearchEntity), "App_SearchEntity_QueryExecution_Error", ValidationItemType.Warning, ex.ToString()));
-                    }
-
-                    adapter.Commit();
-                }
-                catch (ORMQueryExecutionException ex)
-                {
-                    adapter.Rollback();
-                    aValidationResult.ValidationResult.Items.Add(new ValidationItem(typeof(AppSearchEntity), "App_SearchEntity_QueryExecution_Error", ValidationItemType.Error, ex.ToString()));
-                }
-
-                if (!aValidationResult.ValidationResult.HasErrors)
-                {
-                    aValidationResult.Object = SearchId;
-                }
-            }
-            return aValidationResult;
+            // Share-aware cascade — same rules as sync DeleteAppSearch.
+            return Task.FromResult(DeleteAppSearch(SearchId, isDeleteDefaultView, isDeleteDataSet));
         }
 
         public static async Task<List<LookupItemDto>> RetrieveBLQueryColumnListAsync(int dataSetId)

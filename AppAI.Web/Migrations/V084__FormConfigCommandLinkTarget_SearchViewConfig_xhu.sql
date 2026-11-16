@@ -274,11 +274,149 @@ IF @SearchAgentId IS NOT NULL AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary 
 AND NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibrarySubscription WHERE AgentID = @SearchAgentId AND LibraryKey = N'platform-search')
     INSERT INTO dbo.AppAgentLibrarySubscription (AgentID, LibraryKey) VALUES (@SearchAgentId, N'platform-search');
 
--- Exclude create/mutate from platform-search if subscribed (keep list_* only when those tools exist)
+-- Exclude create/delete from platform-search if subscribed (keep list_* only when those tools exist)
 IF @SearchAgentId IS NOT NULL
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentToolExclusion WHERE AgentID=@SearchAgentId AND LibraryKey=N'platform-search' AND ToolName=N'create_search')
         AND EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey=N'platform-search' AND ToolName=N'create_search')
         INSERT INTO dbo.AppAgentToolExclusion (AgentID, LibraryKey, ToolName) VALUES (@SearchAgentId, N'platform-search', N'create_search');
 END
+GO
+
+-- ========== App Builder left-sidebar menu list / update / delete (by menuId) ==========
+-- One delete + one update tool — NOT per Search/Transaction type.
+
+-- Drop superseded type-specific remove tools if ever seeded
+DELETE FROM dbo.AppAgentLibraryTool
+WHERE LibraryKey = N'platform-application'
+  AND ToolName IN (N'remove_search_from_menu', N'remove_transaction_from_menu', N'remove_nav_menu_item');
+
+DELETE e
+FROM dbo.AppAgentToolExclusion e
+INNER JOIN dbo.AppAgentSkillSet s ON s.AgentID = e.AgentID
+WHERE s.AgentCode = N'app-builder'
+  AND e.LibraryKey = N'platform-application'
+  AND e.ToolName IN (
+      N'remove_search_from_menu',
+      N'remove_transaction_from_menu',
+      N'remove_nav_menu_item');
+GO
+
+DECLARE @AppMenuPlugin nvarchar(300) = N'App.BL.AppBuilderAgent.Plugins.ApplicationManagerPlugin';
+
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'platform-application' AND ToolName = N'list_app_nav_menu')
+INSERT INTO dbo.AppAgentLibraryTool (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (N'platform-application', N'list_app_nav_menu',
+    N'List left-sidebar menu items under one SaasApplicationId (menuId, name, kind=search|listTransaction, linkedSearchId/transactionId). Use before update_nav_menu_item / delete_nav_menu_item.',
+    N'{"saasApplicationId":{"type":"integer","description":"Application package id","required":true}}',
+    N'BuiltIn', N'{"TypeName":"' + @AppMenuPlugin + N'","MethodName":"ListAppNavMenu"}', 1, 8);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'platform-application' AND ToolName = N'update_nav_menu_item')
+INSERT INTO dbo.AppAgentLibraryTool (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (N'platform-application', N'update_nav_menu_item',
+    N'Update one left-sidebar menu node by menuId. Pass name and/or sort and/or iconName. Does not change route/link.',
+    N'{"menuId":{"type":"integer","required":true},"name":{"type":"string"},"sort":{"type":"integer"},"iconName":{"type":"string"}}',
+    N'BuiltIn', N'{"TypeName":"' + @AppMenuPlugin + N'","MethodName":"UpdateNavMenuItem"}', 1, 9);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'platform-application' AND ToolName = N'delete_nav_menu_item')
+INSERT INTO dbo.AppAgentLibraryTool (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (N'platform-application', N'delete_nav_menu_item',
+    N'Delete one left-sidebar menu node by menuId (from list_app_nav_menu). Works for Search or List shortcuts. Does NOT delete Search/transaction. ask_user before calling.',
+    N'{"menuId":{"type":"integer","required":true},"saasApplicationId":{"type":"integer","description":"Optional safety check — must be direct child of this app"}}',
+    N'BuiltIn', N'{"TypeName":"' + @AppMenuPlugin + N'","MethodName":"DeleteNavMenuItem"}', 1, 10);
+GO
+
+INSERT INTO dbo.AppAgentLibrarySubscription (LibraryKey, AgentID)
+SELECT N'platform-application', s.AgentID
+FROM dbo.AppAgentSkillSet s
+WHERE s.AgentCode = N'app-builder'
+  AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary l WHERE l.LibraryKey = N'platform-application')
+  AND NOT EXISTS (
+      SELECT 1 FROM dbo.AppAgentLibrarySubscription x
+      WHERE x.AgentID = s.AgentID AND x.LibraryKey = N'platform-application');
+GO
+
+DELETE e
+FROM dbo.AppAgentToolExclusion e
+INNER JOIN dbo.AppAgentSkillSet s ON s.AgentID = e.AgentID
+WHERE s.AgentCode = N'app-builder'
+  AND e.LibraryKey = N'platform-application'
+  AND e.ToolName IN (N'list_app_nav_menu', N'update_nav_menu_item', N'delete_nav_menu_item');
+GO
+
+-- create_search: optional criteriaFields + viewType at creation time
+UPDATE dbo.AppAgentLibraryTool
+SET ToolDescription = N'Create Dataset + SearchView (all SQL columns) + Search. Optional criteriaFields (comma-separated column/alias names) creates Filters. Optional viewType (GridView|CardView|… or int) sets representation. Always pass saasApplicationId. Report only CriteriaCreated / ViewType from the tool result.',
+    ParameterSchemaJson = N'{
+  "name": {"type":"string","description":"Search display name.","required":true},
+  "sqlQuery": {"type":"string","description":"SQL SELECT for the dataset.","required":true},
+  "saasApplicationId": {"type":"integer","description":"SaasApplicationId from create_app_package.","required":true},
+  "criteriaFields": {"type":"string","description":"Optional comma-separated dataset column/alias names to create as Filters/Criteria, e.g. Customer,Title."},
+  "viewType": {"type":"string","description":"Optional view type: GridView (default), CardView, PivotView, CalendarView, ChartView, or EmAppViewType int."}
+}'
+WHERE LibraryKey = N'platform-search' AND ToolName = N'create_search';
+GO
+
+-- delete_search: Search + View + Dataset (+ sidebar)
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'platform-search' AND ToolName = N'delete_search')
+INSERT INTO dbo.AppAgentLibraryTool (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (N'platform-search', N'delete_search',
+    N'Permanently delete a standalone Search. deleteView/deleteDataSet default true mean delete IF unshared — View/Dataset are kept when other Searches or SearchViews still reference them. Removes sidebar shortcuts when possible. Does NOT drop DB tables. ask_user / propose_plan first.',
+    N'{
+  "searchId": {"type":"integer","description":"Search id to delete.","required":true},
+  "deleteView": {"type":"boolean","description":"Delete default SearchView only if unshared. Default true."},
+  "deleteDataSet": {"type":"boolean","description":"Delete Dataset only if unshared by other Searches/Views. Default true."},
+  "removeFromMenu": {"type":"boolean","description":"Remove sidebar shortcuts. Default true."}
+}',
+    N'BuiltIn',
+    N'{"TypeName":"App.BL.AppBuilderAgent.Plugins.SearchBuilderPlugin","MethodName":"DeleteSearch"}',
+    1, 5);
+ELSE
+UPDATE dbo.AppAgentLibraryTool
+SET ToolDescription = N'Permanently delete a standalone Search. deleteView/deleteDataSet default true mean delete IF unshared — View/Dataset are kept when other Searches or SearchViews still reference them. Removes sidebar shortcuts when possible. Does NOT drop DB tables. ask_user / propose_plan first.',
+    ParameterSchemaJson = N'{
+  "searchId": {"type":"integer","description":"Search id to delete.","required":true},
+  "deleteView": {"type":"boolean","description":"Delete default SearchView only if unshared. Default true."},
+  "deleteDataSet": {"type":"boolean","description":"Delete Dataset only if unshared by other Searches/Views. Default true."},
+  "removeFromMenu": {"type":"boolean","description":"Remove sidebar shortcuts. Default true."}
+}'
+WHERE LibraryKey = N'platform-search' AND ToolName = N'delete_search';
+GO
+
+-- Ensure app-builder can use delete_search (clear exclusion if any)
+DELETE e
+FROM dbo.AppAgentToolExclusion e
+INNER JOIN dbo.AppAgentSkillSet s ON s.AgentID = e.AgentID
+WHERE s.AgentCode = N'app-builder'
+  AND e.LibraryKey = N'platform-search'
+  AND e.ToolName = N'delete_search';
+GO
+
+-- search-view-config: exclude delete_search (configurator must not greenfield-delete)
+DECLARE @SearchAgentId2 int;
+SELECT @SearchAgentId2 = AgentID FROM dbo.AppAgentSkillSet WHERE AgentCode = N'app-search-view-config';
+IF @SearchAgentId2 IS NOT NULL
+AND NOT EXISTS (SELECT 1 FROM dbo.AppAgentToolExclusion WHERE AgentID=@SearchAgentId2 AND LibraryKey=N'platform-search' AND ToolName=N'delete_search')
+AND EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey=N'platform-search' AND ToolName=N'delete_search')
+    INSERT INTO dbo.AppAgentToolExclusion (AgentID, LibraryKey, ToolName) VALUES (@SearchAgentId2, N'platform-search', N'delete_search');
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+
+━━━ LEFT SIDEBAR MENU ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Add: add_search_to_menu / add_transaction_to_menu (or auto from create_search_view).
+List: list_app_nav_menu(saasApplicationId) → menuId.
+Update: update_nav_menu_item(menuId, name/sort/iconName).
+Delete: delete_nav_menu_item(menuId) — one tool for all kinds; ask_user first.
+
+━━━ create_search / delete_search ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Pass criteriaFields and viewType ON create_search when the user asks for filters / Card View.
+NEVER claim Criteria or Card View unless tool result CriteriaCreated / ViewType match.
+Fine-tune later via app-search-view-config (update_search_criteria, etc.).
+Delete standalone Search (+ View + Dataset + menu by default): delete_search(searchId).
+ask_user / propose_plan first. NEVER claim deleted unless IsSuccess=true.
+'
+WHERE AgentCode = N'app-builder'
+  AND SystemPrompt NOT LIKE N'%delete_nav_menu_item%';
 GO

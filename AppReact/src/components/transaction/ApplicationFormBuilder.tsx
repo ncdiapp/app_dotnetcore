@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSelector } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
-import TransactionGraphicEditor from './ApplicationFormBuilder/TransactionGraphicEditor';
+import TransactionGraphicEditor, {
+  type TransactionEditorConfigBridge,
+} from './ApplicationFormBuilder/TransactionGraphicEditor';
 import TransactionFormulaEditor from './ApplicationFormBuilder/TransactionFormulaEditor';
 import TransactionDataLoadManagement from './ApplicationFormBuilder/TransactionDataLoadManagement';
 import TransactionConditionLockEditor from './ApplicationFormBuilder/TransactionConditionLockEditor';
@@ -9,8 +12,11 @@ import TransactionReportEditor from './ApplicationFormBuilder/TransactionReportE
 import TransactionCommandActionEditor from './ApplicationFormBuilder/TransactionCommandMgt';
 import TransactionNavigationEditor from './TransactionNavigationEditor';
 import FormDesign from '../formMgt/FormDesign';
+import ConfiguratorAgentDock from '../aiskill/ConfiguratorAgentDock';
 import appHelper from '../../helper/appHelper';
+import { isAdminUserFromContext, isEnableConfigurationModeForUser } from '../../helper/adminPermissionHelper';
 import { PopupStackLayer, usePopupZIndex } from '../formMgt/popupStack';
+import type { RootState } from '../../redux/store';
 
 // TransactionOrganizedType: 1 = Master Detail (Form Model), 3 = List Edit
 const EmTransactionOrganizedType = { MasterDetail: 1, List: 3 } as const;
@@ -96,6 +102,11 @@ const ApplicationFormBuilder: React.FC<ApplicationFormBuilderProps> = ({
   initialSelectedCommandId = null,
 }) => {
   const { theme } = useTheme();
+  const userContext = useSelector((s: RootState) => s.userSession?.userContext);
+  const showConfigurator =
+    isEnableConfigurationModeForUser(userContext) && isAdminUserFromContext(userContext);
+  const [showAgentDock, setShowAgentDock] = useState(true);
+  const [txConfigBridge, setTxConfigBridge] = useState<TransactionEditorConfigBridge | null>(null);
   // Must stack above linked form popups (EmbeddedLinkedPopupFrame starts at 10000+).
   // Hardcoded z-[9999] opened behind "Open Fit Round" / other form popups.
   const popupFloorZ = useMemo(
@@ -216,6 +227,7 @@ const ApplicationFormBuilder: React.FC<ApplicationFormBuilderProps> = ({
           initialNeedToEditUnitId={initialNeedToEditUnitId}
           onTransactionIdResolved={(id) => setResolvedTransactionId(id)}
           onFormIdResolved={(id) => setResolvedFormId(id)}
+          onConfigBridgeChange={setTxConfigBridge}
           onOpenFormDesign={(isAuto) => {
             setFormDesignInitialAutoLayout(isAuto ?? null);
             setCurrentSection(FormBuilderSection.Form);
@@ -428,9 +440,37 @@ const ApplicationFormBuilder: React.FC<ApplicationFormBuilderProps> = ({
             </div>
           </div>
 
-          {/* Content Area */}
-          <div className={`w-1 flex-auto h-full overflow-hidden rounded-r-md`}>
-            {renderSectionContent()}
+          {/* Content Area + Configurator dock */}
+          <div className={`w-1 flex-auto h-full overflow-hidden rounded-r-md flex gap-1`}>
+            <div className="w-1 flex-auto h-full overflow-hidden">
+              {renderSectionContent()}
+            </div>
+            {showConfigurator && showAgentDock && effectiveTransactionId != null && (
+              <div className="w-[360px] flex-none h-full overflow-hidden border-l">
+                <ConfiguratorAgentDock
+                  kind="form"
+                  transactionId={Number(effectiveTransactionId)}
+                  transactionName={modelName}
+                  scope={`editor:tx:${effectiveTransactionId}`}
+                  onHidePanel={() => setShowAgentDock(false)}
+                  isDirty={!!txConfigBridge?.isDirty}
+                  onSaveDirty={txConfigBridge?.save}
+                  onReload={async () => {
+                    await txConfigBridge?.reloadFromDb?.();
+                  }}
+                />
+              </div>
+            )}
+            {showConfigurator && !showAgentDock && effectiveTransactionId != null && (
+              <button
+                type="button"
+                className={`flex-none w-8 h-full text-xs ${theme.button_default}`}
+                title="Show Configurator"
+                onClick={() => setShowAgentDock(true)}
+              >
+                <i className="fa-solid fa-robot" aria-hidden />
+              </button>
+            )}
           </div>
         </div>
       </div>

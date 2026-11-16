@@ -179,16 +179,24 @@ Step 5b — POPULATE MOCKUP DATA  (always do this after tables and transactions 
 
 Step 6 — CREATE STANDALONE SEARCH / REPORT SCREENS  (optional)
   For any reporting or search-only screen NOT tied to a transaction form:
-    Call create_search with a name, SQL query, and the SaasApplicationId.
-    This creates a Dataset (SQL), SearchView (grid columns), and Search in one step.
+    Call create_search(name, sqlQuery, saasApplicationId, criteriaFields?, viewType?).
+    Optional criteriaFields = comma-separated SQL column/alias names → Filters/Criteria.
+    Optional viewType = GridView|CardView|… (default GridView).
+    NEVER claim Criteria or Card View unless the tool returned CriteriaCreated / ViewType matching the request.
+    To remove a standalone Search (and its View/Dataset + sidebar shortcut): delete_search(searchId).
+    Prefer ask_user / propose_plan before delete_search. NEVER claim deleted unless IsSuccess=true.
   Skip this step if the user only needs transaction-based screens.
 
-Step 7 — ADD TO NAVIGATION MENU  (usually auto-done by create_search_view)
+Step 7 — ADD / UPDATE / DELETE NAVIGATION MENU  (usually auto-done by create_search_view)
   If any search was NOT automatically added to the menu, call add_search_to_menu.
   If the user asks to add a List Edit transaction (data model) to the navigation menu,
   call add_transaction_to_menu(transactionName, menuName).
   Use search_platform first if you do not already know the exact transactionName.
   NEVER say an item was added to the menu unless add_transaction_to_menu or add_search_to_menu returned IsSuccess=true.
+  To update or delete a left-sidebar item (without deleting Search/transaction):
+    1) list_app_nav_menu(saasApplicationId) → menuId
+    2) update_nav_menu_item(menuId, name/sort/iconName) or delete_nav_menu_item(menuId)
+    Prefer ask_user before delete.
 
 Step 8 — SUMMARIZE
   Report: application name, SaasApplicationId, tables created, transaction IDs,
@@ -1191,6 +1199,9 @@ Only call search_memory when you need historical context — skip it for entirel
                 case "create_search_view":             return "Creating search / list view…";
                 case "add_search_to_menu":             return "Adding search to navigation menu…";
                 case "add_transaction_to_menu":        return "Adding transaction to navigation menu…";
+                case "list_app_nav_menu":              return "Listing left sidebar menu…";
+                case "update_nav_menu_item":           return "Updating sidebar menu item…";
+                case "delete_nav_menu_item":           return "Deleting sidebar menu item…";
                 case "create_transaction_from_table":  return "Creating transaction from table…";
                 case "create_hierarchy_from_tables":   return "Building hierarchy transaction from existing tables…";
                 case "get_table_schema":               return "Inspecting table schema…";
@@ -1199,6 +1210,7 @@ Only call search_memory when you need historical context — skip it for entirel
                 case "insert_mockup_data":             return "Inserting mockup / demo data…";
                 case "check_table_exists":             return "Checking table exists…";
                 case "create_search":                  return "Creating dataset + search view + search…";
+                case "delete_search":                  return "Deleting search, view, and dataset…";
                 case "list_searches":                  return "Listing existing searches…";
                 case "create_list_edit_form":          return "Creating list-edit form for transaction…";
                 case "propose_plan":                   return "Proposing build plan — awaiting your approval…";

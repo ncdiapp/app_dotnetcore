@@ -15,6 +15,7 @@ import { getHeaders } from '../../helper/apiServiceHelper';
 
 import { SearchFilter } from './SearchFilter';
 import { SearchView } from './SearchView';
+import ConfiguratorAgentDock from '../aiskill/ConfiguratorAgentDock';
 
 import { useTheme } from '../../redux/hooks/useTheme';
 import appHelper from '../../helper/appHelper';
@@ -900,6 +901,8 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
   // Match Angular: EnableConfigurationMode must be explicitly true + admin.
   const enableConfigurationMode = isEnableConfigurationModeForUser(userContext);
   const isAdminUser = isAdminUserFromContext(userContext);
+  const [showAgentDock, setShowAgentDock] = useState(true);
+  const [configReloadToken, setConfigReloadToken] = useState(0);
   
   // Check if views exist and have more than 1
   const hasMultipleViews = dataModel.views && dataModel.views.length > 1;
@@ -911,6 +914,7 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
   const isEmbeddedChromeHidden = Boolean(
     paramObj?.isHideHeaderAndFooter ?? paramObj?.IsHideHeaderAndFooter,
   );
+  const showConfigurator = enableConfigurationMode && isAdminUser && !isEmbeddedChromeHidden;
   const shouldShowCriteriaButtons = dataModel.uiControl.isShowCriterias && !dataModel.searchDto?.IsHideAllToolsBar;
   
   // State for User Views dropdown
@@ -1017,10 +1021,10 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
     }));
   }, [searchId, isSavedSearch, initialViewId, paramObj.isNotToExecuteSearch, paramObj.flatDataSetTreeOnHide]);
 
-  // Initialize component and reload when searchId changes
+  // Initialize component and reload when searchId changes (or Configurator requests reload)
   useEffect(() => {
     loadData();
-  }, [searchId, isSavedSearch, initialViewId]);
+  }, [searchId, isSavedSearch, initialViewId, configReloadToken]);
 
   useEffect(() => {
     if (!isEshopCategorySearch) {
@@ -1303,8 +1307,15 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
     };
   });
 
+  const runtimeSearchId = dataModel.searchid ?? paramObj.searchId ?? searchId ?? null;
+  const runtimeSearchIdNum =
+    runtimeSearchId != null && String(runtimeSearchId).trim() !== ''
+      ? Number(runtimeSearchId)
+      : null;
+
   return (
-    <div className={`w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden`}>
+    <div className={`w-full h-full flex overflow-hidden rounded-t-md rounded-b-md gap-1`}>
+    <div className={`w-1 flex-auto h-full flex flex-col overflow-hidden min-w-0`}>
       <div className={`flex items-center justify-between px-3 mb-1 py-2 ${theme.mainContentSection}`}>
         <div className="flex items-center gap-2">
           {!isEmbeddedChromeHidden ? (
@@ -1701,9 +1712,35 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
         </div>
       )}
     </div>
+    {showConfigurator && showAgentDock && runtimeSearchIdNum != null && !Number.isNaN(runtimeSearchIdNum) && (
+      <div className="w-[360px] flex-none h-full overflow-hidden border-l">
+        <ConfiguratorAgentDock
+          kind="search"
+          searchId={runtimeSearchIdNum}
+          searchName={dataModel.currentSearchName || dataModel.searchDto?.Name}
+          searchViewId={dataModel.searchViewDto?.Id ?? dataModel.searchDto?.SearchViewId ?? null}
+          dataSetId={dataModel.searchDto?.DataSetId ?? dataModel.searchDto?.BlqueryId ?? null}
+          saasApplicationId={dataModel.searchDto?.SaasApplicationId ?? null}
+          scope={`runtime:search:${runtimeSearchIdNum}`}
+          onHidePanel={() => setShowAgentDock(false)}
+          onReload={() => setConfigReloadToken((n) => n + 1)}
+        />
+      </div>
+    )}
+    {showConfigurator && !showAgentDock && runtimeSearchIdNum != null && !Number.isNaN(runtimeSearchIdNum) && (
+      <button
+        type="button"
+        className={`flex-none w-8 h-full text-xs ${theme.button_default}`}
+        title="Show Configurator"
+        onClick={() => setShowAgentDock(true)}
+      >
+        <i className="fa-solid fa-robot" aria-hidden />
+      </button>
+    )}
+    </div>
   );
 });
 
 AppSearch.displayName = 'AppSearch';
 
-export default AppSearch; 
+export default AppSearch;

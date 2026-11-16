@@ -31,6 +31,8 @@ import ClusterAnalysisViewLayoutEditor, {
 } from './ClusterAnalysisViewLayoutEditor';
 import { resolveAppViewTypeDisplay } from './emAppViewTypeEditorOptions';
 import DataSetEditor from '../dbmgt/DataSetEditor';
+import ConfiguratorAgentDock from '../aiskill/ConfiguratorAgentDock';
+import { isAdminUserFromContext, isEnableConfigurationModeForUser } from '../../helper/adminPermissionHelper';
 
 interface SearchEditorParam {
   id?: string | number | null;
@@ -136,6 +138,10 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
   const tabs = useSelector((state: RootState) => state.tabnav.tabs);
   const activeTabKey = useSelector((state: RootState) => state.tabnav.activeTabKey);
   const previousActiveTabKey = useSelector((state: RootState) => state.tabnav.previousActiveTabKey);
+  const userContext = useSelector((state: RootState) => state.userSession.userContext);
+  const showConfigurator =
+    isEnableConfigurationModeForUser(userContext) && isAdminUserFromContext(userContext);
+  const [showAgentDock, setShowAgentDock] = useState(true);
   const { showError, showWarning, showInfo } = useErrorMessage();
   const { addTabAndNavigate } = useTabNavigation();
   const [paramObj, setParamObj] = useState<SearchEditorParam>({});
@@ -1722,8 +1728,11 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
 
   const showNewSearchWizard = newSearchWizardPhase !== 'off';
 
+  const effectiveSearchId = currentSearch?.Id != null ? Number(currentSearch.Id) : null;
+
   return (
-    <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden relative">
+    <div className="w-full h-full flex overflow-hidden rounded-t-md rounded-b-md relative gap-1">
+    <div className="w-1 flex-auto h-full flex flex-col overflow-hidden relative min-w-0">
       <div className={`flex items-center justify-between px-3 mb-0.5 ${theme.mainContentSection}`}>
         <div className={`text-md font-semibold truncate min-w-0 ${theme.title}`}>{PAGE_TITLE}</div>
         <div className="flex items-center gap-2">
@@ -2590,6 +2599,32 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
           <div className="w-12 h-12 border-2 border-t-transparent border-current rounded-full animate-spin" />
         </div>
       )}
+    </div>
+    {showConfigurator && showAgentDock && effectiveSearchId != null && (
+      <div className="w-[360px] flex-none h-full overflow-hidden border-l">
+        <ConfiguratorAgentDock
+          kind="search"
+          searchId={effectiveSearchId}
+          searchName={currentSearch?.Name}
+          searchViewId={currentSearch?.SearchViewId ?? null}
+          dataSetId={currentSearch?.DataSetId ?? null}
+          saasApplicationId={currentSearch?.SaasApplicationId ?? null}
+          scope={`editor:search:${effectiveSearchId}`}
+          onHidePanel={() => setShowAgentDock(false)}
+          onReload={refresh}
+        />
+      </div>
+    )}
+    {showConfigurator && !showAgentDock && effectiveSearchId != null && (
+      <button
+        type="button"
+        className={`flex-none w-8 h-full text-xs ${theme.button_default}`}
+        title="Show Configurator"
+        onClick={() => setShowAgentDock(true)}
+      >
+        <i className="fa-solid fa-robot" aria-hidden />
+      </button>
+    )}
     </div>
   );
 };

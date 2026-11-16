@@ -33,8 +33,7 @@ export interface MyApplicationEditorAgentDockProps {
 }
 
 function resolveRoute(
-  focus: EditorAgentFocus | null | undefined,
-  sectionName?: string
+  focus: EditorAgentFocus | null | undefined
 ): {
   skillKey: string;
   label: 'Assistant' | 'Configurator';
@@ -61,12 +60,11 @@ function resolveRoute(
       banner: `Configurator · Search: ${focus.searchName || focus.searchId}`,
     };
   }
-  // Entity / app / list (incl. Report & View list without row)
-  const where = sectionName?.trim() || 'App';
+  // Entity / app / list — title is just Assistant (section lives in HostContext only)
   return {
     skillKey: SKILL.builder,
     label: 'Assistant',
-    banner: `Assistant · ${where}`,
+    banner: 'Assistant',
   };
 }
 
@@ -79,10 +77,12 @@ const MyApplicationEditorAgentDock: React.FC<MyApplicationEditorAgentDockProps> 
   onHidePanel,
 }) => {
   const { theme } = useTheme();
-  const route = useMemo(() => resolveRoute(focus, sectionName), [focus, sectionName]);
+  const route = useMemo(() => resolveRoute(focus), [focus]);
   const [chatKey, setChatKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // App-depth Assistant shares ONE session per saasApplicationId across all left-nav sections
+  // (HostContext carries current section). Drill-in Configurator sessions are per TX/Search.
   useEffect(() => {
     let cancelled = false;
     setChatKey(null);
@@ -98,7 +98,7 @@ const MyApplicationEditorAgentDock: React.FC<MyApplicationEditorAgentDockProps> 
         } else {
           key = await genericAgentSvc.EnsureAppBuilderEditorChat(
             saasApplicationId,
-            `section:${sectionId}`
+            `editor:app:${saasApplicationId}`
           );
         }
         if (!cancelled) setChatKey(key);
@@ -110,7 +110,7 @@ const MyApplicationEditorAgentDock: React.FC<MyApplicationEditorAgentDockProps> 
     return () => {
       cancelled = true;
     };
-  }, [saasApplicationId, sectionId, route.skillKey, focus]);
+  }, [saasApplicationId, route.skillKey, focus]);
 
   const hostContextJson = useMemo(() => {
     const base: Record<string, unknown> = {
@@ -149,11 +149,16 @@ const MyApplicationEditorAgentDock: React.FC<MyApplicationEditorAgentDockProps> 
 
   return (
     <div className={`h-full w-full flex flex-col overflow-hidden ${theme.mainContentSection}`}>
-      <div className={`flex-none px-2 py-1.5 text-xs border-b ${theme.border} ${theme.label}`}>
-        <span className={`font-medium ${theme.title}`}>{route.label}</span>
-        <span className="mx-1">·</span>
-        <span>{route.banner.replace(/^(Assistant|Configurator) · /, '')}</span>
-        {applicationName ? <span className="opacity-70"> · {applicationName}</span> : null}
+      <div className={`flex-none px-2 py-1.5 text-xs border-b ${theme.mainContentSection} ${theme.label}`}>
+        {route.label === 'Assistant' ? (
+          <span className={`font-medium ${theme.title}`}>Assistant</span>
+        ) : (
+          <>
+            <span className={`font-medium ${theme.title}`}>{route.label}</span>
+            <span className="mx-1">·</span>
+            <span>{route.banner.replace(/^(Assistant|Configurator) · /, '')}</span>
+          </>
+        )}
       </div>
       <div className="h-1 flex-auto min-h-0 overflow-hidden">
         {error && <div className={`p-3 text-xs ${theme.label}`}>{error}</div>}

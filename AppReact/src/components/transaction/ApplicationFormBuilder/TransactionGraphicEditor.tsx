@@ -23,6 +23,13 @@ import { setUserMenu } from '../../../redux/features/admin/userSessionSlice';
 import { integrationService } from '../../../webapi/integrationsvc';
 import { prettyPrintJsonForDisplay } from '../../../helper/integrationPayloadHelper';
 
+/** Bridge so Application Form Builder Configurator can Save / Reload without fighting unsaved memory. */
+export interface TransactionEditorConfigBridge {
+    isDirty: boolean;
+    save: () => Promise<boolean>;
+    reloadFromDb: () => Promise<void>;
+}
+
 interface TransactionGraphicEditorProps {
     transactionId?: number | null;
     applicationId: string | null;
@@ -42,6 +49,8 @@ interface TransactionGraphicEditorProps {
     onFormIdResolved?: (formId: number) => void;
     /** Open unit editor after load (Angular TransactionGraphicEditor route param2.needToEditUnitId). */
     initialNeedToEditUnitId?: number | null;
+    /** Notify parent of dirty/save/reload for Configurator A′ collaboration. */
+    onConfigBridgeChange?: (bridge: TransactionEditorConfigBridge | null) => void;
 }
 
 // Local enum definitions (matching AngularJS)
@@ -241,6 +250,7 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
     onTransactionIdResolved,
     onFormIdResolved,
     initialNeedToEditUnitId = null,
+    onConfigBridgeChange,
 }) => {
     const { theme } = useTheme();
     const { showError, showValidationMessages, showInfo } = useErrorMessage();
@@ -654,7 +664,8 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
                     IsEnableDeleteByApi: data.OtherOptions?.IsEnableDeleteByApi || false,
                     DeleteDataTransferId: data.OtherOptions?.DeleteDataTransferId ?? null
                 });
-                setIsModified(data.IsModified || false);
+                // Fresh load from DB = clean editor draft (ignore DTO IsModified from deserialize).
+                setIsModified(false);
             }
         } catch (error: any) {
             showError(error.message || 'Failed to load transaction data');
@@ -880,6 +891,28 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
             dispatch(setIsNotBusy());
         }
     };
+
+    // Publish Save / Reload bridge for Configurator (A′: dirty gate before agent DB writes).
+    const handleSaveRef = useRef(handleSave);
+    handleSaveRef.current = handleSave;
+    const loadTransactionDataRef = useRef(loadTransactionData);
+    loadTransactionDataRef.current = loadTransactionData;
+    useEffect(() => {
+        if (!onConfigBridgeChange) return;
+        onConfigBridgeChange({
+            isDirty: isModified,
+            save: async () => {
+                const id = await handleSaveRef.current();
+                return id != null;
+            },
+            reloadFromDb: async () => {
+                await loadTransactionDataRef.current();
+            },
+        });
+        return () => {
+            onConfigBridgeChange(null);
+        };
+    }, [isModified, onConfigBridgeChange]);
 
     const handleFieldChange = (field: string, value: any) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -1687,7 +1720,7 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
                                 IsEnableDeleteByApi: savedData.OtherOptions?.IsEnableDeleteByApi || false,
                                 DeleteDataTransferId: savedData.OtherOptions?.DeleteDataTransferId ?? null
                             });
-                            setIsModified(savedData.IsModified || false);
+                            setIsModified(false);
                         }
                     } catch (refreshError: any) {
                         console.error('Error refreshing transaction data after adding to menu:', refreshError);
@@ -2605,7 +2638,7 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
                                                     onChange={(e) => handleFieldChange('IsEnableTransactionAiAgent', e.target.checked)}
                                                     className="rounded"
                                                 />
-                                                <span>Enable AI Agent</span>
+                                                <span>Enable Form Data AI Agent</span>
                                             </label>
                                             {formData.IsEnableTransactionAiAgent && (
                                                 <>
