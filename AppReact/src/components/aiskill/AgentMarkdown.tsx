@@ -47,7 +47,11 @@ export type AgentFileLink = { name: string; path: string };
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Inline: **bold**, *italic*, `code`, and download links for exported file names. */
-const formatInline = (text: string, files?: AgentFileLink[]): string => {
+const formatInline = (
+    text: string,
+    files?: AgentFileLink[],
+    opts?: { emphasis?: 'default' | 'light' | 'subtle' },
+): string => {
     let s = escapeHtml(text);
     const tokens: string[] = [];
     const sorted = [...(files ?? [])].filter(f => f.name).sort((a, b) => b.name.length - a.name.length);
@@ -62,8 +66,14 @@ const formatInline = (text: string, files?: AgentFileLink[]): string => {
         });
     }
     s = s.replace(/`([^`]+)`/g, '<code class="agent-md-code">$1</code>');
-    // Keep emphasis quieter than headings (headings use semibold + size).
-    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-medium opacity-95">$1</strong>');
+    // default (chat): medium. light: medium. subtle (Help body): same color as body, slight weight — won't fight headings.
+    const strongCls =
+        opts?.emphasis === 'subtle'
+            ? 'agent-md-em'
+            : opts?.emphasis === 'light'
+              ? 'font-medium'
+              : 'font-medium opacity-95';
+    s = s.replace(/\*\*([^*]+)\*\*/g, `<strong class="${strongCls}">$1</strong>`);
     s = s.replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, '$1<em>$2</em>');
     if (tokens.length) {
         s = s.replace(/\u0000(\d+)\u0000/g, (_, n) => tokens[Number(n)] ?? '');
@@ -209,16 +219,24 @@ export const FollowupChips: React.FC<{
 export const AgentMarkdown: React.FC<{
     content: string;
     className?: string;
+    /** `document` = Help manuals: clearer chapter title, quieter body, tighter lists — no extra chrome. */
+    variant?: 'default' | 'document';
     fileLinks?: AgentFileLink[];
     onFileDownload?: (relativePath: string) => void;
-}> = ({ content, className, fileLinks, onFileDownload }) => {
+}> = ({ content, className, variant = 'default', fileLinks, onFileDownload }) => {
     const { theme, t } = useTheme();
     const borderCls = t('border_mainContentSection');
     const blocks = parseBlocks(content);
+    const isDoc = variant === 'document';
+    // Help body: subtle emphasis (won't fight headings). Tables use light for Control column.
+    const bodyInline = (text: string) =>
+        formatInline(text, fileLinks, isDoc ? { emphasis: 'subtle' } : undefined);
+    const tableInline = (text: string) =>
+        formatInline(text, fileLinks, isDoc ? { emphasis: 'light' } : undefined);
 
     return (
         <div
-            className={`agent-md ${className || 'text-sm leading-6'}`}
+            className={`agent-md ${isDoc ? 'agent-md--document' : ''} ${className || 'text-sm leading-6'}`}
             onClick={e => {
                 const a = (e.target as HTMLElement).closest('a[data-agent-file]');
                 if (!a) return;
@@ -232,20 +250,27 @@ export const AgentMarkdown: React.FC<{
                     return (
                         <p
                             key={idx}
-                            className={`mb-2 last:mb-0 whitespace-pre-wrap ${theme.label}`}
-                            dangerouslySetInnerHTML={{ __html: formatInline(b.text, fileLinks) }}
+                            className={`${isDoc ? 'mb-2' : 'mb-2'} last:mb-0 whitespace-pre-wrap ${theme.label}`}
+                            dangerouslySetInnerHTML={{ __html: bodyInline(b.text) }}
                         />
                     );
                 }
                 if (b.type === 'h') {
+                    // document: chapter > section label > body
                     const headingCls =
                         b.level <= 1
                             ? `mb-3 mt-1 text-xl font-semibold ${theme.title}`
                             : b.level === 2
-                              ? `mb-2.5 mt-4 first:mt-0 text-lg font-semibold ${theme.title}`
+                              ? isDoc
+                                ? `mb-2.5 mt-7 first:mt-0 text-lg font-semibold tracking-tight ${theme.title}`
+                                : `mb-2.5 mt-4 first:mt-0 text-lg font-semibold ${theme.title}`
                               : b.level === 3
-                                ? `mb-2 mt-3 text-base font-semibold ${theme.title}`
-                                : `mb-1.5 mt-2.5 text-sm font-semibold ${theme.title}`;
+                                ? isDoc
+                                  ? `mb-2.5 mt-5 first:mt-0 text-lg font-semibold tracking-tight ${theme.title}`
+                                  : `mb-2 mt-3 text-base font-semibold ${theme.title}`
+                                : isDoc
+                                  ? `mb-1.5 mt-4 first:mt-0 text-[13px] font-semibold tracking-wide ${theme.title}`
+                                  : `mb-1.5 mt-2.5 text-sm font-semibold ${theme.title}`;
                     const Tag = (b.level <= 1 ? 'h1' : b.level === 2 ? 'h2' : b.level === 3 ? 'h3' : 'h4') as
                         | 'h1'
                         | 'h2'
@@ -255,7 +280,7 @@ export const AgentMarkdown: React.FC<{
                         <Tag
                             key={idx}
                             className={headingCls}
-                            dangerouslySetInnerHTML={{ __html: formatInline(b.text, fileLinks) }}
+                            dangerouslySetInnerHTML={{ __html: bodyInline(b.text) }}
                         />
                     );
                 }
@@ -263,24 +288,30 @@ export const AgentMarkdown: React.FC<{
                     return (
                         <hr
                             key={idx}
-                            className={`my-4 border-0 border-t opacity-40 ${borderCls}`}
+                            className={`${isDoc ? 'my-6' : 'my-4'} border-0 border-t opacity-20`}
                         />
                     );
                 }
                 if (b.type === 'ul') {
                     return (
-                        <ul key={idx} className={`mb-2 pl-4 list-disc space-y-1 ${theme.label}`}>
+                        <ul
+                            key={idx}
+                            className={`${isDoc ? 'mb-2 space-y-1' : 'mb-2 space-y-1'} pl-4 list-disc ${theme.label}`}
+                        >
                             {b.items.map((it, j) => (
-                                <li key={j} dangerouslySetInnerHTML={{ __html: formatInline(it, fileLinks) }} />
+                                <li key={j} dangerouslySetInnerHTML={{ __html: bodyInline(it) }} />
                             ))}
                         </ul>
                     );
                 }
                 if (b.type === 'ol') {
                     return (
-                        <ol key={idx} className={`mb-2 pl-4 list-decimal space-y-1 ${theme.label}`}>
+                        <ol
+                            key={idx}
+                            className={`${isDoc ? 'mb-2 space-y-1' : 'mb-2 space-y-1'} pl-4 list-decimal ${theme.label}`}
+                        >
                             {b.items.map((it, j) => (
-                                <li key={j} dangerouslySetInnerHTML={{ __html: formatInline(it, fileLinks) }} />
+                                <li key={j} dangerouslySetInnerHTML={{ __html: bodyInline(it) }} />
                             ))}
                         </ol>
                     );
@@ -295,17 +326,17 @@ export const AgentMarkdown: React.FC<{
                         </pre>
                     );
                 }
-                // table
+                // table — Control column keeps light emphasis; description column stays quiet
                 return (
-                    <div key={idx} className={`mb-3 overflow-x-auto rounded-[4px] border ${borderCls}`}>
-                        <table className="w-full border-collapse text-xs">
+                    <div key={idx} className={`mb-4 overflow-x-auto rounded-[4px] border ${borderCls}`}>
+                        <table className={`w-full border-collapse ${isDoc ? 'text-[13px]' : 'text-xs'}`}>
                             <thead className={theme.mainContentSection}>
                                 <tr>
                                     {b.headers.map((h, hi) => (
                                         <th
                                             key={hi}
-                                            className={`px-2.5 py-2 text-left font-medium border-b ${borderCls} ${theme.title} whitespace-nowrap`}
-                                            dangerouslySetInnerHTML={{ __html: formatInline(h, fileLinks) }}
+                                            className={`px-3 py-2 text-left font-medium border-b ${borderCls} ${theme.title} whitespace-nowrap`}
+                                            dangerouslySetInnerHTML={{ __html: tableInline(h) }}
                                         />
                                     ))}
                                 </tr>
@@ -316,8 +347,14 @@ export const AgentMarkdown: React.FC<{
                                         {row.map((cell, ci) => (
                                             <td
                                                 key={ci}
-                                                className={`px-2.5 py-2 ${theme.label} ${/^-?\$?[\d,.]+%?$/.test(cell.trim()) ? 'text-right' : 'text-left'}`}
-                                                dangerouslySetInnerHTML={{ __html: formatInline(cell, fileLinks) }}
+                                                className={`px-3 py-2 ${
+                                                    isDoc && ci === 0
+                                                        ? `font-medium ${theme.title}`
+                                                        : theme.label
+                                                } ${/^-?\$?[\d,.]+%?$/.test(cell.trim()) ? 'text-right' : 'text-left'}`}
+                                                dangerouslySetInnerHTML={{
+                                                    __html: ci === 0 ? tableInline(cell) : bodyInline(cell),
+                                                }}
                                             />
                                         ))}
                                     </tr>
@@ -334,6 +371,10 @@ export const AgentMarkdown: React.FC<{
                     padding: 0.1em 0.35em;
                     border-radius: 3px;
                     opacity: 0.95;
+                }
+                .agent-md--document .agent-md-em {
+                    font-weight: inherit;
+                    color: inherit;
                 }
             `}</style>
         </div>

@@ -92,16 +92,21 @@ function TocTree(props: {
 }) {
   const { nodes, activeId, onSelect, theme, depth = 0 } = props;
   return (
-    <ul className={depth === 0 ? 'space-y-0.5' : 'mt-0.5 ml-2 border-l pl-2 space-y-0.5'}>
+    <ul className={depth === 0 ? 'space-y-1' : 'mt-0.5 ml-2 border-l pl-2 space-y-0.5'}>
       {nodes.map((n) => {
         const active = activeId === n.id;
+        const childActive = !active && n.children.some((c) => c.id === activeId || c.children.some((g) => g.id === activeId));
         return (
           <li key={n.id}>
             <button
               type="button"
               onClick={() => onSelect(n)}
-              className={`w-full text-left px-2 py-1 rounded-[4px] text-[11px] leading-snug ${
-                active ? theme.button_default : `${theme.label} hover:opacity-100 opacity-90`
+              className={`w-full text-left px-2 py-1 rounded-[4px] text-xs leading-snug ${
+                active
+                  ? `${theme.button_default} font-medium`
+                  : depth === 0
+                    ? `${theme.title} ${childActive ? 'opacity-100 font-medium' : 'opacity-85'} hover:opacity-100`
+                    : `${theme.label} ${childActive ? 'opacity-100' : 'opacity-70'} hover:opacity-100`
               }`}
               title={n.headingText}
             >
@@ -275,8 +280,8 @@ export function CommandHelpModal(props: {
                   setShowFull(true);
                   setActive(null);
                 }}
-                className={`w-full text-left px-2 py-1 rounded-[4px] text-[11px] ${
-                  showFull ? theme.button_default : theme.label
+                className={`w-full text-left px-2 py-1 rounded-[4px] text-xs ${
+                  showFull ? `${theme.button_default} font-medium` : `${theme.label} opacity-70 hover:opacity-100`
                 }`}
               >
                 Full manual
@@ -284,7 +289,7 @@ export function CommandHelpModal(props: {
             </div>
             <div className="min-h-0 h-1 flex-auto overflow-auto p-2">
               {filteredToc.length === 0 ? (
-                <p className={`text-[11px] opacity-70 px-1 ${theme.label}`}>No matching chapters.</p>
+                <p className={`text-xs opacity-70 px-1 ${theme.label}`}>No matching chapters.</p>
               ) : (
                 <TocTree
                   nodes={filteredToc}
@@ -305,7 +310,11 @@ export function CommandHelpModal(props: {
             ) : !md ? (
               <p className={`text-sm opacity-70 ${theme.label}`}>Loading…</p>
             ) : (
-              <AgentMarkdown content={body} className="text-sm leading-relaxed max-w-none" />
+              <AgentMarkdown
+                content={body}
+                variant="document"
+                className="text-sm leading-7 max-w-3xl"
+              />
             )}
           </div>
         </div>
