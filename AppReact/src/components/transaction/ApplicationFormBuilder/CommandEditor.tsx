@@ -417,7 +417,7 @@ export function CommandEditor(props: {
             {Number(currentEditAction.ActionType) === 200 ? (
               <CollapsibleSection
                 sectionId="composition"
-                title="Composition Command"
+                title="Composition Operation"
                 collapsed={!!collapsedBySectionId['composition']}
                 onToggle={toggleSection}
               >

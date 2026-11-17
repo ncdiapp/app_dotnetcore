@@ -37,7 +37,7 @@ export const ANGULAR_MASTER_DETAIL_COMMAND_ACTION_TYPE_LIST: TransactionCommandA
   { Id: 73, Display: 'Download File To Server Folder' },
   { Id: 81, Display: 'Convert From Xml To Json' },
   { Id: 82, Display: 'Convert Back From Json To Xml' },
-  { Id: 200, Display: 'Composition Command' },
+  { Id: 200, Display: 'Composition Operation' },
   { Id: 47, Display: 'UI: Save As' },
   { Id: 48, Display: 'UI: Print' },
   { Id: 74, Display: 'UI: Print From Message Template' },
@@ -52,7 +52,7 @@ export const ANGULAR_LIST_EDIT_COMMAND_ACTION_TYPE_LIST: TransactionCommandActio
   { Id: 43, Display: 'Execute Data Transfer' },
   { Id: 49, Display: 'Save' },
   { Id: 50, Display: 'Refresh' },
-  { Id: 200, Display: 'Composition Command' },
+  { Id: 200, Display: 'Composition Operation' },
 ];
 
 /** workflowAutomationEditorCtrl.js — `masterDetailCommandActionTypeList` (workflow automation editor) */
@@ -76,7 +76,7 @@ export const ANGULAR_WORKFLOW_AUTOMATION_COMMAND_ACTION_TYPE_LIST: TransactionCo
   { Id: 73, Display: 'Download File To Server Folder' },
   { Id: 81, Display: 'Convert From Xml To Json' },
   { Id: 82, Display: 'Convert Back From Json To Xml' },
-  { Id: 200, Display: 'Composition Command' },
+  { Id: 200, Display: 'Composition Operation' },
 ];
 
 /** Merged Id → Display for grid/type column (master-detail list is superset for Application Builder). */
@@ -162,7 +162,7 @@ export const ANGULAR_WORKFLOW_EMBEDDED_COMMAND_ACTION_TYPE_LIST: TransactionComm
   { Id: 73, Display: 'Download File To Server Folder' },
   { Id: 81, Display: 'Convert From Xml To Json' },
   { Id: 82, Display: 'Convert Back From Json To Xml' },
-  { Id: 200, Display: 'Composition Command' },
+  { Id: 200, Display: 'Composition Operation' },
 ];
 
 export function getWorkflowEmbeddedCommandActionTypeOptions(): TransactionCommandActionTypeOption[] {

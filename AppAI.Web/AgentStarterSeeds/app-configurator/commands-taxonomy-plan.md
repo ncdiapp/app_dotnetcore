@@ -132,7 +132,7 @@ Leaf **Display** strings remain today’s UI names. Only grouping labels are new
 
 ### 5.6 L1 = `composition` — Composition
 
-Selecting this category sets **Composition Command (200)** immediately (single leaf or category click with `autoActionTypeId: 200`).
+Selecting this category sets **Composition Operation (200)** immediately (single leaf or category click with `autoActionTypeId: 200`).
 
 ### 5.7 Context filters
 
@@ -310,3 +310,4 @@ Configurator must **not** execute runtime commands (`run_command` stays Form Age
 | 2026-11-17 | Auto-seed: `AgentStarterSeeds/{skillKey}` packaged with web app; `EnsureRoot` / Ensure Form|Search|AppBuilder chat syncs PreserveNewest into company AgentStarter (no per-tenant manual copy required after deploy). |
 | 2026-11-17 | Doc layout: User manuals → `Document/UserGuide/`; Agent KB → `Document/AgentKnowledge/{skillKey}/`; design stays `AgentDesign/`; runtime copies via `SyncRuntimeDocs.ps1`. |
 | 2026-11-17 | Wrap paired manuals under `Document/KnowledgeBase/` (`UserGuide` + `AgentKnowledge` + sync script); Config Agent still auto-copies from packaged `AgentStarterSeeds/{skillKey}`. |
+| 2026-11-17 | Field tokens: tools expose sqlToken/messageToken/formulaToken + rootPrimaryKeys; SystemPrompt hard rules; **V085** merges former V086 token migration. |

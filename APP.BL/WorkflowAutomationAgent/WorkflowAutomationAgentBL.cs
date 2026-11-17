@@ -77,7 +77,7 @@ OPERATION TASK ACTION TYPES:
   84  = Call Google Sheets API      — integrationConfigJson: {""spreadsheetId"":""..."",""sheetName"":""Sheet1"",""operation"":""Read""}
   85  = Call Netsuite API           — integrationConfigJson: {""accountId"":""..."",""recordType"":""SalesOrder"",""operation"":""Get""}
   86  = Call External REST API      — integrationConfigJson: {""url"":""..."",""method"":""POST"",""authType"":""Bearer"",""headersJson"":""{}"",""bodyTemplate"":""...""}
-  200 = Composition Command         — root container (auto-created; never create this manually)
+  200 = Composition Operation       — root container (auto-created; never create this manually)
 
 ━━━ STRICT GATE RULE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ALWAYS call propose_workflow_changes BEFORE any create_task, update_task, or delete_task.

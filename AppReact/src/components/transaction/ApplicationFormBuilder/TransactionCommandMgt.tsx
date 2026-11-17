@@ -33,6 +33,7 @@ import {
 } from '../transactionCommandActionTypes';
 import { filterCommandActionTypeOptionsForPicker } from '../transactionCommandTypeTaxonomy';
 import { buildCommandFieldLookups } from './commandFieldLookup';
+import type { TransactionEditorConfigBridge } from './TransactionGraphicEditor';
 import { tw } from '../../../helper/themeHelper';
 import appHelper from '../../../helper/appHelper';
 
@@ -61,6 +62,8 @@ export interface TransactionCommandActionEditorProps {
   /** Select this command after hierarchy load (e.g. external child command editor). */
   initialSelectedCommandId?: number | null;
   onRefresh?: () => void;
+  /** Same bridge as Data Model Design — Configurator request_form_reload / dirty gate. */
+  onConfigBridgeChange?: (bridge: TransactionEditorConfigBridge | null) => void;
 }
 
 const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorProps> = ({
@@ -70,6 +73,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
   transactionType = null,
   initialSelectedCommandId = null,
   onRefresh,
+  onConfigBridgeChange,
 }) => {
   const { theme } = useTheme();
   const dispatch = useDispatch();
@@ -267,8 +271,8 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
   const currentEditAction =
     selectedId == null ? null : itemsForEdit.find((c: any) => Number(c.Id) === Number(selectedId)) ?? null;
 
-  const handleSave = useCallback(async () => {
-    if (!hierarchy?.Id) return;
+  const handleSave = useCallback(async (): Promise<boolean> => {
+    if (!hierarchy?.Id) return false;
     const keepId = selectedId;
     const list = [...((commandCV.sourceCollection as any[]) || [])];
 
@@ -295,13 +299,37 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
         setIsModified(false);
         await loadTransaction(keepId);
         if (onRefresh) onRefresh();
+        return true;
       }
+      return false;
     } catch (e: any) {
       showError(e?.message || 'Failed to save operations');
+      return false;
     } finally {
       dispatch(setIsNotBusy());
     }
   }, [hierarchy, selectedId, commandCV, dispatch, loadTransaction, onRefresh, showError, showValidationMessages]);
+
+  // Publish Save / Reload for Configurator (same contract as Data Model Design Refresh).
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+  const loadTransactionRef = useRef(loadTransaction);
+  loadTransactionRef.current = loadTransaction;
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+  useEffect(() => {
+    if (!onConfigBridgeChange) return;
+    onConfigBridgeChange({
+      isDirty: isModified,
+      save: async () => handleSaveRef.current(),
+      reloadFromDb: async () => {
+        await loadTransactionRef.current(selectedIdRef.current);
+      },
+    });
+    return () => {
+      onConfigBridgeChange(null);
+    };
+  }, [isModified, onConfigBridgeChange]);
 
   const handleAddCommand = useCallback(async () => {
     if (!dataReady) return;
@@ -530,14 +558,24 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
                 <button
                   type="button"
                   onClick={() => setTaskTab('public')}
-                  className={`px-2.5 py-1 text-xs rounded-[4px] border ${taskTab === 'public' ? theme.button_default : theme.inputBox}`}
+                  className={`px-2.5 py-1 text-xs rounded-[4px] border ${
+                    taskTab === 'public'
+                      ? `${theme.tab_active} font-semibold`
+                      : `${theme.label} opacity-70 hover:opacity-100`
+                  }`}
+                  aria-pressed={taskTab === 'public'}
                 >
                   Public Operation
                 </button>
                 <button
                   type="button"
                   onClick={() => setTaskTab('private')}
-                  className={`px-2.5 py-1 text-xs rounded-[4px] border ${taskTab === 'private' ? theme.button_default : theme.inputBox}`}
+                  className={`px-2.5 py-1 text-xs rounded-[4px] border ${
+                    taskTab === 'private'
+                      ? `${theme.tab_active} font-semibold`
+                      : `${theme.label} opacity-70 hover:opacity-100`
+                  }`}
+                  aria-pressed={taskTab === 'private'}
                 >
                   Private Operation
                 </button>

@@ -117,7 +117,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     try
                     {
                         var jo = JObject.Parse(optionsJson);
-                        ApplyCommandOptions(cmd, jo);
+                        ApplyCommandOptions(cmd, jo, tx.CommandActionList);
                         if (cmd.ActionType.HasValue && !AllowedCommandActionTypes.Contains(cmd.ActionType.Value))
                             return Fail($"actionType {cmd.ActionType.Value} from optionsJson is not a valid EmAppTransactionCommandType. Examples: Refresh=50, ExecuteSQLStatement=42.");
                     }
@@ -125,13 +125,19 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
 
                 var preview = new { action = cmd.IsNew ? "create" : "update", command = DetailCommand(cmd) };
+                var warnings = BuildCommandSqlTokenWarnings(cmd.ActionType, cmd.NotificationMessage);
+                warnings.AddRange(BuildCompositionChildWarnings(cmd));
                 if (dryRun == true || confirmed != true)
                 {
                     return Ok(new
                     {
                         preview = true,
                         message = "Preview only. ask_user then call again with confirmed=true.",
-                        proposed = preview
+                        proposed = preview,
+                        warnings = warnings.Count > 0 ? warnings : null,
+                        NextStep = warnings.Count > 0
+                            ? "Fix SQL tokens/WHERE using find_fields / get_current_transaction_config.rootPrimaryKeys[].sqlToken before confirmed=true."
+                            : null
                     });
                 }
 
@@ -513,7 +519,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             catch (Exception ex) { return Fail(ex.Message); }
         }
 
-        static void ApplyCommandOptions(AppProjectWorkFlowActionExDto cmd, JObject jo)
+        static void ApplyCommandOptions(
+            AppProjectWorkFlowActionExDto cmd,
+            JObject jo,
+            IList<AppProjectWorkFlowActionExDto> allCommands = null)
         {
             if (jo["notificationMessage"] != null) cmd.NotificationMessage = jo.Value<string>("notificationMessage");
             if (jo["name"] != null) cmd.Name = jo.Value<string>("name");
@@ -532,12 +541,77 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (jo["linkTargetId"] != null) attr.LinkTargetId = jo.Value<int?>("linkTargetId");
             if (jo["linkedSearchId"] != null) attr.LinkedSearchId = jo.Value<int?>("linkedSearchId");
             if (jo["paramId1"] != null) attr.ParamId1 = jo.Value<int?>("paramId1"); // often DataTransfer / related id
+            if (jo["childCommandsSwitchConditionFieldId"] != null)
+                attr.ChildCommandsSwitchConditionFieldId = jo.Value<int?>("childCommandsSwitchConditionFieldId");
             // Preserve unknown keys for advanced types via raw merge into ActionAttribute JSON if present
             if (jo["actionAttribute"] is JObject attrObj)
             {
                 var existing = attr == null ? new JObject() : JObject.FromObject(attr);
                 existing.Merge(attrObj, new JsonMergeSettings { MergeArrayHandling = MergeArrayHandling.Replace });
-                cmd.ActionAttribute = existing.ToObject<AppActionAttributeDto>();
+                cmd.ActionAttribute = existing.ToObject<AppActionAttributeDto>()
+                    ?? new AppActionAttributeDto { ChildActionList = new List<ChildTransactionCommandDto>() };
+                attr = cmd.ActionAttribute;
+            }
+
+            // Explicit Composition / Message-link children (same shape as UI Child Operations grid).
+            // Prefer top-level childActionList; also accept actionAttribute.childActionList via merge above.
+            var childTok = jo["childActionList"] ?? jo["ChildActionList"];
+            if (childTok is JArray childArr)
+                attr.ChildActionList = ParseChildActionList(childArr, allCommands);
+            else if (attr.ChildActionList != null && attr.ChildActionList.Count > 0)
+                EnrichChildActionDisplays(attr.ChildActionList, allCommands);
+        }
+
+        static List<ChildTransactionCommandDto> ParseChildActionList(
+            JArray childArr,
+            IList<AppProjectWorkFlowActionExDto> allCommands)
+        {
+            var list = new List<ChildTransactionCommandDto>();
+            var sort = 0;
+            foreach (var item in childArr)
+            {
+                if (item is not JObject co) continue;
+                sort++;
+                var child = new ChildTransactionCommandDto
+                {
+                    Sort = co.Value<int?>("sort") ?? co.Value<int?>("Sort") ?? sort,
+                    CommandId = co.Value<int?>("commandId") ?? co.Value<int?>("CommandId"),
+                    CommandDisplay = co.Value<string>("commandDisplay") ?? co.Value<string>("CommandDisplay"),
+                    ExternalTransactionId = co.Value<int?>("externalTransactionId") ?? co.Value<int?>("ExternalTransactionId"),
+                    IsSkip = co.Value<bool?>("isSkip") ?? co.Value<bool?>("IsSkip") ?? false,
+                    IsGoToNextCommandWithError = co.Value<bool?>("isGoToNextCommandWithError")
+                        ?? co.Value<bool?>("IsGoToNextCommandWithError"),
+                    PredictValue = co.Value<int?>("predictValue") ?? co.Value<int?>("PredictValue"),
+                    ChangeTriggerRootLevelFieldId = co.Value<int?>("changeTriggerRootLevelFieldId")
+                        ?? co.Value<int?>("ChangeTriggerRootLevelFieldId"),
+                    ChangeTriggerChildGridUnitId = co.Value<int?>("changeTriggerChildGridUnitId")
+                        ?? co.Value<int?>("ChangeTriggerChildGridUnitId"),
+                    IsBatchCommand = co.Value<bool?>("isBatchCommand") ?? co.Value<bool?>("IsBatchCommand") ?? false
+                };
+                list.Add(child);
+            }
+            EnrichChildActionDisplays(list, allCommands);
+            return list;
+        }
+
+        static void EnrichChildActionDisplays(
+            IList<ChildTransactionCommandDto> children,
+            IList<AppProjectWorkFlowActionExDto> allCommands)
+        {
+            if (children == null || allCommands == null) return;
+            foreach (var child in children)
+            {
+                if (!child.CommandId.HasValue) continue;
+                if (!string.IsNullOrWhiteSpace(child.CommandDisplay) && !child.ExternalTransactionId.HasValue)
+                    continue;
+                if (child.ExternalTransactionId.HasValue) continue; // external display must be supplied by caller
+                var match = allCommands.FirstOrDefault(c =>
+                    c.Id != null && Convert.ToInt32(c.Id) == child.CommandId.Value);
+                if (match == null) continue;
+                if (string.IsNullOrWhiteSpace(child.CommandDisplay))
+                    child.CommandDisplay = match.Name ?? match.DisplayName ?? $"Command {child.CommandId}";
+                if (match.ActionAttribute != null)
+                    child.IsBatchCommand = match.ActionAttribute.IsBatchCommand;
             }
         }
 
@@ -574,6 +648,85 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (tx == null) return false;
             var units = EntityMapWiring.FlattenUnits(tx.AppTransactionUnitList ?? Enumerable.Empty<AppTransactionUnitExDto>());
             return units.Any(u => Convert.ToInt32(u.Id) == unitId);
+        }
+
+        /// <summary>
+        /// Composition (200) must reference child operations via ActionAttribute.ChildActionList.
+        /// </summary>
+        static List<string> BuildCompositionChildWarnings(AppProjectWorkFlowActionExDto cmd)
+        {
+            var warnings = new List<string>();
+            if (cmd?.ActionType != 200) return warnings;
+
+            var children = cmd.ActionAttribute?.ChildActionList;
+            if (children == null || children.Count == 0)
+            {
+                warnings.Add(
+                    "Composition Operation (200) has an empty ChildActionList — the Child Operations grid will be empty. " +
+                    "Create Private child operations first (upsert_command linkToUI:false), then update this composition with " +
+                    "optionsJson.childActionList:[{commandId,sort},…] (same as UI Add Existing). " +
+                    "Do not put SQL in the composition itself; put SQL on a child with actionType 42.");
+            }
+            else
+            {
+                var missingId = children.Where(c => !c.CommandId.HasValue && !c.ExternalTransactionId.HasValue).ToList();
+                if (missingId.Count > 0)
+                {
+                    warnings.Add(
+                        $"{missingId.Count} child row(s) lack commandId. Each ChildActionList item needs commandId of an existing operation.");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(cmd.NotificationMessage)
+                && (cmd.NotificationMessage.IndexOf("UPDATE", StringComparison.OrdinalIgnoreCase) >= 0
+                    || cmd.NotificationMessage.IndexOf("SELECT", StringComparison.OrdinalIgnoreCase) >= 0
+                    || cmd.NotificationMessage.IndexOf("DELETE", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                warnings.Add(
+                    "Composition notificationMessage looks like SQL. actionType 200 does not execute that SQL as the parent body — " +
+                    "move SQL to a Private child (42) and reference it from childActionList.");
+            }
+
+            return warnings;
+        }
+
+        /// <summary>
+        /// Soft checks for Execute SQL Statement (42) — mirrors Query Builder token rules.
+        /// </summary>
+        static List<string> BuildCommandSqlTokenWarnings(int? actionType, string sql)
+        {
+            var warnings = new List<string>();
+            if (actionType != 42 || string.IsNullOrWhiteSpace(sql))
+                return warnings;
+
+            var trimmed = sql.TrimStart();
+            var upper = trimmed.ToUpperInvariant();
+            var isUpdateOrDelete =
+                upper.StartsWith("UPDATE", StringComparison.Ordinal) ||
+                upper.StartsWith("DELETE", StringComparison.Ordinal);
+
+            if (sql.IndexOf("[rootid]", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                warnings.Add(
+                    "[rootid] is not a valid form token. Use live sqlToken from find_fields / get_unit_fields / " +
+                    "get_current_transaction_config.rootPrimaryKeys (e.g. [TF_3499_OpportunityId]).");
+            }
+
+            if (isUpdateOrDelete && upper.IndexOf("WHERE", StringComparison.Ordinal) < 0)
+            {
+                warnings.Add(
+                    "UPDATE/DELETE without WHERE is unsafe. Scope to the current form row with " +
+                    "rootPrimaryKeys[].sqlToken (root master PK) or the correct grid field sqlToken.");
+            }
+
+            if (isUpdateOrDelete && sql.IndexOf("[TF_", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                warnings.Add(
+                    "UPDATE/DELETE should use [TF_{fieldId}_{dbColumn}] tokens from Query Builder field buttons " +
+                    "(exposed as sqlToken on field tools). Do not invent placeholders.");
+            }
+
+            return warnings;
         }
 
         static string Ok(object payload)

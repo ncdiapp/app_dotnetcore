@@ -4,6 +4,9 @@ import { AgentMarkdown } from '../../aiskill/AgentMarkdown';
 
 export type CommandHelpSectionId = string;
 
+/** Flip to true when Ask Configurator should open/prefill the dock again. */
+const SHOW_ASK_CONFIGURATOR_BUTTON = false;
+
 type TocNode = {
   id: string;
   title: string;
@@ -219,7 +222,7 @@ export function CommandHelpModal(props: {
         <div className="flex items-center justify-between px-3 py-2 border-b shrink-0 gap-2">
           <div className={`text-sm font-semibold ${theme.title} truncate`}>Data Model Operation — Help</div>
           <div className="flex items-center gap-1 shrink-0">
-            {onAskConfigurator && askPrompt ? (
+            {SHOW_ASK_CONFIGURATOR_BUTTON && onAskConfigurator && askPrompt ? (
               <button
                 type="button"
                 onClick={() => {

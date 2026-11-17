@@ -37,7 +37,7 @@ Expand **Operation Basic Options** at the top of the editor.
 | Control | What it does |
 |---------|----------------|
 | **Operation Name** | Label on the form Operation menu and in the operation list. Use short, user-facing names (for example, *Submit Opportunity*). |
-| **Operation Type** | Searchable tree picker. Shows the current type display name. Click to open the tree (UI Operations, Backend Operations with sub-groups, API/Plugin, Messaging, Composition). Type to filter. Arrow keys and Enter select a leaf; Esc closes. Selecting **Composition** sets type to Composition Command immediately. Changing type shows or hides sections below; **old type-specific values are not cleared automatically**. |
+| **Operation Type** | Searchable tree picker. Shows the current type display name. Click to open the tree (UI Operations, Backend Operations with sub-groups, API/Plugin, Messaging, Composition). Type to filter. Arrow keys and Enter select a leaf; Esc closes. Selecting **Composition** sets type to Composition Operation immediately. Changing type shows or hides sections below; **old type-specific values are not cleared automatically**. |
 | **Category** | Read-only breadcrumb derived from Operation Type (for example, `Backend Operations / Form Data Processing`). Not saved. Hidden for Composition. |
 | **Flow Order** | Numeric sort order in the operation list and on the form menu (lower numbers appear first). Hidden in Workflow Automation embedded editor. |
 | **Execute Condition Field** | Optional root **checkbox** field. `No Condition (The task will execute)` = always run when invoked. If the checkbox is not true at run time, the menu item is disabled and the step is skipped (server composition/batch). |
@@ -493,6 +493,8 @@ Open via the **Query Builder with Built-in Tokens** button beside **SQL Statemen
 | **Built-in Token** | Click to insert: `[CurrentUserId]`, `[CurrentPartnerId]`, `[CurrentUserName]`, `GETDATE()`, `GETUTCDATE()`. |
 
 **Token click workflow:** Place the cursor in the SQL editor where the value belongs (for example after `WHERE OpportunityId = `), then click **OpportunityId** under **Form Root Level Fields**. The token `[TF_####_OpportunityId]` is inserted at the cursor.
+
+**Current form row:** To update/delete only the open record, use the **root primary key** field button (often the same name as the table id column, for example **OpportunityId**). That inserts the live root-id token — do not type a made-up placeholder.
 
 #### Step-by-step configuration
 
@@ -1057,7 +1059,7 @@ Under Email (§8.3) or Partner (§8.4): **Message Link Operations** grid.
 
 ## 9. Composition
 
-### 9.1 Composition Command
+### 9.1 Composition Operation
 
 #### Purpose
 Run an ordered list of **Child Operations** with optional switch field, skip, continue-on-error, external data model children.
@@ -1066,7 +1068,7 @@ Run an ordered list of **Child Operations** with optional switch field, skip, co
 One menu item runs validate → formula → save → SQL → email → close.
 
 #### Sections shown
-§2 (Category hidden) + **Composition Command**.
+§2 (Category hidden) + **Composition Operation**.
 
 #### Control reference
 | Control | What it does |
@@ -1081,7 +1083,7 @@ One menu item runs validate → formula → save → SQL → email → close.
 - External **Application Form Builder** when editing external model child.
 
 #### Step-by-step configuration
-1. Set **Operation Type** → **Composition Command** (or pick Composition in tree).
+1. Set **Operation Type** → **Composition Operation** (or pick Composition in tree).
 2. Create Private children (Validate, Save, SQL, …) in the left list first.
 3. In **Child Operations**, add children in order; set **Sort**.
 4. Optional: set **Child Operations Switch Condition Field** and per-row switch values.

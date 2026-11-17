@@ -9,6 +9,22 @@
 
 `actionType` is **`EmAppTransactionCommandType`** (int). **Not** link-target codes (1=Edit, 2=Create).
 
+### Field tokens (Query Builder / Message / Formula) — hard rules
+
+The Operation editor **Query Builder with Built-in Tokens** popup shows **unit-layered field buttons** (Form Root Level Fields, Grid `{unit}` Columns, builtins). Clicking a button inserts the live token at the cursor. Agents must emit the **same** strings — resolve via tools, never invent.
+
+| Surface | Tool fields | Format |
+|---------|-------------|--------|
+| **Execute SQL (42)** | `sqlToken` | `[TF_{fieldId}_{dbColumn}]` e.g. `[TF_3499_OpportunityId]` |
+| **Message / notification** | `messageToken` (same as `sqlToken` for fields) | `[TF_…]`; builtins include `[CurrentPkValue]`, `[Today]`, … |
+| **Command Formula (57)** | `formulaToken` | Root: `[DbColumn_fieldId]`; grid/sibling: `[Table.DbColumn_fieldId]` |
+
+**Tools:** `get_current_transaction_config` (includes **`rootPrimaryKeys[]`**), `find_fields`, `get_unit_fields` — each field has `sqlToken`, `messageToken`, `formulaToken`, `isPrimaryKey`, `unitKind` (`rootMaster` \| `masterSibling` \| `childGrid`).
+
+**Current form row / root master id:** use `rootPrimaryKeys[].sqlToken` (fields with `isPrimaryKey` on `unitKind=rootMaster`). That is the Query Builder **OpportunityId** (etc.) button — **not** `[rootid]`.
+
+**SQL hard rules (42):** SQL goes in `notificationMessage`. `UPDATE`/`DELETE` **must** `WHERE` the intended row(s); for “this form record” use root PK `sqlToken`. Forbidden: `[rootid]`, missing `WHERE`, hand-waved placeholders.
+
 ### Taxonomy quick map
 
 | L1 | L2 | actionType ids |
@@ -46,7 +62,7 @@ Expand **Operation Basic Options** at the top of the editor.
 | Control | Storage / runtime |
 |---------|----------------|
 | **Operation Name** | Label on the form Operation menu and in the operation list. Use short, user-facing names (for example, *Submit Opportunity*). |
-| **Operation Type** | Searchable tree picker. Shows the current type display name. Click to open the tree (UI Operations, Backend Operations with sub-groups, API/Plugin, Messaging, Composition). Type to filter. Arrow keys and Enter select a leaf; Esc closes. Selecting **Composition** sets type to Composition Command immediately. Changing type shows or hides sections below; **old type-specific values are not cleared automatically**. |
+| **Operation Type** | Searchable tree picker. Shows the current type display name. Click to open the tree (UI Operations, Backend Operations with sub-groups, API/Plugin, Messaging, Composition). Type to filter. Arrow keys and Enter select a leaf; Esc closes. Selecting **Composition** sets type to Composition Operation immediately. Changing type shows or hides sections below; **old type-specific values are not cleared automatically**. |
 | **Category** | Read-only breadcrumb derived from Operation Type (for example, `Backend Operations / Form Data Processing`). Not saved. Hidden for Composition. |
 | **Flow Order** | Numeric sort order in the operation list and on the form menu (lower numbers appear first). Hidden in Workflow Automation embedded editor. |
 | **Execute Condition Field** | Optional root **checkbox** field. `No Condition (The task will execute)` = always run when invoked. If the checkbox is not true at run time, the menu item is disabled and the step is skipped (server composition/batch). |
@@ -692,7 +708,11 @@ Open via the **Query Builder with Built-in Tokens** button beside **SQL Statemen
 #### `upsert_command` / `optionsJson` notes
 - **Always** put SQL in `notificationMessage` when `actionType`=42.
 - `assignSqlResultToFiledId` in attributes.
-- Tokens: `[TF_{fieldId}_{dbColumn}]`; builtins `[CurrentUserId]`, `GETDATE()`, etc.
+- Tokens: resolve `sqlToken` from `find_fields` / `get_unit_fields` / `rootPrimaryKeys` — format `[TF_{fieldId}_{dbColumn}]`.
+- Builtins only: `[CurrentUserId]`, `[CurrentPartnerId]`, `[CurrentUserName]`, `GETDATE()`, `GETUTCDATE()`.
+- **Good:** `UPDATE Crm126_Opportunity SET Notes = Notes + 'ABC' WHERE OpportunityId = [TF_3499_OpportunityId]`
+- **Bad:** no `WHERE`; `WHERE OpportunityId = [rootid]`; inventing tokens without calling field tools.
+- Preview may return `warnings` — fix before `confirmed=true`.
 
 #### Runtime behavior
 Token replace → execute SQL → optional scalar to root field.
@@ -1317,7 +1337,7 @@ Under Email (§8.3) or Partner (§8.4): **Message Link Operations** grid.
 
 ## 9. Composition
 
-### 9.1 Composition Command
+### 9.1 Composition Operation
 
 #### Purpose
 Run an ordered list of **Child Operations** with optional switch field, skip, continue-on-error, external data model children.
@@ -1326,7 +1346,7 @@ Run an ordered list of **Child Operations** with optional switch field, skip, co
 One menu item runs validate → formula → save → SQL → email → close.
 
 #### Sections shown
-§2 (Category hidden) + **Composition Command**.
+§2 (Category hidden) + **Composition Operation**.
 
 #### Control reference
 | Control | What it does |
@@ -1341,7 +1361,7 @@ One menu item runs validate → formula → save → SQL → email → close.
 - External **Application Form Builder** when editing external model child.
 
 #### Step-by-step configuration
-1. Set **Operation Type** → **Composition Command** (or pick Composition in tree).
+1. Set **Operation Type** → **Composition Operation** (or pick Composition in tree).
 2. Create Private children (Validate, Save, SQL, …) in the left list first.
 3. In **Child Operations**, add children in order; set **Sort**.
 4. Optional: set **Child Operations Switch Condition Field** and per-row switch values.
@@ -1360,8 +1380,14 @@ One menu item runs validate → formula → save → SQL → email → close.
 
 #### `upsert_command`
 - `actionType`: **200**
-- Child list patches via `optionsJson` / full command graph from `get_command_detail`.
-- Children normally `linkToUI: false`.
+- **Required workflow (same as UI):**
+  1. Create each child as its own Private operation (`linkToUI: false`) — e.g. SQL child `actionType` 42 + `notificationMessage`.
+  2. `get_commands` / note each child’s `commandId`.
+  3. Upsert the Composition with `optionsJson`:
+     `{"linkToUI":true,"isShowOnTopMenu":true,"childActionList":[{"commandId":123,"sort":1},{"commandId":456,"sort":2}]}`
+  4. `request_form_reload` — Child Operations grid binds `ActionAttribute.ChildActionList`.
+- **Wrong:** create only a 200 shell (or put SQL on the composition’s `notificationMessage`) → UI Child list stays **empty**.
+- Children normally `linkToUI: false`. Parent usually Public + menu.
 
 ---
 

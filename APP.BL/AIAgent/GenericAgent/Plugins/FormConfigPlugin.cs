@@ -21,7 +21,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         readonly TransactionModifierPlugin _modifier = new TransactionModifierPlugin();
 
         [AgentTool("get_current_transaction_config",
-            "Inspect one open form's transaction configuration (units, fields, commands, linked searches). " +
+            "Inspect one open form's transaction configuration (units, fields with sqlToken/messageToken/formulaToken, " +
+            "rootPrimaryKeys, commands, linked searches). " +
             "When HostContext.multiTransaction=true, pass transactionId from HostContext.forms / find_fields.")]
         public string GetCurrentTransactionConfig(
             AgentToolContext context,
@@ -40,8 +41,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         [AgentTool("get_unit_fields",
-            "List fields for one unit of the open transaction. Prefer unitId; unitName is a fallback. " +
-            "Do NOT guess unitId when looking up a field by name — use find_fields instead.")]
+            "List fields for one unit of the open transaction (same catalog as Query Builder / Message / Formula token buttons). " +
+            "Each field includes sqlToken/messageToken [TF_{fieldId}_{dbName}], formulaToken, isPrimaryKey, unitKind. " +
+            "Prefer unitId; unitName is a fallback. Do NOT guess unitId — use find_fields.")]
         public string GetUnitFields(
             AgentToolContext context,
             [AgentParam("Unit id from HostContext / get_current_transaction_config / find_fields.")] int? unitId = null,
@@ -55,20 +57,26 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 AppCacheManagerBL.RefreshOnetHierarchyTranscation(txnId);
                 var tx = AppTransactionBL.GetHierarchyTranscationFromDatabase(txnId);
                 if (tx == null) return Fail($"Transaction {txnId} not found.");
-                var units = EntityMapWiring.FlattenUnits(
-                    tx.AppTransactionUnitList ?? Enumerable.Empty<AppTransactionUnitExDto>());
+                var unitMeta = BuildUnitTokenMeta(tx);
                 AppTransactionUnitExDto unit = null;
+                FieldUnitTokenMeta meta = null;
                 if (unitId.HasValue)
-                    unit = units.FirstOrDefault(u => Convert.ToInt32(u.Id) == unitId.Value);
+                {
+                    meta = unitMeta.FirstOrDefault(m => m.UnitId == unitId.Value);
+                    unit = meta?.Unit;
+                }
                 else if (!string.IsNullOrWhiteSpace(unitName))
-                    unit = units.FirstOrDefault(u =>
-                        EntityMapWiring.UnitOrTableMatches(u.UnitDisplayName, unitName) ||
-                        EntityMapWiring.UnitOrTableMatches(u.DataBaseTableName, unitName));
-                if (unit == null)
+                {
+                    meta = unitMeta.FirstOrDefault(m =>
+                        EntityMapWiring.UnitOrTableMatches(m.Unit.UnitDisplayName, unitName) ||
+                        EntityMapWiring.UnitOrTableMatches(m.Unit.DataBaseTableName, unitName));
+                    unit = meta?.Unit;
+                }
+                if (unit == null || meta == null)
                     return Fail("Unit not found. Pass unitId from find_fields or get_current_transaction_config.");
 
                 var fields = (unit.AppTransactionFieldList ?? Enumerable.Empty<AppTransactionFieldExDto>())
-                    .Select(SummarizeField)
+                    .Select(f => SummarizeField(f, meta))
                     .ToList();
                 return JsonConvert.SerializeObject(new
                 {
@@ -77,7 +85,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     unitId = unit.Id,
                     unitName = unit.UnitDisplayName,
                     table = unit.DataBaseTableName,
-                    fields
+                    unitKind = meta.UnitKind,
+                    fields,
+                    note = "sqlToken/messageToken match Query Builder & Message template buttons; formulaToken matches Command Formula keypad. Never invent [rootid]."
                 }, Formatting.Indented);
             }
             catch (Exception ex) { return Fail(ex.Message); }
@@ -85,7 +95,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
         [AgentTool("find_fields",
             "Search the open form(s) for fields by display name or DB column name across ALL units. " +
+            "Returns sqlToken/messageToken/formulaToken/isPrimaryKey (same as Query Builder token buttons). " +
             "Use this when the user asks which table/column a field is on — do NOT guess unitId. " +
+            "For 'current record' / root PK SQL WHERE clauses, prefer isPrimaryKey=true on unitKind=rootMaster (or rootPrimaryKeys from get_current_transaction_config). " +
             "Template multi-transaction hosts: results grouped by transaction then unit. " +
             "Single transaction: grouped by unit only. If multiple matches, list them all or ask_user.")]
         public string FindFields(
@@ -111,23 +123,15 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     var tx = AppTransactionBL.GetHierarchyTranscationFromDatabase(host.TransactionId);
                     if (tx == null) continue;
 
-                    var units = EntityMapWiring.FlattenUnits(
-                        tx.AppTransactionUnitList ?? Enumerable.Empty<AppTransactionUnitExDto>());
+                    var unitMeta = BuildUnitTokenMeta(tx);
                     var unitGroups = new List<object>();
 
-                    foreach (var u in units)
+                    foreach (var meta in unitMeta)
                     {
+                        var u = meta.Unit;
                         var hits = (u.AppTransactionFieldList ?? Enumerable.Empty<AppTransactionFieldExDto>())
                             .Where(f => FieldNameMatches(f, needle))
-                            .Select(f => new
-                            {
-                                fieldId = f.Id,
-                                name = f.DisplayName,
-                                dbName = f.DataBaseFieldName,
-                                controlType = f.ControlType,
-                                entityId = f.EntityId,
-                                isVisible = f.IsVisible
-                            })
+                            .Select(f => SummarizeField(f, meta))
                             .ToList();
                         if (hits.Count == 0) continue;
                         matchCount += hits.Count;
@@ -136,6 +140,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                             unitId = u.Id,
                             unitName = u.UnitDisplayName,
                             table = u.DataBaseTableName,
+                            unitKind = meta.UnitKind,
                             fields = hits
                         });
                     }
@@ -319,18 +324,23 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         [AgentTool("upsert_command",
-            "Create or update an Operation Task (Command Management) command. Preview → ask_user → confirmed=true → request_form_reload. " +
-            "actionType MUST be EmAppTransactionCommandType (NOT Link Target actionType 1=Edit/2=Create). " +
-            "Common: 50=Refresh, 49=Save, 42=Execute SQL Statement, 43=Execute Data Transfer, 59=Call API Operation, " +
-            "200=Composition, 54=Close Form Window, 60/61/62=Send Message, 205=Validate Required Fields. " +
-            "optionsJson: linkToUI, isShowOnTopMenu, isAutoExecuteOnFormOpen, actionFlowOrder, linkTargetId, linkedSearchId, actionAttribute{…}. " +
+            "Create or update a Data Model Operation. Preview → ask_user → confirmed=true → request_form_reload. " +
+            "actionType MUST be EmAppTransactionCommandType (NOT Link Target 1=Edit/2=Create). " +
+            "Common: 50=Refresh, 49=Save, 42=Execute SQL, 43=Data Transfer, 59=Call API, " +
+            "200=Composition, 54=Close Window, 60/61/62=Send Message, 57=Command Formula, 205=Validate Required. " +
+            "For actionType 42: put SQL in notificationMessage; resolve live tokens via find_fields/get_unit_fields/get_current_transaction_config " +
+            "(sqlToken like [TF_3499_OpportunityId]). UPDATE/DELETE must WHERE the current row — usually rootPrimaryKeys[].sqlToken. " +
+            "Never invent [rootid] or omit WHERE. Message templates use messageToken; Command Formula uses formulaToken. " +
+            "For actionType 200: create Private children first, then optionsJson.childActionList:[{commandId,sort},…]. " +
+            "Empty ChildActionList = empty Child Operations grid; do not put SQL on the composition parent. " +
+            "optionsJson: linkToUI, isShowOnTopMenu, isAutoExecuteOnFormOpen, actionFlowOrder, childActionList, actionAttribute{…}. " +
             "Does NOT execute the command.")]
         public string UpsertCommand(
             AgentToolContext context,
             [AgentParam("Existing command id for update; omit to create.")] int? commandId = null,
             [AgentParam("Command display name (required on create).")] string name = null,
             [AgentParam("EmAppTransactionCommandType int (required on create). Examples: Refresh=50, Save=49, ExecuteSQLStatement=42. NEVER use 1 (that is Link Target Edit, not a command type).")] int? actionType = null,
-            [AgentParam("Optional notification / SQL body depending on action type.")] string notificationMessage = null,
+            [AgentParam("SQL body for type 42, or message/notification body for messaging types. Use [TF_{fieldId}_{dbName}] from sqlToken/messageToken — never [rootid].")] string notificationMessage = null,
             [AgentParam("JSON of advanced options / ActionAttribute patches.")] string optionsJson = null,
             [AgentParam("Must be true to persist.")] bool? confirmed = null,
             [AgentParam("If true, never persist.")] bool? dryRun = null,
@@ -826,8 +836,14 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
         static object BuildConfigSnapshot(AppTransactionExDto tx)
         {
-            var units = EntityMapWiring.FlattenUnits(
-                tx.AppTransactionUnitList ?? Enumerable.Empty<AppTransactionUnitExDto>());
+            var unitMeta = BuildUnitTokenMeta(tx);
+            var rootPrimaryKeys = unitMeta
+                .Where(m => m.UnitKind == "rootMaster")
+                .SelectMany(m => (m.Unit.AppTransactionFieldList ?? Enumerable.Empty<AppTransactionFieldExDto>())
+                    .Where(f => f.IsPrimaryKey)
+                    .Select(f => SummarizeField(f, m)))
+                .ToList();
+
             return new
             {
                 ok = true,
@@ -836,30 +852,135 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 transactionId = tx.Id,
                 transactionName = tx.TransactionName,
                 saasApplicationId = tx.SaasApplicationId,
-                units = units.Select(u => new
+                rootPrimaryKeys,
+                tokenGuide = new
                 {
-                    unitId = u.Id,
-                    name = u.UnitDisplayName,
-                    table = u.DataBaseTableName,
-                    fieldCount = u.AppTransactionFieldList?.Count ?? 0,
-                    fields = (u.AppTransactionFieldList ?? Enumerable.Empty<AppTransactionFieldExDto>())
-                        .Select(SummarizeField).ToList()
+                    sqlAndMessage = "[TF_{fieldId}_{dbName}] — Query Builder Form Root / Grid buttons and Message template field buttons (sqlToken / messageToken).",
+                    formula = "[DbColumn_fieldId] on rootMaster; [Table.DbColumn_fieldId] on masterSibling/childGrid (formulaToken).",
+                    builtinsSql = new[] { "[CurrentUserId]", "[CurrentPartnerId]", "[CurrentUserName]", "GETDATE()", "GETUTCDATE()" },
+                    builtinsMessage = new[] { "[Today]", "[CurrentDatetime]", "[CurrentUserName]", "[CurrentUserId]", "[CurrentPartnerId]", "[CurrentPkValue]", "[ApplicationURL]" },
+                    builtinsFormula = new[] { "[CurrentUserId]", "[CurrentPartnerId]", "[CurrentUserIPAddress]" },
+                    neverInvent = new[] { "[rootid]", "[TF_ColumnOnly]", "bare column without TF_ prefix for runtime form values" }
+                },
+                units = unitMeta.Select(m => new
+                {
+                    unitId = m.Unit.Id,
+                    name = m.Unit.UnitDisplayName,
+                    table = m.Unit.DataBaseTableName,
+                    unitKind = m.UnitKind,
+                    parentTable = m.ParentTable,
+                    fieldCount = m.Unit.AppTransactionFieldList?.Count ?? 0,
+                    fields = (m.Unit.AppTransactionFieldList ?? Enumerable.Empty<AppTransactionFieldExDto>())
+                        .Select(f => SummarizeField(f, m)).ToList()
                 }).ToList()
             };
         }
 
-        static object SummarizeField(AppTransactionFieldExDto f) => new
+        sealed class FieldUnitTokenMeta
         {
-            fieldId = f.Id,
-            name = f.DisplayName,
-            dbName = f.DataBaseFieldName,
-            controlType = f.ControlType,
-            entityId = f.EntityId,
-            isVisible = f.IsVisible,
-            isReadonly = f.IsReadonly,
-            isAllowEmpty = f.IsAllowEmpty,
-            defaultValue = f.DefaultValue
-        };
+            public int UnitId;
+            public AppTransactionUnitExDto Unit;
+            public string UnitKind; // rootMaster | masterSibling | childGrid
+            public string ParentTable;
+        }
+
+        /// <summary>
+        /// Mirrors Command Query Builder / Message / Formula unit layering
+        /// (Form Root Level Fields vs Grid {unit} Columns vs sibling units).
+        /// </summary>
+        static List<FieldUnitTokenMeta> BuildUnitTokenMeta(AppTransactionExDto tx)
+        {
+            var list = new List<FieldUnitTokenMeta>();
+            foreach (var root in tx.AppTransactionUnitList ?? Enumerable.Empty<AppTransactionUnitExDto>())
+            {
+                if (root?.Id == null) continue;
+                var kind = root.IsMasterSiblingUnit == true ? "masterSibling" : "rootMaster";
+                list.Add(new FieldUnitTokenMeta
+                {
+                    UnitId = Convert.ToInt32(root.Id),
+                    Unit = root,
+                    UnitKind = kind,
+                    ParentTable = null
+                });
+                foreach (var child in root.Children ?? Enumerable.Empty<AppTransactionUnitExDto>())
+                {
+                    if (child?.Id == null) continue;
+                    list.Add(new FieldUnitTokenMeta
+                    {
+                        UnitId = Convert.ToInt32(child.Id),
+                        Unit = child,
+                        UnitKind = "childGrid",
+                        ParentTable = root.DataBaseTableName
+                    });
+                }
+            }
+            return list;
+        }
+
+        static string ResolveDbColumn(AppTransactionFieldExDto f) =>
+            !string.IsNullOrWhiteSpace(f?.DataBaseFieldName)
+                ? f.DataBaseFieldName
+                : (!string.IsNullOrWhiteSpace(f?.DisplayName) ? f.DisplayName : $"Field_{f?.Id}");
+
+        /// <summary>Same string Query Builder inserts for SQL / Message template field buttons.</summary>
+        static string BuildSqlOrMessageToken(AppTransactionFieldExDto f)
+        {
+            if (f?.Id == null) return null;
+            return $"[TF_{f.Id}_{ResolveDbColumn(f)}]";
+        }
+
+        /// <summary>Same string Command Formula keypad inserts (Angular FormulaDisplayName).</summary>
+        static string BuildFormulaToken(AppTransactionFieldExDto f, FieldUnitTokenMeta meta)
+        {
+            if (f?.Id == null) return null;
+            var db = ResolveDbColumn(f);
+            var isTemp = f.IsTempVariable == true;
+            var unitTable = meta?.Unit?.DataBaseTableName ?? meta?.Unit?.UnitDisplayName ?? "";
+            if (meta != null && (meta.UnitKind == "childGrid" || meta.UnitKind == "masterSibling"))
+            {
+                var prefix = string.IsNullOrWhiteSpace(unitTable) ? "" : unitTable + ".";
+                return isTemp ? $"[{prefix}{db}]" : $"[{prefix}{db}_{f.Id}]";
+            }
+            return isTemp ? $"[{db}]" : $"[{db}_{f.Id}]";
+        }
+
+        static string BuildShortLabel(AppTransactionFieldExDto f, FieldUnitTokenMeta meta)
+        {
+            var db = ResolveDbColumn(f);
+            if (meta == null) return db;
+            if (meta.UnitKind == "childGrid")
+                return $"Grid:{(meta.ParentTable ?? meta.Unit?.DataBaseTableName ?? "")}.{db}";
+            if (meta.UnitKind == "masterSibling")
+                return $"{meta.Unit?.DataBaseTableName ?? meta.Unit?.UnitDisplayName}.{db}";
+            return db;
+        }
+
+        static object SummarizeField(AppTransactionFieldExDto f, FieldUnitTokenMeta meta)
+        {
+            var sqlToken = BuildSqlOrMessageToken(f);
+            return new
+            {
+                fieldId = f.Id,
+                name = f.DisplayName,
+                dbName = f.DataBaseFieldName,
+                shortLabel = BuildShortLabel(f, meta),
+                controlType = f.ControlType,
+                entityId = f.EntityId,
+                isVisible = f.IsVisible,
+                isReadonly = f.IsReadonly,
+                isAllowEmpty = f.IsAllowEmpty,
+                isPrimaryKey = f.IsPrimaryKey,
+                isTempVariable = f.IsTempVariable == true,
+                unitId = meta?.UnitId,
+                unitKind = meta?.UnitKind,
+                // Query Builder / Message template field button value
+                sqlToken,
+                messageToken = sqlToken,
+                // Command Formula keypad value (different syntax)
+                formulaToken = BuildFormulaToken(f, meta),
+                defaultValue = f.DefaultValue
+            };
+        }
 
         sealed class HostTxnInfo
         {

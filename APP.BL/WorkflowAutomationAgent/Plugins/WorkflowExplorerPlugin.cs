@@ -92,7 +92,7 @@ namespace App.BL.WorkflowAutomationAgent.Plugins
                 case 84:  return "Call Google Sheets API";
                 case 85:  return "Call Netsuite API";
                 case 86:  return "Call External REST API";
-                case 200: return "Composition Command (Root)";
+                case 200: return "Composition Operation (Root)";
                 default:  return "ActionType " + actionType.Value;
             }
         }

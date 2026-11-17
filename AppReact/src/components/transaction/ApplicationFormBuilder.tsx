@@ -264,6 +264,7 @@ const ApplicationFormBuilder: React.FC<ApplicationFormBuilderProps> = ({
             transactionType={transactionType ?? null}
             initialSelectedCommandId={initialSelectedCommandId ?? null}
             onRefresh={childOnRefresh}
+            onConfigBridgeChange={setTxConfigBridge}
           />
         </div>
       );
