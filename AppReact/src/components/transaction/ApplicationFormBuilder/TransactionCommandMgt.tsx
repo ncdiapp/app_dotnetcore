@@ -93,7 +93,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
   const [rootLevelAllFieldLookUpList, setRootLevelAllFieldLookUpList] = useState<any[]>([]);
   const [taskTab, setTaskTab] = useState<'public' | 'private'>('public');
   const [helpOpen, setHelpOpen] = useState(false);
-  const [helpSection, setHelpSection] = useState<CommandHelpSectionId>('overview');
+  const [helpSection, setHelpSection] = useState<CommandHelpSectionId>('');
   const [helpAskPrompt, setHelpAskPrompt] = useState(() => buildCommandHelpAskPrompt(null));
 
   /** Per-command unsaved edits while switching list selection; cleared on Refresh / Save+reload. */
@@ -476,7 +476,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
             type="button"
             onClick={() => {
               setHelpAskPrompt(buildCommandHelpAskPrompt(currentEditAction?.ActionType));
-              setHelpSection('overview');
+              setHelpSection('');
               setHelpOpen(true);
             }}
             className={`w-7 h-7 inline-flex items-center justify-center rounded-full text-sm ${theme.button_default}`}
@@ -645,7 +645,10 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
           onCommandAdded={handleCommandAdded}
           onOpenTypeHelp={() => {
             setHelpAskPrompt(buildCommandHelpAskPrompt(currentEditAction?.ActionType));
-            setHelpSection('types');
+            setHelpSection(
+              getTransactionCommandActionTypeDisplay(currentEditAction?.ActionType) ||
+                'Configure by Operation Type'
+            );
             setHelpOpen(true);
           }}
         />

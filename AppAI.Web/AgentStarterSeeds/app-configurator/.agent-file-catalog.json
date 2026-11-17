@@ -2,11 +2,11 @@
   "files": [
     {
       "path": "commands-knowledge.md",
-      "description": "Agent/developer KB for Data Model Operation (short: Operation): ActionType ids, storage, runtime, upsert_command. Not the end-user Help. Read before upsert_command."
+      "description": "Deep Data Model Operation manual for agents: every Operation Type's editor controls/buttons/tokens, actionType ids, storage, upsert_command / optionsJson / notificationMessage. Read before configuring or upsert_command. Canonical: Document/KnowledgeBase/AgentKnowledge/app-configurator/commands-knowledge.md."
     },
     {
       "path": "commands-taxonomy-plan.md",
-      "description": "Data Model Operation classification / picker / KB feeding plan (design). Optional context."
+      "description": "Taxonomy / picker / KB feeding plan (design). Optional context."
     }
   ]
 }

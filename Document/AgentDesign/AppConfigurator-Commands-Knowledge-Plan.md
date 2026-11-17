@@ -49,9 +49,11 @@ This plan covers:
 | Artifact | Path | Language |
 |----------|------|----------|
 | **This design / plan (canonical)** | `Document/AgentDesign/AppConfigurator-Commands-Knowledge-Plan.md` | English |
-| **User Help (in-app ?)** | `Document/AgentDesign/AppConfigurator-Commands-UserHelp.md` → `AppReact/public/help/commands-user-help.md` | English |
-| **Agent KB** | `Document/AgentDesign/AppConfigurator-Commands-AgentKnowledge.md` → AgentStarter `commands-knowledge.md` | English |
-| **Agent file feed (seed)** | `AppAI.Web/AgentStarterSeeds/app-configurator/` → copy to `FileRepository/Company_{id}/AgentStarter/app-configurator/` | English |
+| **User Help (canonical)** | `Document/KnowledgeBase/UserGuide/DataModelOperation-Help.md` | English |
+| **User Help (runtime copy)** | `AppReact/public/help/commands-user-help.md` | English |
+| **Agent KB (canonical)** | `Document/KnowledgeBase/AgentKnowledge/app-configurator/commands-knowledge.md` | English |
+| **Agent KB (packaged seed)** | `AppAI.Web/AgentStarterSeeds/app-configurator/` → auto-sync to `FileRepository/Company_{id}/AgentStarter/app-configurator/` | English |
+| **Sync script** | `Document/KnowledgeBase/SyncRuntimeDocs.ps1` | — |
 | Chinese reading draft | **Not** under `Document/` | Human review only |
 
 ---
@@ -229,9 +231,11 @@ Before publishing user help or agent KB, **fully analyze frontend + backend** fo
 4. Composition / Message link **master → child** rules and defaults  
 5. Menu / security filtering as implemented  
 
-Delivered as two files:  
-- User: `AppConfigurator-Commands-UserHelp.md`  
-- Agent: `AppConfigurator-Commands-AgentKnowledge.md`
+Delivered under `Document/KnowledgeBase/` (plus runtime copies):  
+- User: `Document/KnowledgeBase/UserGuide/DataModelOperation-Help.md`  
+- Agent: `Document/KnowledgeBase/AgentKnowledge/app-configurator/commands-knowledge.md`  
+- Sync: `Document/KnowledgeBase/SyncRuntimeDocs.ps1`  
+- Config Agent open: `AgentStarterSeeds/app-configurator` → company `AgentStarter` → chat `source/` (`EnsureRoot`)
 
 ---
 
@@ -302,3 +306,7 @@ Configurator must **not** execute runtime commands (`run_command` stays Form Age
 | 2026-11-17 | P3–P6: `AppConfigurator-Commands-UserGuide.md`; `public/help/commands-user-guide.md` + `CommandHelpModal`; prefab Ask Configurator; `AgentStarterSeeds/app-configurator/`. **V085** (merged former V085+V086): upsert_command ActionType clarify + SystemPrompt commands index (`commands-knowledge.md`). |
 | 2026-11-17 | Product rename: UI/help/agent copy **Command / Operation Task → Data Model Operation** (short **Operation**). Tool names / code identifiers unchanged. |
 | 2026-11-17 | Split docs: **UserHelp** (no ActionType ids) for Help modal; **AgentKnowledge** for AgentStarter / `upsert_command`. |
+| 2026-11-17 | Deep manuals (~all types SQL-depth) + Help UI electronic manual (wide, left TOC + search). Agent KB includes controls/tokens for Configurator Q&A and upsert. |
+| 2026-11-17 | Auto-seed: `AgentStarterSeeds/{skillKey}` packaged with web app; `EnsureRoot` / Ensure Form|Search|AppBuilder chat syncs PreserveNewest into company AgentStarter (no per-tenant manual copy required after deploy). |
+| 2026-11-17 | Doc layout: User manuals → `Document/UserGuide/`; Agent KB → `Document/AgentKnowledge/{skillKey}/`; design stays `AgentDesign/`; runtime copies via `SyncRuntimeDocs.ps1`. |
+| 2026-11-17 | Wrap paired manuals under `Document/KnowledgeBase/` (`UserGuide` + `AgentKnowledge` + sync script); Config Agent still auto-copies from packaged `AgentStarterSeeds/{skillKey}`. |

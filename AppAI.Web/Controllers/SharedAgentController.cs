@@ -583,6 +583,13 @@ public class SharedAgentController : SecureBaseController
                 ValidationItemType.Error, "App Configurator Agent is not installed for this tenant."));
             return result;
         }
+        // Sync packaged AgentStarterSeeds → company AgentStarter, then fill chat source/ with any missing files.
+        var companyId = ai.CurrentWorkingCompanyId != null ? Convert.ToInt32(ai.CurrentWorkingCompanyId) : 0;
+        if (companyId > 0)
+        {
+            try { GenericAgentFileBL.EnsureRoot(key, companyId, FormConfigConstants.SkillKey); }
+            catch { /* seed sync must not block opening Configurator */ }
+        }
         result.Object = key;
         return result;
     }
@@ -614,6 +621,12 @@ public class SharedAgentController : SecureBaseController
                 ValidationItemType.Error, "Search View Config Agent is not installed for this tenant."));
             return result;
         }
+        var companyId = ai.CurrentWorkingCompanyId != null ? Convert.ToInt32(ai.CurrentWorkingCompanyId) : 0;
+        if (companyId > 0)
+        {
+            try { GenericAgentFileBL.EnsureRoot(key, companyId, SearchViewConfigConstants.SkillKey); }
+            catch { /* seed sync must not block opening Configurator */ }
+        }
         result.Object = key;
         return result;
     }
@@ -644,6 +657,12 @@ public class SharedAgentController : SecureBaseController
                 typeof(SharedAgentController), "EnsureAppBuilderEditorChat",
                 ValidationItemType.Error, "App Builder Agent is not installed for this tenant."));
             return result;
+        }
+        var companyId = ai.CurrentWorkingCompanyId != null ? Convert.ToInt32(ai.CurrentWorkingCompanyId) : 0;
+        if (companyId > 0)
+        {
+            try { GenericAgentFileBL.EnsureRoot(key, companyId, AppBuilderEditorConstants.SkillKey); }
+            catch { /* seed sync must not block opening editor agent */ }
         }
         result.Object = key;
         return result;

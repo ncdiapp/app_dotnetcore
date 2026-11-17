@@ -87,4 +87,12 @@
     </Content>
   </ItemGroup>
 
+  <!-- Packaged AgentStarter seeds — synced into FileRepository/Company_{id}/AgentStarter/{skillKey}/ on Ensure -->
+  <ItemGroup>
+    <Content Include="AgentStarterSeeds\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

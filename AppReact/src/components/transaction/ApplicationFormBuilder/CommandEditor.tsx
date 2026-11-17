@@ -32,6 +32,7 @@ import {
   resolveCommandTypeTaxonomyContext,
   type CommandTypeTaxonomyContext,
 } from '../transactionCommandTypeTaxonomy';
+import { getTransactionCommandActionTypeDisplay } from '../transactionCommandActionTypes';
 import { CommandHelpModal } from './CommandHelpModal';
 import { buildCommandHelpAskPrompt } from './commandHelpPrompts';
 import { useAlertConfirm } from '../../common/AlertConfirmProvider';
@@ -507,7 +508,10 @@ export function CommandEditor(props: {
     {!onOpenTypeHelp ? (
       <CommandHelpModal
         open={localHelpOpen}
-        initialSection="types"
+        initialSection={
+          getTransactionCommandActionTypeDisplay(currentEditAction?.ActionType) ||
+          'Configure by Operation Type'
+        }
         onClose={() => setLocalHelpOpen(false)}
         askPrompt={localAskPrompt}
         onAskConfigurator={async (prompt) => {

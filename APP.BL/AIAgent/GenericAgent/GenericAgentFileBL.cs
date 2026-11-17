@@ -11,13 +11,16 @@ namespace App.BL.AIAgent.GenericAgent
     /// <summary>
     /// Agent Management chat files under FileRepository/Company_{id}/AgentOutput/{sessionKey}/.
     /// Default Source Files (agent editor): FileRepository/Company_{id}/AgentStarter/{skillKey}/.
-    /// New Chat copies starter files into that chat source/ (not shared writable).
+    /// Packaged product seeds: {BaseDirectory}/AgentStarterSeeds/{skillKey}/ — synced into company AgentStarter
+    /// on Ensure (PreserveNewest). New/opened chats copy AgentStarter → chat source/ (missing files only unless overwrite).
     /// Independent of CursorCloudAgentWorkspaceBL (Cursor DI path).
     /// </summary>
     public static class GenericAgentFileBL
     {
         public const string FolderName = "AgentOutput";
         public const string StarterFolderName = "AgentStarter";
+        /// <summary>Shipped with the web app (csproj CopyToOutput). Not tenant FileRepository.</summary>
+        public const string PackagedStarterSeedsFolderName = "AgentStarterSeeds";
         /// <summary>
         /// Legacy constant kept for callers that still reference it. Tool-written AgentOutput
         /// (render HTML, exports, cache spill) is not size-capped — only LLM-facing previews are.
@@ -28,19 +31,52 @@ namespace App.BL.AIAgent.GenericAgent
         public static string EnsureRoot(string sessionKey, int companyId, string skillKey = null)
         {
             var root = Resolve(sessionKey, null, companyId);
-            var created = !Directory.Exists(root);
             Directory.CreateDirectory(root);
             Directory.CreateDirectory(Path.Combine(root, "source"));
             Directory.CreateDirectory(Path.Combine(root, "output"));
-            if (created && !string.IsNullOrWhiteSpace(skillKey))
+            // Always: refresh company AgentStarter from packaged seeds, then fill any missing chat source files.
+            // overwrite:false preserves per-chat edits; new seed files appear after deploy.
+            if (!string.IsNullOrWhiteSpace(skillKey))
                 CopyDefaultSourceToChat(skillKey, sessionKey, companyId, overwrite: false);
             return root;
         }
 
         public static string EnsureStarterRoot(string skillKey, int companyId)
         {
+            SyncPackagedStarterSeeds(skillKey, companyId);
             var root = ResolveStarter(skillKey, null, companyId);
             Directory.CreateDirectory(root);
+            return root;
+        }
+
+        /// <summary>
+        /// Copy packaged AgentStarterSeeds/{skillKey} → FileRepository/.../AgentStarter/{skillKey}.
+        /// Missing files always; existing files only when the packaged copy is newer (PreserveNewest).
+        /// Skips README.md and *.ps1 (ops docs/scripts).
+        /// </summary>
+        public static int SyncPackagedStarterSeeds(string skillKey, int companyId)
+        {
+            if (string.IsNullOrWhiteSpace(skillKey) || companyId <= 0)
+                return 0;
+
+            var packRoot = ResolvePackagedStarterSeedRoot(skillKey);
+            if (string.IsNullOrWhiteSpace(packRoot) || !Directory.Exists(packRoot))
+                return 0;
+
+            var destRoot = ResolveStarter(skillKey, null, companyId);
+            Directory.CreateDirectory(destRoot);
+            return CopyTreePreserveNewestFromPack(packRoot, destRoot);
+        }
+
+        /// <summary>BaseDirectory/AgentStarterSeeds/{skillKey}, or null if not present.</summary>
+        public static string ResolvePackagedStarterSeedRoot(string skillKey)
+        {
+            if (string.IsNullOrWhiteSpace(skillKey))
+                return null;
+            var root = Path.GetFullPath(Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory,
+                PackagedStarterSeedsFolderName,
+                SanitizeFolder(skillKey)));
             return root;
         }
 
@@ -335,6 +371,58 @@ namespace App.BL.AIAgent.GenericAgent
         private static bool ShouldSkipStarterFile(string fileName)
         {
             return string.Equals(fileName, WorkingConfigFileName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool ShouldSkipPackagedSeedFile(string fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName))
+                return true;
+            if (ShouldSkipStarterFile(fileName))
+                return true;
+            if (string.Equals(fileName, "README.md", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (fileName.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase))
+                return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Pack → company AgentStarter: create missing; overwrite when packaged LastWriteTimeUtc is newer.
+        /// </summary>
+        private static int CopyTreePreserveNewestFromPack(string sourceDir, string destDir)
+        {
+            var copied = 0;
+            if (!Directory.Exists(sourceDir))
+                return 0;
+
+            foreach (var path in Directory.GetFileSystemEntries(sourceDir))
+            {
+                var name = Path.GetFileName(path);
+                if (ShouldSkipPackagedSeedFile(name))
+                    continue;
+
+                var dest = Path.Combine(destDir, name);
+                if (Directory.Exists(path))
+                {
+                    Directory.CreateDirectory(dest);
+                    copied += CopyTreePreserveNewestFromPack(path, dest);
+                }
+                else if (File.Exists(path))
+                {
+                    var srcInfo = new FileInfo(path);
+                    if (File.Exists(dest))
+                    {
+                        var destInfo = new FileInfo(dest);
+                        if (destInfo.LastWriteTimeUtc >= srcInfo.LastWriteTimeUtc)
+                            continue;
+                    }
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? destDir);
+                    File.Copy(path, dest, overwrite: true);
+                    try { File.SetLastWriteTimeUtc(dest, srcInfo.LastWriteTimeUtc); } catch { /* ignore */ }
+                    copied++;
+                }
+            }
+            return copied;
         }
 
         public static string SanitizeFolder(string sessionKey)
