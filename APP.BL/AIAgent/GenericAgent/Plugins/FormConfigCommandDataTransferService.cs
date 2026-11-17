@@ -70,8 +70,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 if (tx == null) return Fail(err);
                 tx.CommandActionList ??= new List<AppProjectWorkFlowActionExDto>();
 
+                var isCreate = !(commandId.HasValue && commandId.Value > 0);
                 AppProjectWorkFlowActionExDto cmd;
-                if (commandId.HasValue && commandId.Value > 0)
+                if (!isCreate)
                 {
                     cmd = tx.CommandActionList.FirstOrDefault(c => c.Id != null && Convert.ToInt32(c.Id) == commandId.Value);
                     if (cmd == null) return Fail($"Command {commandId} not found.");
@@ -86,6 +87,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         .Select(c => c.ActionFlowOrder ?? 0)
                         .DefaultIfEmpty(0)
                         .Max();
+                    // Same shape as UI "Add Operation" → CreateOneTransactionCommand (do not invent a parallel save path).
                     cmd = new AppProjectWorkFlowActionExDto
                     {
                         CommandTransactionId = transactionId,
@@ -95,10 +97,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                             ChildActionList = new List<ChildTransactionCommandDto>(),
                             LinkToUI = true,
                             IsShowOnTopMenu = true,
-                            IsAutoExecuteOnFormOpen = false
+                            IsAutoExecuteOnFormOpen = false,
+                            IsLogCommandStartEnd = false,
+                            IsLogErrorDetails = true
                         }
                     };
-                    tx.CommandActionList.Add(cmd);
                 }
 
                 if (name != null) cmd.Name = name;
@@ -124,7 +127,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     catch (Exception ex) { return Fail("optionsJson invalid: " + ex.Message); }
                 }
 
-                var preview = new { action = cmd.IsNew ? "create" : "update", command = DetailCommand(cmd) };
+                var preview = new { action = isCreate ? "create" : "update", command = DetailCommand(cmd) };
                 var warnings = BuildCommandSqlTokenWarnings(cmd.ActionType, cmd.NotificationMessage);
                 warnings.AddRange(BuildCompositionChildWarnings(cmd));
                 if (dryRun == true || confirmed != true)
@@ -141,19 +144,37 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     });
                 }
 
-                var result = AppTransactionCommandBL.SaveOneTransactionCommandActionList(tx);
-                if (result?.ValidationResult?.HasErrors == true)
+                AppProjectWorkFlowActionExDto saved;
+                if (isCreate)
                 {
-                    var msgs = result.ValidationResult.Items?.Select(i => i.Message).Where(m => !string.IsNullOrWhiteSpace(m));
-                    return Fail(msgs != null && msgs.Any() ? string.Join("; ", msgs) : "Save command failed.");
+                    // UI Add Operation uses CreateOneTransactionCommand — keep Agent on that path only.
+                    // Do NOT push a new row through SaveOneTransactionCommandActionList (different insert path).
+                    var createResult = AppTransactionCommandBL.CreateOneTransactionCommand(cmd);
+                    if (createResult?.ValidationResult?.HasErrors == true)
+                    {
+                        var msgs = createResult.ValidationResult.Items?.Select(i => i.Message).Where(m => !string.IsNullOrWhiteSpace(m));
+                        return Fail(msgs != null && msgs.Any() ? string.Join("; ", msgs) : "Create command failed.");
+                    }
+                    saved = createResult?.Object;
+                    if (saved?.Id == null)
+                        return Fail("Create command failed: no id returned.");
+                }
+                else
+                {
+                    // UI Save uses full-list SaveOneTransactionCommandActionList — same for Agent updates.
+                    var result = AppTransactionCommandBL.SaveOneTransactionCommandActionList(tx);
+                    if (result?.ValidationResult?.HasErrors == true)
+                    {
+                        var msgs = result.ValidationResult.Items?.Select(i => i.Message).Where(m => !string.IsNullOrWhiteSpace(m));
+                        return Fail(msgs != null && msgs.Any() ? string.Join("; ", msgs) : "Save command failed.");
+                    }
+                    AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId);
+                    var fresh = AppTransactionBL.GetHierarchyTranscationFromDatabase(transactionId);
+                    saved = (fresh?.CommandActionList ?? new List<AppProjectWorkFlowActionExDto>())
+                        .FirstOrDefault(c => c.Id != null && Convert.ToInt32(c.Id) == commandId.Value);
                 }
 
                 AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId);
-                var fresh = AppTransactionBL.GetHierarchyTranscationFromDatabase(transactionId);
-                var saved = (fresh?.CommandActionList ?? new List<AppProjectWorkFlowActionExDto>())
-                    .FirstOrDefault(c =>
-                        (!cmd.IsNew && c.Id != null && Convert.ToInt32(c.Id) == commandId) ||
-                        (cmd.IsNew && string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)));
 
                 return Ok(new
                 {

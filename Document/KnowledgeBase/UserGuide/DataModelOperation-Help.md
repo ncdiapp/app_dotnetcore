@@ -1,5 +1,21 @@
 # Data Model Operation — Manual
 
+## How to read this manual
+
+Each operation type chapter follows the same order:
+
+1. **Purpose** — what it does  
+2. **When to use** — typical situations  
+3. **Step-by-step configuration** — how to set it up (do this first)  
+4. **Editor sections** — which collapsible panels appear  
+5. **How-to notes** — only for complex types (tokens, children, batch)  
+6. **Control reference** — field-by-field lookup  
+7. **Pitfalls** — common mistakes  
+
+Shared settings apply to every operation. Scenarios map goals to types.
+
+---
+
 ## 1. Introduction
 
 A **Data Model Operation** (short: **Operation**) is a configured action on a data model: save, refresh, run SQL, import files, send messages, call APIs, or run an ordered sequence.
@@ -24,65 +40,187 @@ A **Data Model Operation** (short: **Operation**) is a configured action on a da
 
 **Excluded from new picks:** UI: Open Form Creation/Edit Window, Create User (legacy rows may still exist).
 
+**Operation Type help:** Click the **?** next to **Operation Type** to open this manual at the current type.
+
 ---
 
 ## 2. Shared settings (every operation)
 
-(collapsible sections appear in the right-hand Operation editor when you select an operation in the left list)
+Collapsible sections appear in the right-hand Operation editor when you select an operation in the left list.
+
+### Typical setup (every new operation)
+
+1. **Add Operation** on the Public or Private tab.
+2. Set **Operation Name** and **Operation Type**.
+3. For a menu button: turn on **Is Public Operation** and **Visible on Form Menu**.
+4. Optionally set **Execute Condition Field**, **Flow Order**, result display, and **Notes**.
+5. Only enable **Is Batch Operation** when the action must run once per source row (see Batch Operation Setting).
+6. Save the data model and test from the form Operation menu before **Auto Execute On Form Open**.
+
+---
 
 ### 2.1 Operation Basic Options
 
-Expand **Operation Basic Options** at the top of the editor.
+#### Purpose
+Identify the operation, choose its type, and control when it appears or runs.
+
+#### When to use
+Every operation. Expand **Operation Basic Options** at the top of the editor.
+
+#### Step-by-step configuration
+1. Enter a short, user-facing **Operation Name** (for example *Submit Opportunity*).
+2. Open **Operation Type**, search or browse the tree, and select a leaf (or **Composition**).
+3. Set **Flow Order** if menu/list order matters.
+4. Optionally pick **Execute Condition Field** (root checkbox).
+5. For Public: set menu visibility and optional **Auto Execute On Form Open**.
+
+#### Editor sections
+**Operation Basic Options** (always available).
+
+#### Control reference
 
 | Control | What it does |
 |---------|----------------|
-| **Operation Name** | Label on the form Operation menu and in the operation list. Use short, user-facing names (for example, *Submit Opportunity*). |
-| **Operation Type** | Searchable tree picker. Shows the current type display name. Click to open the tree (UI Operations, Backend Operations with sub-groups, API/Plugin, Messaging, Composition). Type to filter. Arrow keys and Enter select a leaf; Esc closes. Selecting **Composition** sets type to Composition Operation immediately. Changing type shows or hides sections below; **old type-specific values are not cleared automatically**. |
-| **Category** | Read-only breadcrumb derived from Operation Type (for example, `Backend Operations / Form Data Processing`). Not saved. Hidden for Composition. |
-| **Flow Order** | Numeric sort order in the operation list and on the form menu (lower numbers appear first). Hidden in Workflow Automation embedded editor. |
-| **Execute Condition Field** | Optional root **checkbox** field. `No Condition (The task will execute)` = always run when invoked. If the checkbox is not true at run time, the menu item is disabled and the step is skipped (server composition/batch). |
-| **Is Public Operation (Link To UI)** | When on, the operation can appear on menus or auto-run. When off, treat as an internal (private) step. New operations inherit the **Public Operation** / **Private Operation** tab active when you click **Add Operation**. |
-| **Visible on Form Menu** | Shown only when Public. Adds the operation to the form Operation menu. |
-| **Visible on Calendar/Scheduler/Gantt View Menu** | Shown only when Public. Adds the operation to calendar/Gantt/scheduler view event menus. |
-| **Auto Execute On Form Open** | Shown only when Public. Runs once when the form opens (first matching public operation with this flag). |
+| **Operation Name** | Label on the form Operation menu and in the operation list. |
+| **Operation Type** | Searchable tree picker. Changing type shows or hides sections below; **old type-specific values are not cleared automatically**. |
+| **Category** | Read-only breadcrumb from Operation Type (for example `Backend Operations / Form Data Processing`). Not saved. Hidden for Composition. |
+| **Flow Order** | Numeric sort order in the list and on the form menu (lower first). Hidden in Workflow Automation embedded editor. |
+| **Execute Condition Field** | Optional root **checkbox**. `No Condition (The task will execute)` = always run. If false at run time, menu item is disabled and the step is skipped (server composition/batch). |
+| **Is Public Operation (Link To UI)** | On → menus / auto-run eligible. Off → internal (private) step. New rows inherit the active Public/Private tab. |
+| **Visible on Form Menu** | Public only. Adds the operation to the form Operation menu. |
+| **Visible on Calendar/Scheduler/Gantt View Menu** | Public only. Adds to calendar/Gantt/scheduler event menus. |
+| **Auto Execute On Form Open** | Public only. Runs once when the form opens (first matching public operation with this flag). |
 
-**Operation Type help:** Click the **?** next to **Operation Type** to open this manual scrolled to the current type.
+#### Pitfalls
+- Changing **Operation Type** leaves stale values in hidden sections—review them.
+- Only one public auto-on-open operation should be relied on; test before enabling.
+
+---
 
 ### 2.2 Operation Status Log
 
+#### Purpose
+Control workflow automation start/end and detail logging.
+
+#### When to use
+Debugging **workflow automation root** operations. Leave off for ordinary form operations.
+
+#### Step-by-step configuration
+1. Expand **Operation Status Log**.
+2. Choose **Log Operation Status** preference, or leave *Do Not Log*.
+
+#### Editor sections
+**Operation Status Log**.
+
+#### Control reference
+
 | Control | What it does |
 |---------|----------------|
-| **Log Operation Status** | Preference dropdown: *Log Result Details*, *Log Result Status Only*, or *Do Not Log*. Drives the two checkboxes below (not stored as its own column after save in all builds—reopen may show *Do Not Log* while flags remain). |
-| **Log Operation Start & End** | When enabled, workflow automation **root** operations write start/end tracking. Disabled when preference is *Do Not Log*. |
+| **Log Operation Status** | Preference: *Log Result Details*, *Log Result Status Only*, or *Do Not Log*. Drives the two checkboxes (reopen may show *Do Not Log* while flags remain). |
+| **Log Operation Start & End** | Workflow root start/end tracking. Disabled when preference is *Do Not Log*. |
 | **Log Operation Info & Error Details** | Extra error detail for workflow roots. Disabled when preference is *Do Not Log*. |
 
-For ordinary form operations, leave logging off unless you debug workflow automation.
+#### Pitfalls
+- Logging preference may not round-trip exactly after save; verify flags if debugging.
+
+---
 
 ### 2.3 Operation Execution Result Display
 
+#### Purpose
+Control how success/failure messages appear to the user.
+
+#### When to use
+Tune console detail while developing; shorten for production if needed.
+
+#### Step-by-step configuration
+1. Expand **Operation Execution Result Display**.
+2. Choose **Execute Result Console Display Type**.
+3. Optionally enable a custom success message.
+
+#### Editor sections
+**Operation Execution Result Display**.
+
+#### Control reference
+
 | Control | What it does |
 |---------|----------------|
-| **Execute Result Console Display Type** | *Show Result Details* = longer console text on failure/success paths. *Show Result Status Only* = brief status (failures may show only *Failed to Execute Operation.*). |
-| **Customized Execution Result Message → Enable** | When on, shows a text area for a custom **success** message after a successful run. |
-| Success message text area | Shown when Enable is on. Plain text shown to the user on success (token replacement at runtime when supported). |
+| **Execute Result Console Display Type** | *Show Result Details* = longer console text. *Show Result Status Only* = brief status (failures may show only *Failed to Execute Operation.*). |
+| **Customized Execution Result Message → Enable** | Shows a text area for a custom **success** message. |
+| Success message text area | Plain text on success (token replacement when supported). |
+
+#### Pitfalls
+- Custom message is for **success** only; failure text is not edited here.
+
+---
 
 ### 2.4 Batch Operation Setting
 
+#### Purpose
+Run the operation **once per row** from a DataSet, Search, or child grid instead of once for the open form.
+
+#### When to use
+SQL, API, or messaging must repeat for many records (search selection, dataset rows, each child line).
+
+#### Step-by-step configuration
+1. Expand **Batch Operation Setting** and turn on **Is Batch Operation**.
+2. Choose **Batch Operation Source Type**: **DataSet**, **Search**, or **Child Unit**.
+3. Pick the source (dataset / search / child unit) and the **record id** field for that source.
+4. For Search, map criteria if the **Batch Search Criteria Mapping** popup is needed.
+5. Confirm type-specific tokens (for example SQL) use the id that matches the batch key.
+6. Test with a small source set first.
+
+**Example:** Update every selected search row — set Source **Search**, pick the search and TransactionRId view field, then add **Execute SQL Statement** (or put this batch parent around a Composition that contains SQL).
+
+#### Editor sections
+**Batch Operation Setting**.
+
+#### How-to notes
+- Batch loops **per source row**; each iteration loads that record’s context.
+- Child Unit batch requires the child grid unit on the data model.
+- Prefer verifying ids in Query Builder / field pickers rather than hand-typed placeholders.
+
+#### Control reference
+
 | Control | What it does |
 |---------|----------------|
-| **Is Batch Operation** | When on, the operation runs **once per row** from a source instead of once for the single open form. |
-| **Batch Operation Source Type** | **DataSet**, **Search**, or **Child Unit** (child grid). |
-| **Batch Operation DataSet** | (DataSet) Pick a dataset; chevron opens dataset list popup; pencil opens dataset editor when a row is selected. |
-| **Batch Operation TransactionRId DataSet Field** | (DataSet) Column in the dataset that holds the record id for each iteration. |
-| **Batch Operation Search** | (Search) Pick a search view; chevron opens search list; optional **Batch Search Criteria Mapping** popup maps search criteria to form fields. |
+| **Is Batch Operation** | On → once per source row; off → single open form. |
+| **Batch Operation Source Type** | **DataSet**, **Search**, or **Child Unit**. |
+| **Batch Operation DataSet** | (DataSet) Dataset picker; chevron = list; pencil = editor. |
+| **Batch Operation TransactionRId DataSet Field** | (DataSet) Column holding the record id per iteration. |
+| **Batch Operation Search** | (Search) Search view picker; optional criteria mapping popup. |
 | **Batch Operation TransactionRId View Field** | (Search) View field that supplies the record id per row. |
-| **Batch Operation Source Unit** | (Child Unit) Child grid unit; loops child rows (must exist on the data model). |
+| **Batch Operation Source Unit** | (Child Unit) Child grid unit to loop. |
 
-Use batching when SQL, API, or messaging must repeat for many records (search result set, dataset export, each child line).
+#### Pitfalls
+- Wrong id field → updates the wrong rows or none.
+- Large search/dataset sources can run a long time; watch logging and timeouts.
+
+---
 
 ### 2.5 Notes
 
-Designer-only **Notes** textarea. Not shown to end users at runtime.
+#### Purpose
+Designer-only documentation for this operation.
+
+#### When to use
+Record intent for other designers (not shown to end users).
+
+#### Step-by-step configuration
+1. Expand **Notes**.
+2. Enter free text (keep concise).
+
+#### Editor sections
+**Notes**.
+
+#### Control reference
+
+| Control | What it does |
+|---------|----------------|
+| **Notes** | Designer-only textarea. |
+
+#### Pitfalls
+- Not visible at runtime to end users.
 
 ---
 
@@ -96,25 +234,23 @@ Close the current master-detail form window or tab from the client when the user
 #### When to use
 After a successful Composition (save + message) as the **last** user-visible step, or as a standalone menu item *Close*.
 
-#### Sections shown in the editor
-Shared sections only (§2). No type-specific collapsible section.
-
-#### Control reference
-| Control | What it does |
-|---------|----------------|
-| *(none beyond §2)* | Menu visibility and conditions use shared controls only. |
-
-#### Popups and special buttons
-None.
-
 #### Step-by-step configuration
 1. Add operation; set **Operation Type** → **UI: Close Form Window**.
 2. Set **Operation Name** (for example *Close*).
 3. Turn on **Is Public Operation** and **Visible on Form Menu** if it should appear on the form menu.
-4. Optionally place as the final child inside a **Composition** (see §9.1).
+4. Optionally place as the final child inside a **Composition** (see Composition Operation).
+
+#### Editor sections
+Shared settings only. No type-specific collapsible section.
+
+#### Control reference
+
+| Control | What it does |
+|---------|----------------|
+| *(none beyond Shared settings)* | Menu visibility and conditions use shared controls only. |
 
 #### Pitfalls
-- Running from the **server** inside Composition does not close the browser; the **client** must execute this type. As a composition child on the server path, it may not close the UI.
+- Running from the **server** inside Composition does not close the browser; the **client** must execute this type.
 - Requires the form to be open in the client.
 
 ---
@@ -127,27 +263,25 @@ Open a linked **search** view from the form (navigation in the client).
 #### When to use
 User clicks *View related list* or *Open search* from the form.
 
-#### Sections shown in the editor
-1. Shared sections (§2).
-2. **Navigate To Search** — field **Navigate To Search** (linked search picker).
-
-#### Control reference
-| Control | What it does |
-|---------|----------------|
-| **Navigate To Search** | Dropdown of searches linked on the root unit. Must be configured on the data model’s linked searches first. |
-
-#### Popups and special buttons
-None (dropdown only).
-
 #### Step-by-step configuration
 1. On the data model, link the target search to the root unit.
 2. Add operation → **UI: Navigate To Search**.
 3. Pick the search in **Navigate To Search**.
 4. Public + **Visible on Form Menu** as needed.
 
+#### Editor sections
+1. Shared settings.
+2. **Navigate To Search**.
+
+#### Control reference
+
+| Control | What it does |
+|---------|----------------|
+| **Navigate To Search** | Dropdown of searches linked on the root unit. Link searches on the data model first. |
+
 #### Pitfalls
 - If no linked searches exist, the dropdown is empty.
-- FE-only when run from the form menu; server composition does not open searches in the browser.
+- FE-only from the form menu; server composition does not open searches in the browser.
 
 ---
 
@@ -159,21 +293,19 @@ Print the current form using the client print flow.
 #### When to use
 User needs a printable view of the **saved** record.
 
-#### Sections shown in the editor
-Shared sections only.
-
-#### Control reference
-| Control | What it does |
-|---------|----------------|
-| *(none beyond §2)* | |
-
-#### Popups and special buttons
-None.
-
 #### Step-by-step configuration
 1. Add operation → **UI: Print**.
 2. Public + menu visibility.
 3. Ensure users save before print (unsaved new records may lack data).
+
+#### Editor sections
+Shared settings only.
+
+#### Control reference
+
+| Control | What it does |
+|---------|----------------|
+| *(none beyond Shared settings)* | |
 
 #### Pitfalls
 - Requires a persisted root primary key for a meaningful print.
@@ -188,26 +320,24 @@ Generate print output using a **message template** (server-side template render 
 #### When to use
 Formatted printouts driven by template design rather than the default form print.
 
-#### Sections shown in the editor
-1. Shared sections (§2).
-2. **Message Template** — **Message Template** picker.
-
-#### Control reference
-| Control | What it does |
-|---------|----------------|
-| **Message Template** | Select template; chevron opens template list popup; pencil opens template editor when selected. |
-
-#### Popups and special buttons
-Message template selector / editor popups (same pattern as other template pickers).
-
 #### Step-by-step configuration
 1. Create or pick a **Message Template** for this data model.
 2. Add operation → **UI: Print From Message Template**.
-3. Select **Message Template**.
+3. Select **Message Template** (chevron opens list; pencil opens editor).
 4. Public + menu if user-facing.
 
+#### Editor sections
+1. Shared settings.
+2. **Message Template**.
+
+#### Control reference
+
+| Control | What it does |
+|---------|----------------|
+| **Message Template** | Template picker; chevron = list popup; pencil = template editor. |
+
 #### Pitfalls
-- Menu execution posts to server; ensure template is valid for the transaction.
+- Menu execution posts to server; ensure the template is valid for the transaction.
 - Saved record recommended.
 
 ---
@@ -220,23 +350,21 @@ Start a **save as** / copy flow for the current form in the client.
 #### When to use
 User duplicates the record into a new form instance.
 
-#### Sections shown in the editor
-Shared sections only.
-
-#### Control reference
-| Control | What it does |
-|---------|----------------|
-| *(none beyond §2)* | |
-
-#### Popups and special buttons
-None on the operation editor (save-as UI opens at runtime).
-
 #### Step-by-step configuration
 1. Add operation → **UI: Save As**.
-2. Name and menu flags.
+2. Set name and menu flags.
+
+#### Editor sections
+Shared settings only.
+
+#### Control reference
+
+| Control | What it does |
+|---------|----------------|
+| *(none beyond Shared settings)* | Save-as UI opens at runtime, not in the operation editor. |
 
 #### Pitfalls
-- Client menu path; composition on server may use different open-form flags (see Execute Data Transfer **Need To Open Form**).
+- Client menu path; server composition may use different open-form flags (see Execute Data Transfer **Need To Open Form**).
 
 ---
 
@@ -250,20 +378,18 @@ Persist form data (same semantic as the form Save action).
 #### When to use
 Menu Save, or a Composition step before SQL/messaging that needs committed data.
 
-#### Sections shown in the editor
-Shared sections only.
-
-#### Control reference
-| Control | What it does |
-|---------|----------------|
-| *(none beyond §2)* | |
-
-#### Popups and special buttons
-None.
-
 #### Step-by-step configuration
 1. Add **Save**; set Public + **Visible on Form Menu** for a toolbar/menu save.
 2. Or add as **Private** child in Composition after Validate / formulas.
+
+#### Editor sections
+Shared settings only.
+
+#### Control reference
+
+| Control | What it does |
+|---------|----------------|
+| *(none beyond Shared settings)* | |
 
 #### Pitfalls
 - Form menu Save may run on client first; server Composition always persists via server save pipeline.
@@ -279,19 +405,17 @@ Reload form data from the server (discard unsaved client changes unless saved).
 #### When to use
 After external updates, or as last step when child operations changed data.
 
-#### Sections shown in the editor
-Shared sections only.
-
-#### Control reference
-| Control | What it does |
-|---------|----------------|
-| *(none beyond §2)* | |
-
-#### Popups and special buttons
-None.
-
 #### Step-by-step configuration
 1. Add **Refresh**; menu or composition child.
+
+#### Editor sections
+Shared settings only.
+
+#### Control reference
+
+| Control | What it does |
+|---------|----------------|
+| *(none beyond Shared settings)* | |
 
 #### Pitfalls
 - Users lose unsaved edits when refreshing.
@@ -306,20 +430,18 @@ Server-side check that required fields have values; fails the operation if not.
 #### When to use
 **Before Save** in Composition (*validate → save → notify*).
 
-#### Sections shown in the editor
-Shared sections only.
-
-#### Control reference
-| Control | What it does |
-|---------|----------------|
-| *(none beyond §2)* | |
-
-#### Popups and special buttons
-None.
-
 #### Step-by-step configuration
 1. Add Private **Validate Required Fields** as first child in Composition.
 2. Add **Save** after it.
+
+#### Editor sections
+Shared settings only.
+
+#### Control reference
+
+| Control | What it does |
+|---------|----------------|
+| *(none beyond Shared settings)* | |
 
 #### Pitfalls
 - Not in List Edit picker.
@@ -337,22 +459,20 @@ Run **all** data-model formulas (calculated fields) for the transaction; marks d
 #### When to use
 Before Save when formulas must be up to date, or after DataLoad.
 
-#### Sections shown in the editor
-1. Shared sections (§2).
-2. **Exec DataModel All Formula** — **Edit Data Model Formulas** shortcut.
-
-#### Control reference
-| Control | What it does |
-|---------|----------------|
-| **Edit Data Model Formulas** | **Click To Edit Formulas** opens Application Form Builder on **Transaction Formula Setting** for this data model (shortcut, not stored on the operation). |
-
-#### Popups and special buttons
-Application Form Builder popup for formula design.
-
 #### Step-by-step configuration
 1. Add **Exec DataModel All Formula**.
-2. Optional: click **Click To Edit Formulas** to maintain formulas.
+2. Optional: click **Click To Edit Formulas** to maintain formulas on the data model.
 3. In Composition: place before **Save** if calculated fields must persist.
+
+#### Editor sections
+1. Shared settings.
+2. **Exec DataModel All Formula**.
+
+#### Control reference
+
+| Control | What it does |
+|---------|----------------|
+| **Edit Data Model Formulas** / **Click To Edit Formulas** | Opens Application Form Builder on **Transaction Formula Setting** (shortcut; not stored on the operation). |
 
 #### Pitfalls
 - Without a following **Save**, users see updated values only in memory until they save manually.
@@ -367,22 +487,26 @@ Run one **assignment formula** (command-level expression) against the form.
 #### When to use
 Targeted calculation not covered by standard field formulas.
 
-#### Sections shown in the editor
-1. Shared sections (§2).
-2. **Execute Commnad Formula** — **Execute Formula** editor.
+#### Step-by-step configuration
+1. Add **Execute Command Formula** (UI section title may show *Execute Commnad Formula*).
+2. Enter a non-empty **Execute Formula** expression using form field tokens.
+3. Typically Private in Composition before **Save**.
+
+**Example:** Assign a root status field from other fields, then **Save** in the same Composition.
+
+#### Editor sections
+1. Shared settings.
+2. **Execute Commnad Formula** (UI spelling).
+
+#### How-to notes
+- Expression syntax matches the transaction formula family; use the editor’s field helpers when available.
+- Prefer this for one targeted assignment; use Exec DataModel All Formula when many field formulas must run.
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
-| **Execute Formula** | Expression editor; must be non-empty. Uses form field tokens in expression syntax (same family as transaction formulas). |
-
-#### Popups and special buttons
-Formula editor surface (embedded code/expression UI).
-
-#### Step-by-step configuration
-1. Add **Execute Command Formula**.
-2. Enter **Execute Formula**.
-3. Typically Private in Composition before Save.
+| **Execute Formula** | Expression editor; must be non-empty. |
 
 #### Pitfalls
 - Empty formula fails validation / runtime.
@@ -398,20 +522,18 @@ Execute all configured **DataLoad** rules on the data model template.
 #### When to use
 Populate defaults or lookup-driven values when the form opens or on button click.
 
-#### Sections shown in the editor
-Shared sections only (no extra fields).
-
-#### Control reference
-| Control | What it does |
-|---------|----------------|
-| *(none beyond §2)* | DataLoad rules are defined on the data model, not on this operation row. |
-
-#### Popups and special buttons
-None.
-
 #### Step-by-step configuration
 1. Configure DataLoad on the data model.
-2. Add **Execute All DataLoad** (often **Auto Execute On Form Open** with Public).
+2. Add **Execute All DataLoad** (often Public + **Auto Execute On Form Open**).
+
+#### Editor sections
+Shared settings only. DataLoad rules live on the data model, not on this operation row.
+
+#### Control reference
+
+| Control | What it does |
+|---------|----------------|
+| *(none beyond Shared settings)* | |
 
 #### Pitfalls
 - Does not save; follow with Save if values must persist immediately.
@@ -424,24 +546,22 @@ None.
 Generate matrix/grid data for a selected **matrix unit**.
 
 #### When to use
-Matrix-style child grids driven by matrix engine.
+Matrix-style child grids driven by the matrix engine.
 
-#### Sections shown in the editor
-1. Shared sections (§2).
-2. **Generate Matrix** — **Maxtri Unit** dropdown (UI label spelling).
+#### Step-by-step configuration
+1. Define the matrix unit on the data model.
+2. Add **Generate Matrix** and pick **Maxtri Unit** (UI spelling).
+3. Run from menu or composition.
+
+#### Editor sections
+1. Shared settings.
+2. **Generate Matrix**.
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
 | **Maxtri Unit** | Child unit configured as matrix unit on this data model. |
-
-#### Popups and special buttons
-None.
-
-#### Step-by-step configuration
-1. Define matrix unit on data model.
-2. Pick **Maxtri Unit**.
-3. Run from menu or composition.
 
 #### Pitfalls
 - Wrong unit → empty or incorrect matrix.
@@ -451,53 +571,14 @@ None.
 ### 5.5 Execute SQL Statement
 
 #### Purpose
-
 Run T-SQL against the application database using values from the open form (and optional batch/search context). Supports `UPDATE`, `INSERT`, `DELETE`, scalar `SELECT`, and scripts with `DECLARE`.
 
 #### When to use
-
 - Persist calculated values or status flags in tables outside the form’s normal save path.
 - Run set-based updates that reference form field values.
 - Read a single scalar from SQL and write it into a root form field.
 
-#### Sections shown in the editor
-
-1. Shared sections (§2).
-2. Collapsible **SQL Statement**.
-
-#### Assign Query Scalar Result To Root Field
-
-| Control | What it does |
-|---------|----------------|
-| **Assign Query Scalar Result To Root Field** | Dropdown of root fields. Use when SQL returns **one scalar** (for example `SELECT COUNT(*)` or one column). Choose `(None)` for statements that do not return a value to assign. |
-
-| Control | What it does |
-|---------|----------------|
-| **SQL Statement** | Monaco SQL editor on the main form. Tokens like `[TF_####_FieldName]` are replaced at run time. |
-
-#### Query Builder with Built-in Tokens
-
-Open via the **Query Builder with Built-in Tokens** button beside **SQL Statement**.
-
-| Control | What it does |
-|---------|----------------|
-| Left SQL editor | Same SQL as the main field; more space. Cursor position receives inserted tokens. |
-| **Query Design Tool** | Opens **Operation Query Builder** (metadata/query designer). Seeds from **current editor selection** if non-empty; otherwise full SQL in the popup. Built SQL is inserted at the selection when you confirm in the designer. |
-| **Apply & Close** | Writes popup SQL back to the operation and closes. **Always use this when finished.** |
-| **Close** (X) | Closes without applying popup edits (main editor keeps previous saved text). |
-| Full screen control | Expands the popup frame (EmbeddedLinkedPopupFrame). |
-| **Example: Use Token In Query** | Shows sample `UPDATE` / `DECLARE` patterns using field tokens and `[CurrentUserId]`. |
-| **Global Fields** | (When workflow/globals exist.) Click a field to insert its token at the cursor. |
-| **Form Root Level Fields** | Click a field label (for example **Title**, **OpportunityId**) to insert `[TF_####_Title]`, `[TF_####_OpportunityId]`, etc. `####` is the internal field id. |
-| **Grid {unit} Columns** | Child grid columns. Insert tokens for values tied to grid context when batch/child rules apply. |
-| **Built-in Token** | Click to insert: `[CurrentUserId]`, `[CurrentPartnerId]`, `[CurrentUserName]`, `GETDATE()`, `GETUTCDATE()`. |
-
-**Token click workflow:** Place the cursor in the SQL editor where the value belongs (for example after `WHERE OpportunityId = `), then click **OpportunityId** under **Form Root Level Fields**. The token `[TF_####_OpportunityId]` is inserted at the cursor.
-
-**Current form row:** To update/delete only the open record, use the **root primary key** field button (often the same name as the table id column, for example **OpportunityId**). That inserts the live root-id token — do not type a made-up placeholder.
-
 #### Step-by-step configuration
-
 1. **Add Operation** (Public or Private tab as appropriate).
 2. Set **Operation Name** and **Operation Type** → **Execute SQL Statement**.
 3. Configure **Execute Condition Field** / menu visibility if needed.
@@ -507,10 +588,58 @@ Open via the **Query Builder with Built-in Tokens** button beside **SQL Statemen
 7. Click **Apply & Close**.
 8. If SQL returns one value for the form, set **Assign Query Scalar Result To Root Field**.
 9. Save the data model; test from the form Operation menu (avoid **Auto Execute On Form Open** until verified).
-10. For many rows, enable **Is Batch Operation** and confirm tokens/ids match the batch key field.
+10. For many rows, enable **Is Batch Operation** (Batch Operation Setting) and confirm tokens/ids match the batch key field.
+
+**Example (update current form row):**
+
+```sql
+UPDATE Crm126_Opportunity
+SET Notes = Notes + 'ABC'
+WHERE OpportunityId = [TF_####_OpportunityId]
+```
+
+Insert `[TF_####_OpportunityId]` by clicking the root primary key field (for example **OpportunityId**) in the Query Builder—do not invent a placeholder.
+
+**Example (scalar into a root field):** `SELECT COUNT(*) …` and set **Assign Query Scalar Result To Root Field** to the target field.
+
+#### Editor sections
+1. Shared settings.
+2. Collapsible **SQL Statement**.
+
+#### How-to notes
+
+**Token click workflow:** Place the cursor in the SQL editor where the value belongs (for example after `WHERE OpportunityId = `), then click **OpportunityId** under **Form Root Level Fields**. The token `[TF_####_OpportunityId]` is inserted at the cursor (`####` is the live internal field id).
+
+**Current form row:** To update/delete only the open record, use the **root primary key** field button. That inserts the live root-id token — do not type a made-up placeholder such as `[rootid]`.
+
+**Apply vs Close:** Always finish with **Apply & Close**. Closing with **X** discards popup edits; the main editor keeps its previous text.
+
+#### Control reference
+
+**Main form (SQL Statement section)**
+
+| Control | What it does |
+|---------|----------------|
+| **SQL Statement** | Monaco SQL editor. Tokens like `[TF_####_FieldName]` are replaced at run time. |
+| **Assign Query Scalar Result To Root Field** | Dropdown of root fields. Use when SQL returns **one scalar**. Choose `(None)` when nothing should be assigned. |
+| **Query Builder with Built-in Tokens** | Opens the token/SQL popup beside **SQL Statement**. |
+
+**Query Builder popup**
+
+| Control | What it does |
+|---------|----------------|
+| Left SQL editor | Same SQL as the main field; more space. Cursor receives inserted tokens. |
+| **Query Design Tool** | Opens the metadata/query designer. Seeds from current selection if non-empty; otherwise full SQL. Confirming inserts built SQL at the selection. |
+| **Apply & Close** | Writes popup SQL back to the operation and closes. |
+| **Close** (X) | Closes without applying popup edits. |
+| Full screen | Expands the popup frame. |
+| **Example: Use Token In Query** | Sample `UPDATE` / `DECLARE` patterns using field tokens and `[CurrentUserId]`. |
+| **Global Fields** | (When workflow/globals exist.) Click to insert at cursor. |
+| **Form Root Level Fields** | Click a field label to insert its live `[TF_####_…]` token. |
+| **Grid {unit} Columns** | Child grid column tokens when batch/child context applies. |
+| **Built-in Token** | `[CurrentUserId]`, `[CurrentPartnerId]`, `[CurrentUserName]`, `GETDATE()`, `GETUTCDATE()`. |
 
 #### Pitfalls
-
 - Tokens must match live field ids; renaming fields can invalidate old tokens—re-click fields in the builder.
 - Batch SQL runs **per source row**; verify which record id is in scope.
 - Closing the builder with **X** without **Apply & Close** drops unsaved popup edits.
@@ -527,28 +656,26 @@ Run a configured **Data Transfer** mapping (same family as integration data tran
 #### When to use
 Push/pull data to another data model or external mapping after save or on button.
 
-#### Sections shown in the editor
-1. Shared sections (§2).
+#### Step-by-step configuration
+1. Create **Data Transfer Setting**.
+2. Add **Execute Data Transfer**; pick the setting.
+3. Optionally set target operation and **Need To Open Form**.
+
+#### Editor sections
+1. Shared settings.
 2. **Execute Data Transfer**.
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
 | **Data Transfer Setting** | Picker for transfer definition; chevron opens list; pencil opens editor. |
-| **Execute Task On Target Data Model** | Optional target **operation** on the destination data model to run after transfer. |
+| **Execute Task On Target Data Model** | Optional target **operation** on the destination data model after transfer. |
 | **Need To Open Form** | Checkbox — open target form after transfer when appropriate. |
-
-#### Popups and special buttons
-Data Transfer setting selector and editor popups.
-
-#### Step-by-step configuration
-1. Create **Data Transfer Setting**.
-2. Add **Execute Data Transfer**; pick setting.
-3. Optionally set target operation and **Need To Open Form**.
 
 #### Pitfalls
 - Available on **List Edit** models (short picker list).
-- Target operation must exist on destination data model.
+- Target operation must exist on the destination data model.
 
 ---
 
@@ -564,26 +691,24 @@ Import JSON file content into database table(s) using a **Json import setting**.
 #### When to use
 One known JSON file path per run.
 
-#### Sections shown
-§2 + **File / Import Settings** — import setting picker, **File Path** (with examples: local, http, ftp).
-
-#### Control reference
-| Control | What it does |
-|---------|----------------|
-| **Json Import Setting** | Named import map; Confirm Selection & Close in selector popup. |
-| **File Path** | Source file; tokens allowed; examples shown in UI. |
-
-#### Popups and special buttons
-Import setting management popup (*Please select an import setting, and then click "Confirm Selection & Close"*).
-
 #### Step-by-step configuration
 1. Create Json import setting in DB management.
-2. Add operation; pick setting and **File Path**.
+2. Add operation; pick **Json Import Setting** and **File Path**.
 3. Test with Private composition first.
+
+#### Editor sections
+Shared settings + **File / Import Settings**.
+
+#### Control reference
+
+| Control | What it does |
+|---------|----------------|
+| **Json Import Setting** | Named import map; use Confirm Selection & Close in the selector popup. |
+| **File Path** | Source file; tokens allowed; examples shown in UI (local, http, ftp). |
 
 #### Pitfalls
 - Wrong setting → wrong table mapping.
-- Path must be reachable from server.
+- Path must be reachable from the server.
 
 ---
 
@@ -595,23 +720,23 @@ Import one Excel file via **Excel import setting**.
 #### When to use
 Single `.xlsx` / similar path per run.
 
-#### Sections shown
-§2 + **File / Import Settings**.
+#### Step-by-step configuration
+1. Create Excel import setting.
+2. Add operation; pick **Excel Import Setting** and **File Path**.
+3. Test with a small file first.
+
+#### Editor sections
+Shared settings + **File / Import Settings**.
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
 | **Excel Import Setting** | Import map picker. |
-| **File Path** | Excel file path (folder or file URL patterns per examples). |
-
-#### Popups and special buttons
-Excel import selector / editor.
-
-#### Step-by-step configuration
-Same pattern as §6.1 with Excel setting.
+| **File Path** | Excel file path (folder or file URL patterns per UI examples). |
 
 #### Pitfalls
-- File lock if Excel open on server path.
+- File lock if Excel has the file open on the server path.
 
 ---
 
@@ -621,22 +746,20 @@ Same pattern as §6.1 with Excel setting.
 Import using a pre-built **Rest-Api Import Setting**.
 
 #### When to use
-REST pull configured in integration module.
-
-#### Sections shown
-§2 + **File / Import Settings** — Rest-Api setting picker only (no file path).
-
-#### Control reference
-| Control | What it does |
-|---------|----------------|
-| **Rest-Api Import Setting** | Picker + editor shortcuts. |
-
-#### Popups and special buttons
-Rest-Api import management popup.
+REST pull configured in the integration module.
 
 #### Step-by-step configuration
 1. Configure Rest-Api import.
-2. Pick setting on operation.
+2. Pick **Rest-Api Import Setting** on the operation.
+
+#### Editor sections
+Shared settings + **File / Import Settings** (setting picker only; no file path).
+
+#### Control reference
+
+| Control | What it does |
+|---------|----------------|
+| **Rest-Api Import Setting** | Picker + editor shortcuts. |
 
 #### Pitfalls
 - Credentials and URL live in the import setting, not on the operation.
@@ -651,22 +774,21 @@ Import/copy using **DB-To-DB Import Setting**.
 #### When to use
 Server-side DB pipeline already defined.
 
-#### Sections shown
-§2 + **File / Import Settings**.
+#### Step-by-step configuration
+1. Pick **DB-To-DB Import Setting**.
+2. Run from menu or composition.
+
+#### Editor sections
+Shared settings + **File / Import Settings**.
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
 | **DB-To-DB Import Setting** | Picker. |
 
-#### Popups and special buttons
-DB-To-DB management / editor.
-
-#### Step-by-step configuration
-Pick setting; run from menu or composition.
-
 #### Pitfalls
-- Connection errors surface at runtime in execution result.
+- Connection errors surface at runtime in the execution result.
 
 ---
 
@@ -678,20 +800,18 @@ Import **many** JSON files under a folder (and subfolders); file names must matc
 #### When to use
 Batch drop folder processing.
 
-#### Sections shown
-§2 + **File / Import Settings** — **File Path** = root folder.
+#### Step-by-step configuration
+1. Ensure one import setting per file naming pattern.
+2. Set **File Path** to the root folder; test a small folder first.
+
+#### Editor sections
+Shared settings + **File / Import Settings** (**File Path** = root folder).
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
 | **File Path** | Root folder (example `c:\MyJsonFileFolder\`). |
-
-#### Popups and special buttons
-None beyond path entry.
-
-#### Step-by-step configuration
-1. Ensure one import setting per file naming pattern.
-2. Set folder path; test small folder first.
 
 #### Pitfalls
 - Unmatched file names are skipped or error depending on server rules.
@@ -701,21 +821,23 @@ None beyond path entry.
 ### 6.6 Multi Excel files in folder
 
 #### Purpose
-Same as §6.5 for Excel files in a folder tree.
+Same as Multi Json files in folder for Excel files in a folder tree.
 
-#### Sections shown
-§2 + **File Path** folder.
+#### When to use
+Batch Excel drop folder processing.
+
+#### Step-by-step configuration
+1. Set **File Path** to the folder root.
+2. Verify import settings cover each file pattern.
+
+#### Editor sections
+Shared settings + **File / Import Settings**.
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
 | **File Path** | Root folder for Excel files. |
-
-#### Popups and special buttons
-None.
-
-#### Step-by-step configuration
-Set folder; verify settings cover each file pattern.
 
 #### Pitfalls
 - Large folders → long run; consider batch operation logging.
@@ -725,30 +847,29 @@ Set folder; verify settings cover each file pattern.
 ### 6.7 Download File To Server Folder
 
 #### Purpose
-Download/copy a remote or local source file to a **server destination** path (optional FTP credentials section).
+Download/copy a remote or local source file to a **server destination** path (optional FTP credentials).
 
 #### When to use
 Pull attachment or feed file onto app server disk.
 
-#### Sections shown
-§2 + **File / Import Settings** — source **File Path**, **Distination File Path**, FTP fields when applicable.
+#### Step-by-step configuration
+1. Set source **File Path** and **Distination File Path** (UI spelling).
+2. Enter FTP credentials when the path requires them.
+3. Run with service account permissions in mind.
+
+#### Editor sections
+Shared settings + **File / Import Settings**.
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
 | **File Path** | Source (http, ftp, local). |
 | **Distination File Path** | Server folder or full target path (UI spelling *Distination*). |
 | FTP user/password | Shown when path requires FTP auth. |
 
-#### Popups and special buttons
-FTP/path helper section.
-
-#### Step-by-step configuration
-1. Set source and destination paths (see in-editor examples).
-2. Run with service account permissions in mind.
-
 #### Pitfalls
-- Typo *Distination* in label; map mentally to destination.
+- Label spelling *Distination* means destination.
 - Overwrite behavior depends on server implementation.
 
 ---
@@ -761,20 +882,19 @@ Read XML from **File Path**, write JSON to **Distination File Path**.
 #### When to use
 Integration bridge files.
 
-#### Sections shown
-§2 + source/destination paths + examples (http, ftp, local).
+#### Step-by-step configuration
+1. Enter source `.xml` and destination `.json` (or folder) paths.
+2. Test with a small sample file.
+
+#### Editor sections
+Shared settings + **File / Import Settings**.
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
 | **File Path** | Source `.xml`. |
 | **Distination File Path** | Target `.json` or folder. |
-
-#### Popups and special buttons
-None.
-
-#### Step-by-step configuration
-Enter paths; test with small sample file.
 
 #### Pitfalls
 - Invalid XML fails the step.
@@ -784,25 +904,27 @@ Enter paths; test with small sample file.
 ### 6.9 Convert Json to Xml
 
 #### Purpose
-Inverse of §6.8 — JSON source to XML destination.
+Inverse of Convert Xml to Json — JSON source to XML destination.
 
-#### Sections shown
-§2 + paths.
+#### When to use
+Integration bridge files needing XML output.
+
+#### Step-by-step configuration
+1. Enter source `.json` and destination `.xml` paths.
+2. Test with a small sample file.
+
+#### Editor sections
+Shared settings + **File / Import Settings**.
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
 | **File Path** | Source `.json`. |
 | **Distination File Path** | Target `.xml`. |
 
-#### Popups and special buttons
-None.
-
-#### Step-by-step configuration
-Same as §6.8 with reversed formats.
-
 #### Pitfalls
-- Schema expectations on downstream consumer.
+- Schema expectations on the downstream consumer.
 
 ---
 
@@ -814,24 +936,23 @@ Same as §6.8 with reversed formats.
 Invoke configured **API Operation** / data transfer mapping with optional logging flags.
 
 #### When to use
-Call external REST/SOAP style integration defined in API Operation library.
+Call external REST/SOAP style integration defined in the API Operation library.
 
-#### Sections shown
-§2 + **Call API Operation**.
+#### Step-by-step configuration
+1. Define API Operation mapping.
+2. Add **Call API Operation**; pick **API Operation**.
+3. Tune **API Call Log Setting** checkboxes.
+4. Map path/query params in the embedded editor if shown.
+
+#### Editor sections
+Shared settings + **Call API Operation**.
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
 | **API Call Log Setting** | Checkboxes for what to log (request/response/detail per UI). |
 | **API Operation** | Primary mapping picker; opens embedded mapping editor when selected. |
-
-#### Popups and special buttons
-API Operation selector and embedded transfer/mapping editor.
-
-#### Step-by-step configuration
-1. Define API Operation mapping.
-2. Pick on operation; tune log checkboxes.
-3. Map path/query params in embedded editor if shown.
 
 #### Pitfalls
 - Wrong mapping id → wrong endpoint.
@@ -847,19 +968,18 @@ Call a named method on the **plugin** Web API bridge.
 #### When to use
 Custom plugin assemblies expose `WebApiMethodName`.
 
-#### Sections shown
-§2 + **Call Plugin Web Api** — **API Method** text.
+#### Step-by-step configuration
+1. Deploy the plugin on the server.
+2. Add **Call Plugin Web Api** and enter the exact **API Method** name.
+
+#### Editor sections
+Shared settings + **Call Plugin Web Api**.
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
 | **API Method** | Plugin method name string. |
-
-#### Popups and special buttons
-None.
-
-#### Step-by-step configuration
-Enter exact plugin method name; deploy plugin on server.
 
 #### Pitfalls
 - Method name mismatch → runtime error.
@@ -874,22 +994,21 @@ Invoke registered **external method** (.NET registration) with master-detail con
 #### When to use
 Advanced custom code registered in External Method Register.
 
-#### Sections shown
-§2 + **External Method MasterDetail** — method dropdown.
+#### Step-by-step configuration
+1. Register the method in the target environment.
+2. Add **External Method MasterDetail** and pick **External Method**.
+
+#### Editor sections
+Shared settings + **External Method MasterDetail**.
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
-| **External Method** | Pick from registered methods list (loaded from admin API). |
-
-#### Popups and special buttons
-None.
-
-#### Step-by-step configuration
-Register method; pick in dropdown.
+| **External Method** | Pick from registered methods (loaded from admin API). |
 
 #### Pitfalls
-- Assembly must be deployed and registered in target environment.
+- Assembly must be deployed and registered in the target environment.
 
 ---
 
@@ -899,27 +1018,26 @@ Register method; pick in dropdown.
 Start an external **executable** on the server with arguments.
 
 #### When to use
-Legacy EXE tools, command-line utilities (use with security caution).
+Legacy EXE tools or command-line utilities (use with security caution).
 
-#### Sections shown
-§2 + **File / Import Settings** — **File Path** (exe), **Arguments** (JSON/editor).
+#### Step-by-step configuration
+1. Ensure the exe is allowed on the server.
+2. Set **File Path** and **Arguments**.
+3. Test Private first.
+
+#### Editor sections
+Shared settings + **File / Import Settings**.
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
 | **File Path** | Full path to `.exe` (example `c:\FolderPath\filename.exe`). |
 | **Arguments** | Argument string / JSON per editor. |
 
-#### Popups and special buttons
-None.
-
-#### Step-by-step configuration
-1. Ensure exe allowed on server.
-2. Set path and arguments; test Private first.
-
 #### Pitfalls
 - Security: arbitrary exe execution.
-- Process may outlive operation unless server waits.
+- Process may outlive the operation unless the server waits.
 
 ---
 
@@ -927,31 +1045,43 @@ None.
 
 ### 8.1 Shared notification fields
 
-Messaging types show collapsible **Notification Message** (types 60–63).
+Messaging types (UserId, Email, Partner, SMS) show collapsible **Notification Message**.
 
 | Control | What it does |
 |---------|----------------|
 | **Use Rich Text Message Template** | Toggle rich template mode. |
 | **Notification Subject** | Subject line (email/partner/user). |
-| **Notification Message** | Body text or template body; supports field tokens where editor offers insert helpers. |
+| **Notification Message** | Body text or template body; supports field tokens where the editor offers insert helpers. |
 | **Message Template** | Optional template picker when using template mode. |
-| **Attach Form Files** | Attach all form files to message when enabled. |
+| **Attach Form Files** | Attach all form files to the message when enabled. |
+
+Configure subject/body here for every messaging type below; destination fields are type-specific.
+
+---
 
 ### 8.2 Message UserId
 
 #### Purpose
-Send in-app style message to user id taken from a form field.
+Send an in-app style message to a user id taken from a form field.
 
-#### Sections shown
-§2 + **Notification Message** + **Message To UserId Field**.
+#### When to use
+Notify an assigned owner or approver stored on the form.
+
+#### Step-by-step configuration
+1. Add **Message UserId**.
+2. Pick **Message To UserId Field**.
+3. Compose subject/body (Shared notification fields).
+4. Public menu or Composition child as needed.
+
+#### Editor sections
+Shared settings + **Notification Message** + destination field.
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
 | **Message To UserId Field** | Any field holding user id. |
-
-#### Step-by-step configuration
-Pick destination field; compose subject/body; Public or Composition child.
+| *(plus Shared notification fields)* | Subject, body, template, attachments. |
 
 #### Pitfalls
 - Invalid user id → send failure.
@@ -961,20 +1091,26 @@ Pick destination field; compose subject/body; Public or Composition child.
 ### 8.3 Email
 
 #### Purpose
-Email to address in **Email Address Field**; optional **Message Link Operations**.
+Email to the address in **Email Address Field**; optional **Message Link Operations**.
 
-#### Sections shown
-§2 + **Notification Message** + **Message Link Operations** grid.
+#### When to use
+Send email from the form, optionally with approval / action links.
+
+#### Step-by-step configuration
+1. Add **Email**; set **Email Address Field**.
+2. Compose subject/body (Shared notification fields).
+3. Optionally add Private children under **Message Link Operations** (see Message Link Operations).
+
+#### Editor sections
+Shared settings + **Notification Message** + **Message Link Operations** grid.
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
 | **Email Address Field** | Root/transaction field with email. |
-| **Message Link Operations** | Child operations embedded as links in email (see §8.6). |
-
-#### Step-by-step configuration
-1. Set email field and message content.
-2. Add Private children under **Message Link Operations** if recipients should run operations from the email.
+| **Message Link Operations** | Child operations embedded as links in email (see Message Link Operations). |
+| *(plus Shared notification fields)* | Subject, body, template, attachments. |
 
 #### Pitfalls
 - Links run later on recipient click, not at send time.
@@ -984,23 +1120,30 @@ Email to address in **Email Address Field**; optional **Message Link Operations*
 ### 8.4 Partner
 
 #### Purpose
-Message to **partner** from **Message To Partner Field**; optional **Aditional To Email Address** CC.
+Message to a **partner** from **Message To Partner Field**; optional **Aditional To Email Address** CC.
 
-#### Sections shown
-§2 + destination fields + optional **Aditional To Email Address** + **Message Link Operations**.
+#### When to use
+Partner-channel notification with optional extra email recipients and link operations.
+
+#### Step-by-step configuration
+1. Pick **Message To Partner Field**.
+2. Optional **Aditional To Email Address** (UI spelling).
+3. Compose notification (Shared notification fields); add Message Link children if needed (Message Link Operations).
+
+#### Editor sections
+Shared settings + destination fields + **Notification Message** + optional **Message Link Operations**.
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
 | **Message To Partner Field** | Partner id field. |
 | **Aditional To Email Address** | Extra email recipients (UI spelling *Aditional*). |
-| **Message Link Operations** | Same as Email. |
-
-#### Step-by-step configuration
-Pick partner field; optional CC; compose notification.
+| **Message Link Operations** | Same as Email (Message Link Operations). |
+| *(plus Shared notification fields)* | Subject, body, template, attachments. |
 
 #### Pitfalls
-- Partner must resolve to deliverable channel.
+- Partner must resolve to a deliverable channel.
 
 ---
 
@@ -1009,16 +1152,22 @@ Pick partner field; optional CC; compose notification.
 #### Purpose
 SMS to **Phone Number Field**; body primarily in **Notification Message**.
 
-#### Sections shown
-§2 + **Phone Number Field** + notification fields.
+#### When to use
+Short text alerts to a mobile number on the form.
+
+#### Step-by-step configuration
+1. Select **Phone Number Field**.
+2. Keep the SMS body concise in **Notification Message**.
+
+#### Editor sections
+Shared settings + **Phone Number Field** + notification fields.
 
 #### Control reference
+
 | Control | What it does |
 |---------|----------------|
 | **Phone Number Field** | Mobile number field. |
-
-#### Step-by-step configuration
-Select phone field; keep SMS body concise in **Notification Message**.
+| **Notification Message** | SMS body (keep short). |
 
 #### Pitfalls
 - SMS gateway configuration is environment-level.
@@ -1033,26 +1182,31 @@ Define **child operations** whose links are embedded in Email/Partner messages.
 #### When to use
 Approval links, “complete task” links.
 
-#### Sections shown
-Under Email (§8.3) or Partner (§8.4): **Message Link Operations** grid.
+#### Step-by-step configuration
+1. Configure parent Email or Partner.
+2. In **Message Link Operations**, add Private children (for example an Approve Composition).
+3. Send the message; the recipient clicks the link to execute the child pipeline.
+
+**Example:** Email → Message Link child **Composition** (Validate → Save → status SQL).
+
+#### Editor sections
+Under Email or Partner: **Message Link Operations** grid.
+
+#### How-to notes
+- Children should be **Private**.
+- Link execution happens on recipient click, not when the parent message is sent.
+- Edit a child via the grid’s row actions (**Child Command Editor** popup).
 
 #### Control reference
+
 | Column / control | What it does |
 |------------------|----------------|
 | Add child | Adds Private operations as link targets. |
 | **Is Batch Operation** (read-only column) | Shows if child is batch. |
 | Grid row actions | Edit child in popup editor. |
 
-#### Popups and special buttons
-**Child Command Editor** popup (same family as Composition children).
-
-#### Step-by-step configuration
-1. Configure parent Email/Partner operation.
-2. In **Message Link Operations**, add Private children (for example Approve Composition).
-3. Send message; recipient clicks link to execute child pipeline.
-
 #### Pitfalls
-- Skip/switch conditions on link children rarely used until link execution.
+- Skip/switch conditions on link children are rarely used until link execution.
 - Children should be Private.
 
 ---
@@ -1062,32 +1216,37 @@ Under Email (§8.3) or Partner (§8.4): **Message Link Operations** grid.
 ### 9.1 Composition Operation
 
 #### Purpose
-Run an ordered list of **Child Operations** with optional switch field, skip, continue-on-error, external data model children.
+Run an ordered list of **Child Operations** with optional switch field, skip, continue-on-error, and external data model children.
 
 #### When to use
 One menu item runs validate → formula → save → SQL → email → close.
 
-#### Sections shown
-§2 (Category hidden) + **Composition Operation**.
-
-#### Control reference
-| Control | What it does |
-|---------|----------------|
-| **Child Operations Switch Condition Field** | Root dropdown/list field; enables per-child **Child Task Switch Condition** values in grid. |
-| **Child Operations** grid | Columns: order (**Sort**), operation name, skip flags, continue on error, batch flag (read-only), switch condition, change-trigger fields, external data model, etc. |
-| **Add** dropdown | Add existing Private operation, new internal child, or external data model child. |
-
-#### Popups and special buttons
-- **Available Child Operations** selector.
-- **Child Command Editor** popup.
-- External **Application Form Builder** when editing external model child.
-
 #### Step-by-step configuration
-1. Set **Operation Type** → **Composition Operation** (or pick Composition in tree).
+1. Set **Operation Type** → **Composition Operation** (or pick Composition in the tree).
 2. Create Private children (Validate, Save, SQL, …) in the left list first.
 3. In **Child Operations**, add children in order; set **Sort**.
 4. Optional: set **Child Operations Switch Condition Field** and per-row switch values.
 5. Parent Composition is usually **Public** + menu; children **Private**.
+
+**Example order:** Validate Required Fields → Exec DataModel All Formula → Save → Execute SQL Statement → Email → UI: Close Form Window.
+
+#### Editor sections
+Shared settings (Category hidden) + **Composition Operation**.
+
+#### How-to notes
+- Prefer creating Private children in the left list, then attaching them to the grid—empty shells with no children do nothing useful.
+- **Add** can attach an existing Private operation, create a new internal child, or add an external data model child.
+- UI Close/Navigate as children behave differently on pure server workflow vs client menu (see pitfalls).
+
+#### Control reference
+
+| Control | What it does |
+|---------|----------------|
+| **Child Operations Switch Condition Field** | Root dropdown/list field; enables per-child **Child Task Switch Condition** values in the grid. |
+| **Child Operations** grid | Order (**Sort**), operation name, skip flags, continue on error, batch flag (read-only), switch condition, change-trigger fields, external data model, etc. |
+| **Add** dropdown | Existing Private operation, new internal child, or external data model child. |
+
+Popups: **Available Child Operations** selector; **Child Command Editor**; external **Application Form Builder** when editing an external model child.
 
 #### Pitfalls
 - UI Close/Navigate children do not run on pure server workflow the same as client menu.
@@ -1101,11 +1260,11 @@ One menu item runs validate → formula → save → SQL → email → close.
 | I want to… | Configure |
 |------------|-----------|
 | Menu button that saves | **Save**, Public, **Visible on Form Menu** |
-| Validate then save then email | **Composition** (Public) with Private children: Validate Required Fields → Save → Send Message Email |
+| Validate then save then email | **Composition** (Public) with Private children: Validate Required Fields → Save → Email |
 | SQL using OpportunityId in WHERE | **Execute SQL Statement** → Query Builder → click **OpportunityId** → **Apply & Close** |
 | Put SQL scalar into a field | **Assign Query Scalar Result To Root Field** + `SELECT` one column |
 | Run only if user checked Approved | **Execute Condition Field** = Approved checkbox |
-| Update every selected search row | **Is Batch Operation**, Source **Search**, key view field, then SQL or API child |
+| Update every selected search row | **Is Batch Operation**, Source **Search**, key view field, then SQL or API |
 | Close form after success | Last step: **UI: Close Form Window** (client menu/composition) |
 | Email with approval link | Email operation + **Message Link Operations** child Composition |
 | On form open: load defaults | Public **Execute All DataLoad** + **Auto Execute On Form Open** (only one auto-open recommended) |
@@ -1130,4 +1289,6 @@ One menu item runs validate → formula → save → SQL → email → close.
 
 | Date | Note |
 |------|------|
+| 2026-11-17 | Replaced § cross-references with plain section names (e.g. Shared settings) for Help readability. |
+| 2026-11-17 | Restructured chapters: Purpose → When to use → Step-by-step → Editor sections → How-to (complex) → Control reference → Pitfalls; Shared settings aligned; examples for Batch, SQL, Formula, Message Link, Composition. |
 | 2026-11-17 | Deep manual: shared settings + all taxonomy operation types. |
