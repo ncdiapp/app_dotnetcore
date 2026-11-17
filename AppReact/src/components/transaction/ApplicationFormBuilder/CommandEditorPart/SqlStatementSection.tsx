@@ -365,7 +365,7 @@ export function SqlStatementSection(props: {
 
       {isSqlQueryDesignOpen && (
         <EmbeddedLinkedPopupFrame
-          title="Command Query Builder"
+          title="Operation Query Builder"
           toolbarTrailing={
             <button type="button" className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`} onClick={() => setIsSqlQueryDesignOpen(false)}>
               Close

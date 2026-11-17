@@ -5305,7 +5305,7 @@ namespace App.BL
                     if (aValidationResult.HasErrors)
                     {
                         aValidationResult.Items.Clear();
-                        var item = new ValidationItem(typeof(AppMasterDetailDto), "App_MasterDetailFormData_Error", ValidationItemType.Error, "Failed to Execute Command.");
+                        var item = new ValidationItem(typeof(AppMasterDetailDto), "App_MasterDetailFormData_Error", ValidationItemType.Error, "Failed to Execute Operation.");
                         item.CommandId = (int)commandDto.Id;
                         item.TransactionId = (int)transactionExDto.Id;
                         item.TransactionRId = transactionRId;

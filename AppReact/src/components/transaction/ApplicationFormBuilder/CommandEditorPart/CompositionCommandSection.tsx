@@ -240,7 +240,7 @@ export function CompositionCommandSection(props: {
       onCommandAdded?.(commandExDto);
       addChildAction(commandExDto);
     } catch (e: any) {
-      showError(e?.message || 'Failed to create child command');
+      showError(e?.message || 'Failed to create child operation');
     } finally {
       dispatch(setIsNotBusy());
     }
@@ -337,7 +337,7 @@ export function CompositionCommandSection(props: {
             });
             setExternalFormBuilderOpen(true);
           } catch (e: any) {
-            showError(e?.message || 'Failed to open external command editor');
+            showError(e?.message || 'Failed to open external operation editor');
           }
         })();
         return;
@@ -385,7 +385,7 @@ export function CompositionCommandSection(props: {
   return (
     <>
       <div className="grid grid-cols-[14rem_1fr] items-center gap-2 py-1">
-        <label className={`text-xs ${theme.label}`}>Child Commands Switch Condition Field</label>
+        <label className={`text-xs ${theme.label}`}>Child Operations Switch Condition Field</label>
         <select
           className={`w-72 h-7 px-2 text-xs border ${theme.inputBox} focus:outline-none`}
           value={action?.ActionAttribute?.ChildCommandsSwitchConditionFieldId ?? ''}
@@ -405,7 +405,7 @@ export function CompositionCommandSection(props: {
       </div>
 
       <div className="flex items-center gap-2 flex-wrap mt-2 mb-1">
-        <div className={`text-xs font-semibold ${theme.title} shrink-0`}>Child Commands</div>
+        <div className={`text-xs font-semibold ${theme.title} shrink-0`}>Child Operations</div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative inline-block" ref={addExistingDropdownRef}>
             <button
@@ -470,7 +470,7 @@ export function CompositionCommandSection(props: {
                     <button
                       type="button"
                       className={`px-1.5 py-0.5 text-xs rounded-[4px] ${theme.button_default}`}
-                      title="Edit child command"
+                      title="Edit child operation"
                       onClick={() => openChildCommandEditor(item)}
                     >
                       <i className="fa-solid fa-pencil" aria-hidden />
@@ -489,7 +489,7 @@ export function CompositionCommandSection(props: {
               template={(cell: any) => <span>{getCommandDataModelDisplay(cell.item?.ExternalTransactionId)}</span>}
             />
           </FlexGridColumn>
-          <FlexGridColumn binding="IsBatchCommand" header="Is Batch Command" width={150} isReadOnly dataType="Boolean" />
+          <FlexGridColumn binding="IsBatchCommand" header="Is Batch Operation" width={150} isReadOnly dataType="Boolean" />
           {action?.ActionAttribute?.ChildCommandsSwitchConditionFieldId ? (
             <FlexGridColumn
               binding="PredictValue"
@@ -525,14 +525,14 @@ export function CompositionCommandSection(props: {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className={`text-md font-semibold ${theme.title}`}>Available Child Commands</span>
+              <span className={`text-md font-semibold ${theme.title}`}>Available Child Operations</span>
               <button type="button" onClick={() => setInternalSelectorOpen(false)} className="text-lg leading-none">
                 &times;
               </button>
             </div>
             <div className="flex-1 min-h-0 overflow-auto border border-gray-200 rounded mb-3">
               {availableChildActions.length === 0 ? (
-                <p className={`p-3 text-sm ${theme.label}`}>No other commands in this data model.</p>
+                <p className={`p-3 text-sm ${theme.label}`}>No other operations in this data model.</p>
               ) : (
                 <ul className="py-1">
                   {availableChildActions.map((cmd: any) => (

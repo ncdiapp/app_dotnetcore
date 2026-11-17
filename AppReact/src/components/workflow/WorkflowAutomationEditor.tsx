@@ -2,7 +2,7 @@
  * Workflow Automation Editor – migrated from AngularJS workflowAutomationEditorCtrl + WorkflowAutomationEditor.cshtml.
  * Route: workflow-automation-editor/:param (param = JSON with id, transactionId, isCreateNewItem, modelName, etc.)
  * Header: Workflow Setting Name, Description, Refresh, Save, Save As New Workflow, Add To App Menu, Windows Scheduler, Config Parameters, Close.
- * Left: Operation Tasks (tree grid). Right: Current Edit Operation Task (form for selected task).
+ * Left: Operations (tree grid). Right: Current Edit Operation (form for selected operation).
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -1509,7 +1509,7 @@ const WorkflowAutomationEditor: React.FC<WorkflowAutomationEditorProps> = ({ emb
         setFieldLookups(lookups);
         setCommandEditorHierarchy(extData);
       } catch (e: any) {
-        showError(e?.message || 'Failed to load external command data model');
+        showError(e?.message || 'Failed to load external operation data model');
         setCommandEditorHierarchy(currentTransaction);
       } finally {
         setCommandEditorLoading(false);
@@ -1693,7 +1693,7 @@ const WorkflowAutomationEditor: React.FC<WorkflowAutomationEditorProps> = ({ emb
       showValidationMessages(result.ValidationResult);
     }
     if (!result?.IsSuccessful) {
-      showError('Failed to save the external data model command. Workflow was not saved.');
+      showError('Failed to save the external data model operation. Workflow was not saved.');
       return false;
     }
     extHierarchy.isModified = false;
@@ -2174,7 +2174,7 @@ const WorkflowAutomationEditor: React.FC<WorkflowAutomationEditorProps> = ({ emb
     let trans = currentTransactionRef.current ?? currentTransaction;
     let parentRoot = resolveWorkflowParentRoot(trans, rootCommand, compositionCommandActionType);
     if (!trans?.CommandActionList?.length || !parentRoot) {
-      showError('Workflow root command is missing. Save the workflow or refresh the page.');
+      showError('Workflow root operation is missing. Save the workflow or refresh the page.');
       return;
     }
     const workflowId = await ensureWorkflowHasId();
@@ -2184,7 +2184,7 @@ const WorkflowAutomationEditor: React.FC<WorkflowAutomationEditorProps> = ({ emb
     trans = currentTransactionRef.current ?? currentTransaction;
     parentRoot = resolveWorkflowParentRoot(trans, rootCommand, compositionCommandActionType);
     if (!trans || !parentRoot) {
-      showError('Workflow root command is missing. Refresh the page and try again.');
+      showError('Workflow root operation is missing. Refresh the page and try again.');
       return;
     }
     setRootCommand(parentRoot);
@@ -2352,7 +2352,7 @@ const WorkflowAutomationEditor: React.FC<WorkflowAutomationEditorProps> = ({ emb
         ? resolveWorkflowParentRoot(trans, parentAction, compositionCommandActionType) ?? parentAction
         : resolveWorkflowParentRoot(trans, rootCommand, compositionCommandActionType);
       if (!trans?.CommandActionList?.length || !parent) {
-        showError('Workflow command is missing. Save the workflow or refresh the page.');
+        showError('Workflow operation is missing. Save the workflow or refresh the page.');
         return;
       }
       const workflowId = await ensureWorkflowHasId();
@@ -2364,7 +2364,7 @@ const WorkflowAutomationEditor: React.FC<WorkflowAutomationEditorProps> = ({ emb
         ? resolveWorkflowParentRoot(trans, parentAction, compositionCommandActionType) ?? parentAction
         : resolveWorkflowParentRoot(trans, rootCommand, compositionCommandActionType);
       if (!trans || !parent) {
-        showError('Workflow command is missing. Refresh the page and try again.');
+        showError('Workflow operation is missing. Refresh the page and try again.');
         return;
       }
       if (!parentAction || Number(parent?.Id) === Number(rootCommand?.Id)) {
@@ -2874,11 +2874,11 @@ const WorkflowAutomationEditor: React.FC<WorkflowAutomationEditorProps> = ({ emb
         />
       ) : null}
 
-      {/* Main: Operation Tasks (left) + Current Edit (center) + AI Panel (right, optional) */}
+      {/* Main: Operations (left) + Current Edit (center) + AI Panel (right, optional) */}
       <div className={`w-full h-1 flex-auto flex gap-1 px-3 py-3 overflow-hidden min-w-0 ${theme.mainContentSection}`}>
         <div className="w-[800px] min-w-[280px] shrink-0 flex flex-col border border-gray-200 rounded overflow-hidden">
           <div className={`flex items-center justify-between px-2 py-1.5 ${theme.mainContentSection}`}>
-            <span className={`text-sm font-semibold ${theme.title}`}>Operation Tasks</span>
+            <span className={`text-sm font-semibold ${theme.title}`}>Operations</span>
             <div className="flex items-center gap-1">
               <button type="button" onClick={collapseAll} className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}`}>
                 <i className="fa-solid fa-caret-right mr-1" aria-hidden /> Collapse All
@@ -2961,7 +2961,7 @@ const WorkflowAutomationEditor: React.FC<WorkflowAutomationEditorProps> = ({ emb
                         <button
                           type="button"
                           className={`w-7 h-6 flex items-center justify-center rounded-[4px] ${theme.button_default}`}
-                          title="Edit Command"
+                          title="Edit Operation"
                           onClick={(e) => {
                             e.stopPropagation();
                             openCommandTreeNodeEditor(item, true);
@@ -3015,7 +3015,7 @@ const WorkflowAutomationEditor: React.FC<WorkflowAutomationEditorProps> = ({ emb
                           />
                           Force Skip
                         </label>
-                        <label className="flex items-center gap-1" title="Continue To Run Next Command With Error">
+                        <label className="flex items-center gap-1" title="Continue To Run Next Operation With Error">
                           <input
                             type="checkbox"
                             checked={!!childDto.IsGoToNextCommandWithError}
@@ -3091,13 +3091,13 @@ const WorkflowAutomationEditor: React.FC<WorkflowAutomationEditorProps> = ({ emb
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className={`text-md font-semibold ${theme.title}`}>Available Child Commands</span>
+              <span className={`text-md font-semibold ${theme.title}`}>Available Child Operations</span>
               <button type="button" onClick={() => setInternalSelectorOpen(false)} className="text-lg leading-none">&times;</button>
             </div>
-            <p className="text-xs text-gray-500 mb-2">Select a command from the current workflow to add as a root task.</p>
+            <p className="text-xs text-gray-500 mb-2">Select an operation from the current workflow to add as a root operation.</p>
             <div className="h-1 min-h-0 flex-auto overflow-auto border border-gray-200 rounded mb-3">
               {availableChildActionList.length === 0 ? (
-                <p className="p-3 text-sm text-gray-500">No other commands in this workflow. Create a new root task or add from external data model.</p>
+                <p className="p-3 text-sm text-gray-500">No other operations in this workflow. Create a new root operation or add from external data model.</p>
               ) : (
                 <ul className="py-1">
                   {availableChildActionList.map((cmd: any) => (

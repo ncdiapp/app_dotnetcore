@@ -108,7 +108,7 @@ export function getTransactionCommandActionTypeDisplay(actionType: number | stri
   return DISPLAY_BY_ACTION_TYPE_ID.get(id) ?? String(id);
 }
 
-/** Application Form Builder Operation Task: dropdown source (Angular parity). */
+/** Application Form Builder Data Model Operation: dropdown source (Angular parity). */
 export function getApplicationFormBuilderCommandActionTypeOptions(
   transactionOrganizedType: number | null | undefined
 ): TransactionCommandActionTypeOption[] {

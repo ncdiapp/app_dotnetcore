@@ -32,6 +32,9 @@ import {
   resolveCommandTypeTaxonomyContext,
   type CommandTypeTaxonomyContext,
 } from '../transactionCommandTypeTaxonomy';
+import { CommandHelpModal } from './CommandHelpModal';
+import { buildCommandHelpAskPrompt } from './commandHelpPrompts';
+import { useAlertConfirm } from '../../common/AlertConfirmProvider';
 
 type OperationTypeOption = { Id: any; Display: string };
 
@@ -62,9 +65,12 @@ export function CommandEditor(props: {
   globalTransFieldLookUpList?: any[];
   /** Workflow external command: parent bumps after in-place action edits to refresh controlled fields */
   renderRevision?: number;
+  /** Open Data Model Operation help focused on Operation Types. */
+  onOpenTypeHelp?: () => void;
 }) {
   const { theme } = useTheme();
   const { showError } = useErrorMessage();
+  const { showAlert } = useAlertConfirm();
   const validationResultPrefEnum = useEnumValues('EmAppValidationResultPreference');
   const commandLoggingPrefEnum = useEnumValues('EmAppCommandLoggingPreference');
 
@@ -89,7 +95,17 @@ export function CommandEditor(props: {
     rootWorkflowTransactionData = null,
     globalTransFieldLookUpList = [],
     renderRevision: _renderRevision,
+    onOpenTypeHelp,
   } = props;
+
+  const [localHelpOpen, setLocalHelpOpen] = useState(false);
+  const openTypeHelp = useCallback(() => {
+    if (onOpenTypeHelp) {
+      onOpenTypeHelp();
+      return;
+    }
+    setLocalHelpOpen(true);
+  }, [onOpenTypeHelp]);
 
   const [collapsedBySectionId, setCollapsedBySectionId] = useState<Record<string, boolean>>(() => {
     try {
@@ -144,17 +160,20 @@ export function CommandEditor(props: {
       ? 'w-full max-w-full min-w-0 min-h-0 h-full'
       : 'w-1 min-w-[620px] flex-auto min-w-0 min-h-0 h-full';
 
+  const localAskPrompt = buildCommandHelpAskPrompt(currentEditAction?.ActionType);
+
   return (
+    <>
     <div className={`${shellWidthClass} flex flex-col border rounded overflow-hidden ${theme.mainContentSection}`}>
-      <div className={`text-xs font-semibold px-3 py-2 shrink-0 border-b ${theme.mainContentSection} ${theme.title}`}>Current Edit Operation Task</div>
+      <div className={`text-xs font-semibold px-3 py-2 shrink-0 border-b ${theme.mainContentSection} ${theme.title}`}>Current Edit Operation</div>
       <div className="min-h-0 flex-auto overflow-auto px-5 py-5">
-        {!currentEditAction && <p className={`text-sm ${theme.label}`}>Select a command from the list.</p>}
+        {!currentEditAction && <p className={`text-sm ${theme.label}`}>Select an operation from the list.</p>}
 
         {currentEditAction && (
           <div className="flex flex-col gap-3">
             <CollapsibleSection
               sectionId="basic"
-              title="Command Basic Options"
+              title="Operation Basic Options"
               collapsed={!!collapsedBySectionId['basic']}
               onToggle={toggleSection}
             >
@@ -166,12 +185,13 @@ export function CommandEditor(props: {
                 onMarkChange={onMarkChange}
                 onRefreshGridCell={onRefreshGridCell}
                 onFlowOrderChanged={onFlowOrderChanged}
+                onOpenTypeHelp={openTypeHelp}
               />
             </CollapsibleSection>
 
             <CollapsibleSection
               sectionId="statusLog"
-              title="Command Status Log"
+              title="Operation Status Log"
               collapsed={!!collapsedBySectionId['statusLog']}
               onToggle={toggleSection}
             >
@@ -180,7 +200,7 @@ export function CommandEditor(props: {
 
             <CollapsibleSection
               sectionId="executionResult"
-              title="Command Execution Result Display"
+              title="Operation Execution Result Display"
               collapsed={!!collapsedBySectionId['executionResult']}
               onToggle={toggleSection}
             >
@@ -193,7 +213,7 @@ export function CommandEditor(props: {
 
             <CollapsibleSection
               sectionId="batch"
-              title="Batch Command Setting"
+              title="Batch Operation Setting"
               collapsed={!!collapsedBySectionId['batch']}
               onToggle={toggleSection}
             >
@@ -371,7 +391,7 @@ export function CommandEditor(props: {
             {showMessageLinkCommands ? (
               <CollapsibleSection
                 sectionId="messageLinkCommands"
-                title="Message Link Commands"
+                title="Message Link Operations"
                 collapsed={!!collapsedBySectionId['messageLinkCommands']}
                 onToggle={toggleSection}
               >
@@ -484,6 +504,26 @@ export function CommandEditor(props: {
       </div>
 
     </div>
+    {!onOpenTypeHelp ? (
+      <CommandHelpModal
+        open={localHelpOpen}
+        initialSection="types"
+        onClose={() => setLocalHelpOpen(false)}
+        askPrompt={localAskPrompt}
+        onAskConfigurator={async (prompt) => {
+          try {
+            await navigator.clipboard.writeText(prompt);
+            await showAlert(
+              'Prefab prompt copied to the clipboard.\n\nPaste it into the Configurator chat.',
+              { title: 'Ask Configurator' }
+            );
+          } catch {
+            await showAlert(prompt, { title: 'Ask Configurator — copy this prompt' });
+          }
+        }}
+      />
+    ) : null}
+    </>
   );
 }
 

@@ -1,8 +1,8 @@
 # App Configurator — Commands Classification, Editor UI & Knowledge Plan
 
-**Status:** In progress — P0 plan doc landed; P1 taxonomy module + P2 tree picker wired in Command Editor. KB / Help / Agent feed still pending.  
+**Status:** P0–P6 landed (taxonomy, picker, KB, Help UI, AgentStarter seed + V085 upsert/SystemPrompt index). Optional P7 `list_command_types` not started.  
 **Date:** 2026-11-17  
-**Parent:** [AppConfigurator-AiAgent-Design.md](./AppConfigurator-AiAgent-Design.md) §7.1 E (Operation Task / Command CRUD)  
+**Parent:** [AppConfigurator-AiAgent-Design.md](./AppConfigurator-AiAgent-Design.md) §7.1 E (Data Model Operation CRUD)  
 **Related:** V084 command tools (`get_commands`, `get_command_detail`, `upsert_command`, `delete_command`); UI list [`transactionCommandActionTypes.ts`](../../AppReact/src/components/transaction/transactionCommandActionTypes.ts); runtime `AppTransactionCommandBL`  
 **Libraries:** `platform-form-config` (`app-configurator`)
 
@@ -10,7 +10,7 @@
 
 ## 1. Why
 
-Command Management (Operation Task) exposes a **flat, A–Z sorted** Operation Type dropdown. Users struggle to find the right type among dozens of peers. Configurator agents can CRUD commands via tools, but **lack a structured catalog and field-level knowledge** of what each type and shared setting means, where it is stored, and how runtime uses it.
+Data Model Operation (formerly Command / Operation Task) exposes a **flat, A–Z sorted** Operation Type dropdown. Users struggle to find the right type among dozens of peers. Configurator agents can CRUD operations via tools, but **lack a structured catalog and field-level knowledge** of what each type and shared setting means, where it is stored, and how runtime uses it.
 
 This plan covers:
 
@@ -49,8 +49,9 @@ This plan covers:
 | Artifact | Path | Language |
 |----------|------|----------|
 | **This design / plan (canonical)** | `Document/AgentDesign/AppConfigurator-Commands-Knowledge-Plan.md` | English |
-| **Later user + agent KB body** | `Document/AgentDesign/` (index + optional per-category splits) | English |
-| **Agent file feed** | Sync KB into `AgentStarter/app-configurator/` | English |
+| **User + agent KB body** | `Document/AgentDesign/AppConfigurator-Commands-UserGuide.md` | English |
+| **UI Help fetch** | `AppReact/public/help/commands-user-guide.md` | English |
+| **Agent file feed (seed)** | `AppAI.Web/AgentStarterSeeds/app-configurator/` → copy to `FileRepository/Company_{id}/AgentStarter/app-configurator/` | English |
 | Chinese reading draft | **Not** under `Document/` | Human review only |
 
 ---
@@ -238,7 +239,7 @@ Suggested KB file name (later):
 
 | Entry | Behavior |
 |-------|----------|
-| Command Management **Help** | Opens full Command user guide |
+| Data Model Operation **Help** | Opens full Operation user guide |
 | Operation Type row **?** | Opens section for current type (or Composition category) |
 | Prefab **Ask Configurator** | Posts a fixed prompt into Configurator chat (e.g. “Explain configuration for Execute SQL Statement”) so the agent answers from the KB |
 
@@ -297,4 +298,6 @@ Configurator must **not** execute runtime commands (`run_command` stays Form Age
 |------|------|
 | 2026-11-17 | Initial plan: taxonomy (UI / Data+L2 / API & Integration / Messaging / Composition), tree picker + breadcrumb, FE+BE KB commitment, AgentStarter + SystemPrompt feed. Exclude 51, 55, 70 from new picks. |
 | 2026-11-17 | P0 doc written. P1: `transactionCommandTypeTaxonomy.ts`. P2: `CommandOperationTypeTreePicker` in `CommandBasicOptions`; Command Mgt filters 51/55/70 via shared exclude set. |
-| 2026-11-17 | Bug: Configurator `upsert_command` agents used Link Target `actionType=1` (Edit) as command ActionType → UI showed Unknown type (1). Fixed tool copy + server allow-list validation + create defaults (LinkToUI, FlowOrder). Seed note: **V085 temporary** — expect further tool/prompt changes once Command help KB is fed to the agent. |
+| 2026-11-17 | Bug: Configurator `upsert_command` agents used Link Target `actionType=1` (Edit) as command ActionType → UI showed Unknown type (1). Fixed tool copy + server allow-list validation + create defaults (LinkToUI, FlowOrder). |
+| 2026-11-17 | P3–P6: `AppConfigurator-Commands-UserGuide.md`; `public/help/commands-user-guide.md` + `CommandHelpModal`; prefab Ask Configurator; `AgentStarterSeeds/app-configurator/`. **V085** (merged former V085+V086): upsert_command ActionType clarify + SystemPrompt commands index (`commands-knowledge.md`). |
+| 2026-11-17 | Product rename: UI/help/agent copy **Command / Operation Task → Data Model Operation** (short **Operation**). Tool names / code identifiers unchanged. |

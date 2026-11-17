@@ -375,7 +375,7 @@ const AddFieldToolbox: React.FC<AddFieldToolboxProps> = ({
                     onChange={(e) => setShowPrivateCommands(e.target.checked)}
                     className="w-3 h-3"
                   />
-                  <span>Show Private Commands</span>
+                  <span>Show Private Operations</span>
                 </label>
               </div>
               <div className="space-y-1">

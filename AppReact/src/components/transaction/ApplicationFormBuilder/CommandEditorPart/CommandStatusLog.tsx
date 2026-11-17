@@ -12,7 +12,7 @@ export function CommandStatusLog(props: {
   return (
     <>
       <div className="grid grid-cols-[14rem_1fr] items-center gap-2 py-1">
-        <label className={`text-xs ${theme.label}`}>Log Command Status</label>
+        <label className={`text-xs ${theme.label}`}>Log Operation Status</label>
         <select
           className={`w-72 h-7 px-2 text-xs border ${theme.inputBox} focus:outline-none`}
           value={String(Number((action.ActionAttribute as any)?.EmAppCommandLoggingPreference ?? 3))}
@@ -41,7 +41,7 @@ export function CommandStatusLog(props: {
       </div>
 
       <div className="grid grid-cols-[14rem_1fr] items-center gap-2 py-1">
-        <label className={`text-xs ${theme.label}`}>Log Command Start &amp; End</label>
+        <label className={`text-xs ${theme.label}`}>Log Operation Start &amp; End</label>
         <label className="flex items-center gap-2 text-xs">
           <input
             type="checkbox"
@@ -60,7 +60,7 @@ export function CommandStatusLog(props: {
       </div>
 
       <div className="grid grid-cols-[14rem_1fr] items-center gap-2 py-1">
-        <label className={`text-xs ${theme.label}`}>Log Command Info &amp; Error Details</label>
+        <label className={`text-xs ${theme.label}`}>Log Operation Info &amp; Error Details</label>
         <label className="flex items-center gap-2 text-xs">
           <input
             type="checkbox"

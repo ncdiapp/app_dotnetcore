@@ -60,7 +60,7 @@ export function ChildCommandEditorPopup(props: {
   return (
     <EmbeddedLinkedPopupFrame
       zIndex={10070}
-      title="Edit Command"
+      title="Edit Operation"
       frameInstanceKey={commandId}
       defaultWidth="1200px"
       defaultHeight="90vh"

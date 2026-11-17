@@ -47,7 +47,7 @@ interface ApplicationFormBuilderProps {
     layoutItemId?: string | number;
     isGrid?: boolean;
   } | null;
-  /** Operation Task editor: select this command on load (Angular initialSelectedCommandId). */
+  /** Data Model Operation editor: select this operation on load (Angular initialSelectedCommandId). */
   initialSelectedCommandId?: number | null;
 }
 
@@ -150,7 +150,7 @@ const ApplicationFormBuilder: React.FC<ApplicationFormBuilderProps> = ({
     { code: FormBuilderSection.Form, name: 'Editing Form Design', icon: 'fa-file-pen' },
     { code: FormBuilderSection.PrintForm, name: 'Printing Form Design', icon: 'fa-file-pdf' },
     { code: FormBuilderSection.TransactionGraphicEditor, name: 'Data Model Design', icon: 'fa-diagram-project' },
-    { code: FormBuilderSection.TransactionCommandActionSetting, name: 'Operation Task', icon: 'fa-play-circle' },
+    { code: FormBuilderSection.TransactionCommandActionSetting, name: 'Data Model Operation', icon: 'fa-play-circle' },
     { code: FormBuilderSection.TransactionFormulaSetting, name: 'Calculation Validation Flow', icon: 'fa-calculator' },
     { code: FormBuilderSection.TransactionDataLoadSetting, name: 'Data Load Settings', icon: 'fa-download' },
     { code: FormBuilderSection.TransactionConditionLockEditor, name: 'Conditional Lock or Hide', icon: 'fa-eye' },
@@ -163,7 +163,7 @@ const ApplicationFormBuilder: React.FC<ApplicationFormBuilderProps> = ({
   // When TransactionOrganizedType === 3 (List Edit), left menu shows only 3 items (matching AngularJS)
   const listEditSectionCodes = [
     FormBuilderSection.TransactionGraphicEditor,      // Data Model Design
-    FormBuilderSection.TransactionCommandActionSetting, // Operation Task
+    FormBuilderSection.TransactionCommandActionSetting, // Data Model Operation
     FormBuilderSection.TransactionDataTransferSetting,  // Internal Data Transfer Data Model
   ];
   const sections = useMemo(() => {
@@ -253,7 +253,7 @@ const ApplicationFormBuilder: React.FC<ApplicationFormBuilderProps> = ({
       );
     }
 
-    // Operation Task (Transaction Command)
+    // Data Model Operation (Transaction Command)
     if (currentSection === FormBuilderSection.TransactionCommandActionSetting) {
       return (
         <div className="h-full flex flex-col overflow-hidden">

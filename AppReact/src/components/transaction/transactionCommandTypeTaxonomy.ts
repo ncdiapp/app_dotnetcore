@@ -1,5 +1,5 @@
 /**
- * Operation Type taxonomy for Command Management / Editor.
+ * Operation Type taxonomy for Data Model Operation editor.
  * Categories are UI-only (derived from ActionType); not persisted.
  *
  * Spec: Document/AgentDesign/AppConfigurator-Commands-Knowledge-Plan.md

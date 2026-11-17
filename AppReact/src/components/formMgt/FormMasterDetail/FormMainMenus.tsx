@@ -848,7 +848,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
           });
         }
       } catch (e) {
-        showError('Command execution failed: ' + ((e as Error)?.message || String(e)));
+        showError('Operation execution failed: ' + ((e as Error)?.message || String(e)));
       } finally {
         if (!isWorkflowAutomation) {
           dispatch(setIsNotBusy());
@@ -1157,7 +1157,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
       if (needsConfirm && !confirmed) {
         return { ok: false, error: 'Ask the user to confirm, then call run_command with confirmed=true.' };
       }
-      if (!cmd && name !== 'save' && name !== 'refresh') return { ok: false, error: 'Command was not found.' };
+      if (!cmd && name !== 'save' && name !== 'refresh') return { ok: false, error: 'Operation was not found.' };
       handleCommandAction(Number(cmd?.Id || args?.commandId || 0), actionType);
       return { ok: true, started: true };
     };
@@ -1271,7 +1271,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
                   )}
                   {!hideEditCommands &&
                     renderTemplateAwareConfigAction(
-                      'Edit Commands',
+                      'Edit Operations',
                       'TransactionCommandActionSetting',
                       false
                     )}
@@ -1298,7 +1298,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
     );
   };
 
-  /** Edit Data Model / Design Layout / Edit Commands — when form-group has Main+Header, show hover submenu. */
+  /** Edit Data Model / Design Layout / Edit Operations — when form-group has Main+Header, show hover submenu. */
   function renderTemplateAwareConfigAction(
     label: string,
     defaultSectionCode: string,
@@ -2000,11 +2000,11 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
             type="button"
             ref={commandMenuButtonRef}
             className={`px-2 h-6 bg-gray-400 text-white rounded-[4px] text-xs hover:bg-gray-500 flex items-center gap-1`}
-            title="Command"
+            title="Operation"
             onClick={() => setCommandMenuOpen((p) => !p)}
           >
             <i className="fa fa-files-o" aria-hidden />
-            <span>Command</span>
+            <span>Operation</span>
             <i className="fa fa-caret-down" aria-hidden />
           </button>
 

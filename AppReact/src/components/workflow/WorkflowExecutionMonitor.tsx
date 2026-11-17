@@ -326,7 +326,7 @@ export default function WorkflowExecutionMonitor({ embedded }: WorkflowExecution
 
       <div className="w-full h-1 flex-auto flex gap-2 p-2 overflow-hidden min-h-0 min-w-0">
         <div className={`w-[60%] min-w-[300px] h-full min-h-0 flex flex-col border rounded overflow-hidden ${theme.mainContentSection}`}>
-          <div className={`px-2 py-1.5 text-sm font-semibold border-b shrink-0 ${theme.title}`}>Workflow Operation Tasks</div>
+          <div className={`px-2 py-1.5 text-sm font-semibold border-b shrink-0 ${theme.title}`}>Workflow Operations</div>
           <div className="h-1 w-full flex-auto min-h-0 pl-5 overflow-hidden">
             <FlexGrid
               ref={commandGridRef}

@@ -1,5 +1,5 @@
 /**
- * Operation Task (Transaction Command) — Application Form Builder section.
+ * Data Model Operation (Transaction Command) — Application Form Builder section.
  * Ported from AngularJS ApplicationFormBuilder → TransactionCommandActionSetting (master-detail / list-edit data models).
  * API: GetOneHierarchyTransaction, SaveOneTransactionCommandActionList, CreateOneTransactionCommand.
  * Workflow automation (BusinessScopeId === EmAppTransactionScopeUsage.WorkflowAutomation) uses the dedicated Workflow Automation Editor (tree + composition).
@@ -19,6 +19,8 @@ import { appTransactionService } from '../../../webapi/apptransactionsvc';
 import { useAlertConfirm } from '../../common/AlertConfirmProvider';
 import { useEnumValues } from '../../../hooks/useEnumDictionary';
 import { CommandEditor } from './CommandEditor';
+import { CommandHelpModal, type CommandHelpSectionId } from './CommandHelpModal';
+import { buildCommandHelpAskPrompt } from './commandHelpPrompts';
 import {
   clearCommandEditCache,
   removeCommandFromCache,
@@ -73,7 +75,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
   const dispatch = useDispatch();
   const { showError, showValidationMessages } = useErrorMessage();
   const { addTabAndNavigate } = useTabNavigation();
-  const { showConfirm } = useAlertConfirm();
+  const { showConfirm, showAlert } = useAlertConfirm();
   const emAppControlTypeEnum = useEnumValues('EmAppControlType');
   const CONTROL_TYPE_CHECKBOX = Number(emAppControlTypeEnum?.CheckBox ?? 13);
   const CONTROL_TYPE_DDL = Number(emAppControlTypeEnum?.DDL ?? 1);
@@ -90,6 +92,9 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
   const [transactionFieldLookUpList, setTransactionFieldLookUpList] = useState<any[]>([]);
   const [rootLevelAllFieldLookUpList, setRootLevelAllFieldLookUpList] = useState<any[]>([]);
   const [taskTab, setTaskTab] = useState<'public' | 'private'>('public');
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpSection, setHelpSection] = useState<CommandHelpSectionId>('overview');
+  const [helpAskPrompt, setHelpAskPrompt] = useState(() => buildCommandHelpAskPrompt(null));
 
   /** Per-command unsaved edits while switching list selection; cleared on Refresh / Save+reload. */
   const commandEditCacheRef = useRef<Map<number, any>>(new Map());
@@ -173,7 +178,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
       setEditTick((t) => t + 1);
       setDataReady(true);
     } catch (e: any) {
-      showError(e?.message || 'Failed to load operation tasks');
+      showError(e?.message || 'Failed to load operations');
       setDataReady(true);
     } finally {
       dispatch(setIsNotBusy());
@@ -292,7 +297,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
         if (onRefresh) onRefresh();
       }
     } catch (e: any) {
-      showError(e?.message || 'Failed to save operation tasks');
+      showError(e?.message || 'Failed to save operations');
     } finally {
       dispatch(setIsNotBusy());
     }
@@ -301,7 +306,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
   const handleAddCommand = useCallback(async () => {
     if (!dataReady) return;
     if (!hierarchy?.Id) {
-      showError('Save the data model first before adding operation tasks.');
+      showError('Save the data model first before adding operations.');
       return;
     }
     if (isModified) {
@@ -319,7 +324,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
       CommandTransactionId: hierarchy.Id,
       ActionGuid: appHelper.guid(),
       ActionFlowOrder: maxOrder + 1,
-      Name: 'NewOperationTask' + (maxOrder + 1),
+      Name: 'NewOperation' + (maxOrder + 1),
       NextTransactionId: null,
       ActionType: 42,
       NotificationDestinationUserIdtransactionFiledId: null,
@@ -353,7 +358,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
       await loadTransaction(Number(created.Id));
       if (onRefresh) onRefresh();
     } catch (e: any) {
-      showError(e?.message || 'Failed to create operation task');
+      showError(e?.message || 'Failed to create operation');
     } finally {
       dispatch(setIsNotBusy());
     }
@@ -376,11 +381,11 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
     if (selectedId == null) return;
     const item = currentEditAction;
     if (item?.ActionAttribute?.IsWorkflowRootCommand) {
-      showError('Cannot delete the workflow root command here. Use Workflow Automation Editor.');
+      showError('Cannot delete the workflow root operation here. Use Workflow Automation Editor.');
       return;
     }
-    const confirmed = await showConfirm('Delete this operation task?', {
-      title: 'Delete operation task',
+    const confirmed = await showConfirm('Delete this operation?', {
+      title: 'Delete operation',
       confirmLabel: 'Delete',
       cancelLabel: 'Cancel',
       confirmButtonStyle: 'bg-red-500 hover:bg-red-600 text-white',
@@ -436,7 +441,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
 
   if (transactionId == null) {
     return (
-      <div className={`p-4 text-sm ${theme.label}`}>Save the data model first, then configure operation tasks.</div>
+      <div className={`p-4 text-sm ${theme.label}`}>Save the data model first, then configure operations.</div>
     );
   }
 
@@ -465,7 +470,22 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
   return (
     <div className="h-full w-full flex flex-col overflow-hidden gap-1">
       <div className={`flex items-center justify-between px-3 py-2 shrink-0 ${theme.mainContentSection}`}>
-        <div className={`text-md font-semibold ${theme.title}`}>Operation Task</div>
+        <div className="flex items-center gap-2">
+          <div className={`text-md font-semibold ${theme.title}`}>Data Model Operation</div>
+          <button
+            type="button"
+            onClick={() => {
+              setHelpAskPrompt(buildCommandHelpAskPrompt(currentEditAction?.ActionType));
+              setHelpSection('overview');
+              setHelpOpen(true);
+            }}
+            className={`w-7 h-7 inline-flex items-center justify-center rounded-full text-sm ${theme.button_default}`}
+            title="Data Model Operation help"
+            aria-label="Data Model Operation help"
+          >
+            <i className="fa-solid fa-circle-question" aria-hidden />
+          </button>
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
@@ -504,7 +524,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
           <div
             className={`shrink-0 border-b ${theme.param.border_mainContentSection ? tw.border(theme.param.border_mainContentSection) : ''}`}
           >
-            <div className={`text-xs font-semibold px-2 py-1.5 ${theme.title}`}>Commands</div>
+            <div className={`text-xs font-semibold px-2 py-1.5 ${theme.title}`}>Data Model Operation</div>
             <div className="px-2 pb-2 flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
                 <button
@@ -512,14 +532,14 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
                   onClick={() => setTaskTab('public')}
                   className={`px-2.5 py-1 text-xs rounded-[4px] border ${taskTab === 'public' ? theme.button_default : theme.inputBox}`}
                 >
-                  Public Task
+                  Public Operation
                 </button>
                 <button
                   type="button"
                   onClick={() => setTaskTab('private')}
                   className={`px-2.5 py-1 text-xs rounded-[4px] border ${taskTab === 'private' ? theme.button_default : theme.inputBox}`}
                 >
-                  Private Task
+                  Private Operation
                 </button>
               </div>
               <div className="flex items-center gap-2">
@@ -529,7 +549,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
                   className={`px-2.5 py-1 text-xs rounded-[4px] ${theme.button_default}`}
                 >
                   <i className="fa-solid fa-plus mr-1" aria-hidden />
-                  Add Task
+                  Add Operation
                 </button>
                 <button
                   type="button"
@@ -550,7 +570,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
               const isPublic = taskTab === 'public';
               const filtered = all.filter((c: any) => !!c?.ActionAttribute?.LinkToUI === isPublic);
               if (!filtered.length) {
-                return <div className={`p-3 text-xs ${theme.label}`}>No tasks.</div>;
+                return <div className={`p-3 text-xs ${theme.label}`}>No operations.</div>;
               }
               const itemBorderCls = theme.param.border_mainContentSection ? tw.border(theme.param.border_mainContentSection) : '';
               const hoverBgCls = theme.param.bg_default_hover ? tw.hover.bg(theme.param.bg_default_hover) : '';
@@ -623,8 +643,31 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
           onFlowOrderChanged={() => applyCommandListToGrid(commandCV.sourceCollection as any[])}
           onSelectChildCommand={(commandId) => selectCommandById(commandId)}
           onCommandAdded={handleCommandAdded}
+          onOpenTypeHelp={() => {
+            setHelpAskPrompt(buildCommandHelpAskPrompt(currentEditAction?.ActionType));
+            setHelpSection('types');
+            setHelpOpen(true);
+          }}
         />
       </div>
+
+      <CommandHelpModal
+        open={helpOpen}
+        initialSection={helpSection}
+        onClose={() => setHelpOpen(false)}
+        askPrompt={helpAskPrompt}
+        onAskConfigurator={async (prompt) => {
+          try {
+            await navigator.clipboard.writeText(prompt);
+            await showAlert(
+              'Prefab prompt copied to the clipboard.\n\nPaste it into the Configurator chat (Form design → Configurator panel).',
+              { title: 'Ask Configurator' }
+            );
+          } catch {
+            await showAlert(prompt, { title: 'Ask Configurator — copy this prompt' });
+          }
+        }}
+      />
     </div>
   );
 };

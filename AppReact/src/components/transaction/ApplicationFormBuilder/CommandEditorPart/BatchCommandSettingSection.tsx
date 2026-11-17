@@ -222,7 +222,7 @@ export function BatchCommandSettingSection(props: {
     <>
       <div className="flex flex-col gap-2 min-w-0">
           <div className="grid grid-cols-[14rem_1fr] items-center gap-2 py-1">
-            <label className={`text-xs ${theme.label}`}>Is Batch Command</label>
+            <label className={`text-xs ${theme.label}`}>Is Batch Operation</label>
             <label className="flex items-center gap-2 text-xs">
               <input
                 type="checkbox"
@@ -243,7 +243,7 @@ export function BatchCommandSettingSection(props: {
           {action.ActionAttribute?.IsBatchCommand ? (
             <div className="flex flex-col gap-2">
               <div className="grid grid-cols-[14rem_1fr] items-center gap-2 py-1">
-                <label className={`text-xs ${theme.label}`}>Batch Command Source Type</label>
+                <label className={`text-xs ${theme.label}`}>Batch Operation Source Type</label>
                 <select
                   className={`w-72 h-7 px-2 text-xs border ${theme.inputBox} focus:outline-none`}
                   value={Number(action.ActionAttribute?.BatchCommandSourceFromType ?? 1)}
@@ -268,7 +268,7 @@ export function BatchCommandSettingSection(props: {
               {Number(action.ActionAttribute?.BatchCommandSourceFromType ?? 1) === Number(batchSourceFromEnum?.DataSet ?? 1) ? (
                 <>
                   <div className="grid grid-cols-[14rem_1fr] items-center gap-2 py-1">
-                    <label className={`text-xs ${theme.label}`}>Batch Command DataSet</label>
+                    <label className={`text-xs ${theme.label}`}>Batch Operation DataSet</label>
                     <div className="flex items-center gap-2 min-w-0">
                       <button
                         type="button"
@@ -309,7 +309,7 @@ export function BatchCommandSettingSection(props: {
 
                   {!!action.ActionAttribute?.BatchCommandDataSetId ? (
                     <div className="grid grid-cols-[14rem_1fr] items-center gap-2 py-1">
-                      <label className={`text-xs ${theme.label}`}>Batch Command TransactionRId DataSet Field</label>
+                      <label className={`text-xs ${theme.label}`}>Batch Operation TransactionRId DataSet Field</label>
                       <select
                         className={`w-72 h-7 px-2 text-xs border ${theme.inputBox} focus:outline-none`}
                         value={action.ActionAttribute?.BatchCommandSourceDataSetFieldName ?? ''}
@@ -338,7 +338,7 @@ export function BatchCommandSettingSection(props: {
               {Number(action.ActionAttribute?.BatchCommandSourceFromType ?? 1) === Number(batchSourceFromEnum?.Search ?? 2) ? (
                 <>
                   <div className="grid grid-cols-[14rem_1fr] items-center gap-2 py-1">
-                    <label className={`text-xs ${theme.label}`}>Batch Command Search</label>
+                    <label className={`text-xs ${theme.label}`}>Batch Operation Search</label>
                     <div className="w-72">
                       <div className="flex items-stretch w-full">
                         <div
@@ -403,7 +403,7 @@ export function BatchCommandSettingSection(props: {
 
                   {!!action.ActionAttribute?.BatchCommandSearchId ? (
                     <div className="grid grid-cols-[14rem_1fr] items-center gap-2 py-1">
-                      <label className={`text-xs ${theme.label}`}>Batch Command TransactionRId View Field</label>
+                      <label className={`text-xs ${theme.label}`}>Batch Operation TransactionRId View Field</label>
                       <select
                         className={`w-72 h-7 px-2 text-xs border ${theme.inputBox} focus:outline-none`}
                         value={action.ActionAttribute?.BatchCommandSourceViewFieldId ?? ''}
@@ -432,7 +432,7 @@ export function BatchCommandSettingSection(props: {
 
               {Number(action.ActionAttribute?.BatchCommandSourceFromType ?? 1) === Number(batchSourceFromEnum?.ChildUnit ?? 3) ? (
                 <div className="grid grid-cols-[14rem_1fr] items-center gap-2 py-1">
-                  <label className={`text-xs ${theme.label}`}>Batch Command Source Unit</label>
+                  <label className={`text-xs ${theme.label}`}>Batch Operation Source Unit</label>
                   <select
                     className={`w-72 h-7 px-2 text-xs border ${theme.inputBox} focus:outline-none`}
                     value={action.ActionAttribute?.ForeachLoopSourceUnitId ?? ''}

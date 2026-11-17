@@ -17,6 +17,8 @@ export function CommandBasicOptions(props: {
   onMarkChange: () => void;
   onRefreshGridCell: () => void;
   onFlowOrderChanged: () => void;
+  /** Opens Data Model Operation help (typically Per-type section). */
+  onOpenTypeHelp?: () => void;
 }) {
   const { theme } = useTheme();
   const {
@@ -27,6 +29,7 @@ export function CommandBasicOptions(props: {
     onMarkChange,
     onRefreshGridCell,
     onFlowOrderChanged,
+    onOpenTypeHelp,
   } = props;
   const hideFlowOrder = isWorkflowAutomationEditorContext(hostContext);
   const actionTypeNum = action?.ActionType != null ? Number(action.ActionType) : null;
@@ -36,7 +39,7 @@ export function CommandBasicOptions(props: {
   return (
     <>
       <div className="grid grid-cols-[14rem_1fr] items-center gap-2 py-1">
-        <label className={`text-xs ${theme.label}`}>Operation Task Name</label>
+        <label className={`text-xs ${theme.label}`}>Operation Name</label>
         <input
           type="text"
           autoComplete="off"
@@ -51,7 +54,20 @@ export function CommandBasicOptions(props: {
       </div>
 
       <div className="grid grid-cols-[14rem_1fr] items-start gap-2 py-1">
-        <label className={`text-xs ${theme.label} pt-1.5`}>Operation Type</label>
+        <div className="flex items-center gap-1.5 pt-1.5">
+          <label className={`text-xs ${theme.label}`}>Operation Type</label>
+          {onOpenTypeHelp ? (
+            <button
+              type="button"
+              onClick={onOpenTypeHelp}
+              className={`w-5 h-5 inline-flex items-center justify-center rounded-full text-[10px] ${theme.button_default}`}
+              title="Help: Operation Types"
+              aria-label="Help: Operation Types"
+            >
+              <i className="fa-solid fa-circle-question" aria-hidden />
+            </button>
+          ) : null}
+        </div>
         <CommandOperationTypeTreePicker
           actionType={actionTypeNum ?? 42}
           taxonomyContext={taxonomyContext}
@@ -130,7 +146,7 @@ export function CommandBasicOptions(props: {
               onRefreshGridCell();
             }}
           />
-          <span className={theme.label}>Is Public Task (Link To UI)</span>
+          <span className={theme.label}>Is Public Operation (Link To UI)</span>
         </label>
 
         {!!action.ActionAttribute?.LinkToUI && (

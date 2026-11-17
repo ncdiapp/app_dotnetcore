@@ -178,7 +178,7 @@ export function MessageLinkCommandsSection(props: {
       onCommandAdded?.(commandExDto);
       addChildAction(commandExDto);
     } catch (e: any) {
-      showError(e?.message || 'Failed to create child command');
+      showError(e?.message || 'Failed to create child operation');
     } finally {
       dispatch(setIsNotBusy());
     }
@@ -215,7 +215,7 @@ export function MessageLinkCommandsSection(props: {
   return (
     <>
       <div className="flex items-center gap-2 flex-wrap mt-2 mb-1">
-        <div className={`text-xs font-semibold ${theme.title} shrink-0`}>Message Link Commands</div>
+        <div className={`text-xs font-semibold ${theme.title} shrink-0`}>Message Link Operations</div>
         <div className="flex items-center gap-2 flex-wrap">
           <button type="button" onClick={() => addChildAction()} className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}>
             <i className="fa-solid fa-plus mr-1" aria-hidden /> Add Existing
@@ -250,7 +250,7 @@ export function MessageLinkCommandsSection(props: {
                     <button
                       type="button"
                       className={`px-1.5 py-0.5 text-xs rounded-[4px] ${theme.button_default}`}
-                      title="Edit child command"
+                      title="Edit child operation"
                       onClick={() => openChildCommandEditor(item)}
                     >
                       <i className="fa-solid fa-pencil" aria-hidden />
@@ -271,7 +271,7 @@ export function MessageLinkCommandsSection(props: {
           <FlexGridColumn header="Data Model" width={160} isReadOnly>
             <FlexGridCellTemplate cellType="Cell" template={() => <span>{dataModelLabel}</span>} />
           </FlexGridColumn>
-          <FlexGridColumn binding="IsBatchCommand" header="Is Batch Command" width={140} isReadOnly dataType="Boolean" />
+          <FlexGridColumn binding="IsBatchCommand" header="Is Batch Operation" width={140} isReadOnly dataType="Boolean" />
           <FlexGridColumn
             binding="ChangeTriggerRootLevelFieldId"
             header="Root Level Change Trigger Field"
