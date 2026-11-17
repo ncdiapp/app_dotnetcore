@@ -106,7 +106,7 @@ Leaf **Display** strings remain today’s UI names. Only grouping labels are new
 
 | L2 Id | L2 Label | Types |
 |-------|----------|--------|
-| `formPersistence` | **Form Persistence & Validation** | Save (49), Refresh (50), Validate Required Fields (205) |
+| `formPersistence` | **Form Refresh, Validate & Save** | Save (49), Refresh (50), Validate Required Fields (205) |
 | `formDataProcessing` | **Form Data Processing** | Exec DataModel All Formula (44), Execute Command Formula (57), Execute All DataLoad (45), Generate Matrix (46), Execute SQL Statement (42), Execute Data Transfer (43) |
 | `importFileGeneration` | **Import & File Generation** | Import Json / Excel / Rest / DB-to-DB (66, 67, 71, 72), Multi Json / Excel (76, 77), Download File (73), Convert Xml↔Json (81, 82) |
 

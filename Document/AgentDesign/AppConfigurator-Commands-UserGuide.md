@@ -34,7 +34,7 @@ This document is the authoritative help for **Data Model Operation** and for the
 | L1 | L2 (optional) | Types (Id) |
 |----|---------------|------------|
 | UI Operations | — | Close 54, Navigate To Search 53, Print 48, Print From Message Template 74, Save As 47 |
-| Backend Operations | Form Persistence & Validation | Save 49, Refresh 50, Validate Required Fields 205 |
+| Backend Operations | Form Refresh, Validate & Save | Save 49, Refresh 50, Validate Required Fields 205 |
 | Backend Operations | Form Data Processing | All Formula 44, Command Formula 57, All DataLoad 45, Generate Matrix 46, Execute SQL 42, Data Transfer 43 |
 | Backend Operations | Import & File Generation | Json/Excel/Rest/DB imports 66/67/71/72, Multi Json/Excel 76/77, Download 73, Xml↔Json 81/82 |
 | API, Plugin & External Process | — | Call API 59, Plugin Web Api 40, External Method 38, External Exe 68 |
@@ -182,7 +182,7 @@ List Edit server switch only implements **43, 49, 50** well; other types may no-
 - **Config:** common only  
 - **Where:** FE menu save-as; server path for composition/auto-exec opens new form via result flags  
 
-### 5.2 Backend — Form Persistence & Validation
+### 5.2 Backend — Form Refresh, Validate & Save
 
 #### 49 — Save
 - **Menu:** FE `handleSave`  

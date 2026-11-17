@@ -32,7 +32,7 @@ actionType = EmAppTransactionCommandType ONLY (never Link Target 1=Edit / 2=Crea
 
 Taxonomy (L1 → L2 → Id):
 • UI Ops: Close 54, Navigate Search 53, Print 48, Print From MsgTpl 74, Save As 47
-• Backend → Form Persistence: Save 49, Refresh 50, Validate Required 205
+• Backend → Form Refresh, Validate & Save: Save 49, Refresh 50, Validate Required 205
 • Backend → Form Data Processing: All Formula 44, Cmd Formula 57, All DataLoad 45, Matrix 46, SQL 42, Data Transfer 43
 • Backend → Import & File Generation: Json/Excel/Rest/DB 66/67/71/72, Multi 76/77, Download 73, Xml↔Json 81/82
 • API / Plugin / External: Call API 59, Plugin WebApi 40, Ext Method 38, Ext Exe 68

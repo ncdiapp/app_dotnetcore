@@ -82,7 +82,7 @@ export const COMMAND_TYPE_TAXONOMY_ROOT: CommandTypeCategory[] = [
       {
         kind: 'group',
         id: 'formPersistence',
-        label: 'Form Persistence & Validation',
+        label: 'Form Refresh, Validate & Save',
         children: [leaf(49), leaf(50), leaf(205)],
       },
       {

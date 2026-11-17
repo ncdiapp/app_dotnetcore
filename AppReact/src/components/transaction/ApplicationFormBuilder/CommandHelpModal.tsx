@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
+import { AgentMarkdown } from '../../aiskill/AgentMarkdown';
 
 export type CommandHelpSectionId =
   | 'overview'
@@ -29,69 +30,6 @@ function extractSection(md: string, sectionId: CommandHelpSectionId): string {
   return md.slice(start, start + 1 + next);
 }
 
-/** Very small markdown → React-ish text (headers + paragraphs + tables as pre). */
-function SimpleMarkdownView({ text, themeLabel }: { text: string; themeLabel: string }) {
-  const blocks = useMemo(() => text.split(/\n\n+/), [text]);
-  return (
-    <div className={`text-xs leading-relaxed space-y-3 ${themeLabel}`}>
-      {blocks.map((block, i) => {
-        const t = block.trim();
-        if (!t) return null;
-        if (t.startsWith('# ')) {
-          return (
-            <h2 key={i} className="text-base font-semibold">
-              {t.replace(/^#\s+/, '')}
-            </h2>
-          );
-        }
-        if (t.startsWith('## ')) {
-          return (
-            <h3 key={i} className="text-sm font-semibold mt-2">
-              {t.replace(/^##\s+/, '')}
-            </h3>
-          );
-        }
-        if (t.startsWith('### ')) {
-          return (
-            <h4 key={i} className="text-xs font-semibold mt-1">
-              {t.replace(/^###\s+/, '')}
-            </h4>
-          );
-        }
-        if (t.startsWith('#### ')) {
-          return (
-            <h4 key={i} className="text-xs font-semibold opacity-90">
-              {t.replace(/^####\s+/, '')}
-            </h4>
-          );
-        }
-        if (t.includes('|') && t.includes('\n')) {
-          return (
-            <pre
-              key={i}
-              className="overflow-x-auto whitespace-pre text-[11px] p-2 border rounded bg-black/5 dark:bg-white/5"
-            >
-              {t}
-            </pre>
-          );
-        }
-        if (t.startsWith('- ') || t.startsWith('|')) {
-          return (
-            <pre key={i} className="whitespace-pre-wrap text-[11px]">
-              {t}
-            </pre>
-          );
-        }
-        return (
-          <p key={i} className="whitespace-pre-wrap">
-            {t}
-          </p>
-        );
-      })}
-    </div>
-  );
-}
-
 export function CommandHelpModal(props: {
   open: boolean;
   initialSection?: CommandHelpSectionId;
@@ -105,10 +43,12 @@ export function CommandHelpModal(props: {
   const [md, setMd] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [section, setSection] = useState<CommandHelpSectionId>(initialSection);
+  const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setSection(initialSection);
+    setMaximized(false);
   }, [open, initialSection]);
 
   useEffect(() => {
@@ -137,28 +77,48 @@ export function CommandHelpModal(props: {
 
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center bg-black/40 px-4"
+      className={`fixed inset-0 flex items-center justify-center bg-black/40 ${maximized ? '' : 'px-4 py-4'}`}
       style={{ zIndex: 15000 }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
-        className={`w-full max-w-3xl max-h-[85vh] flex flex-col border rounded-[4px] shadow-xl overflow-hidden ${theme.mainContentSection}`}
+        className={`flex flex-col border shadow-xl overflow-hidden ${theme.mainContentSection} ${
+          maximized ? 'h-full w-full rounded-none' : 'w-full max-w-4xl rounded-[4px]'
+        }`}
+        style={
+          maximized
+            ? { width: '100%', height: '100%', maxWidth: '100vw', maxHeight: '100vh' }
+            : { width: '100%', height: 'min(820px, 90vh)', maxWidth: '56rem', maxHeight: '90vh' }
+        }
         role="dialog"
         aria-modal="true"
         aria-label="Data Model Operation help"
+        onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className={`flex items-center justify-between px-3 py-2 border-b shrink-0`}>
+        <div className="flex items-center justify-between px-3 py-2 border-b shrink-0">
           <div className={`text-sm font-semibold ${theme.title}`}>Data Model Operation — Help</div>
-          <button
-            type="button"
-            onClick={onClose}
-            className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}`}
-            aria-label="Close"
-          >
-            <i className="fa-solid fa-xmark" />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setMaximized((m) => !m)}
+              className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}`}
+              title={maximized ? 'Exit full screen' : 'Full screen'}
+              aria-label={maximized ? 'Exit full screen' : 'Full screen'}
+            >
+              <i className={`fa-solid ${maximized ? 'fa-compress' : 'fa-expand'}`} aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}`}
+              title="Close"
+              aria-label="Close"
+            >
+              <i className="fa-solid fa-xmark" aria-hidden />
+            </button>
+          </div>
         </div>
 
         <div className="px-3 py-2 flex flex-wrap gap-1.5 border-b shrink-0">
@@ -205,7 +165,7 @@ export function CommandHelpModal(props: {
           ) : !md ? (
             <p className={`text-xs opacity-70 ${theme.label}`}>Loading…</p>
           ) : (
-            <SimpleMarkdownView text={body} themeLabel={theme.label} />
+            <AgentMarkdown content={body} className="text-xs leading-relaxed max-w-none" />
           )}
         </div>
       </div>
