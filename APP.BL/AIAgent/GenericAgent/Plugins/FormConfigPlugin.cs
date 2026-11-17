@@ -319,14 +319,17 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         [AgentTool("upsert_command",
-            "Create or update an Operation Task command shell. Preview first; ask_user; then confirmed=true. " +
-            "optionsJson may set isShowOnTopMenu, isAutoExecuteOnFormOpen, linkTargetId, linkedSearchId, actionAttribute{…}. " +
-            "After success call request_form_reload. Does NOT execute the command.")]
+            "Create or update an Operation Task (Command Management) command. Preview → ask_user → confirmed=true → request_form_reload. " +
+            "actionType MUST be EmAppTransactionCommandType (NOT Link Target actionType 1=Edit/2=Create). " +
+            "Common: 50=Refresh, 49=Save, 42=Execute SQL Statement, 43=Execute Data Transfer, 59=Call API Operation, " +
+            "200=Composition, 54=Close Form Window, 60/61/62=Send Message, 205=Validate Required Fields. " +
+            "optionsJson: linkToUI, isShowOnTopMenu, isAutoExecuteOnFormOpen, actionFlowOrder, linkTargetId, linkedSearchId, actionAttribute{…}. " +
+            "Does NOT execute the command.")]
         public string UpsertCommand(
             AgentToolContext context,
             [AgentParam("Existing command id for update; omit to create.")] int? commandId = null,
             [AgentParam("Command display name (required on create).")] string name = null,
-            [AgentParam("EmAppTransactionCommandType value (required on create).")] int? actionType = null,
+            [AgentParam("EmAppTransactionCommandType int (required on create). Examples: Refresh=50, Save=49, ExecuteSQLStatement=42. NEVER use 1 (that is Link Target Edit, not a command type).")] int? actionType = null,
             [AgentParam("Optional notification / SQL body depending on action type.")] string notificationMessage = null,
             [AgentParam("JSON of advanced options / ActionAttribute patches.")] string optionsJson = null,
             [AgentParam("Must be true to persist.")] bool? confirmed = null,

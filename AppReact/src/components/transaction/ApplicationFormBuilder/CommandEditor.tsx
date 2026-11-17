@@ -28,6 +28,10 @@ import { CollapsibleSection } from './CommandEditorPart/CollapsibleSection';
 import { AiActionConfigSection } from './CommandEditorPart/AiActionConfigSection';
 import { buildChildGridFieldGroups } from './CommandEditorPart/sqlQueryBuilderTokens';
 import type { CommandEditorHostContext } from './commandEditorContext';
+import {
+  resolveCommandTypeTaxonomyContext,
+  type CommandTypeTaxonomyContext,
+} from '../transactionCommandTypeTaxonomy';
 
 type OperationTypeOption = { Id: any; Display: string };
 
@@ -115,6 +119,14 @@ export function CommandEditor(props: {
     [hierarchy, transactionFieldLookUpList],
   );
 
+  const taxonomyContext: CommandTypeTaxonomyContext = useMemo(
+    () =>
+      resolveCommandTypeTaxonomyContext(hierarchy?.TransactionOrganizedType ?? null, {
+        workflowEmbedded: hostContext === 'workflowAutomation',
+      }),
+    [hierarchy?.TransactionOrganizedType, hostContext]
+  );
+
   const currentActionType = Number(currentEditAction?.ActionType);
   const showNotificationExpression = [60, 61, 62, 63].includes(currentActionType);
   const showMessageLinkCommands =
@@ -148,7 +160,7 @@ export function CommandEditor(props: {
             >
               <CommandBasicOptions
                 action={currentEditAction}
-                operationTypeOptions={operationTypeOptions}
+                taxonomyContext={taxonomyContext}
                 rootLevelConditionTransFieldLookUpList={rootLevelConditionTransFieldLookUpList}
                 hostContext={hostContext}
                 onMarkChange={onMarkChange}

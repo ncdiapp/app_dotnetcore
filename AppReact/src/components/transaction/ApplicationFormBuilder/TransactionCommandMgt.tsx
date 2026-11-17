@@ -29,6 +29,7 @@ import {
   getApplicationFormBuilderCommandActionTypeOptions,
   getTransactionCommandActionTypeDisplay,
 } from '../transactionCommandActionTypes';
+import { filterCommandActionTypeOptionsForPicker } from '../transactionCommandTypeTaxonomy';
 import { buildCommandFieldLookups } from './commandFieldLookup';
 import { tw } from '../../../helper/themeHelper';
 import appHelper from '../../../helper/appHelper';
@@ -36,9 +37,6 @@ import appHelper from '../../../helper/appHelper';
 const EmAppTransactionScopeUsageWorkflowAutomation = 2;
 const EmAppTransactionCommandTypePrintFromMessageTemplate = 74;
 const EmAppTransactionCommandTypeOpenLinkedSearch = 53;
-const EmAppTransactionCommandTypeOpenFormCreationWindow = 51;
-const EmAppTransactionCommandTypeOpenFormEditWindow = 55;
-
 function normalizeCommandList(list: any[]): any[] {
   const arr = Array.isArray(list) ? [...list] : [];
   arr.forEach((c: any) => {
@@ -104,10 +102,10 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
 
   const operationTypeOptions = useMemo(
     () =>
-      getApplicationFormBuilderCommandActionTypeOptions(transactionType ?? hierarchy?.TransactionOrganizedType ?? null).filter(
-        (x) =>
-          Number(x?.Id) !== EmAppTransactionCommandTypeOpenFormCreationWindow &&
-          Number(x?.Id) !== EmAppTransactionCommandTypeOpenFormEditWindow
+      filterCommandActionTypeOptionsForPicker(
+        getApplicationFormBuilderCommandActionTypeOptions(
+          transactionType ?? hierarchy?.TransactionOrganizedType ?? null
+        )
       ),
     [transactionType, hierarchy?.TransactionOrganizedType]
   );

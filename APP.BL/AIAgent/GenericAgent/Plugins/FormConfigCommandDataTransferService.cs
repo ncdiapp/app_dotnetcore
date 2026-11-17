@@ -16,6 +16,16 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     /// </summary>
     public static class FormConfigCommandDataTransferService
     {
+        /// <summary>
+        /// UI-offered EmAppTransactionCommandType values (Command Management taxonomy).
+        /// Rejects confusions like Link Target actionType 1=Edit.
+        /// </summary>
+        static readonly HashSet<int> AllowedCommandActionTypes = new HashSet<int>
+        {
+            38, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 53, 54, 57, 59,
+            60, 61, 62, 63, 66, 67, 68, 71, 72, 73, 74, 76, 77, 81, 82, 200, 205
+        };
+
         public static string GetCommands(int transactionId)
         {
             try
@@ -69,17 +79,35 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 else
                 {
                     if (string.IsNullOrWhiteSpace(name)) return Fail("name is required for create.");
-                    if (!actionType.HasValue) return Fail("actionType is required for create (see EmAppTransactionCommandType).");
+                    if (!actionType.HasValue) return Fail("actionType is required for create (EmAppTransactionCommandType). Examples: Refresh=50, Save=49, ExecuteSQLStatement=42. Do NOT use Link Target codes (1=Edit).");
+                    if (!AllowedCommandActionTypes.Contains(actionType.Value))
+                        return Fail($"actionType {actionType.Value} is not a valid EmAppTransactionCommandType for Operation Task. Examples: Refresh=50, Save=49, ExecuteSQLStatement=42, Composition=200. Do NOT confuse with Link Target actionType (1=Edit, 2=Create).");
+                    var maxOrder = tx.CommandActionList
+                        .Select(c => c.ActionFlowOrder ?? 0)
+                        .DefaultIfEmpty(0)
+                        .Max();
                     cmd = new AppProjectWorkFlowActionExDto
                     {
                         CommandTransactionId = transactionId,
-                        ActionAttribute = new AppActionAttributeDto { ChildActionList = new List<ChildTransactionCommandDto>() }
+                        ActionFlowOrder = maxOrder + 1,
+                        ActionAttribute = new AppActionAttributeDto
+                        {
+                            ChildActionList = new List<ChildTransactionCommandDto>(),
+                            LinkToUI = true,
+                            IsShowOnTopMenu = true,
+                            IsAutoExecuteOnFormOpen = false
+                        }
                     };
                     tx.CommandActionList.Add(cmd);
                 }
 
                 if (name != null) cmd.Name = name;
-                if (actionType.HasValue) cmd.ActionType = actionType;
+                if (actionType.HasValue)
+                {
+                    if (!AllowedCommandActionTypes.Contains(actionType.Value))
+                        return Fail($"actionType {actionType.Value} is not a valid EmAppTransactionCommandType for Operation Task. Examples: Refresh=50, Save=49, ExecuteSQLStatement=42, Composition=200. Do NOT confuse with Link Target actionType (1=Edit, 2=Create).");
+                    cmd.ActionType = actionType;
+                }
                 if (notificationMessage != null) cmd.NotificationMessage = notificationMessage;
                 if (cmd.ActionAttribute == null)
                     cmd.ActionAttribute = new AppActionAttributeDto { ChildActionList = new List<ChildTransactionCommandDto>() };
@@ -90,6 +118,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     {
                         var jo = JObject.Parse(optionsJson);
                         ApplyCommandOptions(cmd, jo);
+                        if (cmd.ActionType.HasValue && !AllowedCommandActionTypes.Contains(cmd.ActionType.Value))
+                            return Fail($"actionType {cmd.ActionType.Value} from optionsJson is not a valid EmAppTransactionCommandType. Examples: Refresh=50, ExecuteSQLStatement=42.");
                     }
                     catch (Exception ex) { return Fail("optionsJson invalid: " + ex.Message); }
                 }
@@ -493,8 +523,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             // Attribute flags commonly edited in Operation Task
             cmd.ActionAttribute ??= new AppActionAttributeDto { ChildActionList = new List<ChildTransactionCommandDto>() };
             var attr = cmd.ActionAttribute;
+            if (jo["linkToUI"] != null || jo["isPublic"] != null || jo["isPublicTask"] != null)
+                attr.LinkToUI = jo.Value<bool?>("linkToUI") ?? jo.Value<bool?>("isPublic") ?? jo.Value<bool?>("isPublicTask");
             if (jo["isShowOnTopMenu"] != null) attr.IsShowOnTopMenu = jo.Value<bool?>("isShowOnTopMenu");
             if (jo["isAutoExecuteOnFormOpen"] != null) attr.IsAutoExecuteOnFormOpen = jo.Value<bool?>("isAutoExecuteOnFormOpen");
+            if (jo["actionFlowOrder"] != null || jo["flowOrder"] != null)
+                cmd.ActionFlowOrder = jo.Value<int?>("actionFlowOrder") ?? jo.Value<int?>("flowOrder");
             if (jo["linkTargetId"] != null) attr.LinkTargetId = jo.Value<int?>("linkTargetId");
             if (jo["linkedSearchId"] != null) attr.LinkedSearchId = jo.Value<int?>("linkedSearchId");
             if (jo["paramId1"] != null) attr.ParamId1 = jo.Value<int?>("paramId1"); // often DataTransfer / related id

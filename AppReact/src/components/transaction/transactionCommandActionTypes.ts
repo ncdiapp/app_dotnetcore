@@ -101,9 +101,11 @@ export function sortCommandActionTypesByDisplayLikeAngular(
   return [...list].sort((a, b) => a.Display.localeCompare(b.Display));
 }
 
-export function getTransactionCommandActionTypeDisplay(actionType: number | null | undefined): string {
-  if (actionType == null) return '';
-  return DISPLAY_BY_ACTION_TYPE_ID.get(actionType) ?? String(actionType);
+export function getTransactionCommandActionTypeDisplay(actionType: number | string | null | undefined): string {
+  if (actionType == null || actionType === '') return '';
+  const id = Number(actionType);
+  if (!Number.isFinite(id)) return String(actionType);
+  return DISPLAY_BY_ACTION_TYPE_ID.get(id) ?? String(id);
 }
 
 /** Application Form Builder Operation Task: dropdown source (Angular parity). */

@@ -2,12 +2,16 @@ import React from 'react';
 import { useTheme } from '../../../../redux/hooks/useTheme';
 import type { CommandEditorHostContext } from '../commandEditorContext';
 import { isWorkflowAutomationEditorContext } from '../commandEditorContext';
-
-type OperationTypeOption = { Id: any; Display: string };
+import type { CommandTypeTaxonomyContext } from '../../transactionCommandTypeTaxonomy';
+import {
+  formatCategoryPathBreadcrumb,
+  shouldShowCommandCategoryField,
+} from '../../transactionCommandTypeTaxonomy';
+import { CommandOperationTypeTreePicker } from './CommandOperationTypeTreePicker';
 
 export function CommandBasicOptions(props: {
   action: any;
-  operationTypeOptions: OperationTypeOption[];
+  taxonomyContext: CommandTypeTaxonomyContext;
   rootLevelConditionTransFieldLookUpList: any[];
   hostContext?: CommandEditorHostContext;
   onMarkChange: () => void;
@@ -17,7 +21,7 @@ export function CommandBasicOptions(props: {
   const { theme } = useTheme();
   const {
     action,
-    operationTypeOptions,
+    taxonomyContext,
     rootLevelConditionTransFieldLookUpList,
     hostContext = 'applicationFormBuilder',
     onMarkChange,
@@ -25,6 +29,9 @@ export function CommandBasicOptions(props: {
     onFlowOrderChanged,
   } = props;
   const hideFlowOrder = isWorkflowAutomationEditorContext(hostContext);
+  const actionTypeNum = action?.ActionType != null ? Number(action.ActionType) : null;
+  const showCategory = shouldShowCommandCategoryField(actionTypeNum);
+  const categoryPath = showCategory ? formatCategoryPathBreadcrumb(actionTypeNum) : '';
 
   return (
     <>
@@ -43,24 +50,34 @@ export function CommandBasicOptions(props: {
         />
       </div>
 
-      <div className="grid grid-cols-[14rem_1fr] items-center gap-2 py-1">
-        <label className={`text-xs ${theme.label}`}>Operation Type</label>
-        <select
-          value={action.ActionType ?? 42}
-          onChange={(e) => {
-            action.ActionType = Number(e.target.value);
+      <div className="grid grid-cols-[14rem_1fr] items-start gap-2 py-1">
+        <label className={`text-xs ${theme.label} pt-1.5`}>Operation Type</label>
+        <CommandOperationTypeTreePicker
+          actionType={actionTypeNum ?? 42}
+          taxonomyContext={taxonomyContext}
+          onChange={(actionTypeId) => {
+            // Bind EmAppTransactionCommandType only — never command Id / Flow Order
+            action.ActionType = Number(actionTypeId);
             onMarkChange();
             onRefreshGridCell();
           }}
-          className={`w-72 h-7 px-2 text-xs border ${theme.inputBox} focus:outline-none`}
-        >
-          {operationTypeOptions.map((opt) => (
-            <option key={String(opt.Id)} value={opt.Id}>
-              {opt.Display}
-            </option>
-          ))}
-        </select>
+        />
       </div>
+
+      {showCategory && categoryPath ? (
+        <div className="grid grid-cols-[14rem_1fr] items-center gap-2 py-1">
+          <label className={`text-xs ${theme.label}`}>Category</label>
+          <div
+            className={`w-72 h-7 px-2 text-xs border flex items-center overflow-hidden ${theme.inputBox}`}
+            title={categoryPath}
+            aria-readonly="true"
+          >
+            <span className={`whitespace-nowrap overflow-hidden text-ellipsis opacity-60 ${theme.label}`}>
+              {categoryPath}
+            </span>
+          </div>
+        </div>
+      ) : null}
 
       {!hideFlowOrder ? (
         <div className="grid grid-cols-[14rem_1fr] items-center gap-2 py-1">

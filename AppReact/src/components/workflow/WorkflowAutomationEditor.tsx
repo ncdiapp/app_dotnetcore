@@ -39,6 +39,7 @@ import {
 } from '../transaction/ApplicationFormBuilder/commandEditCache';
 import { buildCommandFieldLookups, type CommandFieldLookupResult } from '../transaction/ApplicationFormBuilder/commandFieldLookup';
 import { getWorkflowEmbeddedCommandActionTypeOptions } from '../transaction/transactionCommandActionTypes';
+import { filterCommandActionTypeOptionsForPicker } from '../transaction/transactionCommandTypeTaxonomy';
 import TableColumnSelectorDialog from '../transaction/ApplicationFormBuilder/TableColumnSelectorDialog';
 import { useEnumValues } from '../../hooks/useEnumDictionary';
 import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
@@ -788,7 +789,10 @@ const WorkflowAutomationEditor: React.FC<WorkflowAutomationEditorProps> = ({ emb
   /** Angular: EmAppTransactionScopeUsage.WorkflowAutomation (= 2 in AppEnums.cs) */
   const workflowBusinessScopeId = Number(transactionScopeEnum?.WorkflowAutomation ?? 2);
 
-  const operationTypeOptions = useMemo(() => getWorkflowEmbeddedCommandActionTypeOptions(), []);
+  const operationTypeOptions = useMemo(
+    () => filterCommandActionTypeOptionsForPicker(getWorkflowEmbeddedCommandActionTypeOptions()),
+    []
+  );
   const [defaultDataSourceId, setDefaultDataSourceId] = useState<string | null>(null);
   const [isCollapseSessionVariables, setIsCollapseSessionVariables] = useState(true);
   const [applicationCV, setApplicationCV] = useState<CollectionView | null>(null);
