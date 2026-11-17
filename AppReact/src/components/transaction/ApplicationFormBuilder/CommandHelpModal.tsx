@@ -46,18 +46,21 @@ function buildToc(md: string): TocNode[] {
   return roots;
 }
 
-/** Extract from a ##/###/#### heading through the next heading of same or higher level. */
+/** Extract from a ##/### heading through the next heading of same or higher level. */
 function extractByHeading(md: string, headingText: string, level: number): string {
   if (!md || !headingText) return md;
   const prefix = '#'.repeat(level);
   const startRe = new RegExp(`^${prefix}\\s+${escapeRegExp(headingText)}\\s*$`, 'm');
-  const start = md.search(startRe);
-  if (start < 0) return md;
-  const after = md.slice(start + 1);
+  const match = startRe.exec(md);
+  if (!match || match.index == null) return md;
+  const start = match.index;
+  // Skip past this full heading line first — slicing at start+1 used to leave a lone "#",
+  // which then matched nextRe and returned only that character.
+  const afterHeading = md.slice(start + match[0].length);
   const nextRe = new RegExp(`^#{1,${level}}\\s+`, 'm');
-  const next = after.search(nextRe);
+  const next = afterHeading.search(nextRe);
   if (next < 0) return md.slice(start);
-  return md.slice(start, start + 1 + next);
+  return md.slice(start, start + match[0].length + next);
 }
 
 function escapeRegExp(s: string): string {

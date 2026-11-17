@@ -1,21 +1,11 @@
 # Data Model Operation — Manual
 
-A **Data Model Operation** (short: **Operation**) is a configured action on a data model: save, refresh, run SQL, import files, send messages, call APIs, or run a ordered sequence.
+## 1. Introduction
+
+A **Data Model Operation** (short: **Operation**) is a configured action on a data model: save, refresh, run SQL, import files, send messages, call APIs, or run an ordered sequence.
 
 - **Public** operations can appear on form or view menus, or run when the form opens.
 - **Private** operations are steps inside **Composition** or **Message Link Operations**.
-
-Open **Help** on the Data Model Operation screen, or **?** next to **Operation Type**, to jump to a section in this guide.
-
-**Canonical path:** `Document/KnowledgeBase/UserGuide/DataModelOperation-Help.md`  
-**Runtime copy:** `AppReact/public/help/commands-user-help.md`  
-**Agent KB:** `Document/KnowledgeBase/AgentKnowledge/app-configurator/commands-knowledge.md`  
-**Design plan:** `Document/AgentDesign/AppConfigurator-Commands-Knowledge-Plan.md`  
-**Sync:** `Document/KnowledgeBase/SyncRuntimeDocs.ps1`
-
----
-
-## 1. Introduction
 
 | Term | Meaning |
 |------|---------|

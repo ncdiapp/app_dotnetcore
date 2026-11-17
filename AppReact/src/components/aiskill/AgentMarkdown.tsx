@@ -62,7 +62,8 @@ const formatInline = (text: string, files?: AgentFileLink[]): string => {
         });
     }
     s = s.replace(/`([^`]+)`/g, '<code class="agent-md-code">$1</code>');
-    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-medium">$1</strong>');
+    // Keep emphasis quieter than headings (headings use semibold + size).
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-medium opacity-95">$1</strong>');
     s = s.replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, '$1<em>$2</em>');
     if (tokens.length) {
         s = s.replace(/\u0000(\d+)\u0000/g, (_, n) => tokens[Number(n)] ?? '');
@@ -73,10 +74,13 @@ const formatInline = (text: string, files?: AgentFileLink[]): string => {
 type Block =
     | { type: 'p'; text: string }
     | { type: 'h'; level: number; text: string }
+    | { type: 'hr' }
     | { type: 'ul'; items: string[] }
     | { type: 'ol'; items: string[] }
     | { type: 'table'; headers: string[]; rows: string[][] }
     | { type: 'pre'; text: string };
+
+const isHrLine = (line: string) => /^(-{3,}|\*{3,}|_{3,})\s*$/.test(line.trim());
 
 const parseBlocks = (md: string): Block[] => {
     const lines = (md || '').replace(/\r\n/g, '\n').split('\n');
@@ -117,10 +121,17 @@ const parseBlocks = (md: string): Block[] => {
             continue;
         }
 
-        // heading
-        const hm = line.match(/^(#{1,3})\s+(.+)$/);
+        // heading (# … ######)
+        const hm = line.match(/^(#{1,6})\s+(.+)$/);
         if (hm) {
             blocks.push({ type: 'h', level: hm[1].length, text: hm[2].trim() });
+            i++;
+            continue;
+        }
+
+        // thematic break (--- / *** / ___)
+        if (isHrLine(line)) {
+            blocks.push({ type: 'hr' });
             i++;
             continue;
         }
@@ -154,7 +165,8 @@ const parseBlocks = (md: string): Block[] => {
             i < lines.length
             && lines[i].trim()
             && !lines[i].trim().startsWith('```')
-            && !/^(#{1,3})\s+/.test(lines[i])
+            && !/^(#{1,6})\s+/.test(lines[i])
+            && !isHrLine(lines[i])
             && !/^\s*[-*]\s+/.test(lines[i])
             && !/^\s*\d+\.\s+/.test(lines[i])
             && !(lines[i].includes('|') && i + 1 < lines.length && /^\s*\|?[\s-:|]+\|?\s*$/.test(lines[i + 1]))
@@ -226,11 +238,32 @@ export const AgentMarkdown: React.FC<{
                     );
                 }
                 if (b.type === 'h') {
+                    const headingCls =
+                        b.level <= 1
+                            ? `mb-3 mt-1 text-xl font-semibold ${theme.title}`
+                            : b.level === 2
+                              ? `mb-2.5 mt-4 first:mt-0 text-lg font-semibold ${theme.title}`
+                              : b.level === 3
+                                ? `mb-2 mt-3 text-base font-semibold ${theme.title}`
+                                : `mb-1.5 mt-2.5 text-sm font-semibold ${theme.title}`;
+                    const Tag = (b.level <= 1 ? 'h1' : b.level === 2 ? 'h2' : b.level === 3 ? 'h3' : 'h4') as
+                        | 'h1'
+                        | 'h2'
+                        | 'h3'
+                        | 'h4';
                     return (
-                        <div
+                        <Tag
                             key={idx}
-                            className="mb-2 font-medium"
+                            className={headingCls}
                             dangerouslySetInnerHTML={{ __html: formatInline(b.text, fileLinks) }}
+                        />
+                    );
+                }
+                if (b.type === 'hr') {
+                    return (
+                        <hr
+                            key={idx}
+                            className={`my-4 border-0 border-t opacity-40 ${borderCls}`}
                         />
                     );
                 }
