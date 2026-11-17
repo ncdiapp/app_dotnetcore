@@ -8,9 +8,11 @@ so new Configurator chats receive them under chat `source/` (`GenericAgentFileBL
 
 | File | Purpose |
 |------|---------|
-| `commands-knowledge.md` | Full Data Model Operation KB for `read_agent_file` |
-| `commands-taxonomy-plan.md` | Taxonomy / UI plan |
-| `.agent-file-catalog.json` | Short descriptions shown in file catalog / prompt summary |
+| `commands-knowledge.md` | **Agent** KB (ActionType ids, storage, tools) — from `Document/AgentDesign/AppConfigurator-Commands-AgentKnowledge.md` |
+| `commands-taxonomy-plan.md` | Taxonomy / UI plan (design) |
+| `.agent-file-catalog.json` | Short descriptions for file catalog |
+
+**User Help** (in-app `?`) is separate: `Document/AgentDesign/AppConfigurator-Commands-UserHelp.md` → `AppReact/public/help/commands-user-help.md`. Do **not** put the user Help into AgentStarter unless you intentionally want the agent to mirror user wording only.
 
 Canonical authoring copies live under `Document/AgentDesign/`. Re-copy after KB updates.
 
@@ -19,4 +21,4 @@ Canonical authoring copies live under `Document/AgentDesign/`. Re-copy after KB 
 .\CopyToCompanyAgentStarter.ps1 -CompanyId 1
 ```
 
-Also run migration **V085** (`V085__AppConfigurator_CommandsUpsertAndKnowledgeIndex_xhu.sql`) so `upsert_command` ActionType is clarified and SystemPrompt indexes this KB (prompt append is idempotent).
+Also run migration **V085** so `upsert_command` ActionType is clarified and SystemPrompt indexes `commands-knowledge.md` (prompt append is idempotent).

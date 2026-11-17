@@ -1,11 +1,11 @@
-﻿# Data Model Operation — User & Agent Guide
+# Data Model Operation — Agent Knowledge Base
 
-**Status:** Living knowledge base (authored from FE+BE code).  
-**Date:** 2026-11-17  
+**Audience:** `app-configurator` (and developers). **Not** the in-app user Help.  
+**User Help:** [AppConfigurator-Commands-UserHelp.md](./AppConfigurator-Commands-UserHelp.md)  
 **Parent plan:** [AppConfigurator-Commands-Knowledge-Plan.md](./AppConfigurator-Commands-Knowledge-Plan.md)  
 **Parent agent design:** [AppConfigurator-AiAgent-Design.md](./AppConfigurator-AiAgent-Design.md) §7.1 E  
 
-This document is the authoritative help for **Data Model Operation** and for the **app-configurator** agent when creating or editing operations.
+Read this file via `list_agent_files` / `read_agent_file` before `upsert_command`.
 
 **Code anchors**
 - UI types / taxonomy: `AppReact/src/components/transaction/transactionCommandActionTypes.ts`, `transactionCommandTypeTaxonomy.ts`
@@ -79,7 +79,7 @@ Storage: **columns** on `AppProjectWorkFlowAction`, or **ActionAttribute JSON** 
 | Is Public Operation (Link To UI) | JSON `LinkToUI` | Public tab true / Private false | Required for form menu + auto-on-open |
 | Visible on Form Menu | JSON `IsShowOnTopMenu` | true | Needs LinkToUI; menu sorts by Flow Order |
 | Visible on Calendar/Gantt/Scheduler Menu | JSON `IsShowOnSearchViewEventOptionMenu` | false | Server search views; does not require LinkToUI in BL |
-| Auto Execute On Form Open | JSON `IsAutoExecuteOnFormOpen` | false | first matching public+flag operation on form load |
+| Auto Execute On Form Open | JSON `IsAutoExecuteOnFormOpen` | false | First matching public+flag operation on form load |
 
 **Pitfalls:** Changing ActionType does not clear type-specific attributes. Unchecking Public does not clear the three child flags. List organized type skips condition check.
 
@@ -260,7 +260,7 @@ Shared: subject/body/template/attach flags via `NotificationExpressionSection` +
 |----|----------------------------|
 | 60 | UserId field (`NotificationDestinationPartnerIdTransactionFiledId` — labeled UserId) |
 | 61 | Email field + **Message Link Operations** children |
-| 62 | Partner field + optional ToEmail + **Message Link Commands** |
+| 62 | Partner field + optional ToEmail + **Message Link Operations** |
 | 63 | Phone field (`SmsMessageToPhoneNumberFiledId`); SMS body = `NotificationMessage` |
 
 ### 5.7 Composition
@@ -286,6 +286,5 @@ See §3.1. Selecting L1 **Composition** sets ActionType 200.
 | Date | Note |
 |------|------|
 | 2026-11-17 | Initial KB from FE+BE pass (shared settings + 32 taxonomy types). |
-| 2026-11-17 | Synced to `AppReact/public/help/commands-user-guide.md` and `AppAI.Web/AgentStarterSeeds/app-configurator/commands-knowledge.md`. |
-
-| 2026-11-17 | Product rename: Command / Operation Task → Data Model Operation (short: Operation). Tool names unchanged.
+| 2026-11-17 | Product rename: Command / Operation Task → Data Model Operation (short: Operation). Tool names unchanged. |
+| 2026-11-17 | Split from user help: this file = agent/developer only; UI Help loads UserHelp. |

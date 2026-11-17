@@ -2,11 +2,11 @@
   "files": [
     {
       "path": "commands-knowledge.md",
-      "description": "Data Model Operation (short: Operation) user/agent knowledge base: taxonomy ActionType ids, shared settings (public/private, batch, log, result), composition/message children, per-type config fields and runtime. Read before upsert_command."
+      "description": "Agent/developer KB for Data Model Operation (short: Operation): ActionType ids, storage, runtime, upsert_command. Not the end-user Help. Read before upsert_command."
     },
     {
       "path": "commands-taxonomy-plan.md",
-      "description": "Data Model Operation classification / picker / KB feeding plan. Taxonomy L1/L2 labels and implementation phases."
+      "description": "Data Model Operation classification / picker / KB feeding plan (design). Optional context."
     }
   ]
 }

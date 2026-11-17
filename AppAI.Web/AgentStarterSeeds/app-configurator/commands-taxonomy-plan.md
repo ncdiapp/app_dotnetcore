@@ -49,8 +49,8 @@ This plan covers:
 | Artifact | Path | Language |
 |----------|------|----------|
 | **This design / plan (canonical)** | `Document/AgentDesign/AppConfigurator-Commands-Knowledge-Plan.md` | English |
-| **User + agent KB body** | `Document/AgentDesign/AppConfigurator-Commands-UserGuide.md` | English |
-| **UI Help fetch** | `AppReact/public/help/commands-user-guide.md` | English |
+| **User Help (in-app ?)** | `Document/AgentDesign/AppConfigurator-Commands-UserHelp.md` → `AppReact/public/help/commands-user-help.md` | English |
+| **Agent KB** | `Document/AgentDesign/AppConfigurator-Commands-AgentKnowledge.md` → AgentStarter `commands-knowledge.md` | English |
 | **Agent file feed (seed)** | `AppAI.Web/AgentStarterSeeds/app-configurator/` → copy to `FileRepository/Company_{id}/AgentStarter/app-configurator/` | English |
 | Chinese reading draft | **Not** under `Document/` | Human review only |
 
@@ -229,9 +229,9 @@ Before publishing user help or agent KB, **fully analyze frontend + backend** fo
 4. Composition / Message link **master → child** rules and defaults  
 5. Menu / security filtering as implemented  
 
-Suggested KB file name (later):  
-`Document/AgentDesign/AppConfigurator-Commands-UserGuide.md`  
-(optional splits under `Document/AgentDesign/Commands/`).
+Delivered as two files:  
+- User: `AppConfigurator-Commands-UserHelp.md`  
+- Agent: `AppConfigurator-Commands-AgentKnowledge.md`
 
 ---
 
@@ -301,3 +301,4 @@ Configurator must **not** execute runtime commands (`run_command` stays Form Age
 | 2026-11-17 | Bug: Configurator `upsert_command` agents used Link Target `actionType=1` (Edit) as command ActionType → UI showed Unknown type (1). Fixed tool copy + server allow-list validation + create defaults (LinkToUI, FlowOrder). |
 | 2026-11-17 | P3–P6: `AppConfigurator-Commands-UserGuide.md`; `public/help/commands-user-guide.md` + `CommandHelpModal`; prefab Ask Configurator; `AgentStarterSeeds/app-configurator/`. **V085** (merged former V085+V086): upsert_command ActionType clarify + SystemPrompt commands index (`commands-knowledge.md`). |
 | 2026-11-17 | Product rename: UI/help/agent copy **Command / Operation Task → Data Model Operation** (short **Operation**). Tool names / code identifiers unchanged. |
+| 2026-11-17 | Split docs: **UserHelp** (no ActionType ids) for Help modal; **AgentKnowledge** for AgentStarter / `upsert_command`. |

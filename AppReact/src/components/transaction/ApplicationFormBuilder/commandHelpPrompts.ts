@@ -5,9 +5,9 @@ export function buildCommandHelpAskPrompt(actionType?: number | null): string {
   const id = actionType != null && Number.isFinite(Number(actionType)) ? Number(actionType) : null;
   if (id == null) {
     return [
-      'Using AgentStarter file commands-knowledge.md (Data Model Operation guide),',
-      'summarize the Operation Type taxonomy and shared Public / Batch / Log / Result settings.',
-      'When creating operations, remind me of correct upsert_command actionType ints',
+      'Using AgentStarter file commands-knowledge.md (Data Model Operation agent KB),',
+      'summarize the Operation Type taxonomy and shared Public / Batch / Log / Result settings for designers,',
+      'and remind me of correct upsert_command actionType ints',
       '(EmAppTransactionCommandType — never Link Target 1=Edit). Do not execute any operation.',
     ].join(' ');
   }

@@ -4,18 +4,20 @@ import { AgentMarkdown } from '../../aiskill/AgentMarkdown';
 
 export type CommandHelpSectionId =
   | 'overview'
-  | 'shared'
   | 'types'
+  | 'shared'
   | 'composition'
-  | 'agent'
+  | 'howto'
+  | 'practices'
   | 'all';
 
 const SECTION_HINTS: { id: CommandHelpSectionId; label: string; match: RegExp }[] = [
   { id: 'overview', label: 'Concepts', match: /^## 1\. Concepts/m },
-  { id: 'shared', label: 'Shared settings', match: /^## 2\. Shared settings/m },
-  { id: 'composition', label: 'Master → child', match: /^## 3\. Master/m },
-  { id: 'types', label: 'Per-type reference', match: /^## 5\. Per-type/m },
-  { id: 'agent', label: 'Configurator agent', match: /^## 6\. Configurator/m },
+  { id: 'types', label: 'Operation types', match: /^## 2\. Finding the right/m },
+  { id: 'shared', label: 'Shared settings', match: /^## 3\. Shared settings/m },
+  { id: 'composition', label: 'Composition & links', match: /^## 4\. Composition/m },
+  { id: 'howto', label: 'I want to…', match: /^## 5\. Quick/m },
+  { id: 'practices', label: 'Good practices', match: /^## 6\. Good practices/m },
 ];
 
 function extractSection(md: string, sectionId: CommandHelpSectionId): string {
@@ -34,7 +36,6 @@ export function CommandHelpModal(props: {
   open: boolean;
   initialSection?: CommandHelpSectionId;
   onClose: () => void;
-  /** Optional: post a fixed prompt into Configurator (host supplies handler). */
   onAskConfigurator?: (prompt: string) => void;
   askPrompt?: string;
 }) {
@@ -55,7 +56,7 @@ export function CommandHelpModal(props: {
     if (!open) return;
     let cancelled = false;
     setLoadError(null);
-    fetch(`${process.env.PUBLIC_URL || ''}/help/commands-user-guide.md`, { cache: 'no-cache' })
+    fetch(`${process.env.PUBLIC_URL || ''}/help/commands-user-help.md`, { cache: 'no-cache' })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.text();
