@@ -1721,7 +1721,7 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
           searchViewId={dataModel.searchViewDto?.Id ?? dataModel.searchDto?.SearchViewId ?? null}
           dataSetId={dataModel.searchDto?.DataSetId ?? dataModel.searchDto?.BlqueryId ?? null}
           saasApplicationId={dataModel.searchDto?.SaasApplicationId ?? null}
-          scope={`runtime:search:${runtimeSearchIdNum}`}
+          scope={`search:${runtimeSearchIdNum}`}
           onHidePanel={() => setShowAgentDock(false)}
           onReload={() => setConfigReloadToken((n) => n + 1)}
         />

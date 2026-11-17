@@ -2618,7 +2618,7 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
           searchViewId={currentSearch?.SearchViewId ?? null}
           dataSetId={currentSearch?.DataSetId ?? null}
           saasApplicationId={currentSearch?.SaasApplicationId ?? null}
-          scope={`editor:search:${effectiveSearchId}`}
+          scope={`search:${effectiveSearchId}`}
           onHidePanel={() => setShowAgentDock(false)}
           isDirty={!!currentSearch?.IsModified || !!clusterViewState?.IsModified || activeViewIsModified}
           onSaveDirty={save}
