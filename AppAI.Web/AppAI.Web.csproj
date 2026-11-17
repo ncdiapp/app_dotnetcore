@@ -87,9 +87,10 @@
     </Content>
   </ItemGroup>
 
-  <!-- Packaged AgentStarter seeds — synced into FileRepository/Company_{id}/AgentStarter/{skillKey}/ on Ensure -->
+  <!-- Packaged AgentStarter seeds — synced into FileRepository/Company_{id}/AgentStarter/{skillKey}/ on Ensure.
+       Use Update (not Include): SDK already globs Content under the project dir (NETSDK1022). -->
   <ItemGroup>
-    <Content Include="AgentStarterSeeds\**\*">
+    <Content Update="AgentStarterSeeds\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
