@@ -79,6 +79,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     isAutoExecute = search.IsAutoExecute,
                     searchViewId = search.SearchViewId,
                     searchViewName = view?.Name,
+                    // UI "View Type" is AppSearchView.ViewType (NOT an AppSearch field).
+                    viewType = view?.ViewType,
+                    viewTypeName = view != null && Enum.IsDefined(typeof(EmAppViewType), view.ViewType)
+                        ? Enum.GetName(typeof(EmAppViewType), view.ViewType)
+                        : null,
                     dataSetId = search.DataSetId,
                     dataSetName = dataSet?.Name,
                     dataSetQueryPreview = Truncate(dataSet?.QueryText, 400),
@@ -129,11 +134,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         [AgentTool("update_search_basic_setting",
-            "Update AppSearch root fields via changesJson (searchName, description, isAutoExecute, searchViewId, dataSetId). " +
-            "Preview → ask_user → confirmed=true → request_search_reload.")]
+            "Update Search settings via changesJson. AppSearch root: searchName, description, isAutoExecute, searchViewId, dataSetId. " +
+            "View Type (GridView/CardView/…): set viewType / ViewType / DefaultViewType — this writes AppSearchView.ViewType on the bound SearchView (UI Report Views dropdown), NOT AppSearch. " +
+            "GridView=1, CardView=2. Preview → ask_user → confirmed=true → request_search_reload.")]
         public string UpdateSearchBasicSetting(
             AgentToolContext context,
-            [AgentParam("Partial JSON of Search root fields.", isRequired: true)] string changesJson = null,
+            [AgentParam("Partial JSON: searchName/description/isAutoExecute/searchViewId/dataSetId and/or viewType.", isRequired: true)] string changesJson = null,
             [AgentParam("Must be true to persist.")] bool? confirmed = null,
             [AgentParam("If true, never persist.")] bool? dryRun = null,
             [AgentParam("Required in Test Run without HostContext.")] int? searchId = null)
@@ -146,6 +152,18 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 var search = AppSearchConfigBL.RetrieveOneAppSearchExDto(sid);
                 if (search == null) return Fail($"Search {sid} not found.");
                 var changes = JObject.Parse(changesJson);
+                if (changes.Properties().All(p => p.Value == null || p.Value.Type == JTokenType.Null))
+                    return Fail("changesJson is empty. For View Type use {\"viewType\":1} (GridView) or {\"viewType\":2} (CardView).");
+
+                var hasRoot = HasSearchRootChange(changes);
+                var hasViewType = TryReadViewTypeChange(changes, out var viewTypeToken, out var viewTypeParseError);
+                if (viewTypeParseError != null) return Fail(viewTypeParseError);
+                if (!hasRoot && !hasViewType)
+                {
+                    return Fail(
+                        "No recognized fields in changesJson. AppSearch: searchName, description, isAutoExecute, searchViewId, dataSetId. " +
+                        "View Type: viewType/ViewType/DefaultViewType → AppSearchView.ViewType (GridView=1, CardView=2).");
+                }
 
                 if (dryRun == true || confirmed != true)
                 {
@@ -154,20 +172,47 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         preview = true,
                         message = "Preview only. ask_user then confirmed=true.",
                         searchId = sid,
-                        proposed = changes
+                        searchViewId = search.SearchViewId,
+                        proposed = changes,
+                        note = hasViewType
+                            ? "viewType updates AppSearchView.ViewType on the bound SearchView (UI View Type dropdown)."
+                            : null
                     });
                 }
 
-                ApplySearchRootChanges(search, changes);
-                var result = AppSearchConfigBL.SaveAppSearchExDto(search);
-                if (result?.ValidationResult?.HasErrors == true)
-                    return Fail(ValidationMessages(result.ValidationResult));
+                var changed = new List<object>();
+                if (hasRoot)
+                {
+                    ApplySearchRootChanges(search, changes);
+                    search.IsModified = true;
+                    var result = AppSearchConfigBL.SaveAppSearchExDto(search);
+                    if (result?.ValidationResult?.HasErrors == true)
+                        return Fail(ValidationMessages(result.ValidationResult));
+                    changed.Add(new { type = "search", id = sid });
+                }
+
+                if (hasViewType)
+                {
+                    if (!search.SearchViewId.HasValue)
+                        return Fail("Search has no SearchViewId — cannot set View Type.");
+                    var viewId = search.SearchViewId.Value;
+                    var view = AppSearchViewConfigBL.RetrieveOneAppSearchViewExDto(viewId);
+                    if (view == null) return Fail($"SearchView {viewId} not found.");
+                    if (!TryResolveViewTypeToken(viewTypeToken, out var viewTypeId, out var viewTypeName, out var vtErr))
+                        return Fail(vtErr);
+                    view.ViewType = viewTypeId;
+                    view.IsModified = true;
+                    var viewResult = AppSearchViewConfigBL.SaveAppSearchViewExDto(view);
+                    if (viewResult?.ValidationResult?.HasErrors == true)
+                        return Fail(ValidationMessages(viewResult.ValidationResult));
+                    changed.Add(new { type = "searchView", id = viewId, viewType = viewTypeId, viewTypeName });
+                }
 
                 return Ok(new
                 {
                     saved = true,
                     searchId = sid,
-                    changed = new[] { new { type = "search", id = sid } },
+                    changed,
                     NextStep = "Call request_search_reload."
                 });
             }
@@ -936,6 +981,96 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 search.SearchViewId = (changes["searchViewId"] ?? changes["SearchViewId"]).Value<int?>();
             if (changes["dataSetId"] != null || changes["DataSetId"] != null)
                 search.DataSetId = (changes["dataSetId"] ?? changes["DataSetId"]).Value<int?>();
+        }
+
+        static bool HasSearchRootChange(JObject changes) =>
+            changes != null && (
+                TokenPresent(changes, "searchName", "SearchName", "name", "Name")
+                || TokenPresent(changes, "description", "Description")
+                || TokenPresent(changes, "isAutoExecute", "IsAutoExecute")
+                || TokenPresent(changes, "searchViewId", "SearchViewId")
+                || TokenPresent(changes, "dataSetId", "DataSetId"));
+
+        static bool TokenPresent(JObject changes, params string[] names)
+        {
+            foreach (var n in names)
+            {
+                var t = changes[n];
+                if (t != null && t.Type != JTokenType.Null) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// UI View Type is AppSearchView.ViewType. Agents often send ViewType / DefaultViewType on basic-setting.
+        /// </summary>
+        static bool TryReadViewTypeChange(JObject changes, out JToken token, out string error)
+        {
+            token = null;
+            error = null;
+            if (changes == null) return false;
+            token = changes["viewType"] ?? changes["ViewType"] ?? changes["DefaultViewType"]
+                    ?? changes["defaultViewType"] ?? changes["EmAppViewType"];
+            return token != null && token.Type != JTokenType.Null;
+        }
+
+        static bool TryResolveViewTypeToken(JToken token, out int viewTypeId, out string viewTypeName, out string error)
+        {
+            viewTypeId = (int)EmAppViewType.GridView;
+            viewTypeName = nameof(EmAppViewType.GridView);
+            error = null;
+            if (token == null || token.Type == JTokenType.Null)
+            {
+                error = "viewType is required.";
+                return false;
+            }
+
+            if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
+            {
+                var asInt = token.Value<int>();
+                if (!Enum.IsDefined(typeof(EmAppViewType), asInt))
+                {
+                    error = $"Unknown viewType int={asInt}. Use GridView=1, CardView=2, or EmAppViewType name.";
+                    return false;
+                }
+                viewTypeId = asInt;
+                viewTypeName = Enum.GetName(typeof(EmAppViewType), asInt) ?? asInt.ToString();
+                return true;
+            }
+
+            var raw = token.Type == JTokenType.String ? token.Value<string>() : token.ToString();
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                error = "viewType is empty.";
+                return false;
+            }
+            if (int.TryParse(raw.Trim(), out var parsedInt))
+            {
+                if (!Enum.IsDefined(typeof(EmAppViewType), parsedInt))
+                {
+                    error = $"Unknown viewType int={parsedInt}. Use GridView=1, CardView=2.";
+                    return false;
+                }
+                viewTypeId = parsedInt;
+                viewTypeName = Enum.GetName(typeof(EmAppViewType), parsedInt) ?? parsedInt.ToString();
+                return true;
+            }
+
+            var normalized = raw.Trim().Replace(" ", "").Replace("_", "");
+            if (normalized.Equals("Card", StringComparison.OrdinalIgnoreCase)) normalized = "CardView";
+            if (normalized.Equals("Grid", StringComparison.OrdinalIgnoreCase)) normalized = "GridView";
+            foreach (EmAppViewType vt in Enum.GetValues(typeof(EmAppViewType)))
+            {
+                if (vt.ToString().Equals(normalized, StringComparison.OrdinalIgnoreCase))
+                {
+                    viewTypeId = (int)vt;
+                    viewTypeName = vt.ToString();
+                    return true;
+                }
+            }
+
+            error = $"Unknown viewType '{raw}'. Use GridView, CardView, or EmAppViewType int (GridView=1, CardView=2).";
+            return false;
         }
 
         static bool TryResolveSearchId(AgentToolContext context, int? clientSearchId, out int searchId, out string error)
