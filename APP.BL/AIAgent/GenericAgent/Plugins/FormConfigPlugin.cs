@@ -330,18 +330,21 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             "200=Composition, 54=Close Window, 60/61/62=Send Message, 57=Command Formula, 205=Validate Required. " +
             "For actionType 42: put SQL in notificationMessage; resolve live tokens via find_fields/get_unit_fields/get_current_transaction_config " +
             "(sqlToken like [TF_3499_OpportunityId]). UPDATE/DELETE must WHERE the current row — usually rootPrimaryKeys[].sqlToken. " +
-            "Never invent [rootid] or omit WHERE. Message templates use messageToken; Command Formula uses formulaToken. " +
+            "Never invent [rootid] or omit WHERE. Message templates use messageToken. " +
+            "For actionType 57 (Command Formula): put expression in optionsJson.executionFormulaUI (ActionAttribute) — NOT notificationMessage. " +
+            "Resolve left side via find_fields → formulaToken ([DbColumn_fieldId]); datetime = [Now] or [Today]. " +
+            "Example: [Notes_3499] = [Now]. Never Format(Now(),…), bare Notes=, or update_unit_formula (that is Calculation Flow). " +
             "For actionType 200: create Private children first, then optionsJson.childActionList:[{commandId,sort},…]. " +
             "Empty ChildActionList = empty Child Operations grid; do not put SQL on the composition parent. " +
-            "optionsJson: linkToUI, isShowOnTopMenu, isAutoExecuteOnFormOpen, actionFlowOrder, childActionList, actionAttribute{…}. " +
-            "Does NOT execute the command.")]
+            "optionsJson: linkToUI, isShowOnTopMenu, isAutoExecuteOnFormOpen, actionFlowOrder, childActionList, " +
+            "executionFormulaUI (57), actionAttribute{…}. Does NOT execute the command.")]
         public string UpsertCommand(
             AgentToolContext context,
             [AgentParam("Existing command id for update; omit to create.")] int? commandId = null,
             [AgentParam("Command display name (required on create).")] string name = null,
-            [AgentParam("EmAppTransactionCommandType int (required on create). Examples: Refresh=50, Save=49, ExecuteSQLStatement=42. NEVER use 1 (that is Link Target Edit, not a command type).")] int? actionType = null,
-            [AgentParam("SQL body for type 42, or message/notification body for messaging types. Use [TF_{fieldId}_{dbName}] from sqlToken/messageToken — never [rootid].")] string notificationMessage = null,
-            [AgentParam("JSON of advanced options / ActionAttribute patches.")] string optionsJson = null,
+            [AgentParam("EmAppTransactionCommandType int (required on create). Examples: Refresh=50, Save=49, ExecuteSQLStatement=42, CommandFormula=57. NEVER use 1 (that is Link Target Edit, not a command type).")] int? actionType = null,
+            [AgentParam("SQL body for type 42, or message/notification body for messaging types. NOT for type 57 — use optionsJson.executionFormulaUI. Use [TF_{fieldId}_{dbName}] from sqlToken/messageToken — never [rootid].")] string notificationMessage = null,
+            [AgentParam("JSON options: linkToUI, childActionList, executionFormulaUI (required for 57), actionAttribute{…}.")] string optionsJson = null,
             [AgentParam("Must be true to persist.")] bool? confirmed = null,
             [AgentParam("If true, never persist.")] bool? dryRun = null,
             [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
@@ -856,11 +859,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 tokenGuide = new
                 {
                     sqlAndMessage = "[TF_{fieldId}_{dbName}] — Query Builder Form Root / Grid buttons and Message template field buttons (sqlToken / messageToken).",
-                    formula = "[DbColumn_fieldId] on rootMaster; [Table.DbColumn_fieldId] on masterSibling/childGrid (formulaToken).",
+                    formula = "[DbColumn_fieldId] on rootMaster; [Table.DbColumn_fieldId] on masterSibling/childGrid (formulaToken). Store in optionsJson.executionFormulaUI for actionType 57.",
                     builtinsSql = new[] { "[CurrentUserId]", "[CurrentPartnerId]", "[CurrentUserName]", "GETDATE()", "GETUTCDATE()" },
                     builtinsMessage = new[] { "[Today]", "[CurrentDatetime]", "[CurrentUserName]", "[CurrentUserId]", "[CurrentPartnerId]", "[CurrentPkValue]", "[ApplicationURL]" },
-                    builtinsFormula = new[] { "[CurrentUserId]", "[CurrentPartnerId]", "[CurrentUserIPAddress]" },
-                    neverInvent = new[] { "[rootid]", "[TF_ColumnOnly]", "bare column without TF_ prefix for runtime form values" }
+                    builtinsFormula = new[] { "[Now]", "[Today]", "[CurrentUserId]", "[CurrentPartnerId]", "[CurrentUserIPAddress]" },
+                    neverInvent = new[] { "[rootid]", "[TF_ColumnOnly]", "bare column without TF_ prefix for runtime form values", "Format(Now(),…)", "Notes = … (use formulaToken)" }
                 },
                 units = unitMeta.Select(m => new
                 {

@@ -311,3 +311,4 @@ Configurator must **not** execute runtime commands (`run_command` stays Form Age
 | 2026-11-17 | Doc layout: User manuals → `Document/UserGuide/`; Agent KB → `Document/AgentKnowledge/{skillKey}/`; design stays `AgentDesign/`; runtime copies via `SyncRuntimeDocs.ps1`. |
 | 2026-11-17 | Wrap paired manuals under `Document/KnowledgeBase/` (`UserGuide` + `AgentKnowledge` + sync script); Config Agent still auto-copies from packaged `AgentStarterSeeds/{skillKey}`. |
 | 2026-11-17 | Field tokens: tools expose sqlToken/messageToken/formulaToken + rootPrimaryKeys; SystemPrompt hard rules; **V085** merges former V086 token migration. |
+| 2026-11-23 | Command Formula (57): upsert maps `executionFormulaUI` → ActionAttribute; create-path InFormat; dry-run warns Format(Now())/bare field/wrong column; **V086** SystemPrompt + tool desc. |

@@ -127,22 +127,36 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     catch (Exception ex) { return Fail("optionsJson invalid: " + ex.Message); }
                 }
 
+                var formulaRescueNotes = NormalizeCommandFormulaStorage(cmd);
+
                 var preview = new { action = isCreate ? "create" : "update", command = DetailCommand(cmd) };
                 var warnings = BuildCommandSqlTokenWarnings(cmd.ActionType, cmd.NotificationMessage);
                 warnings.AddRange(BuildCompositionChildWarnings(cmd));
+                warnings.AddRange(formulaRescueNotes);
+                warnings.AddRange(BuildCommandFormulaWarnings(cmd));
                 if (dryRun == true || confirmed != true)
                 {
+                    var next = (string)null;
+                    if (warnings.Count > 0)
+                    {
+                        next = cmd.ActionType == 57
+                            ? "Fix Command Formula: put expression in optionsJson.executionFormulaUI (ActionAttribute), use formulaToken + [Now]/[Today] — not notificationMessage / Format(Now())."
+                            : "Fix SQL tokens/WHERE using find_fields / get_current_transaction_config.rootPrimaryKeys[].sqlToken before confirmed=true.";
+                    }
                     return Ok(new
                     {
                         preview = true,
                         message = "Preview only. ask_user then call again with confirmed=true.",
                         proposed = preview,
                         warnings = warnings.Count > 0 ? warnings : null,
-                        NextStep = warnings.Count > 0
-                            ? "Fix SQL tokens/WHERE using find_fields / get_current_transaction_config.rootPrimaryKeys[].sqlToken before confirmed=true."
-                            : null
+                        NextStep = next
                     });
                 }
+
+                // Create path does not run SaveOneTransactionCommandActionList — format formula here.
+                // Update path formats again inside SaveOneTransactionCommandActionList (safe / idempotent for UI tokens).
+                if (cmd.ActionType == (int)EmAppTransactionCommandType.CommnadFormulaCalculation)
+                    PrepareCommandFormulaForPersist(tx, cmd);
 
                 AppProjectWorkFlowActionExDto saved;
                 if (isCreate)
@@ -564,6 +578,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (jo["paramId1"] != null) attr.ParamId1 = jo.Value<int?>("paramId1"); // often DataTransfer / related id
             if (jo["childCommandsSwitchConditionFieldId"] != null)
                 attr.ChildCommandsSwitchConditionFieldId = jo.Value<int?>("childCommandsSwitchConditionFieldId");
+
             // Preserve unknown keys for advanced types via raw merge into ActionAttribute JSON if present
             if (jo["actionAttribute"] is JObject attrObj)
             {
@@ -574,6 +589,15 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 attr = cmd.ActionAttribute;
             }
 
+            // Command Formula (57): UI expression → ActionAttribute.ExecutionFormulaUI (NOT notificationMessage).
+            // Apply AFTER actionAttribute merge so top-level aliases win.
+            var formulaUi = FirstNonEmptyString(jo,
+                "executionFormulaUI", "ExecutionFormulaUI",
+                "executionFormula", "ExecutionFormula",
+                "formulaExpression", "FormulaExpression");
+            if (formulaUi != null)
+                attr.ExecutionFormulaUI = formulaUi;
+
             // Explicit Composition / Message-link children (same shape as UI Child Operations grid).
             // Prefer top-level childActionList; also accept actionAttribute.childActionList via merge above.
             var childTok = jo["childActionList"] ?? jo["ChildActionList"];
@@ -581,6 +605,69 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 attr.ChildActionList = ParseChildActionList(childArr, allCommands);
             else if (attr.ChildActionList != null && attr.ChildActionList.Count > 0)
                 EnrichChildActionDisplays(attr.ChildActionList, allCommands);
+        }
+
+        static string FirstNonEmptyString(JObject jo, params string[] keys)
+        {
+            if (jo == null || keys == null) return null;
+            foreach (var key in keys)
+            {
+                var tok = jo[key];
+                if (tok == null || tok.Type == JTokenType.Null) continue;
+                var s = tok.Type == JTokenType.String ? tok.Value<string>() : tok.ToString();
+                if (!string.IsNullOrWhiteSpace(s)) return s;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// If agent put the formula in notificationMessage (SQL/message column), move it to ExecutionFormulaUI.
+        /// </summary>
+        static List<string> NormalizeCommandFormulaStorage(AppProjectWorkFlowActionExDto cmd)
+        {
+            var notes = new List<string>();
+            if (cmd?.ActionType != (int)EmAppTransactionCommandType.CommnadFormulaCalculation)
+                return notes;
+
+            cmd.ActionAttribute ??= new AppActionAttributeDto { ChildActionList = new List<ChildTransactionCommandDto>() };
+            var attr = cmd.ActionAttribute;
+            var ui = attr.ExecutionFormulaUI;
+            var msg = cmd.NotificationMessage;
+
+            if (string.IsNullOrWhiteSpace(ui) && LooksLikeCommandFormulaExpression(msg))
+            {
+                attr.ExecutionFormulaUI = msg.Trim();
+                cmd.NotificationMessage = null;
+                notes.Add(
+                    "Moved formula from notificationMessage → ActionAttribute.ExecutionFormulaUI. " +
+                    "For actionType 57, always pass optionsJson.executionFormulaUI (or actionAttribute.executionFormulaUI); " +
+                    "notificationMessage is for SQL (42) / message bodies only.");
+            }
+
+            return notes;
+        }
+
+        static void PrepareCommandFormulaForPersist(AppTransactionExDto tx, AppProjectWorkFlowActionExDto cmd)
+        {
+            if (tx == null || cmd?.ActionAttribute == null) return;
+            var fields = tx.DictAllTransactionField?.Values.ToList() ?? new List<AppTransactionFieldExDto>();
+            if (fields.Count == 0) return;
+            AppTransactionFormulaSetupBL.InitialTransactionFieldFormularDisplayName(tx, fields);
+            AppTransactionCommandBL.InFormatExecutionFormula(fields, cmd);
+        }
+
+        static bool LooksLikeCommandFormulaExpression(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            var t = text.Trim();
+            var upper = t.ToUpperInvariant();
+            if (upper.StartsWith("SELECT", StringComparison.Ordinal)
+                || upper.StartsWith("UPDATE", StringComparison.Ordinal)
+                || upper.StartsWith("DELETE", StringComparison.Ordinal)
+                || upper.StartsWith("INSERT", StringComparison.Ordinal)
+                || upper.StartsWith("EXEC", StringComparison.Ordinal))
+                return false;
+            return t.IndexOf('=') >= 0;
         }
 
         static List<ChildTransactionCommandDto> ParseChildActionList(
@@ -745,6 +832,74 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 warnings.Add(
                     "UPDATE/DELETE should use [TF_{fieldId}_{dbColumn}] tokens from Query Builder field buttons " +
                     "(exposed as sqlToken on field tools). Do not invent placeholders.");
+            }
+
+            return warnings;
+        }
+
+        /// <summary>
+        /// Soft checks for Execute Command Formula (57) — storage + formulaToken / [Now] rules.
+        /// </summary>
+        static List<string> BuildCommandFormulaWarnings(AppProjectWorkFlowActionExDto cmd)
+        {
+            var warnings = new List<string>();
+            if (cmd?.ActionType != (int)EmAppTransactionCommandType.CommnadFormulaCalculation)
+                return warnings;
+
+            var expr = cmd.ActionAttribute?.ExecutionFormulaUI;
+            if (string.IsNullOrWhiteSpace(expr))
+                expr = cmd.ActionAttribute?.ExecutionFormula;
+
+            if (!string.IsNullOrWhiteSpace(cmd.NotificationMessage)
+                && !string.IsNullOrWhiteSpace(expr)
+                && string.Equals(cmd.NotificationMessage.Trim(), expr.Trim(), StringComparison.Ordinal))
+            {
+                warnings.Add(
+                    "Formula is duplicated in notificationMessage. For actionType 57 keep it only in ActionAttribute.ExecutionFormulaUI.");
+            }
+            else if (!string.IsNullOrWhiteSpace(cmd.NotificationMessage)
+                     && LooksLikeCommandFormulaExpression(cmd.NotificationMessage)
+                     && string.IsNullOrWhiteSpace(expr))
+            {
+                warnings.Add(
+                    "Formula appears in notificationMessage but ActionAttribute.ExecutionFormulaUI is empty. " +
+                    "Use optionsJson.executionFormulaUI with formulaToken (not notificationMessage).");
+            }
+
+            if (string.IsNullOrWhiteSpace(expr))
+            {
+                warnings.Add(
+                    "Command Formula (57) requires a non-empty ExecutionFormulaUI. " +
+                    "Example: [Notes_3499] = [Now]. Resolve left side via find_fields → formulaToken.");
+                return warnings;
+            }
+
+            if (expr.IndexOf("Format(", StringComparison.OrdinalIgnoreCase) >= 0
+                || expr.IndexOf("Now()", StringComparison.OrdinalIgnoreCase) >= 0
+                || expr.IndexOf("Today()", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                warnings.Add(
+                    "VBA/Excel-style Format(Now(), …) / Now() is not valid Command Formula syntax. " +
+                    "Use date tokens [Now] or [Today], e.g. [Notes_3499] = [Now].");
+            }
+
+            // Bare left-hand field name (Notes = …) instead of [Notes_id]
+            var eq = expr.IndexOf('=');
+            if (eq > 0)
+            {
+                var left = expr.Substring(0, eq).Trim();
+                if (left.Length > 0 && left[0] != '[' && left.IndexOf('[') < 0)
+                {
+                    warnings.Add(
+                        $"Left side '{left}' is not a formulaToken. Call find_fields / get_unit_fields and use formulaToken " +
+                        "(root: [DbColumn_fieldId], e.g. [Notes_3499]). Do not use bare display/DB names or sqlToken [TF_…].");
+                }
+            }
+
+            if (expr.IndexOf("[TF_", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                warnings.Add(
+                    "[TF_…] is sqlToken/messageToken for SQL/Message — not Command Formula. Use formulaToken [DbColumn_fieldId].");
             }
 
             return warnings;

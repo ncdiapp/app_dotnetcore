@@ -25,6 +25,12 @@ Current form row / root master id: use `rootPrimaryKeys[].sqlToken` (fields with
 
 SQL hard rules (42): SQL goes in `notificationMessage`. `UPDATE`/`DELETE` must `WHERE` the intended row(s); for "this form record" use root PK `sqlToken`. Forbidden: `[rootid]`, missing `WHERE`, hand-waved placeholders.
 
+Command Formula hard rules (57):
+1) Expression goes in `optionsJson.executionFormulaUI` → `ActionAttribute.ExecutionFormulaUI` (persisted inside ActionAttribute JSON / `FormulaExpression` column). **Not** `notificationMessage`.
+2) Left side = `formulaToken` from `find_fields` / `get_unit_fields` (e.g. `[Notes_3499]`). Never bare `Notes`, never `[TF_…]`.
+3) Datetime = `[Now]` or `[Today]` (not `Format(Now(), "…")`, not `Now()`).
+4) Example: `[Notes_3499] = [Now]`. Do **not** use `update_unit_formula` for Command Formula (that tool is Calculation Flow / unit formulas).
+
 ### Taxonomy quick map
 
 | L1 | L2 | actionType ids |
@@ -679,7 +685,7 @@ Targeted calculation not covered by standard field formulas.
 
 #### Step-by-step configuration
 1. Add Execute Command Formula (UI section title may show *Execute Commnad Formula*).
-2. Enter a non-empty Execute Formula expression using form field tokens.
+2. Enter a non-empty Execute Formula expression using form field tokens from the formula keypad.
 3. Typically Private in Composition before Save.
 
 Example: Assign a root status field from other fields, then Save in the same Composition.
@@ -691,6 +697,7 @@ Example: Assign a root status field from other fields, then Save in the same Com
 #### How-to notes
 - Expression syntax matches the transaction formula family; use the editor’s field helpers when available.
 - Prefer this for one targeted assignment; use Exec DataModel All Formula when many field formulas must run.
+- Date/time: insert `[Now]` or `[Today]` (same engine tokens as Calculation Flow). Text/memo fields may assign `[Now]` directly (e.g. stamp Notes).
 
 #### Control reference
 
@@ -700,6 +707,8 @@ Example: Assign a root status field from other fields, then Save in the same Com
 
 #### Pitfalls
 - Empty formula fails validation / runtime.
+- Putting the expression in `notificationMessage` stores it in the wrong DB column (SQL/message body) — editor will look empty.
+- VBA/Excel `Format(Now(), …)` / bare field names will not run.
 - Display name retains typo *Commnad* in the UI.
 
 
@@ -707,10 +716,23 @@ Example: Assign a root status field from other fields, then Save in the same Com
 | **actionType** | 57 |
 
 #### Storage mapping
-`ActionAttribute.ExecutionFormula`, `ExecutionFormulaUI`.
+UI: `ActionAttribute.ExecutionFormulaUI` (formulaToken form).  
+On save: converted to `ActionAttribute.ExecutionFormula` (internal).  
+DB: entire `ActionAttribute` JSON in command `FormulaExpression` column.  
+**Never** store the formula in `NotificationMessage`.
 
 #### `upsert_command`
-Include `executionFormula` in attribute/`optionsJson`.
+```json
+{
+  "name": "Stamp Notes",
+  "actionType": 57,
+  "optionsJson": {
+    "linkToUI": false,
+    "executionFormulaUI": "[Notes_3499] = [Now]"
+  }
+}
+```
+Resolve `[Notes_3499]` via `find_fields("Notes")` → `formulaToken`. Aliases: `executionFormula`, `actionAttribute.executionFormulaUI`.
 
 ---
 
