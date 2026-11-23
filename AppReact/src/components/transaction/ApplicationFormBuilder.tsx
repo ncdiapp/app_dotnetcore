@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import TransactionGraphicEditor, {
@@ -107,6 +107,13 @@ const ApplicationFormBuilder: React.FC<ApplicationFormBuilderProps> = ({
     isEnableConfigurationModeForUser(userContext) && isAdminUserFromContext(userContext);
   const [showAgentDock, setShowAgentDock] = useState(true);
   const [txConfigBridge, setTxConfigBridge] = useState<TransactionEditorConfigBridge | null>(null);
+  /** Configurator dock width (px); drag divider between content and dock. */
+  const CONFIG_DOCK_DEFAULT = 360;
+  const CONFIG_DOCK_MIN = 280;
+  const CONFIG_DOCK_MAX = 720;
+  const [configDockWidthPx, setConfigDockWidthPx] = useState(CONFIG_DOCK_DEFAULT);
+  const contentDockSplitRef = useRef<HTMLDivElement | null>(null);
+  const configDockResizeDragRef = useRef(false);
   // Must stack above linked form popups (EmbeddedLinkedPopupFrame starts at 10000+).
   // Hardcoded z-[9999] opened behind "Open Fit Round" / other form popups.
   const popupFloorZ = useMemo(
@@ -144,6 +151,29 @@ const ApplicationFormBuilder: React.FC<ApplicationFormBuilderProps> = ({
   useEffect(() => {
     setResolvedTransactionId(transactionId ?? null);
   }, [transactionId]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!configDockResizeDragRef.current || !contentDockSplitRef.current) return;
+      const rect = contentDockSplitRef.current.getBoundingClientRect();
+      // Dragging the left edge of the dock: width = containerRight - mouseX
+      const next = rect.right - e.clientX;
+      const maxDock = Math.max(CONFIG_DOCK_MIN, rect.width - 280);
+      setConfigDockWidthPx(Math.min(Math.max(next, CONFIG_DOCK_MIN), Math.min(CONFIG_DOCK_MAX, maxDock)));
+    };
+    const onUp = () => {
+      if (!configDockResizeDragRef.current) return;
+      configDockResizeDragRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, []);
 
   // Section definitions with icons (matching AngularJS structure)
   const allSections = [
@@ -442,25 +472,46 @@ const ApplicationFormBuilder: React.FC<ApplicationFormBuilderProps> = ({
           </div>
 
           {/* Content Area + Configurator dock */}
-          <div className={`w-1 flex-auto h-full overflow-hidden rounded-r-md flex gap-1`}>
-            <div className="w-1 flex-auto h-full overflow-hidden">
+          <div
+            ref={contentDockSplitRef}
+            className={`w-1 flex-auto h-full overflow-hidden rounded-r-md flex gap-1`}
+          >
+            <div className="w-1 flex-auto h-full min-w-0 overflow-hidden">
               {renderSectionContent()}
             </div>
             {showConfigurator && showAgentDock && effectiveTransactionId != null && (
-              <div className="w-[360px] flex-none h-full overflow-hidden border-l">
-                <ConfiguratorAgentDock
-                  kind="form"
-                  transactionId={Number(effectiveTransactionId)}
-                  transactionName={modelName}
-                  scope={`editor:tx:${effectiveTransactionId}`}
-                  onHidePanel={() => setShowAgentDock(false)}
-                  isDirty={!!txConfigBridge?.isDirty}
-                  onSaveDirty={txConfigBridge?.save}
-                  onReload={async () => {
-                    await txConfigBridge?.reloadFromDb?.();
+              <>
+                <div
+                  className={`w-[6px] shrink-0 cursor-col-resize border-l border-r self-stretch min-h-0 ${theme.inputBox} ${theme.mainContentSection}`}
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Resize Configurator"
+                  title="Drag to resize"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    configDockResizeDragRef.current = true;
+                    document.body.style.cursor = 'col-resize';
+                    document.body.style.userSelect = 'none';
                   }}
                 />
-              </div>
+                <div
+                  className="flex-none h-full overflow-hidden border-l"
+                  style={{ width: configDockWidthPx, minWidth: CONFIG_DOCK_MIN }}
+                >
+                  <ConfiguratorAgentDock
+                    kind="form"
+                    transactionId={Number(effectiveTransactionId)}
+                    transactionName={modelName}
+                    scope={`editor:tx:${effectiveTransactionId}`}
+                    onHidePanel={() => setShowAgentDock(false)}
+                    isDirty={!!txConfigBridge?.isDirty}
+                    onSaveDirty={txConfigBridge?.save}
+                    onReload={async () => {
+                      await txConfigBridge?.reloadFromDb?.();
+                    }}
+                  />
+                </div>
+              </>
             )}
             {showConfigurator && !showAgentDock && effectiveTransactionId != null && (
               <button

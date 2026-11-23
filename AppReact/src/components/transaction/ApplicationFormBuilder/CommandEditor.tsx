@@ -68,6 +68,8 @@ export function CommandEditor(props: {
   renderRevision?: number;
   /** Open Data Model Operation help focused on Operation Types. */
   onOpenTypeHelp?: () => void;
+  /** Extra classes on the editor shell (e.g. flush next to a resize splitter). */
+  panelClassName?: string;
 }) {
   const { theme } = useTheme();
   const { showError } = useErrorMessage();
@@ -97,6 +99,7 @@ export function CommandEditor(props: {
     globalTransFieldLookUpList = [],
     renderRevision: _renderRevision,
     onOpenTypeHelp,
+    panelClassName = '',
   } = props;
 
   const [localHelpOpen, setLocalHelpOpen] = useState(false);
@@ -159,13 +162,13 @@ export function CommandEditor(props: {
   const shellWidthClass =
     embeddedPopup || hostContext === 'workflowAutomation'
       ? 'w-full max-w-full min-w-0 min-h-0 h-full'
-      : 'w-1 min-w-[620px] flex-auto min-w-0 min-h-0 h-full';
+      : 'w-1 min-w-[280px] flex-auto min-w-0 min-h-0 h-full';
 
   const localAskPrompt = buildCommandHelpAskPrompt(currentEditAction?.ActionType);
 
   return (
     <>
-    <div className={`${shellWidthClass} flex flex-col border rounded overflow-hidden ${theme.mainContentSection}`}>
+    <div className={`${shellWidthClass} flex flex-col border rounded overflow-hidden ${theme.mainContentSection} ${panelClassName}`}>
       <div className={`text-xs font-semibold px-3 py-2 shrink-0 border-b ${theme.mainContentSection} ${theme.title}`}>Current Edit Operation</div>
       <div className="min-h-0 flex-auto overflow-auto px-5 py-5">
         {!currentEditAction && <p className={`text-sm ${theme.label}`}>Select an operation from the list.</p>}

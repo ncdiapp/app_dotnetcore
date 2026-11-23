@@ -98,6 +98,13 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
   const [taskTab, setTaskTab] = useState<'public' | 'private'>('public');
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpSection, setHelpSection] = useState<CommandHelpSectionId>('');
+  /** Left operation-list width (px); drag the divider between list and editor. */
+  const LIST_WIDTH_DEFAULT = 360;
+  const LIST_WIDTH_MIN = 220;
+  const LIST_WIDTH_MAX = 640;
+  const [listWidthPx, setListWidthPx] = useState(LIST_WIDTH_DEFAULT);
+  const splitContainerRef = useRef<HTMLDivElement | null>(null);
+  const listResizeDragRef = useRef(false);
   const [helpAskPrompt, setHelpAskPrompt] = useState(() => buildCommandHelpAskPrompt(null));
 
   /** Per-command unsaved edits while switching list selection; cleared on Refresh / Save+reload. */
@@ -331,6 +338,28 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
     };
   }, [isModified, onConfigBridgeChange]);
 
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!listResizeDragRef.current || !splitContainerRef.current) return;
+      const rect = splitContainerRef.current.getBoundingClientRect();
+      const next = e.clientX - rect.left;
+      const maxLeft = Math.max(LIST_WIDTH_MIN, rect.width - 320);
+      setListWidthPx(Math.min(Math.max(next, LIST_WIDTH_MIN), Math.min(LIST_WIDTH_MAX, maxLeft)));
+    };
+    const onUp = () => {
+      if (!listResizeDragRef.current) return;
+      listResizeDragRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, []);
+
   const handleAddCommand = useCallback(async () => {
     if (!dataReady) return;
     if (!hierarchy?.Id) {
@@ -544,10 +573,12 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
       </div>
 
       <div
-        className={`w-full h-1 flex-auto flex gap-2 min-h-0 items-stretch px-3 py-3 overflow-hidden ${theme.mainContentSection}`}
+        ref={splitContainerRef}
+        className={`w-full h-1 flex-auto flex gap-0 min-h-0 items-stretch px-3 py-3 overflow-hidden ${theme.mainContentSection}`}
       >
         <div
-          className={`w-[480px] min-w-[280px] h-full min-h-0 flex flex-col border rounded overflow-hidden shrink-0 ${theme.param.border_mainContentSection ? tw.border(theme.param.border_mainContentSection) : ''}`}
+          className={`h-full min-h-0 flex flex-col border border-r-0 rounded-l overflow-hidden shrink-0 ${theme.param.border_mainContentSection ? tw.border(theme.param.border_mainContentSection) : ''}`}
+          style={{ width: listWidthPx, minWidth: LIST_WIDTH_MIN }}
         >
           <div
             className={`shrink-0 border-b ${theme.param.border_mainContentSection ? tw.border(theme.param.border_mainContentSection) : ''}`}
@@ -664,6 +695,20 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
           </div>
         </div>
 
+        <div
+          className={`w-1.5 shrink-0 cursor-col-resize self-stretch min-h-0 border-x ${theme.inputBox} hover:opacity-90`}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize operation list"
+          title="Drag to resize"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            listResizeDragRef.current = true;
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+          }}
+        />
+
         <CommandEditor
           key={selectedId != null ? `cmd-${selectedId}` : 'cmd-none'}
           transactionId={transactionId}
@@ -681,6 +726,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
           onFlowOrderChanged={() => applyCommandListToGrid(commandCV.sourceCollection as any[])}
           onSelectChildCommand={(commandId) => selectCommandById(commandId)}
           onCommandAdded={handleCommandAdded}
+          panelClassName="border-l-0 rounded-l-none rounded-r"
           onOpenTypeHelp={() => {
             setHelpAskPrompt(buildCommandHelpAskPrompt(currentEditAction?.ActionType));
             setHelpSection(

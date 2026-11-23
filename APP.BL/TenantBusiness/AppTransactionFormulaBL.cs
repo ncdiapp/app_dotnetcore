@@ -3013,11 +3013,9 @@ namespace App.BL
 
         private static bool FirstLevelValidation_ValidateOneTransactionField(bool isRootLevelField, ValidationResult aValidationResult, AppTransactionFieldExDto transField, object fieldValue, Dictionary<string, string> dictRootFieldNameAndErrorMessage, string gridRowInfo = "", List<string> childUnitErrorMessageList = null)
         {
-            if (!(transField.NeedValidator.HasValue && transField.NeedValidator.HasValue))
-            {
-                return true;
-            }
-            // for all system ampping token, no need do validation
+            // Callers already filter which fields to validate (NeedValidator / MaxCharLength / !IsAllowEmpty).
+            // Do not early-return on NeedValidator here — required fields use IsAllowEmpty=false and often leave NeedValidator null.
+            // for all system mapping token, no need do validation
             if (transField.MappingEmSystemTokenField.HasValue)
             {
                 return true;
