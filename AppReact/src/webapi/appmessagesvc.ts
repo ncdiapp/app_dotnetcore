@@ -26,6 +26,25 @@ class AppMessageService {
     return response.json();
   }
 
+  /** Angular parity: render Message Template HTML for Print From Message Template (actionType 74). */
+  async getTransactionFormPrintLayoutFromMessageTemplate(
+    messageTemplateId: string,
+    transactionId: string,
+    rootKeyValue: string,
+  ): Promise<any> {
+    const qs = [
+      `messageTemplateId=${messageTemplateId || ''}`,
+      `transactionId=${transactionId || ''}`,
+      `rootKeyValue=${encodeURIComponent(rootKeyValue || '')}`,
+    ].join('&');
+    const response = await fetch(
+      `${endpoints.BASE_URL}/webapi/AppMessage/GetTransactionFormPrintLayoutFromMessageTemplate?${qs}`,
+      { headers: getHeaders() },
+    );
+    if (!response.ok) throw new Error('Failed to get print layout from message template');
+    return response.json();
+  }
+
   async retrieveOneAppMessageExDto(messageId: string): Promise<any> {
     const response = await fetch(`${endpoints.BASE_URL}/webapi/AppMessage/RetrieveOneAppMessageExDto?messageId=${messageId}`, {
       headers: getHeaders()

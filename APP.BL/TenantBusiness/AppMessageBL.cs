@@ -261,9 +261,10 @@ namespace App.BL
                     string subject = AppProjectWorkFlowDataFormSynchBL.ReplaceMessageTemplatePlaceHolderWithActualValue(rootKeyValue, allFreshRootValue, "", currentDatetime, currentUserName, workflowName, taskName, taskStatus, appTransactionExDto, null, messageTemplateId.Value, true);
                     string messageBody = AppProjectWorkFlowDataFormSynchBL.ReplaceMessageTemplatePlaceHolderWithActualValue(rootKeyValue, allFreshRootValue, messageTempalte, currentDatetime, currentUserName, workflowName, taskName, taskStatus, appTransactionExDto, null, null, false);
 
-
-                    messageTemplateDto.Subject = subject;
-                    messageTemplateDto.Message = messageBody;
+                    // DateTime placeholders are emitted as [UtcTicks_…] tokens; convert for print
+                    // (same as RetrieveOneAppMessageExDto / EmailHelper outbound path).
+                    messageTemplateDto.Subject = ConvertMessageAllUtcTicksTokenToClientDateTimeString(subject);
+                    messageTemplateDto.Message = ConvertMessageAllUtcTicksTokenToClientDateTimeString(messageBody);
 
                     return messageTemplateDto;
                 }

@@ -48,6 +48,21 @@ public class AppMessageController : SecureBaseController
         return null;
     }
 
+    /// <summary>
+    /// Render a Message Template with current form field values for UI: Print From Message Template (74).
+    /// </summary>
+    [HttpGet]
+    public AppMessageExDto GetTransactionFormPrintLayoutFromMessageTemplate(
+        int? messageTemplateId,
+        int? transactionId,
+        string rootKeyValue)
+    {
+        return AppMessageBL.GetTransactionFormPrintLayoutFromMessageTemplate(
+            messageTemplateId,
+            transactionId,
+            rootKeyValue);
+    }
+
     [HttpGet]
     public AppMessageExDto RetrieveOneAppMessageExDto(int? messageId)
     {

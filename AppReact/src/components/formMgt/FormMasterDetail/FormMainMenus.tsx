@@ -8,6 +8,7 @@ import { RootState } from '../../../redux/store';
 import { useNavigate } from 'react-router-dom';
 import { setIsBusy, setIsNotBusy } from '../../../redux/features/ui/feedback/busyLoaderSlice';
 import { appTransactionService } from '../../../webapi/apptransactionsvc';
+import { appMessageService } from '../../../webapi/appmessagesvc';
 import { buildRoutePathFromParamObj, getReactPathForRouteCode } from '../../../helper/navigationHelper';
 import { useErrorMessage } from '../../../redux/hooks/useErrorMessage';
 import { useTabNavigation } from '../../../redux/hooks/useTabNavigation';
@@ -791,6 +792,68 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
           // ignore
         }
       }, 0);
+      return;
+    }
+    if (type === 74) {
+      // UI: Print From Message Template — client renders via AppMessageBL (not ExcuteTransactionCommonad).
+      (async () => {
+        const cmdDto = (transactionDto?.CommandActionList || []).find(
+          (x: any) => Number(x?.Id) === Number(commandId),
+        );
+        const messageTemplateId =
+          cmdDto?.MessageTemplateId ??
+          cmdDto?.messageTemplateId ??
+          null;
+        if (!messageTemplateId || Number(messageTemplateId) <= 0) {
+          showError('Print From Message Template failed: Message Template is not linked to this operation.');
+          return;
+        }
+        if (isNewForm || !controllerModel?.transactionId || !controllerModel?.rootPrimaryKeyValue) {
+          showError('Please save the form before printing.');
+          return;
+        }
+        try {
+          dispatch(setIsBusy());
+          const dto = await appMessageService.getTransactionFormPrintLayoutFromMessageTemplate(
+            String(messageTemplateId),
+            String(controllerModel.transactionId),
+            String(controllerModel.rootPrimaryKeyValue),
+          );
+          const html = dto?.Message ?? dto?.message ?? '';
+          const titleRaw = dto?.Subject ?? dto?.subject ?? 'Print';
+          if (!html) {
+            showError('Print From Message Template returned empty content.');
+            return;
+          }
+          const w = window.open('', '_blank');
+          if (!w) {
+            showError('Pop-up blocked. Allow pop-ups for this site to print.');
+            return;
+          }
+          const safeTitle = String(titleRaw)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+          w.document.open();
+          w.document.write(
+            `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${safeTitle}</title></head><body>${html}</body></html>`,
+          );
+          w.document.close();
+          try {
+            w.focus();
+            w.print();
+          } catch {
+            // Window open is enough if print dialog is blocked.
+          }
+        } catch (e) {
+          showError(
+            'Print From Message Template failed: ' + ((e as Error)?.message || String(e)),
+          );
+        } finally {
+          dispatch(setIsNotBusy());
+        }
+      })();
       return;
     }
     // Non-UI commands: execute via server (Angular: ExcuteTransactionCommonad / ExecuteWorkflowRootCommonad)
