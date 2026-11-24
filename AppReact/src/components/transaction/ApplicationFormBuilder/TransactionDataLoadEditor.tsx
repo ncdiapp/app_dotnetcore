@@ -242,7 +242,7 @@ const TransactionDataLoadEditor: React.FC<TransactionDataLoadEditorProps> = ({
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50" onClick={(e) => e.stopPropagation()}>
       <div
-        className={`flex flex-col max-h-[90vh] w-[95vw] max-w-[1200px] rounded-t-md rounded-b-md overflow-hidden border ${theme.mainContentSection}`}
+        className={`flex flex-col h-[90vh] max-h-[90vh] w-[95vw] max-w-[1200px] rounded-t-md rounded-b-md overflow-hidden border ${theme.mainContentSection}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className={`flex items-center justify-between px-3 py-1.5 border-b ${theme.modalHeader}`}>
@@ -253,7 +253,7 @@ const TransactionDataLoadEditor: React.FC<TransactionDataLoadEditorProps> = ({
             <button type="button" onClick={onClose} className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default} flex items-center gap-1`} title="Close"><i className="fa fa-times" aria-hidden="true" /> Close</button>
           </div>
         </div>
-        <div className={`w-full h-[200px] flex-auto overflow-hidden ${theme.mainContentSection}`}>
+        <div className={`w-full h-1 flex-auto min-h-0 overflow-hidden ${theme.mainContentSection}`}>
           <div className="h-full w-full overflow-auto px-5 py-5 space-y-2">
           {loading ? (
             <p className={`text-xs ${theme.label}`}>Loading...</p>

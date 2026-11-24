@@ -488,7 +488,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
         [AgentTool("upsert_data_load",
             "Create/update Transaction Data Load (header + optional conditionMappingsJson / fieldMappingsJson). " +
-            "Create requires unitId, loadName, dataSetId. Each mappings JSON is full-replace for that side; [] clears; omit leaves that side unchanged. " +
+            "Create requires unitId, loadName, dataSetId. loadOrder (UI Sort/Load Order) optional on create — defaults to max existing + 1. " +
+            "Each mappings JSON is full-replace for that side; [] clears; omit leaves that side unchanged. " +
             "condition: [{transactionFieldId, dbColumnName, whereClause}]; field: [{transactionFieldId, dbColumnName}]. " +
             "Preview → ask_user → confirmed=true → request_form_reload.")]
         public string UpsertDataLoad(
@@ -498,7 +499,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             [AgentParam("Load name (required on create).")] string loadName = null,
             [AgentParam("Description.")] string description = null,
             [AgentParam("Dataset id (required on create).")] int? dataSetId = null,
-            [AgentParam("Execution order.")] int? loadOrder = null,
+            [AgentParam("Load Order / Sort Order. On create, omit to auto-assign max existing + 1.")] int? loadOrder = null,
             [AgentParam("Auto-run when opening edit form.")] bool? isAutoExecutedWhenOpenEditForm = null,
             [AgentParam("Auto-run before initial cascading.")] bool? isAutoExecuteBeforeInitialCascading = null,
             [AgentParam("JSON array full-replace of condition mappings; [] clears; omit = leave.")] string conditionMappingsJson = null,

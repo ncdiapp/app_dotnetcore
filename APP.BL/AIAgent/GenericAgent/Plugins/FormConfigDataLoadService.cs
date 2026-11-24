@@ -162,6 +162,24 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     if (!dataSetId.HasValue || dataSetId.Value <= 0)
                         return Fail("dataSetId is required for create. Use list_available_datasets / get_dataset_columns.");
 
+                    // UI "Load Order" / Sort Order: when omitted on create, append after current max
+                    // (same pattern as upsert_command ActionFlowOrder = max+1).
+                    int resolvedLoadOrder;
+                    if (loadOrder.HasValue)
+                    {
+                        resolvedLoadOrder = loadOrder.Value;
+                    }
+                    else
+                    {
+                        var existing = AppTransactionTemplateDataLoadSetupBL.RetrievOneAppTransactionDataLoadDto(transactionId)
+                            ?? new ObservableSet<AppTransactionDataLoadDto>();
+                        var maxOrder = existing
+                            .Select(d => d.LoadOrder ?? 0)
+                            .DefaultIfEmpty(0)
+                            .Max();
+                        resolvedLoadOrder = maxOrder + 1;
+                    }
+
                     dto = new AppTransactionDataLoadExDto
                     {
                         TransactionId = transactionId,
@@ -169,7 +187,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         LoadName = loadName,
                         Description = description ?? "",
                         DataSetId = dataSetId.Value,
-                        LoadOrder = loadOrder,
+                        LoadOrder = resolvedLoadOrder,
                         IsAutoExcutedWhenOpenEditForm = isAutoExecutedWhenOpenEditForm ?? false,
                         IsAutoExecuteBeforeIntialCscading = isAutoExecuteBeforeInitialCascading ?? false,
                         AppTranscationDataLoadFieldMappingList = new ObservableSet<AppTranscationDataLoadFieldMappingExDto>()

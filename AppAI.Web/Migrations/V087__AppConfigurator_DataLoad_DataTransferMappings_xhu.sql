@@ -90,7 +90,7 @@ N'Query columns for one dataset. Use columnId / display as dbColumnName in condi
 WHERE LibraryKey = N'platform-form-config' AND ToolName = N'get_dataset_columns';
 
 UPDATE dbo.AppAgentLibraryTool SET ToolDescription =
-N'Create/update Transaction Data Load (Form Builder Data Load section — not Operation Task 45 Execute All DataLoad). Create requires unitId + loadName + dataSetId (from list_available_datasets). Optional: loadOrder, isAutoExecutedWhenOpenEditForm, isAutoExecuteBeforeInitialCascading. conditionMappingsJson=[{transactionFieldId,dbColumnName,whereClause}] full-replace for conditions; fieldMappingsJson=[{transactionFieldId,dbColumnName}] full-replace for value maps; [] clears that side; omit leaves that side. Preview→ask_user→confirmed=true→request_form_reload. Runtime run = separate command actionType 45.'
+N'Create/update Transaction Data Load (Form Builder Data Load section — not Operation Task 45 Execute All DataLoad). Create requires unitId + loadName + dataSetId (from list_available_datasets). loadOrder (UI Sort/Load Order) optional on create — defaults to max existing + 1. Also optional: isAutoExecutedWhenOpenEditForm, isAutoExecuteBeforeInitialCascading. conditionMappingsJson=[{transactionFieldId,dbColumnName,whereClause}] full-replace for conditions; fieldMappingsJson=[{transactionFieldId,dbColumnName}] full-replace for value maps; [] clears that side; omit leaves that side. Preview→ask_user→confirmed=true→request_form_reload. Runtime run = separate command actionType 45.'
 WHERE LibraryKey = N'platform-form-config' AND ToolName = N'upsert_data_load';
 
 UPDATE dbo.AppAgentLibraryTool SET ToolDescription =

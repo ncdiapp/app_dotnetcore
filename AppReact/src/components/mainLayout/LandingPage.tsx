@@ -11,6 +11,10 @@ import { useTheme } from '../../redux/hooks/useTheme';
 import { setAutoCollapseOnPageOpen, collapseSidebar } from '../../redux/features/ui/navigation/sidebarSlice';
 import { restoreTabs, Tab, syncHomeTabLanding } from '../../redux/features/ui/navigation/tabnavSlice';
 import { getDefaultAuthenticatedTab, isMasterSysAdminFromContext } from '../../helper/adminPermissionHelper';
+import {
+  extractRouteBasePath,
+  isTransactionFormInstancePath,
+} from '../../helper/navigationHelper';
 
 const LandingPage: React.FC = () => {
   const dispatch = useDispatch();
@@ -295,8 +299,18 @@ const LandingPage: React.FC = () => {
           <TabHeaders />
           <div className="flex h-1 min-h-0 w-full flex-auto flex-col p-4">
             <div className="flex h-full min-h-0 w-full flex-col overflow-auto">
-              {/* pathname only — do not remount on activeTabKey alone (same route / tab chrome). */}
-              <Outlet key={location.pathname} />
+              {/* Remount when the route family or active tab changes.
+                  FormMasterDetail/FormListEdit encode record PK in the path JSON — remounting
+                  on every pathname change after first Save races the post-save reload and can
+                  leave "Reloading form…" stuck. Keep those instances mounted across PK updates;
+                  their param effects already reload data for the new key. */}
+              <Outlet
+                key={
+                  isTransactionFormInstancePath(location.pathname)
+                    ? `${extractRouteBasePath(location.pathname)}|${activeTabKey ?? ''}`
+                    : location.pathname
+                }
+              />
             </div>
           </div>
         </main>

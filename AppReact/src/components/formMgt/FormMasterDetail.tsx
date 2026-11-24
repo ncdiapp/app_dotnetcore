@@ -310,6 +310,11 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
     const transactionExDtoRef = useRef<any>(null);
 
     const lastLoadedKeyRef = useRef<string | null>(null);
+    /** Bumps on each load so a stale in-flight load cannot leave isLoading stuck true. */
+    const loadGenerationRef = useRef(0);
+    /** Always invoke the latest loaders (Refresh/Reload must not use a stale closure). */
+    const loadDataFromServerRef = useRef<() => Promise<void>>(async () => {});
+    const refreshFormDataRef = useRef<() => Promise<void>>(async () => {});
     const [headerReloadNonce, setHeaderReloadNonce] = useState(0);
 
     const [workflowMonitorPopup, setWorkflowMonitorPopup] = useState<{
@@ -497,19 +502,25 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
         }
     };
 
-    // Load form data from server
-    const loadFormData = async (formStructureData: any) => {
+    // Load form data from server.
+    // isLoading is owned ONLY by loadDataFromServer / refreshFormData (not here) to avoid
+    // concurrent-load races where a stale success clears a newer load's overlay (or vice versa).
+    const loadFormData = async (formStructureData: any, loadGeneration?: number) => {
         if (!transactionId || !formStructureData) return;
+        const isStale = () =>
+            loadGeneration != null && loadGeneration !== loadGenerationRef.current;
 
         try {
             dispatch(setIsBusy());
-            setDataModel((prev: any) => ({ ...prev, doing_async: true, isLoading: true }));
+            if (!isStale()) {
+                setDataModel((prev: any) => ({ ...prev, doing_async: true }));
+            }
 
             const isNew = rootPrimaryKeyValue == null || String(rootPrimaryKeyValue).trim() === '';
 
             // Angular parity:
             // - New form uses GetNewFormData (properly initialized DTO: TransactionId/defaults/etc.)
-            // - Edit form uses GetFormData
+            // - Edit form uses GetFormData (including IsAutoExecuteOnFormOpen / open command)
             const transGroupId = controllerModel.param2Obj?.transGroupId ?? controllerModel.param2Obj?.LinkTargetTransactionGroupId;
             const rawFormData = isNew
                 ? await appTransactionService.getNewFormData(transactionId, controllerModel.isConfigTestRun === true)
@@ -520,6 +531,8 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
                     autoExecuteCommandId: controllerModel.opennedFormAutoExecuteCommandId || null,
                     selectDataRow: param2Obj?.selecedDataRow ?? null,
                 });
+
+            if (isStale()) return;
 
             let formData = {
                 ...(rawFormData ?? {}),
@@ -549,7 +562,6 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
                 dictFieldEntityDataSource,
                 dictFieldEntityDataMap,
                 doing_async: false,
-                isLoading: false
             }));
 
             // Update tab label if we have display name (skip when embedded in another page, e.g. User Editor).
@@ -564,8 +576,10 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
 
         } catch (error) {
             console.error('Error loading form data:', error);
-            showError('Failed to load form data: ' + (error as Error).message);
-            setDataModel((prev: any) => ({ ...prev, doing_async: false, isLoading: false }));
+            if (!isStale()) {
+                showError('Failed to load form data: ' + (error as Error).message);
+                setDataModel((prev: any) => ({ ...prev, doing_async: false }));
+            }
         } finally {
             dispatch(setIsNotBusy());
         }
@@ -606,6 +620,17 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
     // Main data loading function (can be called multiple times without re-loading DynamicLayout)
     const loadDataFromServer = async () => {
         if (!transactionId) return;
+        const loadGeneration = ++loadGenerationRef.current;
+        const isStale = () => loadGeneration !== loadGenerationRef.current;
+        // Failsafe: never leave "Reloading form…" forever if a request hangs.
+        const failsafeMs = 90000;
+        const failsafeTimer = window.setTimeout(() => {
+            if (loadGeneration !== loadGenerationRef.current) return;
+            console.error('Form load timed out (generation ' + loadGeneration + ')');
+            dispatch(setIsNotBusy());
+            setDataModel((prev: any) => ({ ...prev, isLoading: false, doing_async: false }));
+            showError('Form reload timed out. Please try Refresh again.');
+        }, failsafeMs);
 
         try {
             dispatch(setIsBusy());
@@ -616,6 +641,7 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
             let transactionExDto = transactionExDtoRef.current;
             if (!transactionExDto) {
                 transactionExDto = await loadDynamicLayout();
+                if (isStale()) return;
                 if (transactionExDto) {
                     transactionExDtoRef.current = transactionExDto;
                 }
@@ -628,6 +654,7 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
 
                 // Also load form structure from existing API (for compatibility)
                 const formStructureData = await loadFormStructure();
+                if (isStale()) return;
 
                 // Merge the form structure data with dynamic layout data
                 if (formStructureData) {
@@ -665,28 +692,74 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
                 }
 
                 // Load form data (new vs edit is handled inside loadFormData for Angular parity)
-                await loadFormData(formStructureDataRef.current);
+                await loadFormData(formStructureDataRef.current, loadGeneration);
             } else {
                 // Fallback to original method if DynamicLayout is not loaded yet
                 const formStructureData = await loadFormStructure();
+                if (isStale()) return;
                 if (!formStructureData) return;
 
                 // Load form data (new vs edit is handled inside loadFormData for Angular parity)
-                await loadFormData(formStructureData);
+                await loadFormData(formStructureData, loadGeneration);
             }
         } catch (error) {
             console.error('Error loading data from server:', error);
-            showError((error as Error).message);
+            if (!isStale()) {
+                showError((error as Error).message);
+            }
         } finally {
+            window.clearTimeout(failsafeTimer);
             dispatch(setIsNotBusy());
-            setDataModel((prev: any) => ({ ...prev, isLoading: false }));
+            // Only the latest load may clear the overlay — an older finish must not hide a newer load,
+            // and an older late setIsLoading(true) path is ignored via loadGeneration checks above.
+            if (!isStale()) {
+                setDataModel((prev: any) => ({ ...prev, isLoading: false, doing_async: false }));
+            }
         }
     };
 
+    /**
+     * Toolbar Refresh: reload form DATA only (reuse layout/structure already in memory).
+     * Still runs GetFormData auto-execute (IsAutoExecuteOnFormOpen / open command) like a full load.
+     */
+    const refreshFormData = async () => {
+        if (!transactionId) return;
+        const structure = formStructureDataRef.current;
+        // No structure yet — fall back to full load.
+        if (!structure) {
+            await loadDataFromServer();
+            return;
+        }
+
+        const loadGeneration = ++loadGenerationRef.current;
+        const isStale = () => loadGeneration !== loadGenerationRef.current;
+        const failsafeTimer = window.setTimeout(() => {
+            if (loadGeneration !== loadGenerationRef.current) return;
+            console.error('Form refresh timed out (generation ' + loadGeneration + ')');
+            dispatch(setIsNotBusy());
+            setDataModel((prev: any) => ({ ...prev, isLoading: false, doing_async: false }));
+            showError('Form reload timed out. Please try Refresh again.');
+        }, 90000);
+
+        try {
+            dispatch(setIsBusy());
+            setDataModel((prev: any) => ({ ...prev, isLoading: true }));
+            await loadFormData(structure, loadGeneration);
+        } finally {
+            window.clearTimeout(failsafeTimer);
+            dispatch(setIsNotBusy());
+            if (!isStale()) {
+                setDataModel((prev: any) => ({ ...prev, isLoading: false, doing_async: false }));
+            }
+        }
+    };
+
+    loadDataFromServerRef.current = loadDataFromServer;
+    refreshFormDataRef.current = refreshFormData;
+
     const handleRefresh = useCallback(() => {
-        loadDataFromServer();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [transactionId, rootPrimaryKeyValue]);
+        void refreshFormDataRef.current();
+    }, []);
 
     const handleReloadCurrentFormInner = useCallback(() => {
         if (!transactionId) return;
@@ -714,8 +787,7 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
             isLoading: true,
             doing_async: true,
         }));
-        loadDataFromServer();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        void loadDataFromServerRef.current();
     }, [transactionId, rootPrimaryKeyValue]);
 
     const handleReloadCurrentForm = handleReloadCurrentFormInner;
@@ -775,8 +847,10 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
             // Edit save (PK unchanged): changing paramObj does not re-run the data-loading
             // effect, so reload once here. New form first save (PK changed) is handled by the
             // effect, which now loads exactly once thanks to the dedup guard above.
+            // Always call through the ref so we use the loader that closes over the updated PK
+            // after React applies setParamObj (microtask), not a stale pre-save closure.
             if (!pkChanged) {
-                loadDataFromServer();
+                void loadDataFromServerRef.current();
             }
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -923,7 +997,7 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
         lastLoadedKeyRef.current = loadKey;
 
         // Load from server (will use transactionExDtoRef if already loaded)
-        loadDataFromServer();
+        void loadDataFromServerRef.current();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [transactionId, rootPrimaryKeyValue, isEmbedded, param2Obj?.isEmbeddedByOtherPage, param2Obj?.isTemplateHeader, param2Obj?.isHideHeaderAndFooter, param2Obj?.skipFormTabCache]);
 
