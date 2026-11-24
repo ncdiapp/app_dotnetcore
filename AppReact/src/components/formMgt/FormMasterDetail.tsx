@@ -172,15 +172,29 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
     const rootPrimaryKeyValue = paramObj.param1 ?? null;
 
     const param2Obj = useMemo(() => {
-        if (!paramObj.param2) return {};
-        if (typeof paramObj.param2 === 'string') {
+        let raw: any = {};
+        if (!paramObj.param2) {
+            raw = {};
+        } else if (typeof paramObj.param2 === 'string') {
             try {
-                return JSON.parse(paramObj.param2);
+                raw = JSON.parse(paramObj.param2);
             } catch {
-                return {};
+                raw = {};
             }
+        } else {
+            raw = paramObj.param2;
         }
-        return paramObj.param2;
+        // Standalone share links may still carry host-context flags from older URL builders.
+        // Clear embed/group-only flags so the form loads as a normal top-level page.
+        if (raw?.isStandalone) {
+            return {
+                ...raw,
+                isEmbeddedByOtherPage: false,
+                isTransactionFormGroup: false,
+                isNavigatedFromTab: false,
+            };
+        }
+        return raw;
     }, [paramObj.param2]);
 
     // Controller model state

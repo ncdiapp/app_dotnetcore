@@ -618,16 +618,18 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
 
     const transactionId = Number(controllerModel.transactionId);
     const rootPk = String(controllerModel.rootPrimaryKeyValue);
-    const baseParam2 = controllerModel?.param2Obj ?? {};
+    // Keep the share URL minimal: do not copy host-context flags from the current tab
+    // (isEmbeddedByOtherPage / isTransactionFormGroup / selecedDataRow / templateConfigTargets).
+    // Those inflate the URL and can break rendering outside TransactionFormGroup / LandingPage.
     const paramObj = {
       id: transactionId,
       param1: rootPk,
-      param2: { ...(typeof baseParam2 === 'object' ? baseParam2 : {}), isNavigatedFromTab: false, isStandalone: true },
+      param2: { isNavigatedFromTab: false, isStandalone: true },
     };
     const routeBase = getReactPathForRouteCode('FormMasterDetailStandalone');
     const urlPath = buildRoutePathFromParamObj(routeBase, paramObj);
     return `${window.location.origin}${urlPath}`;
-  }, [controllerModel?.param2Obj, controllerModel?.rootPrimaryKeyValue, controllerModel?.transactionId, isNewForm]);
+  }, [controllerModel?.rootPrimaryKeyValue, controllerModel?.transactionId, isNewForm]);
 
   const openShareLinkPopup = useCallback(() => {
     const url = buildStandaloneFormUrl();
