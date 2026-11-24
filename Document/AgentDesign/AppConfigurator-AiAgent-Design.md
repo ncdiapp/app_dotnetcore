@@ -297,8 +297,8 @@ Maps **Internal Data Transfer Data Model** (`TransactionDataTransferSettingMgt`)
 | Tool | Status | Notes |
 |------|--------|-------|
 | `get_data_transfers` | Done (V084) | List DT settings on open TX |
-| `get_data_transfer_detail` | Done (V084) | Header + field mappings |
-| `upsert_data_transfer` | Done (V084) | Header + mappingsJson |
+| `get_data_transfer_detail` | Done | Header + mappings + type hints (API params / request vs response) |
+| `upsert_data_transfer` | Done | Header + **full-replace** `mappingsJson` (all types 1–4); `[]` clears; omit leaves mappings |
 | `upsert_data_transfer_mappings` | Folded into upsert_data_transfer.mappingsJson | |
 | `delete_data_transfer` | Done (V084) | HITL |
 
@@ -332,9 +332,16 @@ UI: `TransactionUnitLinkTargetEditor`. BL: `LinkTragetBL.SaveOneAppFormLinkTarge
 
 | Tool | Status | Notes |
 |------|--------|-------|
-| `get_data_load_settings` | Need | Unit data-load rules |
-| `upsert_data_load_setting` | Need | |
-| `delete_data_load_setting` | Need | HITL |
+| `get_data_loads` | Done | List on open TX; optional `unitId` |
+| `get_data_load_detail` | Done | Header + condition/field mappings + dataset columns |
+| `list_available_datasets` | Done | Pick `dataSetId` |
+| `get_dataset_columns` | Done | Columns for mapping `dbColumnName` |
+| `upsert_data_load` | Done | Header + `conditionMappingsJson` / `fieldMappingsJson` full-replace per side; `[]` clears |
+| `delete_data_load` | Done | HITL |
+| `get_message_templates` | Done | TX Message Templates (AppMessage scope 99) |
+| `get_message_template_detail` | Done | |
+| `upsert_message_template` | Done | Then bind via upsert_command 74 `messageTemplateId` |
+| `delete_message_template` | Done | HITL |
 | `get_condition_locks` | Need | Conditional lock/hide |
 | `upsert_condition_lock` | Need | |
 | `delete_condition_lock` | Need | HITL |

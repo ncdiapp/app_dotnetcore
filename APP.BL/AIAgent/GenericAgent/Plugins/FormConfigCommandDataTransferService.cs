@@ -135,6 +135,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 warnings.AddRange(BuildCompositionChildWarnings(cmd));
                 warnings.AddRange(formulaRescueNotes);
                 warnings.AddRange(BuildCommandFormulaWarnings(cmd));
+                warnings.AddRange(BuildPrintFromMessageTemplateWarnings(cmd));
                 var navHard = BuildNavigateSearchHardWarnings(tx, cmd);
                 var navSoft = BuildNavigateSearchSoftWarnings(cmd);
                 warnings.AddRange(navHard);
@@ -150,6 +151,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                             next = "Fix Navigate To Search: list_available_searches → upsert_linked_search on root unit → set optionsJson.linkedSearchId to returned linkedSearchId (not AppSearch.SearchId / invent 1).";
                         else if (cmd.ActionType == 53 && navSoft.Count > 0)
                             next = "Search filter←form field mapping uses upsert_linked_search filterMappingsJson (UI Search Mapping), not ParamId1.";
+                        else if (cmd.ActionType == 74)
+                            next = "Fix Print From Message Template: upsert_message_template → optionsJson.messageTemplateId (not notificationMessage body).";
                         else
                             next = "Fix SQL tokens/WHERE using find_fields / get_current_transaction_config.rootPrimaryKeys[].sqlToken before confirmed=true.";
                     }
@@ -285,29 +288,24 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         {
             try
             {
-                var dto = AppTransactionDataTransferSettingBL
-                    .RetrieveAllAppTransactionDataTransferSettingExDto(transactionId, null)
-                    .FirstOrDefault(d => d.Id != null && Convert.ToInt32(d.Id) == dataTransferId);
-                if (dto == null) return Fail($"DataTransfer {dataTransferId} not found on transaction {transactionId}.");
+                var dto = AppTransactionDataTransferSettingBL.RetrieveOneAppTransactionDataTransferSettingExDto(dataTransferId);
+                if (dto == null || dto.Id == null)
+                    return Fail($"DataTransfer {dataTransferId} not found.");
+                if (dto.TransactionId.HasValue && Convert.ToInt32(dto.TransactionId) != transactionId
+                    && (!dto.DestinationTransactionId.HasValue || Convert.ToInt32(dto.DestinationTransactionId) != transactionId))
+                {
+                    // Setting must belong to open TX as source or destination.
+                    var onTx = AppTransactionDataTransferSettingBL
+                        .RetrieveAllAppTransactionDataTransferSettingExDto(transactionId, null)
+                        .Any(d => d.Id != null && Convert.ToInt32(d.Id) == dataTransferId);
+                    if (!onTx) return Fail($"DataTransfer {dataTransferId} not found on transaction {transactionId}.");
+                }
+
                 return Ok(new
                 {
                     transactionId,
-                    dataTransfer = new
-                    {
-                        dataTransferId = dto.Id,
-                        description = dto.Description,
-                        internalCode = dto.InternalCode,
-                        transferTypeId = dto.TransferTypeId,
-                        destinationTransactionId = dto.DestinationTransactionId,
-                        mappings = (dto.AppTransactionSaveAsMappingList ?? new ObservableSet<AppTransactionSaveAsMappingExDto>())
-                            .Select(m => new
-                            {
-                                mappingId = m.Id,
-                                sourceFieldId = m.SourceFiledId,
-                                targetFieldId = m.TargetFiledId,
-                                name = m.Name
-                            }).ToList()
-                    }
+                    dataTransfer = SummarizeDataTransferDetail(dto),
+                    mappingHints = BuildDataTransferMappingHints(dto)
                 });
             }
             catch (Exception ex) { return Fail(ex.Message); }
@@ -327,12 +325,19 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             try
             {
                 AppTransactionDataTransferSettingExDto dto;
-                if (dataTransferId.HasValue && dataTransferId.Value > 0)
+                var isCreate = !(dataTransferId.HasValue && dataTransferId.Value > 0);
+                if (!isCreate)
                 {
-                    dto = AppTransactionDataTransferSettingBL
-                        .RetrieveAllAppTransactionDataTransferSettingExDto(transactionId, null)
-                        .FirstOrDefault(d => d.Id != null && Convert.ToInt32(d.Id) == dataTransferId.Value);
-                    if (dto == null) return Fail($"DataTransfer {dataTransferId} not found.");
+                    dto = AppTransactionDataTransferSettingBL.RetrieveOneAppTransactionDataTransferSettingExDto(dataTransferId.Value);
+                    if (dto == null || dto.Id == null) return Fail($"DataTransfer {dataTransferId} not found.");
+                    var onTx = dto.TransactionId != null && Convert.ToInt32(dto.TransactionId) == transactionId;
+                    if (!onTx)
+                    {
+                        onTx = AppTransactionDataTransferSettingBL
+                            .RetrieveAllAppTransactionDataTransferSettingExDto(transactionId, null)
+                            .Any(d => d.Id != null && Convert.ToInt32(d.Id) == dataTransferId.Value);
+                    }
+                    if (!onTx) return Fail($"DataTransfer {dataTransferId} not found on transaction {transactionId}.");
                 }
                 else
                 {
@@ -340,37 +345,78 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     dto = new AppTransactionDataTransferSettingExDto
                     {
                         TransactionId = transactionId,
+                        TransferTypeId = (int)EmAppTransactionDataTransferType.FromDataModelToDataModel,
                         AppTransactionSaveAsMappingList = new ObservableSet<AppTransactionSaveAsMappingExDto>()
                     };
                 }
 
                 if (description != null) dto.Description = description;
                 if (internalCode != null) dto.InternalCode = internalCode;
-                if (transferTypeId.HasValue) dto.TransferTypeId = transferTypeId;
+                if (transferTypeId.HasValue)
+                {
+                    if (!IsValidTransferType(transferTypeId.Value))
+                    {
+                        return Fail(
+                            "transferTypeId must be EmAppTransactionDataTransferType: " +
+                            "1=FromDataModelToMessageTemplate, 2=FromDataModelToDataModel, " +
+                            "3=FromApiToDataModel, 4=FromDataModelToApi.");
+                    }
+                    dto.TransferTypeId = transferTypeId;
+                }
+                else if (isCreate && !dto.TransferTypeId.HasValue)
+                {
+                    dto.TransferTypeId = (int)EmAppTransactionDataTransferType.FromDataModelToDataModel;
+                }
+
                 if (destinationTransactionId.HasValue) dto.DestinationTransactionId = destinationTransactionId;
 
-                if (!string.IsNullOrWhiteSpace(mappingsJson))
+                // Ensure source TransactionId stays on open form TX for types that use "from data model".
+                var tType = dto.TransferTypeId ?? (int)EmAppTransactionDataTransferType.FromDataModelToDataModel;
+                if (!dto.TransactionId.HasValue
+                    || tType == (int)EmAppTransactionDataTransferType.FromDataModelToDataModel
+                    || tType == (int)EmAppTransactionDataTransferType.FromDataModelToMessageTemplate
+                    || tType == (int)EmAppTransactionDataTransferType.FromDataModelToApi)
                 {
-                    var maps = JArray.Parse(mappingsJson);
+                    dto.TransactionId = transactionId;
+                }
+
+                string mappingApplyNote = null;
+                if (mappingsJson != null)
+                {
+                    JArray maps;
+                    try { maps = JArray.Parse(string.IsNullOrWhiteSpace(mappingsJson) ? "[]" : mappingsJson); }
+                    catch (Exception ex) { return Fail("mappingsJson invalid: " + ex.Message); }
+
                     dto.AppTransactionSaveAsMappingList ??= new ObservableSet<AppTransactionSaveAsMappingExDto>();
+                    // Full replace (including []): Clear() marks prior rows deleted for ProcessDirtyDto.
+                    dto.AppTransactionSaveAsMappingList.Clear();
                     foreach (var m in maps)
                     {
-                        var mapId = m.Value<int?>("mappingId") ?? m.Value<int?>("id");
-                        AppTransactionSaveAsMappingExDto mapDto = null;
-                        if (mapId.HasValue)
-                            mapDto = dto.AppTransactionSaveAsMappingList.FirstOrDefault(x => x.Id != null && Convert.ToInt32(x.Id) == mapId.Value);
-                        if (mapDto == null)
+                        if (m == null || m.Type == JTokenType.Null) continue;
+                        if (m.Value<bool?>("delete") == true) continue;
+
+                        var mapDto = new AppTransactionSaveAsMappingExDto
                         {
-                            mapDto = new AppTransactionSaveAsMappingExDto();
-                            dto.AppTransactionSaveAsMappingList.Add(mapDto);
-                        }
-                        var src = m.Value<int?>("sourceFieldId") ?? m.Value<int?>("sourceFiledId");
-                        var dest = m.Value<int?>("targetFieldId") ?? m.Value<int?>("targetFiledId");
-                        if (src.HasValue) mapDto.SourceFiledId = src;
-                        if (dest.HasValue) mapDto.TargetFiledId = dest;
-                        if (m["name"] != null) mapDto.Name = m.Value<string>("name");
+                            TransactionId = dto.TransactionId ?? transactionId,
+                            SourceFiledId = m.Value<int?>("sourceFieldId") ?? m.Value<int?>("sourceFiledId"),
+                            TargetFiledId = m.Value<int?>("targetFieldId") ?? m.Value<int?>("targetFiledId"),
+                            MappingUnitId = m.Value<int?>("mappingUnitId"),
+                            Name = m.Value<string>("name") ?? "",
+                            JsonPropertyPathName = m.Value<string>("jsonPropertyPathName")
+                                ?? m.Value<string>("jsonPath")
+                                ?? "",
+                            IsBlankTargetField = m.Value<bool?>("isBlankTargetField")
+                                ?? m.Value<bool?>("isResponseMapping")
+                                ?? false
+                        };
+                        dto.AppTransactionSaveAsMappingList.Add(mapDto);
                     }
+                    mappingApplyNote = maps.Count == 0
+                        ? "Cleared all mappings."
+                        : $"Replaced mappings with {maps.Count} row(s).";
                 }
+
+                dto.IsModified = true;
 
                 if (dryRun == true || confirmed != true)
                 {
@@ -380,11 +426,18 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         message = "Preview only. ask_user then confirmed=true.",
                         proposed = new
                         {
-                            action = dto.IsNew ? "create" : "update",
+                            action = isCreate || dto.IsNew ? "create" : "update",
                             description = dto.Description,
+                            transferTypeId = dto.TransferTypeId,
+                            transferType = TransferTypeName(dto.TransferTypeId),
+                            internalCode = dto.InternalCode,
                             destinationTransactionId = dto.DestinationTransactionId,
-                            mappingCount = dto.AppTransactionSaveAsMappingList?.Count ?? 0
-                        }
+                            mappingCount = dto.AppTransactionSaveAsMappingList?.Count ?? 0,
+                            mappingApplyNote,
+                            mappings = (dto.AppTransactionSaveAsMappingList ?? new ObservableSet<AppTransactionSaveAsMappingExDto>())
+                                .Select(SummarizeMapping).ToList()
+                        },
+                        mappingHints = BuildDataTransferMappingHints(dto)
                     });
                 }
 
@@ -396,15 +449,99 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
 
                 AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId);
+                var savedId = result?.Object?.Id ?? dto.Id;
                 return Ok(new
                 {
                     saved = true,
-                    dataTransferId = result?.Object?.Id ?? dto.Id,
-                    changed = new[] { new { type = "dataTransfer", id = result?.Object?.Id ?? dto.Id } },
+                    dataTransferId = savedId,
+                    mappingApplyNote,
+                    changed = new[] { new { type = "dataTransfer", id = savedId } },
                     NextStep = "Call request_form_reload."
                 });
             }
             catch (Exception ex) { return Fail(ex.Message); }
+        }
+
+        static bool IsValidTransferType(int typeId) =>
+            typeId == (int)EmAppTransactionDataTransferType.FromDataModelToMessageTemplate
+            || typeId == (int)EmAppTransactionDataTransferType.FromDataModelToDataModel
+            || typeId == (int)EmAppTransactionDataTransferType.FromApiToDataModel
+            || typeId == (int)EmAppTransactionDataTransferType.FromDataModelToApi;
+
+        static string TransferTypeName(int? typeId)
+        {
+            if (!typeId.HasValue) return null;
+            return typeId.Value switch
+            {
+                (int)EmAppTransactionDataTransferType.FromDataModelToMessageTemplate => "FromDataModelToMessageTemplate",
+                (int)EmAppTransactionDataTransferType.FromDataModelToDataModel => "FromDataModelToDataModel",
+                (int)EmAppTransactionDataTransferType.FromApiToDataModel => "FromApiToDataModel",
+                (int)EmAppTransactionDataTransferType.FromDataModelToApi => "FromDataModelToApi",
+                _ => "Unknown"
+            };
+        }
+
+        static object SummarizeMapping(AppTransactionSaveAsMappingExDto m) => new
+        {
+            mappingId = m.Id,
+            sourceFieldId = m.SourceFiledId,
+            targetFieldId = m.TargetFiledId,
+            mappingUnitId = m.MappingUnitId,
+            name = m.Name,
+            jsonPropertyPathName = m.JsonPropertyPathName,
+            isBlankTargetField = m.IsBlankTargetField,
+            isResponseMapping = m.IsBlankTargetField == true
+        };
+
+        static object SummarizeDataTransferDetail(AppTransactionDataTransferSettingExDto dto) => new
+        {
+            dataTransferId = dto.Id,
+            description = dto.Description,
+            internalCode = dto.InternalCode,
+            transferTypeId = dto.TransferTypeId,
+            transferType = TransferTypeName(dto.TransferTypeId),
+            transactionId = dto.TransactionId,
+            destinationTransactionId = dto.DestinationTransactionId,
+            targetApiOperationId = dto.TargetApiOperationId,
+            targetApiInputParameters = dto.TargetApiInputParameterList,
+            mappings = (dto.AppTransactionSaveAsMappingList ?? new ObservableSet<AppTransactionSaveAsMappingExDto>())
+                .Select(SummarizeMapping).ToList(),
+            requestMappings = (dto.DataTransferMappingList ?? new List<AppTransactionSaveAsMappingExDto>())
+                .Select(SummarizeMapping).ToList(),
+            responseMappings = (dto.ApiResponseMappingList ?? new List<AppTransactionSaveAsMappingExDto>())
+                .Select(SummarizeMapping).ToList()
+        };
+
+        static object BuildDataTransferMappingHints(AppTransactionDataTransferSettingExDto dto)
+        {
+            var typeId = dto?.TransferTypeId;
+            return new
+            {
+                transferTypeId = typeId,
+                transferType = TransferTypeName(typeId),
+                mappingsJsonIsFullReplace =
+                    "Pass mappingsJson as a JSON array to fully replace mappings; pass [] to clear. Omit mappingsJson to leave mappings unchanged.",
+                rowShape = new
+                {
+                    sourceFieldId = "Source transaction field id (DDL Id). Required for most FromDataModel* rows.",
+                    targetFieldId = "Destination transaction field id (DM↔DM / API response→field).",
+                    name = "API input param name (path/query/env) OR message-template token; also used for mapToInputParam.",
+                    jsonPropertyPathName = "Absolute JSON path for API payload/response leaf (e.g. order.customerId).",
+                    isBlankTargetField = "true = API response mapping (IsBlankTargetField); false = request/payload/DM mapping.",
+                    mappingUnitId = "Optional unit id when mapping is unit-scoped.",
+                    delete = "Ignored under full-replace (omit row instead)."
+                },
+                byType = new
+                {
+                    FromDataModelToDataModel = "Rows: sourceFieldId (from TX) + targetFieldId (destination TX). transferTypeId=2, destinationTransactionId required.",
+                    FromDataModelToMessageTemplate = "Rows: sourceFieldId + name (template token). transferTypeId=1. internalCode may identify template.",
+                    FromApiToDataModel = "Rows: jsonPropertyPathName (API) + targetFieldId (DM). transferTypeId=3. internalCode = API operation id. destinationTransactionId = target DM.",
+                    FromDataModelToApi = "Rows mix: (1) name=API input param + sourceFieldId; (2) jsonPropertyPathName + sourceFieldId for payload; (3) isBlankTargetField=true + jsonPropertyPathName + targetFieldId for response. transferTypeId=4. internalCode = API operation id. Call get_data_transfer_detail after create to see targetApiInputParameters / structure."
+                },
+                targetApiInputParameters = dto?.TargetApiInputParameterList,
+                hasPayloadStructure = dto?.TargetApiPayloadDataStructure != null,
+                hasResponseStructure = dto?.TargetApiResponseDataStructure != null
+            };
         }
 
         public static string DeleteDataTransfer(int transactionId, int dataTransferId, bool? confirmed, bool? dryRun)
@@ -1130,6 +1267,15 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (jo["childCommandsSwitchConditionFieldId"] != null)
                 attr.ChildCommandsSwitchConditionFieldId = jo.Value<int?>("childCommandsSwitchConditionFieldId");
 
+            // Print From Message Template (74) / Send Message types: top-level MessageTemplateId column
+            // (NOT ActionAttribute). UI: PrintFromMessageTemplateSection / NotificationExpressionSection.
+            var msgTplId = jo.Value<int?>("messageTemplateId")
+                ?? jo.Value<int?>("MessageTemplateId")
+                ?? (jo["actionAttribute"] as JObject)?.Value<int?>("messageTemplateId")
+                ?? (jo["actionAttribute"] as JObject)?.Value<int?>("MessageTemplateId");
+            if (msgTplId.HasValue)
+                cmd.MessageTemplateId = msgTplId.Value > 0 ? msgTplId : null;
+
             // Preserve unknown keys for advanced types via raw merge into ActionAttribute JSON if present
             if (jo["actionAttribute"] is JObject attrObj)
             {
@@ -1288,9 +1434,42 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             displayName = c.DisplayName,
             actionType = c.ActionType,
             notificationMessage = c.NotificationMessage,
+            messageTemplateId = c.MessageTemplateId,
             commandTransactionId = c.CommandTransactionId,
             actionAttribute = c.ActionAttribute
         };
+
+        /// <summary>
+        /// Print From Message Template (74) binds via top-level MessageTemplateId (AppMessage template),
+        /// not NotificationMessage body and not ActionAttribute.
+        /// </summary>
+        static List<string> BuildPrintFromMessageTemplateWarnings(AppProjectWorkFlowActionExDto cmd)
+        {
+            var warnings = new List<string>();
+            if (cmd?.ActionType != (int)EmAppTransactionCommandType.PrintFromMessageTemplate
+                && cmd?.ActionType != 74)
+                return warnings;
+
+            if (cmd.MessageTemplateId == null || Convert.ToInt32(cmd.MessageTemplateId) <= 0)
+            {
+                warnings.Add(
+                    "Print From Message Template (74) requires optionsJson.messageTemplateId = an existing " +
+                    "transaction message template Id (AppMessage). UI Message Template field stays (None) until set. " +
+                    "Do NOT put template body in notificationMessage. " +
+                    "Flow: upsert_message_template (or get_message_templates) → upsert_command(optionsJson:{messageTemplateId}).");
+            }
+
+            if (!string.IsNullOrWhiteSpace(cmd.NotificationMessage)
+                && (cmd.MessageTemplateId == null || Convert.ToInt32(cmd.MessageTemplateId) <= 0)
+                && cmd.NotificationMessage.IndexOf("TEMPLATE", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                warnings.Add(
+                    "notificationMessage looks like template text but MessageTemplateId is empty — " +
+                    "the Operation editor will still show Message Template = (None).");
+            }
+
+            return warnings;
+        }
 
         static AppTransactionExDto LoadTx(int transactionId, out string error)
         {

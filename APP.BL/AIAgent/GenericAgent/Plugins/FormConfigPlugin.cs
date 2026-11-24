@@ -385,7 +385,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         [AgentTool("get_data_transfer_detail",
-            "Detail + field mappings for one Data Transfer setting.")]
+            "Detail + mappings + type-specific hints (API input params / response vs request split) for one Data Transfer.")]
         public string GetDataTransferDetail(
             AgentToolContext context,
             [AgentParam("DataTransfer setting id.", isRequired: true)] int? dataTransferId = null,
@@ -398,16 +398,20 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         [AgentTool("upsert_data_transfer",
-            "Create/update Internal Data Transfer header and optional mappingsJson " +
-            "([{sourceFieldId,targetFieldId,name},…]). Preview → ask_user → confirmed=true → request_form_reload.")]
+            "Create/update Internal Data Transfer. Types: 1=ToMessageTemplate, 2=DataModel→DataModel (default create), " +
+            "3=Api→DataModel, 4=DataModel→Api. mappingsJson is FULL REPLACE of AppTransactionSaveAsMapping " +
+            "([{sourceFieldId,targetFieldId,name,jsonPropertyPathName,isBlankTargetField,mappingUnitId},…]); " +
+            "pass [] to clear; omit to leave mappings unchanged. For type 4, internalCode=API operation id; " +
+            "use get_data_transfer_detail for targetApiInputParameters / mappingHints. " +
+            "Preview → ask_user → confirmed=true → request_form_reload.")]
         public string UpsertDataTransfer(
             AgentToolContext context,
             [AgentParam("Existing id for update; omit to create.")] int? dataTransferId = null,
             [AgentParam("Description / name (required on create).")] string description = null,
-            [AgentParam("Optional internal code.")] string internalCode = null,
-            [AgentParam("Transfer type id.")] int? transferTypeId = null,
-            [AgentParam("Destination transaction id.")] int? destinationTransactionId = null,
-            [AgentParam("JSON array of field mappings.")] string mappingsJson = null,
+            [AgentParam("Internal code; for API types = API operation id string.")] string internalCode = null,
+            [AgentParam("EmAppTransactionDataTransferType: 1 MessageTemplate, 2 DM↔DM, 3 Api→DM, 4 DM→Api.")] int? transferTypeId = null,
+            [AgentParam("Destination transaction id (DM target for types 2/3).")] int? destinationTransactionId = null,
+            [AgentParam("JSON array full-replace of mappings; [] clears; omit = leave unchanged.")] string mappingsJson = null,
             [AgentParam("Must be true to persist.")] bool? confirmed = null,
             [AgentParam("If true, never persist.")] bool? dryRun = null,
             [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
@@ -432,6 +436,164 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
                 return Fail(err);
             return FormConfigCommandDataTransferService.DeleteDataTransfer(txnId, dataTransferId.Value, confirmed, dryRun);
+        }
+
+        [AgentTool("get_data_loads",
+            "List Transaction Data Load rules on the open transaction (optional filter by unitId).")]
+        public string GetDataLoads(
+            AgentToolContext context,
+            [AgentParam("Optional TransactionUnitId filter.")] int? unitId = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigDataLoadService.GetDataLoads(txnId, unitId);
+        }
+
+        [AgentTool("get_data_load_detail",
+            "Detail for one Data Load: header, conditionMappings, fieldMappings, and dataset columns when DataSetId is set.")]
+        public string GetDataLoadDetail(
+            AgentToolContext context,
+            [AgentParam("DataLoad id.", isRequired: true)] int? dataLoadId = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!dataLoadId.HasValue) return Fail("dataLoadId is required.");
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigDataLoadService.GetDataLoadDetail(txnId, dataLoadId.Value);
+        }
+
+        [AgentTool("list_available_datasets",
+            "List tenant datasets for Data Load DataSetId picking (optional nameContains, take).")]
+        public string ListAvailableDatasets(
+            AgentToolContext context,
+            [AgentParam("Optional name/description filter.")] string nameContains = null,
+            [AgentParam("Max rows (default 50, max 200).")] int? take = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigDataLoadService.ListAvailableDatasets(txnId, nameContains, take);
+        }
+
+        [AgentTool("get_dataset_columns",
+            "List query columns for a dataset (use as dbColumnName in Data Load mappings).")]
+        public string GetDatasetColumns(
+            AgentToolContext context,
+            [AgentParam("Dataset id.", isRequired: true)] int? dataSetId = null)
+        {
+            if (!dataSetId.HasValue) return Fail("dataSetId is required.");
+            return FormConfigDataLoadService.GetDatasetColumns(dataSetId.Value);
+        }
+
+        [AgentTool("upsert_data_load",
+            "Create/update Transaction Data Load (header + optional conditionMappingsJson / fieldMappingsJson). " +
+            "Create requires unitId, loadName, dataSetId. Each mappings JSON is full-replace for that side; [] clears; omit leaves that side unchanged. " +
+            "condition: [{transactionFieldId, dbColumnName, whereClause}]; field: [{transactionFieldId, dbColumnName}]. " +
+            "Preview → ask_user → confirmed=true → request_form_reload.")]
+        public string UpsertDataLoad(
+            AgentToolContext context,
+            [AgentParam("Existing DataLoad id for update; omit to create.")] int? dataLoadId = null,
+            [AgentParam("TransactionUnitId (required on create).")] int? unitId = null,
+            [AgentParam("Load name (required on create).")] string loadName = null,
+            [AgentParam("Description.")] string description = null,
+            [AgentParam("Dataset id (required on create).")] int? dataSetId = null,
+            [AgentParam("Execution order.")] int? loadOrder = null,
+            [AgentParam("Auto-run when opening edit form.")] bool? isAutoExecutedWhenOpenEditForm = null,
+            [AgentParam("Auto-run before initial cascading.")] bool? isAutoExecuteBeforeInitialCascading = null,
+            [AgentParam("JSON array full-replace of condition mappings; [] clears; omit = leave.")] string conditionMappingsJson = null,
+            [AgentParam("JSON array full-replace of field value mappings; [] clears; omit = leave.")] string fieldMappingsJson = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("If true, never persist.")] bool? dryRun = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigDataLoadService.UpsertDataLoad(
+                txnId, dataLoadId, unitId, loadName, description, dataSetId, loadOrder,
+                isAutoExecutedWhenOpenEditForm, isAutoExecuteBeforeInitialCascading,
+                conditionMappingsJson, fieldMappingsJson, confirmed, dryRun);
+        }
+
+        [AgentTool("delete_data_load",
+            "Delete a Transaction Data Load rule. Preview → ask_user → confirmed=true → request_form_reload.")]
+        public string DeleteDataLoad(
+            AgentToolContext context,
+            [AgentParam("DataLoad id.", isRequired: true)] int? dataLoadId = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("If true, never persist.")] bool? dryRun = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!dataLoadId.HasValue) return Fail("dataLoadId is required.");
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigDataLoadService.DeleteDataLoad(txnId, dataLoadId.Value, confirmed, dryRun);
+        }
+
+        [AgentTool("get_message_templates",
+            "List transaction Message Templates (AppMessage MessgaeScopeType=MessageTemplate) for the open TX. " +
+            "Use messageTemplateId with upsert_command actionType 74 (Print From Message Template).")]
+        public string GetMessageTemplates(
+            AgentToolContext context,
+            [AgentParam("Optional name/subject filter.")] string nameContains = null,
+            [AgentParam("Max rows (default 100, max 200).")] int? take = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigMessageTemplateService.GetMessageTemplates(txnId, nameContains, take);
+        }
+
+        [AgentTool("get_message_template_detail",
+            "Detail for one Message Template (subject, body, name/Bcclist, tokens hints).")]
+        public string GetMessageTemplateDetail(
+            AgentToolContext context,
+            [AgentParam("Message template Id.", isRequired: true)] int? messageTemplateId = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!messageTemplateId.HasValue) return Fail("messageTemplateId is required.");
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigMessageTemplateService.GetMessageTemplateDetail(txnId, messageTemplateId.Value);
+        }
+
+        [AgentTool("upsert_message_template",
+            "Create/update a transaction Message Template (not a sent message). " +
+            "Create: pass subject and/or name (name→Bcclist picker label), body (HTML/text with messageToken). " +
+            "Then bind with upsert_command actionType 74 optionsJson.messageTemplateId. " +
+            "Preview → ask_user → confirmed=true → request_form_reload.")]
+        public string UpsertMessageTemplate(
+            AgentToolContext context,
+            [AgentParam("Existing template id for update; omit to create.")] int? messageTemplateId = null,
+            [AgentParam("Display name stored in Bcclist (picker prefers this).")] string name = null,
+            [AgentParam("Subject (required if name empty on create).")] string subject = null,
+            [AgentParam("Template body HTML/text; use find_fields messageToken.")] string body = null,
+            [AgentParam("Optional To list (usually empty for templates).")] string toList = null,
+            [AgentParam("Optional Cc list.")] string ccList = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("If true, never persist.")] bool? dryRun = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigMessageTemplateService.UpsertMessageTemplate(
+                txnId, messageTemplateId, name, subject, body, toList, ccList, confirmed, dryRun);
+        }
+
+        [AgentTool("delete_message_template",
+            "Delete a transaction Message Template. Preview → ask_user → confirmed=true → request_form_reload.")]
+        public string DeleteMessageTemplate(
+            AgentToolContext context,
+            [AgentParam("Message template Id.", isRequired: true)] int? messageTemplateId = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("If true, never persist.")] bool? dryRun = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!messageTemplateId.HasValue) return Fail("messageTemplateId is required.");
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigMessageTemplateService.DeleteMessageTemplate(
+                txnId, messageTemplateId.Value, confirmed, dryRun);
         }
 
         [AgentTool("get_linked_searches",

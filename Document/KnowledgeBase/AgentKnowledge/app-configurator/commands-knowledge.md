@@ -500,10 +500,17 @@ Formatted printouts driven by template design rather than the default form print
 | **actionType** | 74 |
 
 #### Storage mapping
-`ActionAttribute.MessageTemplateId` (or template id field used by section).
+Top-level **`AppProjectWorkFlowAction.MessageTemplateId`** (NOT `ActionAttribute`, NOT `notificationMessage`).
+UI: `PrintFromMessageTemplateSection` → picker from `retrieveTransactionMessageTemplates(transactionId)`.
 
 #### `upsert_command`
-`actionType`: 74; set template id in attribute JSON.
+`actionType`: 74; set **`optionsJson.messageTemplateId`** to an existing AppMessage template Id for this transaction.
+Do **not** put the template body in `notificationMessage` — that does not bind the Message Template dropdown.
+
+#### Message Template tools (platform-form-config)
+1. `upsert_message_template(name?, subject, body)` → `messageTemplateId` (or `get_message_templates` to reuse).
+2. `upsert_command(..., optionsJson:{messageTemplateId})` for actionType 74.
+3. `request_form_reload` — UI Message Template must show the name, not `(None)`.
 
 #### Runtime behavior
 Server invoked from menu; template render path (verify master-detail branch).
