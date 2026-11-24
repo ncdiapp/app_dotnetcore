@@ -25,16 +25,32 @@ namespace App.BL.AppBuilderAgent.Plugins
 
         // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("create_app_package",
-            "Step 1 — Create a new named application package in the platform. " +
-            "Returns the new SaasApplicationId (integer). " +
-            "Call this FIRST before creating tables, entities, or transactions. " +
-            "Pass the returned SaasApplicationId to all subsequent tools that require it.")]
+            "Create a new application package ONLY when HostContext has no saasApplicationId (greenfield). " +
+            "In My Application Editor, HostContext.saasApplicationId is already set — this tool returns that Id and does NOT create a new app. " +
+            "Pass the returned SaasApplicationId to all subsequent tools.")]
         public string CreateAppPackage(
             [AgentParam("Display name for the new application, e.g. 'Sales Order Management'", isRequired: true)]
-            string applicationName)
+            string applicationName,
+            AgentToolContext context = null)
         {
             try
             {
+                // My Application Editor / host already opened an app — never spawn a sibling package.
+                if (AppBuilderHostApp.TryGetHostSaasApplicationId(context, out var hostAppId, out var hostAppName))
+                {
+                    return JsonConvert.SerializeObject(new
+                    {
+                        IsSuccess = true,
+                        SaasApplicationId = hostAppId,
+                        ApplicationName = !string.IsNullOrWhiteSpace(hostAppName) ? hostAppName : applicationName,
+                        ReusedFromHost = true,
+                        Note =
+                            $"HostContext already has saasApplicationId={hostAppId}. " +
+                            "No new application was created. Pass this SaasApplicationId to execute_approved_schema / entities / menus. " +
+                            "Do NOT call create_app_package again."
+                    }, Formatting.Indented);
+                }
+
                 // Return existing package if one with the same name already exists.
                 var existing = AppSaasUserApplicationPackageBL.GetSaasApplicationList()
                     .FirstOrDefault(a => string.Equals(a.Name, applicationName, StringComparison.OrdinalIgnoreCase));

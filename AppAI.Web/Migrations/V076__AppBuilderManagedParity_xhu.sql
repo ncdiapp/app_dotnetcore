@@ -228,9 +228,16 @@ C) FK DIRECTION TEST — "Where does the FK column live?"
    RIGHT: SalesOrder (master) + SalesOrderItem (child); CustomerId/Status/ProductId = DDL only.
 
 D) HIERARCHY DEPTH (composition tables only)
-   L1 Master → L2 Child → L3 Grandchild (max 3).
+   L1 Master/Root → L2 Child → L3 Grandchild (max 3).
    Per unit: one PK; child/grandchild must have Link Field to parent PK;
    outward FKs / SimpleLists = DDL fields only (never extra units).
+   Terminology: ""Child unit"" = under Root. ""Sibling Unit"" = root-level peer of Root ONLY — never call Root children siblings.
+
+D2) DYNAMIC MATRIX CHILD (when user asks for matrix / Cartesian grid)
+   Shape: Root + N Child units under Root; ONE of those children is the matrix.
+   Dimension grids that feed the matrix are ALSO Root children (isLookup=false) — do NOT demote them to lookup.
+   Matrix is NEVER a grandchild. Schema: isMatrix=true + matrixKeyTables=[Dim1,Dim2].
+   After execute: configure_matrix_unit if needed (IsMatrixUnit + MatrixForeignKeyFieldId + Generate Matrix 46).
 
 E) FORM TYPE
    MasterDetail — composition (document + lines).

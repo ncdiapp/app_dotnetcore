@@ -1,5 +1,5 @@
--- V087: app-configurator — Data Load CRUD + Data Transfer mapping/types + Message Template CRUD.
--- Merged former V087 + V088. Idempotent: IF NOT EXISTS inserts; always UPDATE descriptions;
+-- V087: app-configurator Data Load/DT/Message Template + App Builder Matrix child unit.
+-- Merged former V087 + V088 (matrix). Idempotent: IF NOT EXISTS inserts; UPDATE descriptions;
 -- clear exclusions; SystemPrompt appends guarded by NOT LIKE / stub REPLACE.
 
 DECLARE @FormPlugin nvarchar(300) = N'App.BL.AIAgent.GenericAgent.Plugins.FormConfigPlugin';
@@ -232,4 +232,176 @@ Forbidden:
 '
 WHERE AgentCode = N'app-configurator'
   AND SystemPrompt NOT LIKE N'%MESSAGE TEMPLATE + PRINT FROM TEMPLATE (74) ===%';
+GO
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- G) App Builder — Dynamic Matrix as Root CHILD unit (former V088)
+-- ═══════════════════════════════════════════════════════════════════════════
+
+IF NOT EXISTS (
+    SELECT 1 FROM dbo.AppAgentLibraryTool
+    WHERE LibraryKey = N'platform-transaction' AND ToolName = N'configure_matrix_unit')
+INSERT INTO dbo.AppAgentLibraryTool
+    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (
+    N'platform-transaction',
+    N'configure_matrix_unit',
+    N'Dedicated Matrix WRITE tool. MatrixForeignKeyFieldId→Source KEY DDL (ColorId); shared master Entity (~80%); command 46. Preview→confirmed=true. Then inspect_matrix_unit.',
+    N'{"transactionId":{"type":"integer"},"matrixUnitId":{"type":"integer"},"matrixUnitNameOrTable":{"type":"string"},"matrixKeyUnitIdsCsv":{"type":"string"},"matrixKeyTableNamesCsv":{"type":"string"},"createGenerateMatrixCommand":{"type":"boolean"},"confirmed":{"type":"boolean"},"dryRun":{"type":"boolean"}}',
+    N'BuiltIn',
+    N'{"TypeName":"App.BL.AppBuilderAgent.Plugins.TransactionModifierPlugin","MethodName":"ConfigureMatrixUnit"}',
+    1,
+    25
+);
+GO
+
+UPDATE dbo.AppAgentLibraryTool SET ToolDescription =
+N'Dedicated Matrix WRITE tool. Wires Matrix KEY: MatrixForeignKeyFieldId→Source KEY DDL (ColorId), ControlType=DDL, EntityId shared with Source (master Color/Size Entity ~80%, not Source grid table); command 46. Generate uses Source row KEY IDs; display from Entity. Preview→confirmed=true. Then inspect_matrix_unit.'
+WHERE LibraryKey = N'platform-transaction' AND ToolName = N'configure_matrix_unit';
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM dbo.AppAgentLibraryTool
+    WHERE LibraryKey = N'platform-transaction' AND ToolName = N'inspect_matrix_unit')
+INSERT INTO dbo.AppAgentLibraryTool
+    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (
+    N'platform-transaction',
+    N'inspect_matrix_unit',
+    N'Read-only Matrix check: Matrix KEY→Source KEY DDL, shared EntityId, command 46, issues. Call before claiming ready.',
+    N'{"transactionId":{"type":"integer"},"matrixUnitId":{"type":"integer"},"matrixUnitNameOrTable":{"type":"string"}}',
+    N'BuiltIn',
+    N'{"TypeName":"App.BL.AppBuilderAgent.Plugins.TransactionModifierPlugin","MethodName":"InspectMatrixUnit"}',
+    1,
+    26
+);
+GO
+
+UPDATE dbo.AppAgentLibraryTool SET ToolDescription =
+N'Read-only Matrix check: IsMatrixUnit, Matrix KEY→Source KEY DDL, shared EntityId, ControlType, command 46, issues (Source PK wiring / Entity mismatch). Call before claiming ready.'
+WHERE LibraryKey = N'platform-transaction' AND ToolName = N'inspect_matrix_unit';
+GO
+
+UPDATE dbo.AppAgentLibraryTool SET ToolDescription =
+N'Modify field displayName/controlType/entityId/defaultValue only. FORBIDDEN: matrixForeignKeyFieldId/isMatrixUnit — use configure_matrix_unit. Prefer fieldId from get_transaction_details.'
+WHERE LibraryKey = N'platform-transaction' AND ToolName = N'update_transaction_field';
+GO
+
+UPDATE dbo.AppAgentLibraryTool SET ToolDescription =
+N'Execute approved schema. Matrix: Root children; KEY columns {DimShort}Id; auto-wires IsMatrixUnit + MatrixForeignKeyFieldId→Source KEY DDL + shared EntityId. FAILS if MatrixConfig.applied=false. Then inspect_matrix_unit.'
+WHERE LibraryKey = N'platform-transaction' AND ToolName = N'execute_approved_schema';
+GO
+
+UPDATE dbo.AppAgentLibraryTool SET ToolDescription =
+N'Extract schema. Dynamic matrix: Root + Child dims + matrix. Matrix KEY columns {DimShort}Id same as Source KEY; Source+Matrix share master DDL Entity (Color/Size). Never grandchild; never call Root children siblings.'
+WHERE LibraryKey = N'platform-transaction' AND ToolName = N'propose_schema';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+
+━━━ DYNAMIC MATRIX + CHILD UNIT TERMINOLOGY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Sibling Unit = ONLY a root-level peer of the Root Unit. NEVER call Root''s child units siblings.
+When user wants a dynamic matrix form: Root + N Child units under that Root (e.g. 2 dimension grids + 1 matrix child).
+Dimension grids AND matrix are ALL Root children (isLookup=false). Matrix is NEVER a grandchild.
+propose_schema JSON: matrix table isMatrix=true + matrixKeyTables=[ExactFullDimTable1,ExactFullDimTable2]; Root ONE_TO_MANY to each.
+
+MATRIX KEY FIELD (required for Generate Matrix):
+On Matrix unit, each combination-key column is a Matrix KEY field.
+Set MatrixForeignKeyFieldId = Source KEY DDL field Id (ColorId) whose ROW VALUES feed Cartesian product — not Source PK.
+Source KEY + Matrix KEY share master DDL Entity (~80%). create_entity_from_table on MASTER Color/Size, not small Source grid.
+Use configure_matrix_unit: IsMatrixUnit + MatrixForeignKeyFieldId + ControlType=DDL + shared EntityId + command 46.
+execute_approved_schema FAILS if MatrixConfig.applied=false — fix and retry; do not pretend success.
+'
+WHERE AgentCode = N'app-builder'
+  AND SystemPrompt IS NOT NULL
+  AND SystemPrompt NOT LIKE N'%DYNAMIC MATRIX + CHILD UNIT TERMINOLOGY%';
+GO
+
+-- If older short matrix prompt already applied, append KEY-field explain once.
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+
+MATRIX KEY FIELD (required for Generate Matrix):
+On Matrix unit, each combination-key column is a Matrix KEY field.
+Set MatrixForeignKeyFieldId = Source KEY DDL field (ColorId), not Source PK. Shared master Entity for display (~80%).
+configure_matrix_unit sets ControlType=DDL + copies/shares EntityId with Source KEY.
+execute_approved_schema FAILS if MatrixConfig.applied=false — fix and retry.
+'
+WHERE AgentCode = N'app-builder'
+  AND SystemPrompt IS NOT NULL
+  AND SystemPrompt LIKE N'%DYNAMIC MATRIX + CHILD UNIT TERMINOLOGY%'
+  AND SystemPrompt NOT LIKE N'%MATRIX KEY FIELD (required for Generate Matrix)%';
+GO
+
+-- Append DDL/EntityId note if KEY section exists but DDL note missing.
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+Matrix KEY UI: ControlType must be DDL/AutoComplete/SearchAbleDDL; configure_matrix_unit sets ControlType=DDL + EntityId when entity exists.
+'
+WHERE AgentCode = N'app-builder'
+  AND SystemPrompt IS NOT NULL
+  AND SystemPrompt LIKE N'%MATRIX KEY FIELD (required for Generate Matrix)%'
+  AND SystemPrompt NOT LIKE N'%ControlType must be DDL%';
+GO
+
+-- Harden: dedicated tools + shared Entity + inspect
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+MATRIX HARDENING: Only configure_matrix_unit may set IsMatrixUnit/MatrixForeignKeyFieldId. MatrixForeignKeyFieldId→Source KEY DDL (ColorId), not Source PK. Source KEY + Matrix KEY share master DDL Entity (~80%; Color/Size lists) — create_entity_from_table on MASTER list, not small Source grid table. Call inspect_matrix_unit before claiming ready.
+'
+WHERE AgentCode = N'app-builder'
+  AND SystemPrompt IS NOT NULL
+  AND SystemPrompt LIKE N'%DYNAMIC MATRIX + CHILD UNIT TERMINOLOGY%'
+  AND SystemPrompt NOT LIKE N'%MATRIX HARDENING%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+MATRIX SHARED DDL ENTITY (~80%): Source KEY and Matrix KEY use the SAME EntityId (master Color/Size). Generate Matrix takes KEY IDs from Source grid rows; display from Entity. Rare (~20%): Entity from Source grid table.
+Source Color grid: ProductColorId=PK (NOT Matrix KEY), ProductId=Link FK, ColorId=DDL Matrix KEY. Wire MatrixForeignKeyFieldId→ColorId only.
+'
+WHERE AgentCode = N'app-builder'
+  AND SystemPrompt IS NOT NULL
+  AND SystemPrompt LIKE N'%MATRIX HARDENING%'
+  AND SystemPrompt NOT LIKE N'%MATRIX SHARED DDL ENTITY%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+SOURCE GRID PK ≠ MATRIX KEY: Source auto-increment PK (ProductColorId) is meaningless for Generate Matrix. Always add a separate DDL KEY field (ColorId) on Source; Matrix KEY points at that DDL field.
+'
+WHERE AgentCode = N'app-builder'
+  AND SystemPrompt IS NOT NULL
+  AND SystemPrompt LIKE N'%MATRIX SHARED DDL ENTITY%'
+  AND SystemPrompt NOT LIKE N'%SOURCE GRID PK ≠ MATRIX KEY%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+MATRIX SCHEMA LOOP FIX: propose_schema auto-adds Source identity PK + parent Link + DDL KEY and Matrix KEY columns before review. After Confirmed:true NEVER call propose_schema again — even if MatrixConfig.applied=false (PARTIAL). Use configure_matrix_unit / alter_table / inspect_matrix_unit only.
+'
+WHERE AgentCode = N'app-builder'
+  AND SystemPrompt IS NOT NULL
+  AND SystemPrompt LIKE N'%SOURCE GRID PK ≠ MATRIX KEY%'
+  AND SystemPrompt NOT LIKE N'%MATRIX SCHEMA LOOP FIX%';
+GO
+
+UPDATE dbo.AppAgentLibraryTool SET ToolDescription =
+N'Execute approved schema. saasApplicationId: use HostContext when in My Application Editor (forced). Matrix: auto-normalizes KEY columns. If Matrix PARTIAL: keep TransactionId — DO NOT propose_schema; call configure_matrix_unit.'
+WHERE LibraryKey = N'platform-transaction' AND ToolName = N'execute_approved_schema';
+GO
+
+UPDATE dbo.AppAgentLibraryTool SET ToolDescription =
+N'Create app package ONLY for greenfield. If HostContext.saasApplicationId is set (My Application Editor), returns that Id and creates nothing new — pass it to all subsequent tools.'
+WHERE LibraryKey = N'platform-transaction' AND ToolName = N'create_app_package';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+HOST APP REUSE: When HostContext.saasApplicationId is present, never create a new Application package. New transaction = under that SaasApplicationId. create_app_package returns the host Id only.
+'
+WHERE AgentCode = N'app-builder'
+  AND SystemPrompt IS NOT NULL
+  AND SystemPrompt NOT LIKE N'%HOST APP REUSE%';
 GO

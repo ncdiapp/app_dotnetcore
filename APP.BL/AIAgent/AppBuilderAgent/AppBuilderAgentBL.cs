@@ -104,10 +104,11 @@ Step 1 — EXPLORE
   Call search_platform(query) to find specific applications, transactions, entities, or tables by name.
   Call search_memory(query) to recall relevant past builds, notes, or historical context about the user's platform.
 
-Step 2 — CREATE APPLICATION PACKAGE
-  Call create_app_package with the application name.
-  Remember the returned SaasApplicationId — pass it to ALL subsequent calls.
-  Skip only if a matching application already exists from Step 1.
+Step 2 — APPLICATION PACKAGE
+  If HostContext.saasApplicationId is set (My Application Editor): reuse that Id — do NOT create a new app.
+  create_app_package in that case only echoes the host Id.
+  Greenfield only: call create_app_package with the application name.
+  Pass SaasApplicationId to ALL subsequent calls.
 
 Step 3 — CREATE ENTITY DATA SOURCES  (skip if no dropdown fields needed)
   For each dropdown/picker field in the requirements, apply this rule WITHOUT EXCEPTION:
@@ -139,7 +140,8 @@ Step 4 — DESIGN + BUILD DATABASE + TRANSACTIONS  (two-step schema review)
     The user will see the full table/column/FK structure and can edit it inline before build.
     If propose_schema returns {Confirmed:false, Feedback} — adjust requirements and call propose_schema again.
     If propose_schema returns {Confirmed:true, SchemaJson} — proceed IMMEDIATELY to Step 4b.
-    ✗ Do NOT call propose_schema again after getting Confirmed:true.
+    ✗ Do NOT call propose_schema again after getting Confirmed:true — even if execute reports PARTIAL Matrix wiring.
+    ✗ After Confirmed:true, fix Matrix with configure_matrix_unit / alter_table / inspect_matrix_unit only.
     ✗ Do NOT call propose_plan before execute_approved_schema — propose_schema already served as the approval gate.
 
   Step 4b — EXECUTE APPROVED SCHEMA:
@@ -260,6 +262,7 @@ update_transaction_field changesJson keys:
                             38=AutoComplete, 48=SearchAbleDDL, 53=MultiSelectDDL. Memo=4 not 3.
   entityId      (int)     — link to an Entity Data Source for DDL fields
   defaultValue  (string)  — pre-fill value
+  FORBIDDEN: matrixForeignKeyFieldId / isMatrixUnit — use configure_matrix_unit only.
 
 ━━━ RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 - ALWAYS call explore_platform first.
@@ -327,10 +330,43 @@ CORRECT EXAMPLE for Inventory:
 
 ━━━ TRANSACTION DATA MODEL DESIGN ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 A Transaction organizes COMPOSITION tables into a 3-level master-detail hierarchy:
-  Level 1 — Master Unit     : root entity (e.g. Order)
-  Level 2 — Child Units     : composition children under master (e.g. OrderItem)
-  Level 3 — Grandchild Units: composition children under a child (e.g. OrderItemOption)
+  Level 1 — Master / Root Unit : root entity (e.g. Order)
+  Level 2 — Child Units        : composition children under Root (e.g. OrderItem)
+  Level 3 — Grandchild Units   : composition children under a child (e.g. OrderItemOption)
 Maximum depth: 3 levels.
+
+TERMINOLOGY (non-negotiable):
+  • ""Child unit"" = unit under Root (or under a child for grandchildren).
+  • ""Sibling Unit"" = ONLY a root-level peer of the Root Unit (same level as Root). Never call Root's child units siblings.
+
+DYNAMIC MATRIX CHILD (when user asks for a matrix / Cartesian grid on the form):
+  Required shape: Root + N Child units under that Root, where ONE child is the dynamic matrix.
+  Example: Root Plan + Child ColorGrid + Child SizeGrid + Child Color×Size Matrix.
+  • Dimension grids AND the matrix are ALL Root child units (isLookup=false). Do NOT demote dimension grids to lookup.
+  • Matrix is NEVER a grandchild under a dimension child.
+  • In propose_schema JSON: matrix table has isMatrix=true and matrixKeyTables=[ExactDimTableName1,ExactDimTableName2]
+    (use full table names from the same schema, e.g. CrmQuota_SalesTier not SalesTier).
+
+  MATRIX KEY FIELD CONFIG (critical — this is what Generate Matrix uses):
+  • Definition: a Matrix field IS a Matrix KEY field IFF MatrixForeignKeyFieldId is set (no other flag).
+  • Usual (~80%) design — SHARED master DDL Entity:
+      Color master (1000) + Size master (1000) → two Entity DDLs.
+      Source Color grid columns:
+        ProductColorId = PK auto-increment (meaningless — NOT Matrix KEY),
+        ProductId = FK Link-to-parent,
+        ColorId = DDL → Color Entity ← THIS is Matrix KEY / Generate source field.
+      NEVER use RegionId/ColorId as both PK and Matrix KEY — propose_schema auto-adds identity PK + DDL KEY.
+      Matrix.ColorId shares the SAME EntityId as Source.ColorId for display.
+      MatrixForeignKeyFieldId → Source.ColorId, NEVER Source PK / Link FK.
+  • If execute returns PARTIAL Matrix wiring: DO NOT propose_schema again — configure_matrix_unit.
+  • Rare (~20%): Entity is built from the Source grid table itself.
+  • Do NOT set MatrixForeignKeyFieldId on the Matrix unit's own Id/PK or Link-to-parent field.
+  • ONLY write path: configure_matrix_unit (update_transaction_field REJECTS matrix FK / IsMatrixUnit).
+    It sets IsMatrixUnit + MatrixForeignKeyFieldId→Source KEY + ControlType=DDL + shared EntityId + command 46.
+  • Schema Matrix KEY columns MUST be named {DimShort}Id (ColorId, SizeId) — same logic-key name as Source KEY.
+  • Before claiming matrix ready: call inspect_matrix_unit and fix any issues (shared EntityId, not Source PK).
+  • create_entity_from_table on MASTER Color/Size (not the small Source grid table), then set Source KEY EntityId.
+  • execute_approved_schema fails if MatrixConfig.applied=false — do NOT pretend success; fix and retry.
 
 KEY FIELD RULES per unit:
   PK Field   — Exactly one per unit. Maps to the table's primary key column.
@@ -1221,6 +1257,8 @@ Only call search_memory when you need historical context — skip it for entirel
                 case "confirm_drop_tables":            return "Asking whether to drop database tables…";
                 case "update_transaction_field":       return "Updating transaction field…";
                 case "set_field_entity":               return "Linking field to entity data source…";
+                case "configure_matrix_unit":          return "Configuring matrix unit…";
+                case "inspect_matrix_unit":            return "Inspecting matrix unit…";
                 case "delete_transaction":             return "Deleting transaction…";
                 case "list_applications":              return "Listing applications with full child tree…";
                 default:                               return n;
@@ -1302,6 +1340,7 @@ Only call search_memory when you need historical context — skip it for entirel
             "get_database_tables",
             "get_existing_transactions",
             "get_transaction_details",
+            "inspect_matrix_unit",
             "list_entity_data_sources",
             "list_applications",
             "list_searches",

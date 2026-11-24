@@ -106,6 +106,10 @@ namespace App.BL.AppBuilderAgent.Plugins
                 // ── Step 1c: Mark lookup vs composition (parents ∪ children on ONE_TO_MANY) ──
                 SchemaProposeHelpers.MarkLookupVsComposition(extraction.Tables);
 
+                // ── Step 1d: Matrix Source/Matrix KEY columns before user review ──
+                // Ensures Source: identity PK + parent Link + DDL KEY; Matrix mirrors KEY cols.
+                var matrixColFixes = MatrixUnitConfigHelper.EnsureMatrixReadyColumns(extraction.Tables);
+
                 // ── Step 2: Generate CREATE TABLE script preview ───────────────
                 var script = AppDbGenieBL.GenerateCreateTableScripts(extraction.Tables, _schemaOwner);
                 extraction.GeneratedScript = script;
@@ -151,20 +155,34 @@ namespace App.BL.AppBuilderAgent.Plugins
                     });
 
                 // Use the user's edited schema if provided, otherwise keep the original.
-                // Store in instance field — do NOT return the raw JSON to the LLM to avoid
-                // double-escaping corruption when the LLM re-passes large JSON strings.
-                _approvedSchemaJson = !string.IsNullOrWhiteSpace(response.SchemaJson)
-                    ? response.SchemaJson
-                    : JsonConvert.SerializeObject(extraction);
+                // Re-normalize Matrix columns in case the UI edit dropped identity/KEY columns.
+                SchemaExtractionResultDto approvedExtraction = extraction;
+                if (!string.IsNullOrWhiteSpace(response.SchemaJson))
+                {
+                    try
+                    {
+                        approvedExtraction = JsonConvert.DeserializeObject<SchemaExtractionResultDto>(response.SchemaJson)
+                            ?? extraction;
+                    }
+                    catch
+                    {
+                        approvedExtraction = extraction;
+                    }
+                }
+                SchemaProposeHelpers.MarkLookupVsComposition(approvedExtraction.Tables);
+                MatrixUnitConfigHelper.EnsureMatrixReadyColumns(approvedExtraction.Tables);
 
-                var tableList = string.Join(", ", extraction.Tables.Select(t => t.Name));
+                _approvedSchemaJson = JsonConvert.SerializeObject(approvedExtraction);
+
+                var tableList = string.Join(", ", approvedExtraction.Tables.Select(t => t.Name));
                 return JsonConvert.SerializeObject(new
                 {
                     Confirmed          = true,
-                    TableCount         = extraction.Tables.Count,
-                    Tables             = extraction.Tables.Select(t => t.Name).ToList(),
-                    UserFacingMessage  = $"Schema approved! I'll now build {extraction.Tables.Count} table(s): {tableList}.\n\nBuilding your application — this will take a moment...",
-                    NextStep           = "Send the UserFacingMessage to the user verbatim first, then call execute_approved_schema immediately. Do NOT pass schemaJson — the schema is stored internally."
+                    TableCount         = approvedExtraction.Tables.Count,
+                    Tables             = approvedExtraction.Tables.Select(t => t.Name).ToList(),
+                    MatrixColumnFixes  = matrixColFixes.Count > 0 ? matrixColFixes : null,
+                    UserFacingMessage  = $"Schema approved! I'll now build {approvedExtraction.Tables.Count} table(s): {tableList}.\n\nBuilding your application — this will take a moment...",
+                    NextStep           = "Send the UserFacingMessage to the user verbatim first, then call execute_approved_schema immediately. Do NOT pass schemaJson — the schema is stored internally. Do NOT call propose_schema again after Confirmed:true."
                 });
             }
             catch (Exception ex)
@@ -181,23 +199,25 @@ namespace App.BL.AppBuilderAgent.Plugins
         [AgentTool("execute_approved_schema",
             "Execute the schema approved by propose_schema: create the physical database tables and AppTransaction hierarchy. " +
             "Call this ONLY after propose_schema returns {Confirmed:true}. Do NOT pass schemaJson — the schema is stored internally. " +
+            "saasApplicationId: use HostContext.saasApplicationId when editing an existing app (My Application Editor); never a brand-new create_app_package id. " +
             "Create SimpleList / entity data sources BEFORE this call, then pass entityMapJson to wire dropdowns in one step. " +
-            "entityMapJson keys: ColumnName, TableName.ColumnName, UnitName.ColumnName, or field:{fieldId}. " +
-            "Column keys match Status↔StatusId / Type↔TypeId aliases. " +
             "Returns TransactionId, TablesCreated, LookupTables, FKMappings, Fields, TableColumns, EntityWiring. " +
-            "Use returned Fields/TableColumns — do NOT call get_transaction_details or get_table_schema for greenfield mockup/wiring. " +
-            "For each LookupTables entry: create_entity_from_table → set_field via FKMappings → create_transaction_from_table → create_list_edit_form (no create_search_view on lookups). " +
             "Then create_search_view on the MASTER TransactionId only.")]
         public async Task<string> ExecuteApprovedSchema(
-            [AgentParam("The SaasApplicationId returned by create_app_package. Required to link transactions to the correct app.")]
+            [AgentParam("SaasApplicationId for the CURRENT app. Prefer HostContext.saasApplicationId in My Application Editor.")]
             int? saasApplicationId = null,
             [AgentParam("Display name for the root transaction, e.g. 'Sales Order Management'.")]
             string transactionName = null,
             [AgentParam("JSON mapping fields to EntityDataSource IDs. Keys: ColumnName, TableName.ColumnName, UnitName.ColumnName, or field:{fieldId}. Example: {\"Ord_Order.Status\":4577,\"Category\":4578,\"ProductId\":4580}.")]
-            string entityMapJson = null)
+            string entityMapJson = null,
+            AgentToolContext context = null)
         {
+            string hostAppNote = null;
             try
             {
+                saasApplicationId = AppBuilderHostApp.ResolveSaasApplicationId(
+                    saasApplicationId, context, out hostAppNote);
+
                 // Use the schema stored by propose_schema — avoids LLM JSON-escaping corruption
                 var schemaJson = _approvedSchemaJson;
                 if (string.IsNullOrWhiteSpace(schemaJson))
@@ -215,6 +235,11 @@ namespace App.BL.AppBuilderAgent.Plugins
 
                 if (schema?.Tables == null || schema.Tables.Count == 0)
                     return FailExecuteAndClear("SchemaJson contains no tables.");
+
+                // Final Matrix column normalize before DDL (identity PK + Link + DDL KEY).
+                SchemaProposeHelpers.MarkLookupVsComposition(schema.Tables);
+                MatrixUnitConfigHelper.EnsureMatrixReadyColumns(schema.Tables);
+                _approvedSchemaJson = JsonConvert.SerializeObject(schema);
 
                 var preflight = SchemaProposeHelpers.ValidateSchemaForDdl(schema.Tables);
                 if (preflight.Count > 0)
@@ -399,16 +424,44 @@ namespace App.BL.AppBuilderAgent.Plugins
                 if (!string.IsNullOrEmpty(missingUnitsWarning))
                     nextStep = missingUnitsWarning + " " + nextStep;
 
+                var hierarchyWarnings = result.HierarchyWarnings ?? new System.Collections.Generic.List<string>();
+                var matrixTables = schema.Tables.Where(t => t != null && t.IsMatrix).Select(t => t.Name).ToList();
+                if (matrixTables.Count > 0)
+                {
+                    var matrixApplied = false;
+                    try
+                    {
+                        var ap = result.MatrixConfig?.GetType().GetProperty("applied");
+                        matrixApplied = ap?.GetValue(result.MatrixConfig) as bool? ?? false;
+                    }
+                    catch { /* ignore */ }
+
+                    nextStep =
+                        $"Matrix tables: {string.Join(", ", matrixTables)}. " +
+                        (matrixApplied
+                            ? "MatrixConfig.applied=true — call inspect_matrix_unit then finish search/mockup. "
+                            : "MatrixConfig.applied=false (PARTIAL): DO NOT call propose_schema again. "
+                              + "Call configure_matrix_unit with FULL dimension table names, then inspect_matrix_unit. ")
+                        + nextStep;
+                }
+                if (hierarchyWarnings.Count > 0)
+                    nextStep = "HierarchyWarnings: " + string.Join(" ", hierarchyWarnings) + " " + nextStep;
+
                 return JsonConvert.SerializeObject(new
                 {
                     IsSuccess       = true,
                     TransactionId   = result.TransactionId,
                     TransactionName = result.TransactionName,
+                    SaasApplicationId = saasApplicationId,
+                    HostAppNote     = hostAppNote,
                     TablesCreated   = tableNames,
                     LookupTables    = lookupTables,
                     FKMappings      = fkMappings.Count > 0 ? fkMappings : null,
                     Units           = units,
                     MissingCompositionUnits = missingCompositionUnits.Count > 0 ? missingCompositionUnits : null,
+                    MatrixTables    = matrixTables.Count > 0 ? matrixTables : null,
+                    MatrixConfig    = result.MatrixConfig,
+                    HierarchyWarnings = hierarchyWarnings.Count > 0 ? hierarchyWarnings : null,
                     Warning         = missingUnitsWarning,
                     Fields          = fieldPayload,
                     TableColumns    = tableColumns,

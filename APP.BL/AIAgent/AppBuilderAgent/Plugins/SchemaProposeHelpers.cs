@@ -203,8 +203,22 @@ namespace App.BL.AppBuilderAgent.Plugins
                 }
             }
 
+            // Resolve matrixKeyTables hints (SalesTier → CrmQuota_SalesTier) before forcing composition.
+            MatrixUnitConfigHelper.NormalizeMatrixKeyTableNames(tables);
+
             foreach (var t in tables)
             {
+                if (t == null) continue;
+
+                // Matrix + dimension key tables are Root child composition units — never lookup
+                // (even if LLM set isLookup=true or they "look like" reference data).
+                if (t.IsMatrix || MatrixUnitConfigHelper.IsMatrixOrDimensionTable(t.Name, tables))
+                {
+                    t.IsLookup = false;
+                    compositionSet.Add(t.Name);
+                    continue;
+                }
+
                 if (forcedLookup.Contains(t.Name))
                 {
                     t.IsLookup = true;

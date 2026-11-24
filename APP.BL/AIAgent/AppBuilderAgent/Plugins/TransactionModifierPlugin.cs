@@ -150,6 +150,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             "change a field to a dropdown, set a default value, or link a field to an entity. " +
             "Pass only the properties you want to change in changesJson — omit unchanged ones. " +
             "Supported keys: displayName (string), controlType (int or name), entityId (int), defaultValue (string). " +
+            "Do NOT set matrixForeignKeyFieldId / isMatrixUnit here — use configure_matrix_unit. " +
             "controlType EmAppControlType (NO value 3): 1=DDL, 2=TextBox, 4=Memo, 5=Image, 7=Date, 9=File, 10=Label, " +
             "13=CheckBox, 20=Numeric, 26=RichText, 27=DateTimeDetail, 34=Time, 37=ImageBinary, 38=AutoComplete, " +
             "48=SearchAbleDDL, 50=ExternalImageUrl, 53=MultiSelectDDL. Pass 4 or \"Memo\" for multiline text — never invent ids. " +
@@ -193,6 +194,30 @@ namespace App.BL.AppBuilderAgent.Plugins
                     {
                         IsSuccess = false,
                         Error = "changesJson is not valid JSON: " + ex.Message
+                    });
+                }
+
+                var matrixKeys = changes.Properties()
+                    .Where(p =>
+                    {
+                        var n = p.Name ?? "";
+                        return n.Equals("matrixForeignKeyFieldId", StringComparison.OrdinalIgnoreCase)
+                            || n.Equals("MatrixForeignKeyFieldId", StringComparison.OrdinalIgnoreCase)
+                            || n.Equals("isMatrixUnit", StringComparison.OrdinalIgnoreCase)
+                            || n.Equals("IsMatrixUnit", StringComparison.OrdinalIgnoreCase)
+                            || n.Equals("pivotMatrixFkField", StringComparison.OrdinalIgnoreCase);
+                    })
+                    .Select(p => p.Name)
+                    .ToList();
+                if (matrixKeys.Count > 0)
+                {
+                    return JsonConvert.SerializeObject(new
+                    {
+                        IsSuccess = false,
+                        Error =
+                            $"Do not set [{string.Join(", ", matrixKeys)}] via update_transaction_field. " +
+                            "Use dedicated tool configure_matrix_unit (wires IsMatrixUnit + MatrixForeignKeyFieldId + ControlType=DDL + EntityId). " +
+                            "Use inspect_matrix_unit to verify afterward."
                     });
                 }
 
@@ -382,6 +407,63 @@ namespace App.BL.AppBuilderAgent.Plugins
             [AgentParam("Include layout backup summary.")] bool? backup = null)
             => FormConfigFormulaLayoutService.DesignFormLayout(
                 transactionId, mode, nbColumns, patchesJson, confirmed, dryRun, backup);
+
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
+        [AgentTool("configure_matrix_unit",
+            "Dedicated Matrix write tool (ONLY way to set IsMatrixUnit / MatrixForeignKeyFieldId). " +
+            "Sets IsMatrixUnit=true; wires Matrix KEY: MatrixForeignKeyFieldId → Source KEY DDL column (e.g. ColorId), " +
+            "ControlType=DDL, EntityId shared with Source KEY (master Color/Size Entity ~80% — NOT Source grid table). " +
+            "Generate Matrix (46) Cartesian-products Source KEY row VALUES; display labels from Entity. " +
+            "Do not put MatrixForeignKeyFieldId on Matrix own Id/PK/parent-link. " +
+            "Params: matrixUnitId/name + matrixKeyTableNamesCsv (≥2). Preview → ask_user → confirmed=true. Then inspect_matrix_unit.")]
+        public string ConfigureMatrixUnit(
+            [AgentParam("Transaction id.", isRequired: true)] int transactionId,
+            [AgentParam("Matrix unit id (preferred). Must be a direct child of Root.")] int? matrixUnitId = null,
+            [AgentParam("Matrix unit display/table name fallback.")] string matrixUnitNameOrTable = null,
+            [AgentParam("Comma-separated dimension unit ids under Root.")] string matrixKeyUnitIdsCsv = null,
+            [AgentParam("Comma-separated dimension Root-child table names (prefer full names, e.g. CrmQuota_SalesTier,CrmQuota_ProductCategory).")] string matrixKeyTableNamesCsv = null,
+            [AgentParam("Create/update Generate Matrix command (default true).")] bool? createGenerateMatrixCommand = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("If true, never persist.")] bool? dryRun = null)
+        {
+            try
+            {
+                var result = MatrixUnitConfigHelper.ConfigureMatrixUnit(
+                    transactionId,
+                    matrixUnitId,
+                    matrixUnitNameOrTable,
+                    matrixKeyUnitIdsCsv,
+                    matrixKeyTableNamesCsv,
+                    createGenerateMatrixCommand,
+                    confirmed,
+                    dryRun);
+                return JsonConvert.SerializeObject(result, Formatting.Indented);
+            }
+            catch (Exception ex)
+            {
+                return JsonConvert.SerializeObject(new { IsSuccess = false, ok = false, Error = ex.Message });
+            }
+        }
+
+        [AgentTool("inspect_matrix_unit",
+            "Read-only Matrix check. Returns IsMatrixUnit, Matrix KEY→Source KEY wiring, shared EntityId (Source vs Matrix), " +
+            "ControlType, Generate Matrix (46), readiness issues (flags Source PK wiring / mismatched Entity). " +
+            "Call after configure_matrix_unit / execute_approved_schema before claiming ready.")]
+        public string InspectMatrixUnit(
+            [AgentParam("Transaction id.", isRequired: true)] int transactionId,
+            [AgentParam("Matrix unit id (preferred).")] int? matrixUnitId = null,
+            [AgentParam("Matrix unit display/table name fallback.")] string matrixUnitNameOrTable = null)
+        {
+            try
+            {
+                var result = MatrixUnitConfigHelper.InspectMatrixUnit(transactionId, matrixUnitId, matrixUnitNameOrTable);
+                return JsonConvert.SerializeObject(result, Formatting.Indented);
+            }
+            catch (Exception ex)
+            {
+                return JsonConvert.SerializeObject(new { IsSuccess = false, ok = false, Error = ex.Message });
+            }
+        }
 
         // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("delete_transaction",

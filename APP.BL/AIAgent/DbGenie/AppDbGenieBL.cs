@@ -126,6 +126,22 @@ LOOKUP vs COMPOSITION (non-negotiable):
   • NEVER emit ONE_TO_MANY from a lookup/reference table toward a document (e.g. Customer → Order). Documents reference lookups via MANY_TO_ONE only.
   • Do NOT create physical tables for fixed enumerations already described as SimpleList / dropdown entities (Status, Type, Priority, UoM). Keep a Status/StatusId (or Type) column on the document table instead.
 
+DYNAMIC MATRIX CHILD (when requirements ask for a matrix / Cartesian grid under one form):
+  • Shape: ONE Root (document) + N Child units under that Root. A dynamic matrix is ONE of those Root child units — NOT a grandchild.
+  • Do NOT use the word ""sibling"" for Root's child units. (Sibling Unit means a root-level peer of Root only.)
+  • Dimension grids that feed the matrix (e.g. Color list + Size list on the same form) are ALSO Root child units with isLookup=false — never demote them to lookup.
+  • Matrix table: isLookup=false, isMatrix=true, matrixKeyTables=[ExactDimTableName1, ExactDimTableName2] (full names from this schema).
+  • Matrix MUST have MANY_TO_ONE → Root (composition Link Field) AND KEY columns named {{DimShort}}Id
+    (e.g. ColorId, SizeId) — same logic-key names as on the Source grids.
+  • Source Color grid MUST have a DDL KEY column separate from PK and parent FK:
+      ProductColorId (PK auto-increment), ProductId (Link FK), ColorId (DDL → Color Entity) ← Matrix KEY.
+  • propose_schema auto-normalizes: demotes logic Id used as PK, adds identity PK + parent Link + Matrix KEY cols.
+  • Usual (~80%): Source.ColorId + Matrix.ColorId share the same master Color Entity.
+  • NEVER call propose_schema again after Confirmed:true (use configure_matrix_unit if Matrix PARTIAL).
+  • After execute / configure, call inspect_matrix_unit before claiming success.
+  • Root MUST have ONE_TO_MANY → each dimension child AND → the matrix child.
+  • NEVER nest the matrix under a dimension child (no grandchild placement).
+
 Return JSON in this exact format:
 {{
   ""tables"": [
@@ -134,6 +150,8 @@ Return JSON in this exact format:
       ""description"": ""Table description"",
       ""description2"": ""Table longer description with more details"",
       ""isLookup"": false,
+      ""isMatrix"": false,
+      ""matrixKeyTables"": [],
       ""columns"": [
         {{
           ""name"": ""ColumnName"",
@@ -394,15 +412,34 @@ Be concise and build the query directly without unnecessary back-and-forth.";
 
             foreach (var tableToken in tablesArray)
             {
+                var matrixKeyTables = new List<string>();
+                var matrixKeysToken = tableToken["matrixKeyTables"] as JArray
+                    ?? tableToken["MatrixKeyTableNames"] as JArray;
+                if (matrixKeysToken != null)
+                {
+                    foreach (var k in matrixKeysToken)
+                    {
+                        var name = k?.ToString()?.Trim();
+                        if (!string.IsNullOrEmpty(name))
+                            matrixKeyTables.Add(name);
+                    }
+                }
+
                 var table = new DbGenieTableMetadataDto
                 {
                     Name = tableToken["name"]?.ToString(),
                     Description = tableToken["description"]?.ToString(),
                     SchemaOwner = "dbo",
                     IsLookup = tableToken["isLookup"]?.Value<bool>() ?? false,
+                    IsMatrix = tableToken["isMatrix"]?.Value<bool>()
+                        ?? tableToken["IsMatrix"]?.Value<bool>()
+                        ?? false,
+                    MatrixKeyTableNames = matrixKeyTables,
                     Columns = new List<DbGenieColumnMetadataDto>(),
                     Relationships = new List<DbGenieRelationshipMetadataDto>()
                 };
+                if (table.IsMatrix)
+                    table.IsLookup = false;
 
                 // Parse columns
                 var columnsArray = tableToken["columns"] as JArray;
@@ -1587,6 +1624,19 @@ ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION";
                 return result;
             }
 
+            var hierarchyWarnings = App.BL.AppBuilderAgent.Plugins.MatrixUnitConfigHelper
+                .ValidateMatrixHierarchyPlacement(hierarchySetupDto, approvedSchema.Tables);
+            // Fail BEFORE creating the transaction when matrix/dimensions are misplaced.
+            if (hierarchyWarnings.Count > 0 && approvedSchema.Tables.Any(t => t != null && t.IsMatrix))
+            {
+                result.IsSuccess = false;
+                result.Error = string.Join(" ", hierarchyWarnings)
+                    + " Revise schema: isMatrix=true + matrixKeyTables=[Dim1,Dim2] with exact/suffix table names; "
+                    + "ALL dimension tables AND matrix are Root children (isLookup=false); matrix MANY_TO_ONE → Root.";
+                result.HierarchyWarnings = hierarchyWarnings;
+                return result;
+            }
+
             OperationCallResult<AppTransactionExDto> transactionResult;
             try
             {
@@ -1614,6 +1664,47 @@ ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION";
             result.TransactionId   = transactionResult.Object != null ? Convert.ToInt32(transactionResult.Object.Id) : 0;
             result.TransactionName = transactionResult.Object?.TransactionName;
             result.LookupTables    = approvedSchema.Tables.Where(t => t.IsLookup).Select(t => t.Name).ToList();
+            result.HierarchyWarnings = hierarchyWarnings;
+
+            // Auto-wire IsMatrixUnit + MatrixForeignKeyFieldId (Matrix KEY fields) + Generate Matrix command.
+            if (result.TransactionId > 0 && approvedSchema.Tables.Any(t => t != null && t.IsMatrix))
+            {
+                try
+                {
+                    result.MatrixConfig = App.BL.AppBuilderAgent.Plugins.MatrixUnitConfigHelper
+                        .ApplyMatrixFlagsFromSchema(result.TransactionId, approvedSchema.Tables);
+
+                    var appliedProp = result.MatrixConfig?.GetType().GetProperty("applied");
+                    var applied = appliedProp?.GetValue(result.MatrixConfig) as bool? ?? false;
+                    if (!applied)
+                    {
+                        // PARTIAL SUCCESS: tables + transaction already exist. Do NOT fail the whole
+                        // execute (that triggers DROP + clears approved schema → propose_schema loop).
+                        var warn =
+                            "PARTIAL: Tables and transaction were created (TransactionId="
+                            + result.TransactionId
+                            + ") but Matrix KEY auto-wiring failed. "
+                            + "DO NOT call propose_schema again. "
+                            + "Call configure_matrix_unit with full dimension table names "
+                            + "(and alter_table if Source lacks identity PK + DDL KEY). Then inspect_matrix_unit. "
+                            + (result.MatrixConfig != null
+                                ? "MatrixConfig=" + Newtonsoft.Json.JsonConvert.SerializeObject(result.MatrixConfig)
+                                : "");
+                        result.IsSuccess = true;
+                        result.HierarchyWarnings = result.HierarchyWarnings ?? new List<string>();
+                        result.HierarchyWarnings.Add(warn);
+                    }
+                }
+                catch (Exception mxEx)
+                {
+                    result.IsSuccess = true;
+                    result.HierarchyWarnings = result.HierarchyWarnings ?? new List<string>();
+                    result.HierarchyWarnings.Add(
+                        "PARTIAL: Matrix auto-config exception after transaction create: " + mxEx.Message
+                        + " DO NOT propose_schema again — call configure_matrix_unit / alter_table.");
+                }
+            }
+
             return result;
         }
 
@@ -1683,6 +1774,33 @@ ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION";
             var childNames = App.BL.AppBuilderAgent.Plugins.SchemaProposeHelpers
                 .GetDirectCompositionChildren(rootTable.Name, tables);
 
+            // Pin matrix + dimension key tables as Root children BEFORE grandchild pass
+            // (fuzzy: SalesTier hint resolves to CrmQuota_SalesTier).
+            App.BL.AppBuilderAgent.Plugins.MatrixUnitConfigHelper.NormalizeMatrixKeyTableNames(tables);
+            var forceRootChildren = new List<string>();
+            foreach (var t in tables.Where(x => x != null && !string.IsNullOrWhiteSpace(x.Name)))
+            {
+                if (string.Equals(t.Name, rootTable.Name, StringComparison.OrdinalIgnoreCase)) continue;
+                if (t.IsMatrix || App.BL.AppBuilderAgent.Plugins.MatrixUnitConfigHelper.IsMatrixOrDimensionTable(t.Name, tables))
+                    forceRootChildren.Add(t.Name);
+            }
+
+            foreach (var forced in forceRootChildren.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (placedTables.Contains(forced)) continue;
+                if (tableDict.TryGetValue(forced, out var forcedMeta) && forcedMeta.IsLookup)
+                {
+                    // Matrix/dimension must stay composition even if earlier pass marked lookup.
+                    forcedMeta.IsLookup = false;
+                }
+                if (!childNames.Any(c => string.Equals(c, forced, StringComparison.OrdinalIgnoreCase)))
+                    childNames.Add(forced);
+            }
+
+            var matrixNameSet = new HashSet<string>(
+                nonLookupTables.Where(t => t != null && t.IsMatrix).Select(t => t.Name),
+                StringComparer.OrdinalIgnoreCase);
+
             var childDefs = new List<HierarchyChildTableDto>();
             foreach (var childName in childNames)
             {
@@ -1694,21 +1812,39 @@ ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION";
                 placedTables.Add(childName);
 
                 var grandChildNames = new List<string>();
-                foreach (var gcName in App.BL.AppBuilderAgent.Plugins.SchemaProposeHelpers
-                             .GetDirectCompositionChildren(childName, tables))
+                // Matrix tables are never grandchildren — they stay Root children only.
+                if (!matrixNameSet.Contains(childName))
                 {
-                    if (placedTables.Contains(gcName))
-                        continue;
-                    if (tableDict.TryGetValue(gcName, out var gcMeta) && gcMeta.IsLookup)
-                        continue;
-                    placedTables.Add(gcName);
-                    grandChildNames.Add(gcName);
+                    foreach (var gcName in App.BL.AppBuilderAgent.Plugins.SchemaProposeHelpers
+                                 .GetDirectCompositionChildren(childName, tables))
+                    {
+                        if (placedTables.Contains(gcName))
+                            continue;
+                        if (matrixNameSet.Contains(gcName))
+                            continue;
+                        if (tableDict.TryGetValue(gcName, out var gcMeta) && gcMeta.IsLookup)
+                            continue;
+                        placedTables.Add(gcName);
+                        grandChildNames.Add(gcName);
+                    }
                 }
 
                 childDefs.Add(new HierarchyChildTableDto
                 {
                     TableName = childName,
                     GrandChildTableNames = grandChildNames
+                });
+            }
+
+            // Any matrix still unplaced → append as Root child with no grandchildren
+            foreach (var matrixName in matrixNameSet)
+            {
+                if (placedTables.Contains(matrixName)) continue;
+                placedTables.Add(matrixName);
+                childDefs.Add(new HierarchyChildTableDto
+                {
+                    TableName = matrixName,
+                    GrandChildTableNames = new List<string>()
                 });
             }
 

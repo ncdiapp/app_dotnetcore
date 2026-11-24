@@ -61,13 +61,17 @@ namespace App.BL.AppBuilderAgent.Plugins
             string entityCode,
             [AgentParam("Comma-separated list of item labels in order, e.g. 'Approved,Rejected,Canceled'", isRequired: true)]
             string items,
-            [AgentParam("The SaasApplicationId returned by create_app_package", isRequired: true)]
+            [AgentParam("SaasApplicationId — use HostContext.saasApplicationId in My Application Editor", isRequired: true)]
             int saasApplicationId,
             [AgentParam("Optional description of this entity")]
-            string description = null)
+            string description = null,
+            AgentToolContext context = null)
         {
             try
             {
+                saasApplicationId = AppBuilderHostApp.ResolveSaasApplicationId(saasApplicationId, context, out _)
+                    ?? saasApplicationId;
+
                 var itemList = items.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
                     .Select(s => s.Trim())
                     .Where(s => !string.IsNullOrEmpty(s))
@@ -145,17 +149,21 @@ namespace App.BL.AppBuilderAgent.Plugins
             string identityField,
             [AgentParam("Primary display column shown to user, e.g. 'CustomerName'", isRequired: true)]
             string displayField1,
-            [AgentParam("The SaasApplicationId returned by create_app_package", isRequired: true)]
+            [AgentParam("SaasApplicationId — use HostContext.saasApplicationId in My Application Editor", isRequired: true)]
             int saasApplicationId,
             [AgentParam("Optional secondary display column, e.g. 'Email'")]
             string displayField2 = null,
             [AgentParam("Optional tertiary display column")]
             string displayField3 = null,
             [AgentParam("Optional description of this entity")]
-            string description = null)
+            string description = null,
+            AgentToolContext context = null)
         {
             try
             {
+                saasApplicationId = AppBuilderHostApp.ResolveSaasApplicationId(saasApplicationId, context, out _)
+                    ?? saasApplicationId;
+
                 var dto = new AppEntityInfoExDto
                 {
                     Id                = null,

@@ -174,12 +174,38 @@ Skip the block for yes/no, finished answers, or any turn that did not call data_
                 if (hasFormHost)
                 {
                     var isConfigurator = false;
+                    var isAppBuilderHost = false;
+                    int? hostSaasAppId = null;
+                    string hostAppName = null;
                     try
                     {
-                        var mode = Newtonsoft.Json.Linq.JObject.Parse(hostContextJson.Trim())["mode"]?.ToString();
+                        var hostObj = Newtonsoft.Json.Linq.JObject.Parse(hostContextJson.Trim());
+                        var mode = hostObj["mode"]?.ToString();
                         isConfigurator = string.Equals(mode, "configurator", StringComparison.OrdinalIgnoreCase);
+                        hostSaasAppId = (hostObj["saasApplicationId"] ?? hostObj["SaasApplicationId"])?.Value<int?>();
+                        hostAppName = (hostObj["applicationName"] ?? hostObj["ApplicationName"])?.Value<string>();
+                        var surface = hostObj["surface"]?.ToString();
+                        isAppBuilderHost =
+                            string.Equals(mode, "appBuilder", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(surface, "myApplicationEditor", StringComparison.OrdinalIgnoreCase);
                     }
                     catch { /* treat as form-data host */ }
+
+                    // My Application Editor: never create a sibling SaasApplication package.
+                    if (isAppBuilderHost && hostSaasAppId.HasValue && hostSaasAppId.Value > 0)
+                    {
+                        systemPrompt += $@"
+
+## Current application (HostContext) — MANDATORY
+You are inside My Application Editor for SaasApplicationId={hostSaasAppId.Value}"
+                            + (string.IsNullOrWhiteSpace(hostAppName) ? "" : $" ({hostAppName})")
+                            + $@".
+✗ Do NOT call create_app_package to make a new application — it will only return this same Id.
+✓ Pass saasApplicationId={hostSaasAppId.Value} to execute_approved_schema, create_entity_*, create_search*, add_*_to_menu.
+✓ ""New transaction"" means a new Transaction under THIS application, not a new Application package.
+
+";
+                    }
 
                     if (isConfigurator)
                     {

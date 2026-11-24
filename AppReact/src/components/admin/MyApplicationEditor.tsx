@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
@@ -118,7 +118,37 @@ const MyApplicationEditor: React.FC = () => {
   const [currentSection, setCurrentSection] = useState<number>(() => getInitialCurrentSection(param));
   const [agentFocus, setAgentFocus] = useState<EditorAgentFocus | null>(null);
   const [showAgentDock, setShowAgentDock] = useState(true);
+  /** Agent Chat dock width (px); drag divider between main area and dock. */
+  const AGENT_DOCK_DEFAULT = 360;
+  const AGENT_DOCK_MIN = 280;
+  const AGENT_DOCK_MAX = 720;
+  const [agentDockWidthPx, setAgentDockWidthPx] = useState(AGENT_DOCK_DEFAULT);
+  const contentDockSplitRef = useRef<HTMLDivElement | null>(null);
+  const agentDockResizeDragRef = useRef(false);
   const lastSectionParamRef = React.useRef<string | undefined>(param);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!agentDockResizeDragRef.current || !contentDockSplitRef.current) return;
+      const rect = contentDockSplitRef.current.getBoundingClientRect();
+      // Dragging the left edge of the dock: width = containerRight - mouseX
+      const next = rect.right - e.clientX;
+      const maxDock = Math.max(AGENT_DOCK_MIN, rect.width - 280);
+      setAgentDockWidthPx(Math.min(Math.max(next, AGENT_DOCK_MIN), Math.min(AGENT_DOCK_MAX, maxDock)));
+    };
+    const onUp = () => {
+      if (!agentDockResizeDragRef.current) return;
+      agentDockResizeDragRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, []);
 
   // Extract menu ID from route parameter; reset section when editor opens a different app (tab reuse).
   useEffect(() => {
@@ -274,22 +304,43 @@ const MyApplicationEditor: React.FC = () => {
           </div>
         </div>
 
-        {/* Content Area */}
-        <div className={`w-1 flex-auto h-full overflow-hidden rounded-r-md flex gap-1`}>
-          <div className="w-1 flex-auto h-full overflow-hidden">
+        {/* Content Area + Agent Chat dock */}
+        <div
+          ref={contentDockSplitRef}
+          className={`w-1 flex-auto h-full overflow-hidden rounded-r-md flex gap-1`}
+        >
+          <div className="w-1 flex-auto h-full min-w-0 overflow-hidden">
             {renderSectionContent()}
           </div>
           {showAgentDock && menuId && (
-            <div className="w-[360px] flex-none h-full overflow-hidden border-l">
-              <MyApplicationEditorAgentDock
-                saasApplicationId={Number(menuId)}
-                applicationName={applicationData?.Name || applicationData?.DisplayName}
-                sectionId={currentSection}
-                sectionName={getSectionName(currentSection)}
-                focus={agentFocus}
-                onHidePanel={() => setShowAgentDock(false)}
+            <>
+              <div
+                className={`w-[6px] shrink-0 cursor-col-resize border-l border-r self-stretch min-h-0 ${theme.inputBox} ${theme.mainContentSection}`}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize Assistant"
+                title="Drag to resize"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  agentDockResizeDragRef.current = true;
+                  document.body.style.cursor = 'col-resize';
+                  document.body.style.userSelect = 'none';
+                }}
               />
-            </div>
+              <div
+                className="flex-none h-full overflow-hidden border-l"
+                style={{ width: agentDockWidthPx, minWidth: AGENT_DOCK_MIN }}
+              >
+                <MyApplicationEditorAgentDock
+                  saasApplicationId={Number(menuId)}
+                  applicationName={applicationData?.Name || applicationData?.DisplayName}
+                  sectionId={currentSection}
+                  sectionName={getSectionName(currentSection)}
+                  focus={agentFocus}
+                  onHidePanel={() => setShowAgentDock(false)}
+                />
+              </div>
+            </>
           )}
           {!showAgentDock && (
             <button

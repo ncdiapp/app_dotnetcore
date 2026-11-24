@@ -154,10 +154,25 @@ namespace APP.Components.EntityDto
         [DataMember]
         public bool IsLookup { get; set; }
 
+        /// <summary>
+        /// True = dynamic Matrix child table under Root (Cartesian product of MatrixKeyTableNames).
+        /// Must be placed as a Root child unit — never as a grandchild.
+        /// </summary>
+        [DataMember]
+        public bool IsMatrix { get; set; }
+
+        /// <summary>
+        /// Dimension table names (other Root child units) whose keys drive this matrix.
+        /// Example: ["CampaignRegion","CampaignProduct"] for a Region×Product target matrix.
+        /// </summary>
+        [DataMember]
+        public List<string> MatrixKeyTableNames { get; set; }
+
         public DbGenieTableMetadataDto()
         {
             Columns = new List<DbGenieColumnMetadataDto>();
             Relationships = new List<DbGenieRelationshipMetadataDto>();
+            MatrixKeyTableNames = new List<string>();
         }
     }
 
@@ -573,6 +588,14 @@ namespace APP.Components.EntityDto
         /// </summary>
         [DataMember]
         public List<string> LookupTables { get; set; } = new List<string>();
+
+        /// <summary>Matrix unit auto-config result (IsMatrixUnit + MatrixForeignKeyFieldId + Generate Matrix command).</summary>
+        [DataMember]
+        public object MatrixConfig { get; set; }
+
+        /// <summary>Hierarchy placement warnings (e.g. expected Root children count / matrix placement).</summary>
+        [DataMember]
+        public List<string> HierarchyWarnings { get; set; } = new List<string>();
     }
 
     /// <summary>
