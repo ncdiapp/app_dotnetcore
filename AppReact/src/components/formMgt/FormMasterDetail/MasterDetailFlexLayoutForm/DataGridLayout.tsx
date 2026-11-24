@@ -889,13 +889,35 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     const mappingList = Array.isArray(linkedSearch?.AppTransactionUnitSearchFieldMappingList)
       ? linkedSearch.AppTransactionUnitSearchFieldMappingList
       : [];
+    const unitFields =
+      (dataModelRef.current?.currentFormStructure?.AppTransactionUnitList || []).find(
+        (u: any) => String(u?.Id) === String(unitIdStr)
+      )?.AppTransactionFieldList ||
+      [];
+    const rootFields =
+      (dataModelRef.current?.currentFormStructure?.AppTransactionUnitList || []).find(
+        (u: any) => rootUnitId != null && String(u?.Id) === String(rootUnitId)
+      )?.AppTransactionFieldList ||
+      [];
+    const allFields = [...rootFields, ...unitFields];
 
     for (const mapping of mappingList) {
       const searchFieldId = mapping?.SearchFieldId;
-      const dataBaseFieldName = mapping?.DataBaseFieldName;
+      let dataBaseFieldName = mapping?.DataBaseFieldName;
+      const transactionFieldId = mapping?.TransactionFieldId;
+      if (!dataBaseFieldName && transactionFieldId != null) {
+        const tf = allFields.find((f: any) => Number(f?.Id) === Number(transactionFieldId));
+        dataBaseFieldName = tf?.DataBaseFieldName ?? null;
+      }
       if (searchFieldId == null || !dataBaseFieldName) continue;
 
-      const sourceUnitId = mapping?.SourceTransactionUnitId;
+      const fieldDto =
+        (transactionFieldId != null
+          ? allFields.find((f: any) => Number(f?.Id) === Number(transactionFieldId))
+          : null) ??
+        allFields.find((f: any) => String(f?.DataBaseFieldName) === String(dataBaseFieldName)) ??
+        null;
+      const sourceUnitId = mapping?.SourceTransactionUnitId ?? fieldDto?.TransactionUnitId ?? null;
       let formValue: any = null;
 
       if (sourceUnitId == null || (rootUnitId != null && String(sourceUnitId) === String(rootUnitId))) {
@@ -908,7 +930,10 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
         formValue = rootDictOneToOneFields?.[dataBaseFieldName];
       }
 
-      dictCreteriaIdValue[searchFieldId] = formValue;
+      if (formValue !== undefined && formValue !== null && formValue !== '') {
+        dictCreteriaIdValue[String(searchFieldId)] = formValue;
+        dictCreteriaIdValue[searchFieldId] = formValue;
+      }
     }
 
     const tabTitle = linkedSearch?.Name ?? 'Linked Search';

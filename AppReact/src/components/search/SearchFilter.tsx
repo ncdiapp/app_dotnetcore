@@ -53,11 +53,19 @@ const resolveValuesForCriteria = (
 ) => {
   const criteriaValues = Array.isArray(criteria?.Values) ? normalizeStringArray(criteria.Values) : [];
   const dcuId = criteria?.SearcDCUID;
-  const override = dcuId != null ? dictDcuValue?.[dcuId] : undefined;
+  // Linked-search / link-target maps often key by number; Criterias use the same id as number or string.
+  const override =
+    dcuId != null
+      ? (dictDcuValue?.[dcuId] ?? dictDcuValue?.[String(dcuId)] ?? dictDcuValue?.[Number(dcuId) as any])
+      : undefined;
   if (override !== undefined && override !== null) {
     let overrideValues: string[] | undefined;
     if (Array.isArray(override)) {
       overrideValues = normalizeStringArray(override);
+    } else if (typeof override === "string" || typeof override === "number" || typeof override === "boolean") {
+      // Form→search field mappings pass DictOneToOneFields scalars (e.g. CustomerId int / display text).
+      const raw = String(override);
+      overrideValues = raw.trim().length > 0 ? [raw] : [];
     } else if (typeof override === "object") {
       if (Array.isArray(override.values)) {
         overrideValues = normalizeStringArray(override.values);
@@ -318,7 +326,10 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
     const textMap: Record<string, string> = {};
     (Criterias || []).forEach((criteria: any) => {
       const dcuId = criteria.SearcDCUID;
-      const override = dictDcuValue?.[dcuId];
+      const override =
+        dcuId != null
+          ? (dictDcuValue?.[dcuId] ?? dictDcuValue?.[String(dcuId)] ?? dictDcuValue?.[Number(dcuId) as any])
+          : undefined;
       const overrideOp = override && typeof override === 'object' ? override.operator : null;
       const opType =
         overrideOp?.OperatorType ??

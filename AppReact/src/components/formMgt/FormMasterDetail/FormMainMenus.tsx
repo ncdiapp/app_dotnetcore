@@ -1084,13 +1084,26 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
     const mappingList = Array.isArray(linkedSearch?.AppTransactionUnitSearchFieldMappingList)
       ? linkedSearch.AppTransactionUnitSearchFieldMappingList
       : [];
+    const rootFields = rootUnit?.AppTransactionFieldList || [];
 
     for (const mapping of mappingList) {
       const searchFieldId = mapping?.SearchFieldId;
-      const dataBaseFieldName = mapping?.DataBaseFieldName;
+      let dataBaseFieldName = mapping?.DataBaseFieldName;
+      const transactionFieldId = mapping?.TransactionFieldId;
+      // Hierarchy DTO sometimes omits DataBaseFieldName; resolve from unit field list.
+      if (!dataBaseFieldName && transactionFieldId != null) {
+        const tf = rootFields.find((f: any) => Number(f?.Id) === Number(transactionFieldId));
+        dataBaseFieldName = tf?.DataBaseFieldName ?? null;
+      }
       if (searchFieldId == null || !dataBaseFieldName) continue;
 
-      const sourceUnitId = mapping?.SourceTransactionUnitId;
+      const fieldDto =
+        (transactionFieldId != null
+          ? rootFields.find((f: any) => Number(f?.Id) === Number(transactionFieldId))
+          : null) ??
+        rootFields.find((f: any) => String(f?.DataBaseFieldName) === String(dataBaseFieldName)) ??
+        null;
+      const sourceUnitId = mapping?.SourceTransactionUnitId ?? fieldDto?.TransactionUnitId ?? null;
       let formValue: any = null;
 
       if (sourceUnitId == null || (rootUnitId != null && String(sourceUnitId) === String(rootUnitId))) {
@@ -1101,7 +1114,11 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
         formValue = rootDictOneToOneFields?.[dataBaseFieldName];
       }
 
-      dictCreteriaIdValue[searchFieldId] = formValue;
+      // SearchFilter keys by SearcDCUID (string or number); always set both for safety.
+      if (formValue !== undefined && formValue !== null && formValue !== '') {
+        dictCreteriaIdValue[String(searchFieldId)] = formValue;
+        dictCreteriaIdValue[searchFieldId] = formValue;
+      }
     }
 
     const tabTitle = linkedSearch?.Name ?? 'Linked Search';

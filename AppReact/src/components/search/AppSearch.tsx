@@ -336,8 +336,9 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
         if (override !== undefined && override !== null) {
           if (Array.isArray(override)) {
             revised.Values = override;
-          } else if (typeof override === "string") {
-            revised.Values = parseDelimitedTextValues(override);
+          } else if (typeof override === "string" || typeof override === "number" || typeof override === "boolean") {
+            // Linked-search mappings pass form DictOneToOneFields scalars (id or text).
+            revised.Values = parseDelimitedTextValues(String(override));
           } else if (typeof override === 'object') {
             if (Array.isArray(override.values)) revised.Values = override.values;
             if (typeof override.valuesText === "string") {
@@ -531,12 +532,15 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
             ...element,
             Values: element.Values || [],
           };
-          const override = dictDcuValueOverrides?.[element.SearcDCUID as any];
+          const dcuKeyPreview = element?.SearcDCUID != null ? String(element.SearcDCUID) : "";
+          const override =
+            (dcuKeyPreview ? dictDcuValueOverrides?.[dcuKeyPreview as any] : undefined) ??
+            dictDcuValueOverrides?.[element.SearcDCUID as any];
           if (override !== undefined && override !== null) {
             if (Array.isArray(override)) {
               revised.Values = override;
-            } else if (typeof override === "string") {
-              revised.Values = parseDelimitedTextValues(override);
+            } else if (typeof override === "string" || typeof override === "number" || typeof override === "boolean") {
+              revised.Values = parseDelimitedTextValues(String(override));
             } else if (typeof override === "object") {
               if (Array.isArray(override.values)) revised.Values = override.values;
               if (typeof override.valuesText === "string") {
@@ -765,8 +769,13 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
         const isNotToExecuteSearch = Boolean(paramObj.isNotToExecuteSearch);
 
         if (isAutoExecute && !isNotToExecuteSearch && searchDto && viewDto) {
+          // Pass criteria explicitly — setTimeout would otherwise close over stale dataModel.dictDcuValue.
+          const criteriaForSearch =
+            dictCreteriaIdValue && typeof dictCreteriaIdValue === 'object'
+              ? dictCreteriaIdValue
+              : undefined;
           setTimeout(() => {
-            executeSearchWithDto(searchDto, viewDto);
+            executeSearchWithDto(searchDto, viewDto, criteriaForSearch);
           }, 200);
         }
 
@@ -812,19 +821,53 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
       }
     }
 
+    const incomingCriteria =
+      paramObj?.dictCreteriaIdValue && typeof paramObj.dictCreteriaIdValue === 'object'
+        ? (paramObj.dictCreteriaIdValue as Record<string, any>)
+        : null;
+
     if (dataModelKey) {
       cachedDataModel = getDataModelFromCache(dataModelKey);
       if (cachedDataModel) {
         // Only use cache if it's for the same searchId
         if (cachedDataModel.searchid === currentSearchId || cachedDataModel.uiControl?.initialSearchId === currentSearchId) {
-          setDataModel(cachedDataModel);
+          // Linked search / form mappings: always overlay current dictCreteriaIdValue so a
+          // form field change (e.g. CustomerId 1→5) is not stuck on the previous open's cache.
+          const mergedDict = {
+            ...(cachedDataModel.dictDcuValue ?? {}),
+            ...(incomingCriteria ?? {}),
+          };
+          const nextModel = {
+            ...cachedDataModel,
+            dictDcuValue: mergedDict,
+          };
+          setDataModel(nextModel);
+
+          if (
+            embeddedParamObj &&
+            incomingCriteria &&
+            Object.keys(incomingCriteria).length > 0 &&
+            nextModel.searchDto &&
+            nextModel.searchViewDto &&
+            !paramObj.isNotToExecuteSearch
+          ) {
+            const isAutoExecute =
+              nextModel.searchDto.IsAutoExecute || nextModel.searchDto.IsAutoExcute;
+            if (isAutoExecute) {
+              const sd = nextModel.searchDto;
+              const vd = nextModel.searchViewDto;
+              setTimeout(() => {
+                void executeSearchWithDto(sd, vd, mergedDict);
+              }, 200);
+            }
+          }
           return;
         }
       }
     }
 
     await loadDataFromServer(
-      (paramObj?.dictCreteriaIdValue ?? null) as any,
+      (incomingCriteria ?? null) as any,
       (paramObj?.dictViewColumnIdAndValue_For_LinkTargetParameterDefaultValue ?? null) as any
     );
   };
