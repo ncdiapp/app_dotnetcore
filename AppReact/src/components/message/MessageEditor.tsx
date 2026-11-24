@@ -856,7 +856,7 @@ const MessageEditor: React.FC<MessageEditorProps> = ({ variant: variantProp, emb
 
           {showTransactionToken && (isTemplateScopeDto(newMessageDto) || variant === 'templateCode') ? (
             <div className={`w-[300px] shrink-0 h-full min-h-0 p-2 overflow-y-auto border ${theme.mainContentSection}`}>
-              <div className={`text-xs font-semibold mb-2 ${theme.title}`}>Built-in Token</div>
+              <div className={`text-xs font-semibold mb-2 ${theme.title}`}>Built-in Variables</div>
               <div className="flex flex-wrap gap-1 mb-3">
                 {BUILT_IN_TOKENS.map((t) => (
                   <button

@@ -574,9 +574,9 @@ Run T-SQL against the application database using values from the open form (and 
 1. Add Operation (Public or Private tab as appropriate).
 2. Set Operation Name and Operation Type → Execute SQL Statement.
 3. Configure Execute Condition Field / menu visibility if needed.
-4. Open Query Builder with Built-in Tokens.
+4. Open Query Builder with Field Variables.
 5. Draft SQL; use Query Design Tool if you need table/column discovery.
-6. Insert tokens from Form Root Level Fields, Grid columns, or Built-in Token (do not hand-type field ids unless you must).
+6. Insert variables from Form Root Level Fields, Grid columns, or Built-in Variables (do not hand-type field ids unless you must).
 7. Click Apply & Close.
 8. If SQL returns one value for the form, set Assign Query Scalar Result To Root Field.
 9. Save the data model; test from the form Operation menu (avoid Auto Execute On Form Open until verified).
@@ -614,7 +614,7 @@ Main form (SQL Statement section)
 |---------|----------------|
 | **SQL Statement** | Monaco SQL editor. Tokens like `[TF_####_FieldName]` are replaced at run time. |
 | **Assign Query Scalar Result To Root Field** | Dropdown of root fields. Use when SQL returns one scalar. Choose `(None)` when nothing should be assigned. |
-| **Query Builder with Built-in Tokens** | Opens the token/SQL popup beside SQL Statement. |
+| **Query Builder with Field Variables** | Opens the variable/SQL popup beside SQL Statement. |
 
 Query Builder popup
 
@@ -625,11 +625,11 @@ Query Builder popup
 | **Apply & Close** | Writes popup SQL back to the operation and closes. |
 | **Close** (X) | Closes without applying popup edits. |
 | Full screen | Expands the popup frame. |
-| **Example: Use Token In Query** | Sample `UPDATE` / `DECLARE` patterns using field tokens and `[CurrentUserId]`. |
+| **Example: Use Field Variables in Query** | Sample `UPDATE` / `DECLARE` patterns using field variables and `[CurrentUserId]`. |
 | **Global Fields** | (When workflow/globals exist.) Click to insert at cursor. |
 | **Form Root Level Fields** | Click a field label to insert its live `[TF_####_…]` token. |
 | **Grid {unit} Columns** | Child grid column tokens when batch/child context applies. |
-| **Built-in Token** | `[CurrentUserId]`, `[CurrentPartnerId]`, `[CurrentUserName]`, `GETDATE()`, `GETUTCDATE()`. |
+| **Built-in Variables** | `[CurrentUserId]`, `[CurrentPartnerId]`, `[CurrentUserName]`, `GETDATE()`, `GETUTCDATE()`. |
 
 #### Pitfalls
 - Tokens must match live field ids; renaming fields can invalidate old tokens—re-click fields in the builder.

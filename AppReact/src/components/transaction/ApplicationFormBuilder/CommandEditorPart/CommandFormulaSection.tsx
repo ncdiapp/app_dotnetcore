@@ -247,7 +247,7 @@ export function CommandFormulaSection(props: {
                 </div>
 
                 <div className="mt-3">
-                  <div className={`text-[11px] font-semibold mb-1 ${theme.title}`}>Built-In Token</div>
+                  <div className={`text-[11px] font-semibold mb-1 ${theme.title}`}>Built-in Variables</div>
                   <div className="grid grid-cols-2 gap-1">
                     {FORMULA_BUILT_IN_TOKENS.map((t) => (
                       <button

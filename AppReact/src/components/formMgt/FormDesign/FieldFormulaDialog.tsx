@@ -191,18 +191,18 @@ const FieldFormulaDialog: React.FC<FieldFormulaDialogProps> = ({
       if (level === 3) {
         const rootFields = transactionData?.rootLevelUnitFieldList || [];
         if (rootFields.length) {
-          groups.push({ name: 'Root Level Field Tokens', fields: rootFields });
+          groups.push({ name: 'Root Level Field Variables', fields: rootFields });
         }
       }
       if (parentUnit?.AppTransactionFieldList?.length) {
         groups.push({
-          name: `Parent Level Field Tokens: ${parentUnit.UnitDisplayName || parentUnit.DataBaseTableName || ''}`.trim(),
+          name: `Parent Level Field Variables: ${parentUnit.UnitDisplayName || parentUnit.DataBaseTableName || ''}`.trim(),
           fields: parentUnit.AppTransactionFieldList
         });
       }
       if (currentUnit?.AppTransactionFieldList) {
         groups.push({
-          name: `Field Tokens: ${currentUnit.UnitDisplayName || currentUnit.DataBaseTableName || ''}`.trim(),
+          name: `Field Variables: ${currentUnit.UnitDisplayName || currentUnit.DataBaseTableName || ''}`.trim(),
           fields: currentUnit.AppTransactionFieldList
         });
       }
@@ -210,23 +210,23 @@ const FieldFormulaDialog: React.FC<FieldFormulaDialogProps> = ({
     }
 
     const rootFields = transactionData?.rootLevelUnitFieldList || [];
-    groups.push({ name: 'Root Level Field Tokens', fields: rootFields });
+    groups.push({ name: 'Root Level Field Variables', fields: rootFields });
 
     if (level === 2 && currentUnit?.AppTransactionFieldList) {
       groups.push({
-        name: `Child Grid Field Tokens: ${currentUnit.UnitDisplayName || ''}`.trim(),
+        name: `Child Grid Field Variables: ${currentUnit.UnitDisplayName || ''}`.trim(),
         fields: currentUnit.AppTransactionFieldList
       });
     } else if (level === 3) {
       if (parentUnit?.AppTransactionFieldList) {
         groups.push({
-          name: `Child Grid Field Tokens: ${parentUnit.UnitDisplayName || ''}`.trim(),
+          name: `Child Grid Field Variables: ${parentUnit.UnitDisplayName || ''}`.trim(),
           fields: parentUnit.AppTransactionFieldList
         });
       }
       if (currentUnit?.AppTransactionFieldList) {
         groups.push({
-          name: `Grandchild Grid Field Tokens: ${currentUnit.UnitDisplayName || ''}`.trim(),
+          name: `Grandchild Grid Field Variables: ${currentUnit.UnitDisplayName || ''}`.trim(),
           fields: currentUnit.AppTransactionFieldList
         });
       }
@@ -656,16 +656,17 @@ const FieldFormulaDialog: React.FC<FieldFormulaDialogProps> = ({
                     ))}
                   </div>
 
-                  {/* Operators & functions */}
-                  <div className="w-1/2 overflow-hidden">
-                    <div className="border border-[#ddd] relative p-2 h-full">
+                  {/* Operators & functions — py-2 matches left token groups so absolute title is not clipped */}
+                  <div className="w-1/2 overflow-auto">
+                    <div className="py-2 h-full box-border">
+                    <div className="border border-[#ddd] relative p-2 h-full min-h-0 flex flex-col">
                       <div
-                        className="absolute -top-2 left-0 right-0 mx-auto bg-white text-center text-[11px]"
+                        className="absolute -top-2 left-0 right-0 mx-auto bg-white text-center text-[11px] z-[1]"
                         style={{ width: '160px' }}
                       >
                         Operators and Functions
                       </div>
-                      <div className="h-full overflow-y-auto pt-2">
+                      <div className="h-1 flex-auto overflow-y-auto pt-2 min-h-0">
                         <div className="flex flex-wrap">
                           {operatorTokenList.map((t) => (
                             <div key={t} style={{ width: '50px', flex: '1 1 auto', padding: '2px' }}>
@@ -743,6 +744,7 @@ const FieldFormulaDialog: React.FC<FieldFormulaDialogProps> = ({
                           ))}
                         </div>
                       </div>
+                    </div>
                     </div>
                   </div>
                 </div>

@@ -150,10 +150,10 @@ export function SqlStatementSection(props: {
                 setSqlTokenBuilderDraft(sqlStatement ?? '');
                 setIsSqlTokenBuilderOpen(true);
               }}
-              title="Query Builder with Built-in Tokens"
+              title="Query Builder with Field Variables"
             >
               <i className="fa-solid fa-pen-to-square mr-1" aria-hidden />
-              Query Builder with Built-in Tokens
+              Query Builder with Field Variables
             </button>
           </div>
           <div className={`w-full h-[260px] border rounded overflow-hidden ${theme.inputBox}`}>
@@ -181,7 +181,7 @@ export function SqlStatementSection(props: {
 
       {isSqlTokenBuilderOpen && (
         <EmbeddedLinkedPopupFrame
-          title="Query Builder with Built-in Tokens"
+          title="Query Builder with Field Variables"
           fullscreenPosition="afterTrailing"
           toolbarTrailing={
             <div className="flex items-center gap-2 w-full">
@@ -252,7 +252,7 @@ export function SqlStatementSection(props: {
               style={{ maxHeight: '100%' }}
             >
               <fieldset className={`border rounded px-2 pt-3 pb-2 relative mb-4 ${theme.inputBox}`}>
-                <legend className={`px-1 text-[11px] ${theme.label}`}>Example: Use Token In Query</legend>
+                <legend className={`px-1 text-[11px] ${theme.label}`}>Example: Use Field Variables in Query</legend>
                 <div className={`text-[11px] ${theme.label} space-y-3`}>
                   <div>
                     <div className="font-semibold">Example 1:</div>
@@ -342,7 +342,7 @@ export function SqlStatementSection(props: {
               ))}
 
               <fieldset className={`border rounded px-2 pt-3 pb-2 relative ${theme.inputBox}`}>
-                <legend className={`px-1 text-[11px] ${theme.label}`}>Built-in Token</legend>
+                <legend className={`px-1 text-[11px] ${theme.label}`}>Built-in Variables</legend>
                 <div className="flex flex-wrap gap-1">
                   {SQL_EXPRESSION_BUILTIN_TOKENS.map((t) => (
                     <button

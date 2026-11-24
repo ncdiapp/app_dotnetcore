@@ -419,7 +419,7 @@ export function NotificationExpressionSection(props: {
 
             <div className="w-[200px] shrink-0">
               <fieldset className={`border rounded px-2 pt-3 pb-2 relative h-full ${theme.inputBox}`}>
-                <legend className={`px-1 text-[11px] ${theme.label}`}>Built-in Token</legend>
+                <legend className={`px-1 text-[11px] ${theme.label}`}>Built-in Variables</legend>
                 <div className="flex flex-col gap-1">
                   {NOTIFICATION_BUILTIN_TOKENS.map((token) => (
                     <button
