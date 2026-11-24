@@ -6,6 +6,7 @@ using App.BL.AppBuilderAgent.Plugins;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.Framework.Collections;
+using APP.Framework.Validation;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -134,14 +135,18 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 warnings.AddRange(BuildCompositionChildWarnings(cmd));
                 warnings.AddRange(formulaRescueNotes);
                 warnings.AddRange(BuildCommandFormulaWarnings(cmd));
+                warnings.AddRange(BuildNavigateSearchWarnings(tx, cmd));
                 if (dryRun == true || confirmed != true)
                 {
                     var next = (string)null;
                     if (warnings.Count > 0)
                     {
-                        next = cmd.ActionType == 57
-                            ? "Fix Command Formula: put expression in optionsJson.executionFormulaUI (ActionAttribute), use formulaToken + [Now]/[Today] — not notificationMessage / Format(Now())."
-                            : "Fix SQL tokens/WHERE using find_fields / get_current_transaction_config.rootPrimaryKeys[].sqlToken before confirmed=true.";
+                        if (cmd.ActionType == 57)
+                            next = "Fix Command Formula: put expression in optionsJson.executionFormulaUI (ActionAttribute), use formulaToken + [Now]/[Today] — not notificationMessage / Format(Now()).";
+                        else if (cmd.ActionType == 53)
+                            next = "Fix Navigate To Search: list_available_searches → upsert_linked_search on root unit → set optionsJson.linkedSearchId to returned linkedSearchId (not AppSearch.SearchId / invent 1).";
+                        else
+                            next = "Fix SQL tokens/WHERE using find_fields / get_current_transaction_config.rootPrimaryKeys[].sqlToken before confirmed=true.";
                     }
                     return Ok(new
                     {
@@ -152,6 +157,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         NextStep = next
                     });
                 }
+
+                // Hard-block orphan LinkedSearchId on Navigate To Search (53) — UI would show fake "Search {id}".
+                var navBlock = BuildNavigateSearchWarnings(tx, cmd);
+                if (navBlock.Count > 0 && cmd.ActionType == (int)EmAppTransactionCommandType.OpenLinkedSearch)
+                    return Fail(string.Join(" ", navBlock));
 
                 // Create path does not run SaveOneTransactionCommandActionList — format formula here.
                 // Update path formats again inside SaveOneTransactionCommandActionList (safe / idempotent for UI tokens).
@@ -431,12 +441,66 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             catch (Exception ex) { return Fail(ex.Message); }
         }
 
+        public static string ListAvailableSearches(int transactionId, string nameContains, int? take)
+        {
+            try
+            {
+                var tx = LoadTx(transactionId, out var err);
+                if (tx == null) return Fail(err);
+
+                var appId = tx.SaasApplicationId;
+                List<AppSearchDto> list = appId.HasValue
+                    ? AppSearchConfigBL.RetrieveSaasApplicationSearchList(appId.Value)
+                    : AppSearchConfigBL.RetrieveAllAppSearchDto();
+
+                IEnumerable<AppSearchDto> q = list ?? new List<AppSearchDto>();
+                if (!string.IsNullOrWhiteSpace(nameContains))
+                {
+                    var needle = nameContains.Trim();
+                    q = q.Where(s =>
+                        (!string.IsNullOrEmpty(s.Name) && s.Name.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0)
+                        || (s.Id != null && s.Id.ToString().IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0));
+                }
+
+                var limit = take.HasValue && take.Value > 0 ? Math.Min(take.Value, 100) : 40;
+                var items = q
+                    .OrderBy(s => s.Name ?? "")
+                    .ThenBy(s => Convert.ToInt32(s.Id ?? 0))
+                    .Take(limit)
+                    .Select(s => new
+                    {
+                        searchId = s.Id,
+                        name = s.Name,
+                        description = s.Description,
+                        saasApplicationId = s.SaasApplicationId,
+                        dataSetId = s.DataSetId,
+                        searchViewId = s.SearchViewId
+                    })
+                    .ToList();
+
+                return Ok(new
+                {
+                    transactionId,
+                    saasApplicationId = appId,
+                    count = items.Count,
+                    truncated = (list?.Count ?? 0) > items.Count,
+                    searches = items,
+                    note = "Use searchId (AppSearch.SearchId — not dataSetId) with upsert_linked_search(unitId, searchId, name). " +
+                           "upsert_linked_search auto-fills SearchViewId from the search default view. " +
+                           "After save, use the returned linkedSearchId on upsert_command actionType 53 — " +
+                           "do not put searchId into linkedSearchId."
+                });
+            }
+            catch (Exception ex) { return Fail(ex.Message); }
+        }
+
         public static string UpsertLinkedSearch(
             int transactionId,
             int unitId,
             int? linkedSearchId,
             string name,
             int? searchId,
+            int? action,
             string changesJson,
             bool? confirmed,
             bool? dryRun)
@@ -455,12 +519,17 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
                 else
                 {
-                    if (!searchId.HasValue) return Fail("searchId is required for create.");
+                    if (!searchId.HasValue)
+                        return Fail("searchId is required for create. Call list_available_searches and pass a real AppSearch.SearchId (not dataSetId).");
+                    // Match UI create defaults: Action=3 (Open Search), UsageType=102, Sort next.
                     dto = new AppTransactionUnitLinkedSearchExDto
                     {
                         TransactionUnitId = unitId,
                         SearchId = searchId,
                         Name = name,
+                        Action = (int)EmAppLinkedSearchAction.ViewSearchResult,
+                        UsageType = 102,
+                        Sort = NextLinkedSearchSort(unitId),
                         AppTransactionUnitSearchFieldMappingList = new ObservableSet<AppTransactionUnitSearchFieldMappingExDto>(),
                         AppTransactionUnitSearchViewFieldMappingList = new ObservableSet<AppTransactionUnitSearchViewFieldMappingExDto>()
                     };
@@ -468,13 +537,67 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
                 if (name != null) dto.Name = name;
                 if (searchId.HasValue) dto.SearchId = searchId;
+                if (action.HasValue) dto.Action = action;
                 if (!string.IsNullOrWhiteSpace(changesJson))
                 {
                     try
                     {
+                        // Agent sometimes passes a JSON object string; also tolerate raw object via ToString.
                         JsonConvert.PopulateObject(changesJson, dto);
                     }
                     catch (Exception ex) { return Fail("changesJson invalid: " + ex.Message); }
+                }
+
+                // Keep unit ownership even if changesJson overwrote it.
+                dto.TransactionUnitId = unitId;
+
+                if (!dto.SearchId.HasValue || dto.SearchId.Value <= 0)
+                    return Fail("SearchId is required. Call list_available_searches for a real AppSearch.SearchId (not dataSetId).");
+
+                // Required by ValidateDto — empty Message historically hid this from agents.
+                if (!dto.Action.HasValue)
+                    dto.Action = (int)EmAppLinkedSearchAction.ViewSearchResult;
+                if (!dto.UsageType.HasValue)
+                    dto.UsageType = 102;
+                if (!dto.Sort.HasValue || dto.Sort.Value <= 0)
+                    dto.Sort = dto.IsNew ? NextLinkedSearchSort(unitId) : 1;
+
+                AppSearchExDto searchExists;
+                try
+                {
+                    searchExists = AppSearchConfigBL.RetrieveOneAppSearchExDto(dto.SearchId.Value);
+                }
+                catch (Exception ex)
+                {
+                    return Fail(
+                        $"searchId {dto.SearchId} lookup failed: {ex.Message}. " +
+                        "Use searchId from list_available_searches — never dataSetId / transactionId / unitId.");
+                }
+
+                // FetchEntity on a missing PK still returns a hollow entity (IsNew=true, no Name/SearchViewId).
+                if (searchExists == null || searchExists.Id == null || searchExists.IsNew
+                    || (!searchExists.SearchViewId.HasValue && string.IsNullOrWhiteSpace(searchExists.Name)))
+                {
+                    return Fail(
+                        $"searchId {dto.SearchId} is not a valid AppSearch. " +
+                        "Call list_available_searches and use returned searchId — " +
+                        "do not pass dataSetId, invent 1, or reuse transactionId/unitId.");
+                }
+
+                if (string.IsNullOrWhiteSpace(dto.Name))
+                    dto.Name = searchExists.Name ?? $"Search {dto.SearchId}";
+
+                // DTO SearchViewId is non-nullable int (defaults 0); DB column is NOT NULL + FK to AppSearchView.
+                // Agent defaults to the AppSearch's SearchViewId (UI requires an explicit view pick).
+                if (dto.SearchViewId <= 0)
+                {
+                    if (!searchExists.SearchViewId.HasValue || searchExists.SearchViewId.Value <= 0)
+                    {
+                        return Fail(
+                            $"AppSearch {dto.SearchId} ({searchExists.Name}) has no SearchViewId; " +
+                            "cannot create unit Linked Search until the search has a default view.");
+                    }
+                    dto.SearchViewId = searchExists.SearchViewId.Value;
                 }
 
                 if (dryRun == true || confirmed != true)
@@ -485,31 +608,176 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         message = "Preview only. ask_user then confirmed=true.",
                         proposed = new
                         {
-                            action = dto.IsNew ? "create" : "update",
+                            op = dto.IsNew ? "create" : "update",
                             unitId,
                             name = dto.Name,
-                            searchId = dto.SearchId
-                        }
+                            searchId = dto.SearchId,
+                            searchName = searchExists.Name,
+                            searchViewId = dto.SearchViewId,
+                            action = dto.Action,
+                            actionName = "ViewSearchResult/Open Search (3)",
+                            usageType = dto.UsageType
+                        },
+                        note = "After confirmed save, pass returned linkedSearchId to upsert_command (actionType 53). Do not use searchId as linkedSearchId."
                     });
                 }
 
-                var result = AppTransactionUnitLinkedSearchBL.SaveAppTransactionUnitLinkedSearchExDto(dto);
-                if (result?.ValidationResult?.HasErrors == true)
+                APP.Framework.Communication.OperationCallResult<AppTransactionUnitLinkedSearchExDto> result;
+                try
                 {
-                    var msgs = result.ValidationResult.Items?.Select(i => i.Message).Where(m => !string.IsNullOrWhiteSpace(m));
-                    return Fail(msgs != null && msgs.Any() ? string.Join("; ", msgs) : "Save LinkedSearch failed.");
+                    result = AppTransactionUnitLinkedSearchBL.SaveAppTransactionUnitLinkedSearchExDto(dto);
+                }
+                catch (Exception saveEx)
+                {
+                    // SaveEntity may have committed before SynchronizeDatabaseTableAndUpdateCahce threw OutOfSync.
+                    var recovered = TryFindLinkedSearchOnUnit(unitId, dto.SearchId, dto.Name);
+                    if (recovered != null)
+                    {
+                        try { AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId); } catch { /* best effort */ }
+                        var recoveredId = recovered.Id;
+                        return Ok(new
+                        {
+                            saved = true,
+                            recoveredAfterSyncError = true,
+                            linkedSearchId = recoveredId,
+                            searchId = dto.SearchId,
+                            searchViewId = dto.SearchViewId,
+                            name = dto.Name,
+                            action = dto.Action,
+                            unitId,
+                            syncWarning = ShortExceptionMessage(saveEx),
+                            changed = new[] { new { type = "linkedSearch", id = recoveredId } },
+                            NextStep = "For Navigate To Search (53): upsert_command with optionsJson.linkedSearchId=" + recoveredId + ", then request_form_reload."
+                        });
+                    }
+                    return Fail(ShortExceptionMessage(saveEx));
                 }
 
-                AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId);
+                if (result?.ValidationResult?.HasErrors == true)
+                {
+                    var detail = FormatValidationErrors(result.ValidationResult);
+                    return Fail(
+                        detail + " Required: Name, SearchId (from list_available_searches), Action (default 3), SearchViewId (auto from AppSearch). " +
+                        "Do not pass dataSetId as searchId.");
+                }
+
+                var savedId = result?.Object?.Id ?? dto.Id;
+                try { AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId); }
+                catch (Exception refreshEx)
+                {
+                    // Row is saved; cache refresh failure must not hide success from the agent.
+                    return Ok(new
+                    {
+                        saved = true,
+                        linkedSearchId = savedId,
+                        searchId = dto.SearchId,
+                        searchViewId = dto.SearchViewId,
+                        name = dto.Name,
+                        action = dto.Action,
+                        unitId,
+                        cacheRefreshWarning = ShortExceptionMessage(refreshEx),
+                        changed = new[] { new { type = "linkedSearch", id = savedId } },
+                        NextStep = "For Navigate To Search (53): upsert_command with optionsJson.linkedSearchId=" + savedId + ", then request_form_reload."
+                    });
+                }
+
                 return Ok(new
                 {
                     saved = true,
-                    linkedSearchId = result?.Object?.Id ?? dto.Id,
-                    changed = new[] { new { type = "linkedSearch", id = result?.Object?.Id ?? dto.Id } },
-                    NextStep = "Call request_form_reload."
+                    linkedSearchId = savedId,
+                    searchId = dto.SearchId,
+                    searchViewId = dto.SearchViewId,
+                    name = dto.Name,
+                    action = dto.Action,
+                    unitId,
+                    changed = new[] { new { type = "linkedSearch", id = savedId } },
+                    NextStep = "For Navigate To Search (53): upsert_command with optionsJson.linkedSearchId=" + savedId + ", then request_form_reload."
                 });
             }
-            catch (Exception ex) { return Fail(ex.Message); }
+            catch (Exception ex) { return Fail(ShortExceptionMessage(ex)); }
+        }
+
+        /// <summary>UI create uses Sort=1; agent assigns max(existing)+1 so menus stay ordered.</summary>
+        static int NextLinkedSearchSort(int unitId)
+        {
+            try
+            {
+                var list = AppTransactionUnitLinkedSearchBL.RetrieveOneAppTransactionUnitLinkedSearchList(unitId);
+                if (list == null || list.Count == 0) return 1;
+                var max = list.Where(x => x.Sort.HasValue).Select(x => x.Sort.Value).DefaultIfEmpty(0).Max();
+                return max + 1;
+            }
+            catch
+            {
+                return 1;
+            }
+        }
+
+        static AppTransactionUnitLinkedSearchExDto TryFindLinkedSearchOnUnit(int unitId, int? searchId, string name)
+        {
+            try
+            {
+                var list = AppTransactionUnitLinkedSearchBL.RetrieveOneAppTransactionUnitLinkedSearchList(unitId);
+                if (list == null) return null;
+                IEnumerable<AppTransactionUnitLinkedSearchExDto> q = list;
+                if (searchId.HasValue)
+                    q = q.Where(x => x.SearchId == searchId);
+                if (!string.IsNullOrWhiteSpace(name))
+                    q = q.Where(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+                return q
+                    .OrderByDescending(x => Convert.ToInt32(x.Id ?? 0))
+                    .FirstOrDefault();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        static string ShortExceptionMessage(Exception ex)
+        {
+            if (ex == null) return "Unknown error.";
+            var text = ex.ToString();
+            // Prefer the actionable SQL / ORM one-liner when present.
+            var fk = System.Text.RegularExpressions.Regex.Match(
+                text,
+                @"FOREIGN KEY constraint [""']?(?<n>[^""'\s]+)[""']?.*?table [""']?dbo\.(?<t>\w+)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
+            if (fk.Success)
+                return $"FK conflict ({fk.Groups["n"].Value} → {fk.Groups["t"].Value}). " +
+                       "For Linked Search create, SearchViewId must be a real AppSearchView id (auto-filled from AppSearch.SearchViewId); " +
+                       "searchId must be AppSearch.SearchId, not dataSetId.";
+            if (text.IndexOf("out of sync", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "Entity out of sync during save/cache refresh. Retry upsert_linked_search; if it persists, call get_linked_searches — the row may already exist.";
+            var msg = ex.Message ?? "";
+            return msg.Length > 400 ? msg.Substring(0, 400) + "…" : msg;
+        }
+
+        static string FormatValidationErrors(ValidationResult vr)
+        {
+            if (vr?.Items == null || vr.Items.Count == 0)
+                return "Save LinkedSearch failed (no validation items).";
+            var parts = vr.Items
+                .Where(i => i != null && i.ItemType == ValidationItemType.Error)
+                .Select(i =>
+                {
+                    var raw = !string.IsNullOrWhiteSpace(i.Message) ? i.Message : null;
+                    var msg = raw != null ? ShortExceptionMessage(new Exception(raw)) : null;
+                    // If ShortExceptionMessage only echoed a long blob, keep a tighter slice.
+                    if (msg != null && msg.Length > 280 && raw.IndexOf("FOREIGN KEY", StringComparison.OrdinalIgnoreCase) < 0
+                        && raw.IndexOf("out of sync", StringComparison.OrdinalIgnoreCase) < 0)
+                        msg = msg.Substring(0, 280) + "…";
+                    var key = !string.IsNullOrWhiteSpace(i.Key) ? i.Key : null;
+                    var prop = !string.IsNullOrWhiteSpace(i.PropertyName) ? i.PropertyName : null;
+                    if (msg != null && key != null) return $"{prop ?? "field"}: {msg} ({key})";
+                    if (msg != null) return $"{prop ?? "field"}: {msg}";
+                    if (key != null) return $"{prop ?? "field"}: {key}";
+                    return prop != null ? $"{prop} is invalid" : "validation error";
+                })
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Distinct()
+                .ToList();
+            return parts.Count > 0 ? string.Join("; ", parts) : "Save LinkedSearch failed (empty error messages).";
         }
 
         public static string DeleteLinkedSearch(int transactionId, int linkedSearchId, bool? confirmed, bool? dryRun)
@@ -832,6 +1100,51 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 warnings.Add(
                     "UPDATE/DELETE should use [TF_{fieldId}_{dbColumn}] tokens from Query Builder field buttons " +
                     "(exposed as sqlToken on field tools). Do not invent placeholders.");
+            }
+
+            return warnings;
+        }
+
+        /// <summary>
+        /// Navigate To Search (53): LinkedSearchId must be an existing unit binding id (not AppSearch.SearchId).
+        /// </summary>
+        static List<string> BuildNavigateSearchWarnings(AppTransactionExDto tx, AppProjectWorkFlowActionExDto cmd)
+        {
+            var warnings = new List<string>();
+            if (cmd?.ActionType != (int)EmAppTransactionCommandType.OpenLinkedSearch)
+                return warnings;
+
+            var linkedId = cmd.ActionAttribute?.LinkedSearchId;
+            var units = EntityMapWiring.FlattenUnits(
+                tx?.AppTransactionUnitList ?? Enumerable.Empty<AppTransactionUnitExDto>());
+            var bindings = units
+                .SelectMany(u => u.AppTransactionUnitLinkedSearchList
+                    ?? Enumerable.Empty<AppTransactionUnitLinkedSearchExDto>())
+                .Where(ls => ls?.Id != null)
+                .ToList();
+
+            if (!linkedId.HasValue || linkedId.Value <= 0)
+            {
+                warnings.Add(
+                    bindings.Count == 0
+                        ? "Navigate To Search (53) needs a unit Linked Search first: " +
+                          "list_available_searches → upsert_linked_search(rootUnitId, searchId) → " +
+                          "then optionsJson.linkedSearchId = returned linkedSearchId."
+                        : "Navigate To Search (53) requires optionsJson.linkedSearchId from get_linked_searches " +
+                          $"(available: {string.Join(", ", bindings.Select(b => $"{b.Id}:{b.Name}"))}).");
+                return warnings;
+            }
+
+            var match = bindings.FirstOrDefault(b => Convert.ToInt32(b.Id) == linkedId.Value);
+            if (match == null)
+            {
+                warnings.Add(
+                    $"linkedSearchId {linkedId} is not a unit Linked Search binding on this transaction " +
+                    "(UI would show a fake 'Search {id}'). " +
+                    (bindings.Count == 0
+                        ? "get_linked_searches is empty — create bindings via list_available_searches + upsert_linked_search first."
+                        : $"Valid linkedSearchId values: {string.Join(", ", bindings.Select(b => b.Id))}. " +
+                          "Do not use AppSearch.SearchId or invent 1."));
             }
 
             return warnings;

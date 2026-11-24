@@ -1739,8 +1739,8 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
   const effectiveSearchId = currentSearch?.Id != null ? Number(currentSearch.Id) : null;
 
   return (
-    <div className="w-full h-full flex overflow-hidden rounded-t-md rounded-b-md relative gap-1">
-    <div className="w-1 flex-auto h-full flex flex-col overflow-hidden relative min-w-0">
+    <div className={`w-full h-full flex overflow-hidden rounded-t-md rounded-b-md relative gap-1 ${theme.default}`}>
+    <div className={`w-1 flex-auto h-full flex flex-col overflow-hidden relative min-w-0 ${theme.mainContentSection}`}>
       <div className={`flex items-center justify-between px-3 mb-0.5 ${theme.mainContentSection}`}>
         <div className={`text-md font-semibold truncate min-w-0 ${theme.title}`}>{PAGE_TITLE}</div>
         <div className="flex items-center gap-2">
@@ -2629,8 +2629,9 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
     {showConfigurator && !showAgentDock && effectiveSearchId != null && (
       <button
         type="button"
-        className={`flex-none w-8 h-full text-xs ${theme.button_default}`}
+        className={`flex-none w-9 h-full text-xs border-0 outline-none ${theme.mainContentSection} hover:opacity-80`}
         title="Show Configurator"
+        aria-label="Show Configurator"
         onClick={() => setShowAgentDock(true)}
       >
         <i className="fa-solid fa-robot" aria-hidden />

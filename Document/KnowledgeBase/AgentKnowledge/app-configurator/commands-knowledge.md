@@ -382,7 +382,7 @@ Open a linked search view from the form (navigation in the client).
 User clicks *View related list* or *Open search* from the form.
 
 #### Step-by-step configuration
-1. On the data model, link the target search to the root unit.
+1. On the data model, link the target search to the root unit (Unit Navigate To Search / Linked Search management).
 2. Add operation → UI: Navigate To Search.
 3. Pick the search in Navigate To Search.
 4. Public + Visible on Form Menu as needed.
@@ -399,6 +399,7 @@ User clicks *View related list* or *Open search* from the form.
 
 #### Pitfalls
 - If no linked searches exist, the dropdown is empty.
+- Setting a raw number that is not a unit Linked Search binding shows a fake label like `Search 1` in the UI.
 - FE-only from the form menu; server composition does not open searches in the browser.
 
 
@@ -406,11 +407,20 @@ User clicks *View related list* or *Open search* from the form.
 | **actionType** | 53 |
 
 #### Storage mapping
-`ActionAttribute.LinkedSearchId` (int).
+`ActionAttribute.LinkedSearchId` = **unit Linked Search binding id** (`AppTransactionUnitLinkedSearch.Id`), not `AppSearch.SearchId`.
+
+#### Agent hard flow
+1. `get_linked_searches` — if empty, continue; if already has rows, pick a `linkedSearchId`.
+2. `list_available_searches` — get real `searchId` (+ name). Never invent `1` / `transactionId` / `unitId`.
+3. `upsert_linked_search(unitId=rootMaster, searchId, name)` with `confirmed=true` (create ≥1, usually ≥2 when asked). `Action` defaults to **3** (Open Search / ViewSearchResult) — required by server validation.
+4. `upsert_command` actionType **53** with `optionsJson.linkedSearchId` = **returned `linkedSearchId`** from step 3.
+5. `request_form_reload`.
+
+`upsert_command` rejects orphan `linkedSearchId` values that are not on this transaction’s units.
 
 #### `upsert_command` / `optionsJson` notes
 - `actionType`: 53
-- `optionsJson.linkedSearchId` or attribute mirror from `get_command_detail`.
+- `optionsJson.linkedSearchId` = binding id from `get_linked_searches` / `upsert_linked_search` return.
 
 #### Runtime behavior
 FE-only: opens linked search configured on root unit.

@@ -334,10 +334,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             "For actionType 57 (Command Formula): put expression in optionsJson.executionFormulaUI (ActionAttribute) — NOT notificationMessage. " +
             "Resolve left side via find_fields → formulaToken ([DbColumn_fieldId]); datetime = [Now] or [Today]. " +
             "Example: [Notes_3499] = [Now]. Never Format(Now(),…), bare Notes=, or update_unit_formula (that is Calculation Flow). " +
+            "For actionType 53 (Navigate To Search): optionsJson.linkedSearchId MUST be an existing unit Linked Search binding id " +
+            "from get_linked_searches / upsert_linked_search return — never invent 1 or AppSearch.SearchId. " +
+            "If get_linked_searches is empty: list_available_searches → upsert_linked_search first. " +
             "For actionType 200: create Private children first, then optionsJson.childActionList:[{commandId,sort},…]. " +
             "Empty ChildActionList = empty Child Operations grid; do not put SQL on the composition parent. " +
             "optionsJson: linkToUI, isShowOnTopMenu, isAutoExecuteOnFormOpen, actionFlowOrder, childActionList, " +
-            "executionFormulaUI (57), actionAttribute{…}. Does NOT execute the command.")]
+            "executionFormulaUI (57), linkedSearchId (53), actionAttribute{…}. Does NOT execute the command.")]
         public string UpsertCommand(
             AgentToolContext context,
             [AgentParam("Existing command id for update; omit to create.")] int? commandId = null,
@@ -432,7 +435,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         [AgentTool("get_linked_searches",
-            "List Linked Search configurations on units of the open transaction (not Link Target menus).")]
+            "List unit Linked Search bindings already on this transaction (AppTransactionUnitLinkedSearch). " +
+            "Each item.id is the LinkedSearchId for upsert_command actionType 53 — NOT AppSearch.SearchId. " +
+            "If empty: call list_available_searches → upsert_linked_search (unitId + real searchId) before setting the command.")]
         public string GetLinkedSearches(
             AgentToolContext context,
             [AgentParam("Required when HostContext lists multiple transactions.")] int? transactionId = null)
@@ -454,29 +459,56 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     {
                         list.Add(new
                         {
+                            linkedSearchId = ls.Id,
+                            id = ls.Id,
                             unitId = u.Id,
                             unitName = u.UnitDisplayName,
-                            id = ls.Id,
                             name = ls.Name,
                             searchId = ls.SearchId
                         });
                     }
                 }
-                return JsonConvert.SerializeObject(new { ok = true, transactionId = txnId, linkedSearches = list }, Formatting.Indented);
+                return JsonConvert.SerializeObject(new
+                {
+                    ok = true,
+                    transactionId = txnId,
+                    linkedSearches = list,
+                    note = list.Count == 0
+                        ? "No unit Linked Searches yet. Call list_available_searches for real AppSearch ids, then upsert_linked_search on the root unit. Do NOT invent linkedSearchId on upsert_command."
+                        : "Use linkedSearchId (id) on upsert_command optionsJson for actionType 53."
+                }, Formatting.Indented);
             }
             catch (Exception ex) { return Fail(ex.Message); }
         }
 
+        [AgentTool("list_available_searches",
+            "List real AppSearch definitions for this transaction's SaasApplication (searchId, name, searchViewId, dataSetId). " +
+            "Use BEFORE upsert_linked_search — pass searchId only (never dataSetId / transactionId / unitId / invent 1). " +
+            "Optional nameContains filter. Returns up to take rows (default 40).")]
+        public string ListAvailableSearches(
+            AgentToolContext context,
+            [AgentParam("Optional case-insensitive name filter.")] string nameContains = null,
+            [AgentParam("Max rows (default 40, max 100).")] int? take = null,
+            [AgentParam("Required when HostContext lists multiple transactions.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigCommandDataTransferService.ListAvailableSearches(txnId, nameContains, take);
+        }
+
         [AgentTool("upsert_linked_search",
             "Create/update unit Linked Search binding (AppTransactionUnitLinkedSearch). " +
-            "Prefer unitId + searchId. Preview → ask_user → confirmed=true → request_form_reload. " +
-            "Not the same as Link Target (navigation menus).")]
+            "Required flow: list_available_searches → pick real searchId (not dataSetId) → upsert_linked_search(unitId, searchId, name) → " +
+            "use returned linkedSearchId on upsert_command actionType 53. " +
+            "Defaults: Action=3 (Open Search), UsageType=102, SearchViewId=AppSearch.SearchViewId (DB NOT NULL). " +
+            "Preview → ask_user → confirmed=true → request_form_reload. Not Link Target menus.")]
         public string UpsertLinkedSearch(
             AgentToolContext context,
-            [AgentParam("Unit id.", isRequired: true)] int? unitId = null,
-            [AgentParam("Existing linked-search id for update.")] int? linkedSearchId = null,
-            [AgentParam("Display name.")] string name = null,
-            [AgentParam("Search id to bind (required on create).")] int? searchId = null,
+            [AgentParam("Unit id (prefer root master unitId from get_current_transaction_config).", isRequired: true)] int? unitId = null,
+            [AgentParam("Existing linked-search binding id for update.")] int? linkedSearchId = null,
+            [AgentParam("Display name for the binding.")] string name = null,
+            [AgentParam("AppSearch.SearchId from list_available_searches (required on create).")] int? searchId = null,
+            [AgentParam("EmAppLinkedSearchAction: 1=AddGridRows, 2=UpdateFormData, 3=Open Search (default).")] int? action = null,
             [AgentParam("Optional extra DTO fields as JSON.")] string changesJson = null,
             [AgentParam("Must be true to persist.")] bool? confirmed = null,
             [AgentParam("If true, never persist.")] bool? dryRun = null,
@@ -486,7 +518,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
                 return Fail(err);
             return FormConfigCommandDataTransferService.UpsertLinkedSearch(
-                txnId, unitId.Value, linkedSearchId, name, searchId, changesJson, confirmed, dryRun);
+                txnId, unitId.Value, linkedSearchId, name, searchId, action, changesJson, confirmed, dryRun);
         }
 
         [AgentTool("delete_linked_search",

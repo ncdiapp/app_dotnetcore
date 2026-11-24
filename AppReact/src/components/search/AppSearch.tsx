@@ -1314,8 +1314,10 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
       : null;
 
   return (
-    <div className={`w-full h-full flex overflow-hidden rounded-t-md rounded-b-md gap-1`}>
-    <div className={`w-1 flex-auto h-full flex flex-col overflow-hidden min-w-0`}>
+    // Outer uses theme.default so gap-1 shows a chrome strip between search body and AI dock
+    // (same idea as LandingPage p-4). Critical inside white Linked Search popups.
+    <div className={`w-full h-full flex overflow-hidden rounded-t-md rounded-b-md gap-1 ${theme.default}`}>
+    <div className={`w-1 flex-auto h-full flex flex-col overflow-hidden min-w-0 ${theme.mainContentSection}`}>
       <div className={`flex items-center justify-between px-3 mb-1 py-2 ${theme.mainContentSection}`}>
         <div className="flex items-center gap-2">
           {!isEmbeddedChromeHidden ? (
@@ -1730,8 +1732,9 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
     {showConfigurator && !showAgentDock && runtimeSearchIdNum != null && !Number.isNaN(runtimeSearchIdNum) && (
       <button
         type="button"
-        className={`flex-none w-8 h-full text-xs ${theme.button_default}`}
+        className={`flex-none w-9 h-full text-xs border-0 outline-none ${theme.mainContentSection} hover:opacity-80`}
         title="Show Configurator"
+        aria-label="Show Configurator"
         onClick={() => setShowAgentDock(true)}
       >
         <i className="fa-solid fa-robot" aria-hidden />

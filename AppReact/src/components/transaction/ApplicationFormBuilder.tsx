@@ -474,9 +474,9 @@ const ApplicationFormBuilder: React.FC<ApplicationFormBuilderProps> = ({
           {/* Content Area + Configurator dock */}
           <div
             ref={contentDockSplitRef}
-            className={`w-1 flex-auto h-full overflow-hidden rounded-r-md flex gap-1`}
+            className={`w-1 flex-auto h-full overflow-hidden rounded-r-md flex gap-1 ${theme.default}`}
           >
-            <div className="w-1 flex-auto h-full min-w-0 overflow-hidden">
+            <div className={`w-1 flex-auto h-full min-w-0 overflow-hidden ${theme.mainContentSection}`}>
               {renderSectionContent()}
             </div>
             {showConfigurator && showAgentDock && effectiveTransactionId != null && (
@@ -516,8 +516,9 @@ const ApplicationFormBuilder: React.FC<ApplicationFormBuilderProps> = ({
             {showConfigurator && !showAgentDock && effectiveTransactionId != null && (
               <button
                 type="button"
-                className={`flex-none w-8 h-full text-xs ${theme.button_default}`}
+                className={`flex-none w-9 h-full text-xs border-0 outline-none ${theme.mainContentSection} hover:opacity-80`}
                 title="Show Configurator"
+                aria-label="Show Configurator"
                 onClick={() => setShowAgentDock(true)}
               >
                 <i className="fa-solid fa-robot" aria-hidden />
