@@ -175,6 +175,24 @@ export function isTransactionFormInstancePath(path: string): boolean {
   );
 }
 
+/**
+ * Routes mounted outside LandingPage (no tab chrome). TabNavigationProvider must NOT
+ * sync the URL to the active tab on these paths — otherwise a new print/standalone
+ * window is immediately redirected to /home (initial active tab).
+ */
+export function isStandaloneShellPath(path: string): boolean {
+  if (!path) return false;
+  const normalized = (path.startsWith('/') ? path : `/${path}`).toLowerCase();
+  const base = extractRouteBasePath(normalized).toLowerCase();
+  return (
+    base === '/formmasterdetailprint' ||
+    base === '/formmasterdetailstandalone' ||
+    base === '/searcheditorstandalone' ||
+    base === '/mcp-authorize' ||
+    base === '/login'
+  );
+}
+
 export const buildRoutePathFromParamObj = (baseRoutePath: string, paramObj: any) => {
 
     // Convert to JSON string and encode for URL

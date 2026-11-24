@@ -51,6 +51,8 @@ const TransactionUnitLinkedSearchManagementDialog: React.FC<TransactionUnitLinke
   const gridRef = useRef<any>(null);
   const mappingGridRef = useRef<any>(null);
   const mapping2GridRef = useRef<any>(null);
+  /** Bumps on select/create so in-flight detail fetches cannot overwrite newer UI state. */
+  const detailLoadGenRef = useRef(0);
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedDto, setSelectedDto] = useState<any | null>(null);
@@ -224,19 +226,54 @@ const TransactionUnitLinkedSearchManagementDialog: React.FC<TransactionUnitLinke
     }
   }, [filteredSearchViewLookupList, selectedDto, toKey]);
 
-  const cv = useMemo(() => {
-    const c = new CollectionView(list);
+  // Stable CollectionView — recreating it on every list assign resets selection / fires spurious events.
+  const [cv] = useState(() => {
+    const c = new CollectionView<any>([]);
     c.sortDescriptions.push(new SortDescription('Sort', true));
     return c;
-  }, [list]);
+  });
 
-  const loadData = useCallback(async () => {
+  useEffect(() => {
+    const next = Array.isArray(list) ? list : [];
+    // Defer until after React commits FlexGrid column updates. Otherwise CollectionView
+    // sort runs through a half-initialized grid and throws hasColumnGroups on null.
+    const t = setTimeout(() => {
+      const gridAlive = Boolean(gridRef.current?.control);
+      if (!gridAlive) {
+        (cv as any).sortConverter = null;
+      }
+      try {
+        cv.deferUpdate(() => {
+          cv.sourceCollection = next;
+        });
+      } catch {
+        (cv as any).sortConverter = null;
+        cv.sourceCollection = next;
+      }
+    }, 0);
+    return () => clearTimeout(t);
+  }, [list, cv]);
+
+  const loadData = useCallback(async (opts?: { silent?: boolean; clearSelection?: boolean }) => {
     if (!isOpen || !transactionUnitId) {
       setLoading(false);
-      return;
+      return [] as any[];
     }
+    const silent = Boolean(opts?.silent);
+    const clearSelection = opts?.clearSelection ?? !silent;
+
     dispatch(setIsBusy());
-    setLoading(true);
+    // Only blank the dialog on the first load. Save/Refresh must keep FlexGrid mounted —
+    // unmounting it while CollectionView sorts causes the hasColumnGroups crash.
+    if (!silent) {
+      setLoading(true);
+    }
+    if (clearSelection) {
+      detailLoadGenRef.current += 1;
+      setSelectedId(null);
+      setSelectedDto(null);
+      setDetailLoading(false);
+    }
     try {
       const [data, allSearchRows, massEntity, unitDto, searchFields] = await Promise.all([
         appTransactionService.retrieveOneAppTransactionUnitLinkedSearchList(String(transactionUnitId)),
@@ -245,7 +282,8 @@ const TransactionUnitLinkedSearchManagementDialog: React.FC<TransactionUnitLinke
         appTransactionService.retrieveOneAppTransactionUnitExDto(String(transactionUnitId)),
         searchSvc.retrieveAllAppSearchFieldDtoList(),
       ]);
-      setList(Array.isArray(data) ? data : []);
+      const rows = Array.isArray(data) ? data : [];
+      setList(rows);
 
       let appSearch = dedupeLookupRows(normalizeLookupRows(Array.isArray(allSearchRows) ? allSearchRows : []));
       if (appSearch.length === 0) {
@@ -292,9 +330,11 @@ const TransactionUnitLinkedSearchManagementDialog: React.FC<TransactionUnitLinke
       const actionList = isRootUnit ? actionListAll.filter((x) => x.Id === 3 || x.Id === 2) : actionListAll;
       setActionLookupList(actionList);
       setActionDataMap(new DataMap(actionList, 'Id', 'Display'));
+      return rows;
     } catch (e: any) {
       showError(e?.message || 'Failed to load linked searches');
       setList([]);
+      return [] as any[];
     } finally {
       dispatch(setIsNotBusy());
       setLoading(false);
@@ -302,21 +342,24 @@ const TransactionUnitLinkedSearchManagementDialog: React.FC<TransactionUnitLinke
   }, [isOpen, transactionUnitId, dispatch, showError, dedupeLookupRows, normalizeLookupRows, getMassLookupRows]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
   const loadDetail = useCallback(
     async (id: number | null) => {
       if (!isOpen || !transactionUnitId) return;
+      const gen = ++detailLoadGenRef.current;
       if (!id) {
-        setSelectedDto(null);
         setSearchFilterFieldDataMap(null);
+        setDetailLoading(false);
         return;
       }
+      // Local panel loading only — do NOT use global BusyLoader here.
+      // BusyLoader sits above this dialog (z-index) and would swallow Add/Delete clicks.
       setDetailLoading(true);
-      dispatch(setIsBusy());
       try {
         const dto = await appTransactionService.retrieveOneAppTransactionUnitLinkedSearchExDto(String(id));
+        if (gen !== detailLoadGenRef.current) return;
         setSelectedDto({
           ...dto,
           TransactionUnitId: transactionUnitId,
@@ -340,23 +383,27 @@ const TransactionUnitLinkedSearchManagementDialog: React.FC<TransactionUnitLinke
           .filter((x: any) => x.Id != null);
         setSearchFilterFieldDataMap(filtered.length ? new DataMap(filtered, 'Id', 'Display') : null);
       } catch (e: any) {
+        if (gen !== detailLoadGenRef.current) return;
         showError(e?.message || 'Failed to load menu');
-        setSelectedDto(null);
       } finally {
-        dispatch(setIsNotBusy());
-        setDetailLoading(false);
+        if (gen === detailLoadGenRef.current) {
+          setDetailLoading(false);
+        }
       }
     },
-    [isOpen, transactionUnitId, dispatch, showError, allSearchFieldList]
+    [isOpen, transactionUnitId, showError, allSearchFieldList]
   );
 
   const handleCreate = useCallback(() => {
     if (!transactionUnitId) return;
+    // Cancel any in-flight detail fetch so it cannot overwrite the new draft.
+    detailLoadGenRef.current += 1;
+    setDetailLoading(false);
     setSelectedId(null);
     setSelectedDto({
       TransactionUnitId: transactionUnitId,
       Name: '',
-      Sort: 1,
+      Sort: (list?.length ?? 0) + 1,
       Action: 3,
       SearchId: null,
       SearchSaveId: null,
@@ -371,38 +418,68 @@ const TransactionUnitLinkedSearchManagementDialog: React.FC<TransactionUnitLinke
       AppTransactionUnitSearchViewFieldMappingList: [],
     });
     setSearchFilterFieldDataMap(null);
-  }, [transactionUnitId]);
+    // Clear grid highlight so selectionChanged cannot re-select an old row over the draft.
+    const grid = gridRef.current?.control;
+    if (grid) {
+      try {
+        grid.select(-1, -1);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [transactionUnitId, list?.length]);
 
   const handleSelect = useCallback(
     (item: any) => {
       const id = item?.Id != null ? Number(item.Id) : null;
       setSelectedId(id);
+      // Show list-row fields immediately so the right panel is not blank while ExDto loads.
+      if (item && id != null) {
+        setSelectedDto({
+          ...item,
+          TransactionUnitId: transactionUnitId,
+          AppTransactionUnitSearchFieldMappingList: item.AppTransactionUnitSearchFieldMappingList ?? [],
+          AppTransactionUnitSearchViewFieldMappingList: item.AppTransactionUnitSearchViewFieldMappingList ?? [],
+        });
+      }
       void loadDetail(id);
     },
-    [loadDetail]
+    [loadDetail, transactionUnitId]
   );
 
+  // After list load, select the first menu so Menu Properties is not left blank.
+  useEffect(() => {
+    if (loading || selectedDto != null || selectedId != null) return;
+    if (!Array.isArray(list) || list.length === 0) return;
+    handleSelect(list[0]);
+  }, [loading, list, selectedDto, selectedId, handleSelect]);
+
   const handleDelete = useCallback(async () => {
-    const id = selectedDto?.Id ?? selectedId;
+    const grid = gridRef.current?.control;
+    const rowIndex = grid?.selection?.row ?? -1;
+    const gridItem = rowIndex >= 0 ? grid?.rows?.[rowIndex]?.dataItem : null;
+    const id = selectedDto?.Id ?? selectedId ?? (gridItem?.Id != null ? Number(gridItem.Id) : null);
     if (!id) {
       showInfo('Select a row to delete');
       return;
     }
     const ok = await showConfirm('Confirm delete this linked search?', { title: 'Delete' });
     if (!ok) return;
+    detailLoadGenRef.current += 1;
+    setDetailLoading(false);
     dispatch(setIsBusy());
     try {
       await appTransactionService.deleteAppTransactionUnitLinkedSearch(String(id));
       showInfo('Deleted.');
       setSelectedId(null);
       setSelectedDto(null);
-      loadData();
+      await loadData({ silent: true, clearSelection: true });
     } catch (e: any) {
       showError(e?.message || 'Failed to delete');
     } finally {
       dispatch(setIsNotBusy());
     }
-  }, [showConfirm, showInfo, showError, loadData, dispatch]);
+  }, [selectedDto, selectedId, showConfirm, showInfo, showError, loadData, dispatch]);
 
   const update = useCallback((key: string, value: any) => {
     setSelectedDto((prev: any) => ({ ...(prev || {}), [key]: value }));
@@ -423,11 +500,19 @@ const TransactionUnitLinkedSearchManagementDialog: React.FC<TransactionUnitLinke
       }
       if (result?.IsSuccessful) {
         showInfo('Saved.');
-        await loadData();
         const newId = result?.Object?.Id ?? selectedDto?.Id ?? null;
+        // Keep FlexGrid mounted (silent) so CollectionView sort does not hit a destroyed grid.
+        await loadData({ silent: true, clearSelection: false });
         if (newId) {
-          setSelectedId(Number(newId));
-          await loadDetail(Number(newId));
+          const idNum = Number(newId);
+          setSelectedId(idNum);
+          setTimeout(() => {
+            const grid = gridRef.current?.control;
+            if (!grid?.rows?.length) return;
+            const rowIndex = grid.rows.findIndex((r: any) => Number(r?.dataItem?.Id) === idNum);
+            if (rowIndex >= 0) grid.select(rowIndex, 0);
+          }, 0);
+          await loadDetail(idNum);
         }
       }
     } catch (e: any) {
@@ -561,10 +646,14 @@ const TransactionUnitLinkedSearchManagementDialog: React.FC<TransactionUnitLinke
               Unit Navigate To Search: {unitDisplayName || 'Unit'}
             </div>
             <div className="flex items-center gap-2">
-              <button type="button" onClick={loadData} className={`px-3 py-1 ${theme.button_default} rounded-[4px] text-xs`}>
+              <button
+                type="button"
+                onClick={() => void loadData({ silent: true, clearSelection: true })}
+                className={`px-3 py-1 ${theme.button_default} rounded-[4px] text-xs`}
+              >
                 Refresh
               </button>
-              <button type="button" onClick={handleSave} disabled={saving || detailLoading} className={`px-3 py-1 ${theme.button_default} rounded-[4px] text-xs disabled:opacity-50`}>
+              <button type="button" onClick={handleSave} disabled={saving || !selectedDto || detailLoading} className={`px-3 py-1 ${theme.button_default} rounded-[4px] text-xs disabled:opacity-50`}>
                 Save
               </button>
               <button type="button" onClick={onClose} className="px-3 py-1 rounded-[4px] text-xs border">

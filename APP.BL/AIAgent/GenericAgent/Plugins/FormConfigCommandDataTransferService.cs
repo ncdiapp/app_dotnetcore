@@ -135,16 +135,21 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 warnings.AddRange(BuildCompositionChildWarnings(cmd));
                 warnings.AddRange(formulaRescueNotes);
                 warnings.AddRange(BuildCommandFormulaWarnings(cmd));
-                warnings.AddRange(BuildNavigateSearchWarnings(tx, cmd));
+                var navHard = BuildNavigateSearchHardWarnings(tx, cmd);
+                var navSoft = BuildNavigateSearchSoftWarnings(cmd);
+                warnings.AddRange(navHard);
+                warnings.AddRange(navSoft);
                 if (dryRun == true || confirmed != true)
                 {
                     var next = (string)null;
-                    if (warnings.Count > 0)
+                    if (navHard.Count > 0 || warnings.Count > 0)
                     {
                         if (cmd.ActionType == 57)
                             next = "Fix Command Formula: put expression in optionsJson.executionFormulaUI (ActionAttribute), use formulaToken + [Now]/[Today] — not notificationMessage / Format(Now()).";
-                        else if (cmd.ActionType == 53)
+                        else if (cmd.ActionType == 53 && navHard.Count > 0)
                             next = "Fix Navigate To Search: list_available_searches → upsert_linked_search on root unit → set optionsJson.linkedSearchId to returned linkedSearchId (not AppSearch.SearchId / invent 1).";
+                        else if (cmd.ActionType == 53 && navSoft.Count > 0)
+                            next = "Search filter←form field mapping uses upsert_linked_search filterMappingsJson (UI Search Mapping), not ParamId1.";
                         else
                             next = "Fix SQL tokens/WHERE using find_fields / get_current_transaction_config.rootPrimaryKeys[].sqlToken before confirmed=true.";
                     }
@@ -159,9 +164,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
 
                 // Hard-block orphan LinkedSearchId on Navigate To Search (53) — UI would show fake "Search {id}".
-                var navBlock = BuildNavigateSearchWarnings(tx, cmd);
-                if (navBlock.Count > 0 && cmd.ActionType == (int)EmAppTransactionCommandType.OpenLinkedSearch)
-                    return Fail(string.Join(" ", navBlock));
+                if (navHard.Count > 0 && cmd.ActionType == (int)EmAppTransactionCommandType.OpenLinkedSearch)
+                    return Fail(string.Join(" ", navHard));
 
                 // Create path does not run SaveOneTransactionCommandActionList — format formula here.
                 // Update path formats again inside SaveOneTransactionCommandActionList (safe / idempotent for UI tokens).
@@ -502,6 +506,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             int? searchId,
             int? action,
             string changesJson,
+            string filterMappingsJson,
             bool? confirmed,
             bool? dryRun)
         {
@@ -510,46 +515,94 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 if (!UnitBelongsToTxn(transactionId, unitId))
                     return Fail($"unitId {unitId} is not on transaction {transactionId}.");
 
+                var existingOnUnit = AppTransactionUnitLinkedSearchBL.RetrieveOneAppTransactionUnitLinkedSearchList(unitId)
+                    ?? new ObservableSet<AppTransactionUnitLinkedSearchExDto>();
+
                 AppTransactionUnitLinkedSearchExDto dto;
+                int? preservedLinkedSearchId = null;
                 if (linkedSearchId.HasValue && linkedSearchId.Value > 0)
                 {
-                    dto = AppTransactionUnitLinkedSearchBL.RetrieveOneAppTransactionUnitLinkedSearchList(unitId)
-                        .FirstOrDefault(x => x.Id != null && Convert.ToInt32(x.Id) == linkedSearchId.Value);
-                    if (dto == null) return Fail($"LinkedSearch {linkedSearchId} not found on unit {unitId}.");
+                    dto = existingOnUnit.FirstOrDefault(x => x.Id != null && Convert.ToInt32(x.Id) == linkedSearchId.Value);
+                    if (dto == null)
+                        return Fail(
+                            $"LinkedSearch {linkedSearchId} not found on unit {unitId}. " +
+                            "Call get_linked_searches and use an existing linkedSearchId — do not invent ids.");
+                    preservedLinkedSearchId = linkedSearchId.Value;
                 }
                 else
                 {
                     if (!searchId.HasValue)
                         return Fail("searchId is required for create. Call list_available_searches and pass a real AppSearch.SearchId (not dataSetId).");
-                    // Match UI create defaults: Action=3 (Open Search), UsageType=102, Sort next.
-                    dto = new AppTransactionUnitLinkedSearchExDto
+
+                    // Reuse existing binding for the same AppSearch on this unit (avoid duplicate "Opportunity Search" + orphan Search N).
+                    var reuse = existingOnUnit.FirstOrDefault(x =>
+                        x.SearchId == searchId
+                        || (!string.IsNullOrWhiteSpace(name)
+                            && string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)));
+                    if (reuse != null)
                     {
-                        TransactionUnitId = unitId,
-                        SearchId = searchId,
-                        Name = name,
-                        Action = (int)EmAppLinkedSearchAction.ViewSearchResult,
-                        UsageType = 102,
-                        Sort = NextLinkedSearchSort(unitId),
-                        AppTransactionUnitSearchFieldMappingList = new ObservableSet<AppTransactionUnitSearchFieldMappingExDto>(),
-                        AppTransactionUnitSearchViewFieldMappingList = new ObservableSet<AppTransactionUnitSearchViewFieldMappingExDto>()
-                    };
+                        dto = reuse;
+                        preservedLinkedSearchId = Convert.ToInt32(reuse.Id);
+                    }
+                    else
+                    {
+                        // Match UI create defaults: Action=3 (Open Search), UsageType=102, Sort next.
+                        dto = new AppTransactionUnitLinkedSearchExDto
+                        {
+                            TransactionUnitId = unitId,
+                            SearchId = searchId,
+                            Name = name,
+                            Action = (int)EmAppLinkedSearchAction.ViewSearchResult,
+                            UsageType = 102,
+                            Sort = NextLinkedSearchSort(unitId),
+                            AppTransactionUnitSearchFieldMappingList = new ObservableSet<AppTransactionUnitSearchFieldMappingExDto>(),
+                            AppTransactionUnitSearchViewFieldMappingList = new ObservableSet<AppTransactionUnitSearchViewFieldMappingExDto>()
+                        };
+                    }
                 }
 
                 if (name != null) dto.Name = name;
                 if (searchId.HasValue) dto.SearchId = searchId;
                 if (action.HasValue) dto.Action = action;
+
+                // Agents often nest filterMappings inside changesJson instead of filterMappingsJson.
+                string effectiveFilterMappingsJson = filterMappingsJson;
                 if (!string.IsNullOrWhiteSpace(changesJson))
                 {
                     try
                     {
-                        // Agent sometimes passes a JSON object string; also tolerate raw object via ToString.
-                        JsonConvert.PopulateObject(changesJson, dto);
+                        var jo = JObject.Parse(changesJson);
+                        if (string.IsNullOrWhiteSpace(effectiveFilterMappingsJson))
+                        {
+                            var nested = jo["filterMappingsJson"] ?? jo["filterMappings"]
+                                ?? jo["appTransactionUnitSearchFieldMappingList"]
+                                ?? jo["AppTransactionUnitSearchFieldMappingList"];
+                            if (nested != null)
+                                effectiveFilterMappingsJson = nested.Type == JTokenType.String
+                                    ? nested.Value<string>()
+                                    : nested.ToString(Formatting.None);
+                        }
+
+                        // Strip mapping collections / ids so PopulateObject cannot wipe Id → IsNew=true (duplicate insert).
+                        jo.Remove("filterMappingsJson");
+                        jo.Remove("filterMappings");
+                        jo.Remove("appTransactionUnitSearchFieldMappingList");
+                        jo.Remove("AppTransactionUnitSearchFieldMappingList");
+                        jo.Remove("id");
+                        jo.Remove("Id");
+                        jo.Remove("ID");
+
+                        var safeJson = jo.ToString(Formatting.None);
+                        if (jo.Properties().Any())
+                            JsonConvert.PopulateObject(safeJson, dto);
                     }
                     catch (Exception ex) { return Fail("changesJson invalid: " + ex.Message); }
                 }
 
-                // Keep unit ownership even if changesJson overwrote it.
+                // Keep identity + unit ownership even if changesJson tried to overwrite them.
                 dto.TransactionUnitId = unitId;
+                if (preservedLinkedSearchId.HasValue)
+                    dto.Id = preservedLinkedSearchId.Value;
 
                 if (!dto.SearchId.HasValue || dto.SearchId.Value <= 0)
                     return Fail("SearchId is required. Call list_available_searches for a real AppSearch.SearchId (not dataSetId).");
@@ -600,6 +653,17 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     dto.SearchViewId = searchExists.SearchViewId.Value;
                 }
 
+                List<object> appliedFilterMappings = null;
+                if (!string.IsNullOrWhiteSpace(effectiveFilterMappingsJson))
+                {
+                    if (!TryApplyFilterMappings(dto, unitId, searchExists, effectiveFilterMappingsJson, out appliedFilterMappings, out var mapErr))
+                        return Fail(mapErr);
+                    // Force ProcessDirty path on update (scalar-only save branch is a no-op in BL).
+                    dto.IsModified = true;
+                    if (preservedLinkedSearchId.HasValue)
+                        dto.Id = preservedLinkedSearchId.Value;
+                }
+
                 if (dryRun == true || confirmed != true)
                 {
                     return Ok(new
@@ -609,6 +673,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         proposed = new
                         {
                             op = dto.IsNew ? "create" : "update",
+                            linkedSearchId = dto.Id,
                             unitId,
                             name = dto.Name,
                             searchId = dto.SearchId,
@@ -616,9 +681,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                             searchViewId = dto.SearchViewId,
                             action = dto.Action,
                             actionName = "ViewSearchResult/Open Search (3)",
-                            usageType = dto.UsageType
+                            usageType = dto.UsageType,
+                            filterMappings = appliedFilterMappings
+                                ?? SummarizeFilterMappings(dto.AppTransactionUnitSearchFieldMappingList)
                         },
-                        note = "After confirmed save, pass returned linkedSearchId to upsert_command (actionType 53). Do not use searchId as linkedSearchId."
+                        note = "If op=update, keep this linkedSearchId on upsert_command (53). " +
+                               "Filter→form mappings belong here (filterMappingsJson), NOT command ParamId1. Do not create duplicates."
                     });
                 }
 
@@ -662,6 +730,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
 
                 var savedId = result?.Object?.Id ?? dto.Id;
+                var savedMappings = SummarizeFilterMappings(
+                    result?.Object?.AppTransactionUnitSearchFieldMappingList
+                    ?? dto.AppTransactionUnitSearchFieldMappingList);
                 try { AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId); }
                 catch (Exception refreshEx)
                 {
@@ -675,6 +746,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         name = dto.Name,
                         action = dto.Action,
                         unitId,
+                        filterMappings = savedMappings,
                         cacheRefreshWarning = ShortExceptionMessage(refreshEx),
                         changed = new[] { new { type = "linkedSearch", id = savedId } },
                         NextStep = "For Navigate To Search (53): upsert_command with optionsJson.linkedSearchId=" + savedId + ", then request_form_reload."
@@ -690,11 +762,222 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     name = dto.Name,
                     action = dto.Action,
                     unitId,
+                    filterMappings = savedMappings,
                     changed = new[] { new { type = "linkedSearch", id = savedId } },
                     NextStep = "For Navigate To Search (53): upsert_command with optionsJson.linkedSearchId=" + savedId + ", then request_form_reload."
                 });
             }
             catch (Exception ex) { return Fail(ShortExceptionMessage(ex)); }
+        }
+
+        /// <summary>
+        /// UI "Search Mapping: Set Search Filter Values From Form" → AppTransactionUnitSearchFieldMapping.
+        /// JSON: [{"searchFieldId":35,"transactionFieldId":3500}] or
+        /// [{"searchFilter":"Customer","formField":"CustomerId"}] (names / db names / display text).
+        /// </summary>
+        static bool TryApplyFilterMappings(
+            AppTransactionUnitLinkedSearchExDto dto,
+            int unitId,
+            AppSearchExDto search,
+            string filterMappingsJson,
+            out List<object> applied,
+            out string error)
+        {
+            applied = null;
+            error = null;
+            JToken root;
+            try { root = JToken.Parse(filterMappingsJson); }
+            catch (Exception ex)
+            {
+                error = "filterMappingsJson invalid JSON: " + ex.Message;
+                return false;
+            }
+
+            if (root is not JArray arr)
+            {
+                error = "filterMappingsJson must be a JSON array of {searchFieldId, transactionFieldId} " +
+                        "or {searchFilter, formField}. Pass [] to clear all Search Mapping rows (undo) — " +
+                        "do NOT delete_linked_search.";
+                return false;
+            }
+
+            dto.AppTransactionUnitSearchFieldMappingList ??=
+                new ObservableSet<AppTransactionUnitSearchFieldMappingExDto>();
+            var list = dto.AppTransactionUnitSearchFieldMappingList;
+
+            // Empty array = clear all filter mappings on this Linked Search (keep the binding + command link).
+            if (arr.Count == 0)
+            {
+                list.Clear();
+                applied = new List<object>();
+                return true;
+            }
+
+            var searchFields = search.AppSearchFieldList ?? new ObservableSet<AppSearchFieldExDto>();
+            var unitFields = ResolveUnitFields(unitId);
+            applied = new List<object>();
+
+            foreach (var token in arr)
+            {
+                if (token is not JObject jo)
+                {
+                    error = "Each filterMappingsJson item must be an object.";
+                    return false;
+                }
+
+                int searchFieldId = jo.Value<int?>("searchFieldId")
+                    ?? jo.Value<int?>("SearchFieldId")
+                    ?? 0;
+                int transactionFieldId = jo.Value<int?>("transactionFieldId")
+                    ?? jo.Value<int?>("TransactionFieldId")
+                    ?? jo.Value<int?>("formFieldId")
+                    ?? 0;
+
+                var searchFilterName = jo.Value<string>("searchFilter")
+                    ?? jo.Value<string>("searchField")
+                    ?? jo.Value<string>("filter")
+                    ?? jo.Value<string>("criteria");
+                var formFieldName = jo.Value<string>("formField")
+                    ?? jo.Value<string>("transactionField")
+                    ?? jo.Value<string>("field");
+
+                if (searchFieldId <= 0)
+                {
+                    var sf = ResolveSearchFilterField(searchFields, searchFilterName);
+                    if (sf?.Id == null)
+                    {
+                        var available = string.Join(", ", searchFields
+                            .Where(f => f?.Id != null)
+                            .Select(f => $"{f.Id}:{f.DisplayText ?? f.SysTableFiledPath}"));
+                        error = $"Could not resolve search filter '{searchFilterName}'. " +
+                                $"Available filters on search {search.Id}: {available}";
+                        return false;
+                    }
+                    searchFieldId = Convert.ToInt32(sf.Id);
+                }
+                else
+                {
+                    var sf = searchFields.FirstOrDefault(f => f.Id != null && Convert.ToInt32(f.Id) == searchFieldId);
+                    if (sf == null)
+                    {
+                        error = $"searchFieldId {searchFieldId} is not a criteria field on AppSearch {search.Id}. " +
+                                "Use get_linked_searches (availableSearchFilters) or DisplayText/SysTableFiledPath names.";
+                        return false;
+                    }
+                }
+
+                if (transactionFieldId <= 0)
+                {
+                    var tf = ResolveUnitFormField(unitFields, formFieldName);
+                    if (tf?.Id == null)
+                    {
+                        error = $"Could not resolve form field '{formFieldName}' on unit {unitId}. " +
+                                "Use find_fields / get_unit_fields (CustomerId → fieldId).";
+                        return false;
+                    }
+                    transactionFieldId = Convert.ToInt32(tf.Id);
+                }
+                else
+                {
+                    var tf = unitFields.FirstOrDefault(f => f.Id != null && Convert.ToInt32(f.Id) == transactionFieldId);
+                    if (tf == null)
+                    {
+                        error = $"transactionFieldId {transactionFieldId} is not a field on unit {unitId}.";
+                        return false;
+                    }
+                }
+
+                var existing = list.FirstOrDefault(m => m.SearchFieldId == searchFieldId);
+                if (existing != null)
+                {
+                    existing.TransactionFieldId = transactionFieldId;
+                    existing.IsModified = true;
+                }
+                else
+                {
+                    list.Add(new AppTransactionUnitSearchFieldMappingExDto
+                    {
+                        TransactionUnitLinkedSearchId = dto.Id != null ? Convert.ToInt32(dto.Id) : 0,
+                        SearchFieldId = searchFieldId,
+                        TransactionFieldId = transactionFieldId
+                    });
+                }
+
+                var sfLabel = searchFields.FirstOrDefault(f => f.Id != null && Convert.ToInt32(f.Id) == searchFieldId);
+                var tfLabel = unitFields.FirstOrDefault(f => f.Id != null && Convert.ToInt32(f.Id) == transactionFieldId);
+                applied.Add(new
+                {
+                    searchFieldId,
+                    searchFilter = sfLabel?.DisplayText ?? sfLabel?.SysTableFiledPath,
+                    transactionFieldId,
+                    formField = tfLabel?.DisplayName ?? tfLabel?.DataBaseFieldName
+                });
+            }
+
+            return true;
+        }
+
+        static List<object> SummarizeFilterMappings(
+            ObservableSet<AppTransactionUnitSearchFieldMappingExDto> list)
+        {
+            if (list == null || list.Count == 0) return new List<object>();
+            return list.Select(m => (object)new
+            {
+                searchFieldId = m.SearchFieldId,
+                transactionFieldId = m.TransactionFieldId,
+                id = m.Id
+            }).ToList();
+        }
+
+        static AppSearchFieldExDto ResolveSearchFilterField(
+            ObservableSet<AppSearchFieldExDto> fields, string name)
+        {
+            if (string.IsNullOrWhiteSpace(name) || fields == null) return null;
+            var needle = name.Trim();
+            return fields.FirstOrDefault(f =>
+                       string.Equals(f.DisplayText, needle, StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(f.SysTableFiledPath, needle, StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(f.SysTableFiledFullPath, needle, StringComparison.OrdinalIgnoreCase))
+                   ?? fields.FirstOrDefault(f =>
+                       (!string.IsNullOrEmpty(f.DisplayText) && f.DisplayText.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0)
+                       || (!string.IsNullOrEmpty(f.SysTableFiledPath) && f.SysTableFiledPath.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0));
+        }
+
+        static List<AppTransactionFieldExDto> ResolveUnitFields(int unitId)
+        {
+            try
+            {
+                var unit = AppTransactionBL.RetrieveOneAppTransactionUnitExDto(unitId);
+                return (unit?.AppTransactionFieldList ?? new ObservableSet<AppTransactionFieldExDto>())
+                    .Where(f => f != null)
+                    .ToList();
+            }
+            catch
+            {
+                return new List<AppTransactionFieldExDto>();
+            }
+        }
+
+        static AppTransactionFieldExDto ResolveUnitFormField(List<AppTransactionFieldExDto> fields, string name)
+        {
+            if (string.IsNullOrWhiteSpace(name) || fields == null) return null;
+            var needle = name.Trim();
+            // Strip optional [TF_id_Name] wrappers agents sometimes paste.
+            if (needle.StartsWith("[TF_", StringComparison.OrdinalIgnoreCase) && needle.EndsWith("]"))
+            {
+                var inner = needle.Substring(4, needle.Length - 5);
+                var parts = inner.Split(new[] { '_' }, 2);
+                if (parts.Length == 2 && int.TryParse(parts[0], out var fid))
+                    return fields.FirstOrDefault(f => f.Id != null && Convert.ToInt32(f.Id) == fid);
+                if (parts.Length == 2) needle = parts[1];
+            }
+
+            return fields.FirstOrDefault(f =>
+                       string.Equals(f.DataBaseFieldName, needle, StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(f.DisplayName, needle, StringComparison.OrdinalIgnoreCase))
+                   ?? fields.FirstOrDefault(f =>
+                       (!string.IsNullOrEmpty(f.DisplayName) && f.DisplayName.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0)
+                       || (!string.IsNullOrEmpty(f.DataBaseFieldName) && f.DataBaseFieldName.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0));
         }
 
         /// <summary>UI create uses Sort=1; agent assigns max(existing)+1 so menus stay ordered.</summary>
@@ -1107,8 +1390,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
         /// <summary>
         /// Navigate To Search (53): LinkedSearchId must be an existing unit binding id (not AppSearch.SearchId).
+        /// Hard-blocks confirmed save.
         /// </summary>
-        static List<string> BuildNavigateSearchWarnings(AppTransactionExDto tx, AppProjectWorkFlowActionExDto cmd)
+        static List<string> BuildNavigateSearchHardWarnings(AppTransactionExDto tx, AppProjectWorkFlowActionExDto cmd)
         {
             var warnings = new List<string>();
             if (cmd?.ActionType != (int)EmAppTransactionCommandType.OpenLinkedSearch)
@@ -1148,6 +1432,100 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
 
             return warnings;
+        }
+
+        /// <summary>
+        /// Soft tips for Navigate To Search — do not block save.
+        /// </summary>
+        static List<string> BuildNavigateSearchSoftWarnings(AppProjectWorkFlowActionExDto cmd)
+        {
+            var warnings = new List<string>();
+            if (cmd?.ActionType != (int)EmAppTransactionCommandType.OpenLinkedSearch)
+                return warnings;
+
+            // Agents often put form field ids on ParamId1 — that is NOT UI Search Mapping.
+            if (cmd.ActionAttribute?.ParamId1 != null)
+            {
+                warnings.Add(
+                    "ParamId1 is not Linked Search filter mapping. " +
+                    "To pass form field values into search criteria, call upsert_linked_search with " +
+                    "filterMappingsJson=[{\"searchFilter\":\"Customer\",\"formField\":\"CustomerId\"}] " +
+                    "on the Linked Search binding (UI: Search Mapping). Clear ParamId1 unless you intentionally need it.");
+            }
+
+            return warnings;
+        }
+
+        public static string GetLinkedSearches(int transactionId)
+        {
+            try
+            {
+                AppCacheManagerBL.RefreshOnetHierarchyTranscation(transactionId);
+                var tx = AppTransactionBL.GetHierarchyTranscationFromDatabase(transactionId);
+                if (tx == null) return Fail($"Transaction {transactionId} not found.");
+                var units = EntityMapWiring.FlattenUnits(
+                    tx.AppTransactionUnitList ?? Enumerable.Empty<AppTransactionUnitExDto>());
+                var list = new List<object>();
+                foreach (var u in units)
+                {
+                    foreach (var ls in u.AppTransactionUnitLinkedSearchList
+                             ?? Enumerable.Empty<AppTransactionUnitLinkedSearchExDto>())
+                    {
+                        object availableFilters = Array.Empty<object>();
+                        if (ls.SearchId.HasValue)
+                        {
+                            try
+                            {
+                                var search = AppSearchConfigBL.RetrieveOneAppSearchExDto(ls.SearchId.Value);
+                                availableFilters = (search?.AppSearchFieldList ?? new ObservableSet<AppSearchFieldExDto>())
+                                    .Where(f => f?.Id != null)
+                                    .Select(f => (object)new
+                                    {
+                                        searchFieldId = f.Id,
+                                        displayText = f.DisplayText,
+                                        path = f.SysTableFiledPath
+                                    })
+                                    .ToList();
+                            }
+                            catch { /* best effort */ }
+                        }
+
+                        var mappings = (ls.AppTransactionUnitSearchFieldMappingList
+                                        ?? new ObservableSet<AppTransactionUnitSearchFieldMappingExDto>())
+                            .Select(m => (object)new
+                            {
+                                searchFieldId = m.SearchFieldId,
+                                transactionFieldId = m.TransactionFieldId,
+                                id = m.Id
+                            })
+                            .ToList();
+
+                        list.Add(new
+                        {
+                            linkedSearchId = ls.Id,
+                            id = ls.Id,
+                            unitId = u.Id,
+                            unitName = u.UnitDisplayName,
+                            name = ls.Name,
+                            searchId = ls.SearchId,
+                            searchViewId = ls.SearchViewId,
+                            sort = ls.Sort,
+                            filterMappings = mappings,
+                            availableSearchFilters = availableFilters
+                        });
+                    }
+                }
+                return Ok(new
+                {
+                    transactionId,
+                    linkedSearches = list,
+                    note = list.Count == 0
+                        ? "No unit Linked Searches yet. Call list_available_searches → upsert_linked_search. Do NOT invent linkedSearchId."
+                        : "Use linkedSearchId on upsert_command (53). " +
+                          "Search Mapping (filter←form field) via upsert_linked_search filterMappingsJson — not ParamId1."
+                });
+            }
+            catch (Exception ex) { return Fail(ex.Message); }
         }
 
         /// <summary>

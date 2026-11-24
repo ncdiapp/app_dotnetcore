@@ -12,6 +12,7 @@ import {
   isTransactionFormGroupPath,
   isTransactionFolderNavigationPath,
   isTransactionFormInstancePath,
+  isStandaloneShellPath,
   resolveTabNavigationPath,
   tabRoutePathsMatch,
 } from '../../helper/navigationHelper';
@@ -86,9 +87,12 @@ export const TabNavigationProvider: React.FC<{ children: ReactNode }> = ({ child
   const systemDefinedFileTransactionId = userContext?.DictAppSetup?.SystemDefinedFileTransactionId;
 
   // Keep router URL in sync when active tab changes (tab bar click, close tab, addTab).
+  // Skip standalone shell routes (print / standalone form / search editor) — they live
+  // outside LandingPage and must keep their own URL (UI: Print opens FormMasterDetailPrint).
   useEffect(() => {
     if (!userContext || userContext.IsLoginFailed) return;
     if (!activeTabKey) return;
+    if (isStandaloneShellPath(location.pathname)) return;
     const activeTab = tabs.find((t) => t.tabKey === activeTabKey);
     if (!activeTab) return;
     const targetPath = resolveTabNavigationPath(activeTab);

@@ -692,13 +692,15 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
   // Handle Command Action
   const handleCommandAction = (commandId: number, actionType: number) => {
     if (isLocked) return;
+    // Coerce — API / JSON may yield string ActionType; strict === would skip UI handlers.
+    const type = Number(actionType);
     // Angular parity for "UI:*" actions (see transactionCommandActionEditorCtrl.js list):
     // 47 Save As, 48 Print, 49 Save, 50 Refresh, 51 Open Form Creation Window,
     // 53 Navigate To Search, 54 Close Form Window, 55 Open Form Edit Window, 74 Print From Message Template.
-    if (actionType === 49) return void handleSave();
-    if (actionType === 50) return void handleRefresh();
-    if (actionType === 48) return void handlePrint();
-    if (actionType === 53) {
+    if (type === 49) return void handleSave();
+    if (type === 50) return void handleRefresh();
+    if (type === 48) return void handlePrint();
+    if (type === 53) {
       // Angular formMasterDetailCtrl.commandActionButtonClicked:
       // commandType == EmAppTransactionCommandType.OpenLinkedSearch => excecuteOpenLinkedSearch(null, LinkedSearchId)
       const cmdDto = (transactionDto?.CommandActionList || []).find((x: any) => Number(x?.Id) === Number(commandId));
@@ -725,7 +727,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
       handleLinkedSearch(linkedSearch, String(rootUnit?.Id ?? ''));
       return;
     }
-    if (actionType === 47) {
+    if (type === 47) {
       // Angular formMasterDetailCtrl.saveAsFormData:
       // appTransactionSvc.saveAsMasterDetailTransactionData(currentFormData) then open main.FormMasterDetail with returned PK.
       (async () => {
@@ -760,7 +762,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
       })();
       return;
     }
-    if (actionType === 54) {
+    if (type === 54) {
       // Close current form window/tab:
       // - If this form is opened in a standalone browser window, try window.close()
       // - Otherwise close the current app tab (tabnav)
@@ -2032,7 +2034,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
                         disabled={cmd._isDisabled}
                         onClick={() => {
                           setCommandMenuOpen(false);
-                          handleCommandAction(cmd.Id, cmd.ActionType);
+                          handleCommandAction(Number(cmd.Id), Number(cmd.ActionType));
                         }}
                         role="menuitem"
                         title={cmd._label || cmd.Name}
@@ -2066,7 +2068,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
           }
           title={cmd._label || cmd.Name}
           disabled={isDisabled}
-          onClick={() => handleCommandAction(cmd.Id, cmd.ActionType)}
+          onClick={() => handleCommandAction(Number(cmd.Id), Number(cmd.ActionType))}
         >
           <i className="fa fa-files-o" aria-hidden />
           <span>{cmd._label || cmd.Name}</span>

@@ -26,7 +26,6 @@ import ExternalMethodRegister from './components/admin/ExternalMethodRegister';
 import MetaDataManagement from './components/transaction/metaDataManagement';
 import FormMasterDetail from './components/formMgt/FormMasterDetail';
 import FormListEdit from './components/formMgt/FormListEdit';
-import FormMasterDetailPrint from './components/formMgt/FormMasterDetailPrint';
 import FileManagement from './components/fileMgt/FileManagement';
 import TransactionFolderNavigationPage from './components/transaction/TransactionFolderNavigationPage';
 import TransactionNavigationEditor from './components/transaction/TransactionNavigationEditor';
@@ -196,9 +195,9 @@ export const AUTHENTICATED_ROUTES: SharedRouteDef[] = [
   { path: 'TransactionFormGroup/:param', element: <TransactionFormGroup /> },
   { path: 'TransactionFormGroup', element: <TransactionFormGroup /> },
 
-  // React-only print page (replaces legacy OpenWindow/FormMasterDetailPrint)
-  { path: 'FormMasterDetailPrint/:param', element: <FormMasterDetailPrint /> },
-  { path: 'FormMasterDetailPrint', element: <FormMasterDetailPrint /> },
+  // FormMasterDetailPrint is standalone-only (routes.tsx, outside LandingPage).
+  // Do not register it here — TabNavigationProvider + LandingPage tab restore would
+  // steal the URL back to /home when UI: Print opens a new window.
 
   { path: 'application-form-builder/:param', element: <ApplicationFormBuilderPage /> },
   { path: 'application-form-builder', element: <ApplicationFormBuilderPage /> },
