@@ -3666,12 +3666,13 @@ IF COL_LENGTH('dbo.AppIntergrationSettingParameter', 'McpUsageNotes') IS NULL
             }
 
 
+            // CurrentUserSessionId must be null in stored config — hardcoded GUID is not a valid live session (401).
             newDto.ApiconfigParameters = $@"
 {{
     ""BaseUrl"": """",
     ""Url"": """",
     ""Headers"": {{
-        ""CurrentUserSessionId"": ""6601508d-e7e0-4ed6-892b-879c834676af""
+        ""CurrentUserSessionId"": null
     }},
     ""QueryParams"": {{
         {queryParams}
@@ -3726,7 +3727,7 @@ IF COL_LENGTH('dbo.AppIntergrationSettingParameter', 'McpUsageNotes') IS NULL
     ""BaseUrl"": """",
     ""Url"": """",
     ""Headers"": {{
-        ""CurrentUserSessionId"": ""6601508d-e7e0-4ed6-892b-879c834676af""
+        ""CurrentUserSessionId"": null
     }},
     ""QueryParams"": {{
         ""id"":1
@@ -3780,7 +3781,7 @@ IF COL_LENGTH('dbo.AppIntergrationSettingParameter', 'McpUsageNotes') IS NULL
     ""BaseUrl"": """",
     ""Url"": """",
     ""Headers"": {{
-        ""CurrentUserSessionId"": ""6601508d-e7e0-4ed6-892b-879c834676af""
+        ""CurrentUserSessionId"": null
     }},
     ""QueryParams"": {{
         ""id"":1

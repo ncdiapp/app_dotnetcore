@@ -98,6 +98,10 @@ namespace ExchangeBL
                     string key = oneKV.Key;
                     string value = oneKV.Value;
 
+                    // UI/agent may persist CurrentUserSessionId: null — skip empty headers (Add(null) / Replace on null NRE)
+                    if (string.IsNullOrWhiteSpace(key) || value == null)
+                        continue;
+
                     value = ReplaceAllEnvionmentVariableKeyWithValues(dictEnvironmentVariable, value);
 
                     httpClient.DefaultRequestHeaders.Add(key, value);
@@ -459,6 +463,9 @@ namespace ExchangeBL
 
         public static string ReplaceAllEnvionmentVariableKeyWithValues(Dictionary<string, string> dictEnvironmentVariable, string value)
         {
+            if (value == null)
+                return null;
+
             if (dictEnvironmentVariable != null && dictEnvironmentVariable.Keys.Count > 0)
             {
                 dictEnvironmentVariable.ForAll(environmentVariable =>

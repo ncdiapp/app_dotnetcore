@@ -366,8 +366,8 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
             }
 
             cfg.Headers ??= new Dictionary<string, string>();
-            if (!cfg.Headers.ContainsKey("CurrentUserSessionId"))
-                cfg.Headers["CurrentUserSessionId"] = null;
+            // Do not write CurrentUserSessionId:null — CallAPI env Replace NRE when provider has DictEnvironmentVariable.
+            // UI may add the key on save; omit here so Agent-created ops stay safe for Send Request.
 
             if (!string.IsNullOrWhiteSpace(target.HttpMethd)
                 && Enum.TryParse(target.HttpMethd, true, out EnumHttpMethod fromCol))
