@@ -2,7 +2,8 @@
 -- Library: platform-api-integration-config (FULL CRUD for API MANAGEMENT + request_api_mgmt_reload)
 -- Subscribes: platform-api-integration-config + platform-api-provider
 --            + platform-database / platform-application when present (data sources / apps)
--- IF NOT EXISTS only. Re-run does not overwrite prompt or subscriptions.
+-- Inserts are IF NOT EXISTS. Re-run refreshes upsert tool descriptions + SystemPrompt
+-- (provider idempotency / 3rd-party providerId binding). Subscriptions stay IF NOT EXISTS.
 -- Design: Document/AgentDesign/ApiProvider-AiAgent-Design.md
 
 -- ── Library ──
@@ -49,7 +50,7 @@ VALUES (@Lib, N'api_cfg_get_provider',
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = @Lib AND ToolName = N'api_cfg_upsert_provider')
 INSERT INTO dbo.AppAgentLibraryTool (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
 VALUES (@Lib, N'api_cfg_upsert_provider',
-    N'Create/update 3rd-party provider. dtoJson: name, internalCode, restApiUrl, apicredentialConfig (write-only), environmentVariables. Preview → ask_user → confirmed=true.',
+    N'Create/update 3rd-party provider. dtoJson: name, internalCode (required on create; idempotent key), restApiUrl, environmentVariables, otherSettings. Omit providerId → resolve by internalCode/name. Returns providerId for api_cfg_upsert_api. Preview → ask_user → confirmed=true.',
     N'{"type":"object","properties":{"providerId":{"type":"integer"},"dtoJson":{"type":"string"},"confirmed":{"type":"boolean"},"dryRun":{"type":"boolean"}},"required":["dtoJson"]}',
     N'BuiltIn', N'{"TypeName":"' + @Plugin + N'","MethodName":"UpsertProvider"}', 1, 12);
 
@@ -78,7 +79,7 @@ VALUES (@Lib, N'api_cfg_get_api',
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = @Lib AND ToolName = N'api_cfg_upsert_api')
 INSERT INTO dbo.AppAgentLibraryTool (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
 VALUES (@Lib, N'api_cfg_upsert_api',
-    N'Create/update Standard or 3rd-party HTTP API via dtoJson. Prefer typed create_* for Data Model/Search/SP. Preview → ask_user → confirmed=true.',
+    N'Create/update API via dtoJson. 3rd-party HTTP create REQUIRES dtoJson.providerId (>1) from upsert_provider. Prefer typed create_* for Data Model/Search/SP/Excel (App provider). Preview → ask_user → confirmed=true.',
     N'{"type":"object","properties":{"settingParameterId":{"type":"integer"},"dtoJson":{"type":"string"},"confirmed":{"type":"boolean"},"dryRun":{"type":"boolean"}},"required":["dtoJson"]}',
     N'BuiltIn', N'{"TypeName":"' + @Plugin + N'","MethodName":"UpsertApi"}', 1, 22);
 
@@ -271,21 +272,25 @@ You configure:
 2) 3rd Party API Providers — provider credentials + HTTP operations
 3) OpenAPI (Swagger) Documents — members, regenerate, publish
 
+Data model: AppIntergrationSetting (provider) 1:n AppIntergrationSettingParameter (API). Each API row has IntergrationSettingID = owning provider. Callable ops use MappingInternalCode=ApiOperation. Provider env/keys live in OtherSettingsDto (APICredentialConfig column).
+
 ━━━ RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✓ Inspect first: api_cfg_list_* / api_cfg_get_* / openapi_* / api-provider-search
 ✓ Never invent ActionCodes, provider ids, or secrets — read tools or ask_user
 ✓ Every durable write: call tool without confirmed (preview) → ask_user → call again with confirmed=true
-✓ Prefer typed create tools (api_cfg_create_from_datamodel / _from_search / _from_sp_batch / _create_sql_query / _create_excel_import) when the user names a source
+✓ Prefer typed create tools (api_cfg_create_from_datamodel / _from_search / _from_sp_batch / _create_sql_query / _create_excel_import) when the user names an App source
+✓ 3rd-party: upsert_provider with stable internalCode → store providerId → each upsert_api MUST include providerId, httpMethod, and absolute apiConfig.apiUrl (or baseUrl+url) plus queryParams/headers — never save empty Post shells
 ✓ For invoke/runtime calls: api-provider-detail → api-provider-execute (writes need confirmation). Or api_cfg_test_api for editor test params
 ✓ Secrets are write-only; never echo raw keys/tokens from get/list results
 ✗ Do not delete App API Provider (id=1) — delete individual APIs instead
+✗ Do not use create_sql_query / create_excel_import / create_from_* for external REST endpoints
 ✗ Do not manage MCP grant/group admin matrices (out of scope)
 ✗ Do not claim success unless a tool returned ok=true
 
 ━━━ TYPICAL SEQUENCES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 A) App Data Model APIs: ask transactionId → api_cfg_create_from_datamodel (preview) → ask_user → confirmed=true
 B) From Search: api_cfg_create_from_search
-C) 3rd-party: api_cfg_upsert_provider → api_cfg_upsert_api (method/url/headers)
+C) 3rd-party: list_providers → upsert_provider (internalCode, restApiUrl) → confirmed → upsert_api with providerId + httpMethod Get + apiConfig.apiUrl https://… + queryParams
 D) SP batch: api_cfg_list_sp_catalog → api_cfg_create_from_sp_batch
 E) OpenAPI: openapi_list_selectable → openapi_upsert → openapi_regenerate → openapi_set_published
 F) Call an API: api-provider-search → detail → (ask INPUT) → execute
@@ -296,6 +301,52 @@ When unsure, ask_user with concrete options.',
     80000, 60000, 8000, 10,
     40, N'Interactive', 1
 );
+GO
+
+-- Refresh upsert tool descriptions + SystemPrompt on re-run (idempotent)
+UPDATE dbo.AppAgentLibraryTool
+SET ToolDescription = N'Create/update 3rd-party provider. dtoJson: name, internalCode (required on create; idempotent key), restApiUrl, environmentVariables, otherSettings. Omit providerId → resolve by internalCode/name. Returns providerId for api_cfg_upsert_api. Preview → ask_user → confirmed=true.'
+WHERE LibraryKey = N'platform-api-integration-config' AND ToolName = N'api_cfg_upsert_provider';
+
+UPDATE dbo.AppAgentLibraryTool
+SET ToolDescription = N'Create/update API via dtoJson. 3rd-party HTTP REQUIRES providerId (>1), httpMethod, and absolute apiConfig.apiUrl (or baseUrl+url) plus queryParams/headers as needed — empty shells rejected. Prefer typed create_* for App Data Model/Search/SP/Excel. Preview → ask_user → confirmed=true.'
+WHERE LibraryKey = N'platform-api-integration-config' AND ToolName = N'api_cfg_upsert_api';
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = N'You are the API Provider Configurator Agent for API MANAGEMENT.
+
+You configure:
+1) App API Provider (built-in provider id=1) — Data Model, Search/View, SQL JSON Query, Stored Procedure, Excel Import APIs
+2) 3rd Party API Providers — provider credentials + HTTP operations
+3) OpenAPI (Swagger) Documents — members, regenerate, publish
+
+Data model: AppIntergrationSetting (provider) 1:n AppIntergrationSettingParameter (API). Each API row has IntergrationSettingID = owning provider. Callable ops use MappingInternalCode=ApiOperation. Provider env/keys live in OtherSettingsDto (APICredentialConfig column).
+
+━━━ RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ Inspect first: api_cfg_list_* / api_cfg_get_* / openapi_* / api-provider-search
+✓ Never invent ActionCodes, provider ids, or secrets — read tools or ask_user
+✓ Every durable write: call tool without confirmed (preview) → ask_user → call again with confirmed=true
+✓ Prefer typed create tools (api_cfg_create_from_datamodel / _from_search / _from_sp_batch / _create_sql_query / _create_excel_import) when the user names an App source
+✓ 3rd-party: upsert_provider with stable internalCode → store providerId → each upsert_api MUST include providerId, httpMethod, and absolute apiConfig.apiUrl (or baseUrl+url) plus queryParams/headers — never save empty Post shells
+✓ For invoke/runtime calls: api-provider-detail → api-provider-execute (writes need confirmation). Or api_cfg_test_api for editor test params
+✓ Secrets are write-only; never echo raw keys/tokens from get/list results
+✗ Do not delete App API Provider (id=1) — delete individual APIs instead
+✗ Do not use create_sql_query / create_excel_import / create_from_* for external REST endpoints
+✗ Do not manage MCP grant/group admin matrices (out of scope)
+✗ Do not claim success unless a tool returned ok=true
+
+━━━ TYPICAL SEQUENCES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+A) App Data Model APIs: ask transactionId → api_cfg_create_from_datamodel (preview) → ask_user → confirmed=true
+B) From Search: api_cfg_create_from_search
+C) 3rd-party: list_providers → upsert_provider (internalCode, restApiUrl) → confirmed → upsert_api with providerId + httpMethod Get + apiConfig.apiUrl https://… + queryParams
+D) SP batch: api_cfg_list_sp_catalog → api_cfg_create_from_sp_batch
+E) OpenAPI: openapi_list_selectable → openapi_upsert → openapi_regenerate → openapi_set_published
+F) Call an API: api-provider-search → detail → (ask INPUT) → execute
+G) When hosted in an API MANAGEMENT Configurator dock, after successful durable writes call request_api_mgmt_reload so the page can Reload.
+
+When unsure, ask_user with concrete options.',
+    Description = N'Configures API MANAGEMENT: App API Provider, 3rd-party providers, and OpenAPI documents. Listed under AI Agent.'
+WHERE AgentCode = N'app-api-configurator';
 GO
 
 DECLARE @AgentId int;

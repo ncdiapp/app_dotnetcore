@@ -63,12 +63,14 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         [AgentTool("api_cfg_upsert_provider",
-            "Create or update a 3rd-party API provider. dtoJson: name, internalCode, description, restApiUrl, " +
-            "apicredentialConfig (write-only), environmentVariables, dataSourceRegisterId. " +
-            "Cannot change App built-in provider identity. Preview → ask_user → confirmed=true.")]
+            "Create or update a 3rd-party API provider. dtoJson: name, internalCode (stable key — required for idempotent create), " +
+            "description, restApiUrl, environmentVariables, otherSettings/apicredentialConfig object " +
+            "(databaseTablePrefix, dictEnvironmentVariable, dictCookieSetting), dataSourceRegisterId. " +
+            "Omit providerId to resolve by internalCode then name (update if one match; Fail if many). " +
+            "Returns providerId — pass it to every api_cfg_upsert_api. Preview → ask_user → confirmed=true.")]
         public string UpsertProvider(
             AgentToolContext context = null,
-            [AgentParam("Existing provider id for update; omit/0 to create.")] int? providerId = null,
+            [AgentParam("Existing provider id for update; omit/0 to resolve by internalCode/name or create.")] int? providerId = null,
             [AgentParam("JSON object of provider fields", isRequired: true)] string dtoJson = null,
             [AgentParam("true after ask_user")] bool? confirmed = null,
             [AgentParam("true = preview only")] bool? dryRun = null)
@@ -85,10 +87,26 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 if (id <= 0)
                     TryResolveProviderId(context, null, out id, out _);
 
+                // Idempotent resolve: no explicit id → match by internalCode (then name)
+                if (id <= 0)
+                {
+                    var code = (patch["internalCode"] ?? patch["InternalCode"])?.ToString();
+                    var name = (patch["name"] ?? patch["Name"])?.ToString();
+                    var matches = ApiIntegrationConfigBL.FindThirdPartyProviders(code, name);
+                    if (matches.Count == 1)
+                        id = Convert.ToInt32(matches[0].Id);
+                    else if (matches.Count > 1)
+                    {
+                        var ids = string.Join(", ", matches.Select(m => Convert.ToInt32(m.Id)));
+                        return ApiIntegrationConfigBL.Fail(
+                            $"Multiple providers match internalCode/name. Pass providerId explicitly. Candidates: {ids}");
+                    }
+                    // else 0 → create
+                }
+
                 if (id == AppIntergrationSettingBL.AppBuiltInProviderId)
                 {
                     // Allow limited metadata-only updates on built-in; block delete path elsewhere.
-                    // Still require confirm.
                 }
 
                 AppIntergrationSettingExDto target;
@@ -100,6 +118,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 else
                 {
                     target = new AppIntergrationSettingExDto();
+                    var code = (patch["internalCode"] ?? patch["InternalCode"])?.ToString();
+                    if (string.IsNullOrWhiteSpace(code))
+                        return ApiIntegrationConfigBL.Fail(
+                            "internalCode is required when creating a provider (stable key for later upserts).");
                 }
 
                 ApiIntegrationConfigBL.ApplyProviderPatch(target, patch);
@@ -113,7 +135,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         name = target.Name,
                         internalCode = target.InternalCode,
                         restApiUrl = target.RestApiurl,
-                        hasCredentialWrite = !string.IsNullOrWhiteSpace(target.ApicredentialConfig)
+                        hasEnvironmentVariables =
+                            target.OtherSettingsDto?.DictEnvironmentVariable != null
+                            && target.OtherSettingsDto.DictEnvironmentVariable.Count > 0
                     });
                 }
 
@@ -122,10 +146,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     return ApiIntegrationConfigBL.Fail(ApiIntegrationConfigBL.ValidationMessages(result.ValidationResult));
 
                 var saved = result?.Object ?? AppIntergrationSettingBL.RetrieveOneAppIntergrationSettingExDto(target.Id);
+                var savedId = saved != null ? Convert.ToInt32(saved.Id) : Convert.ToInt32(target.Id);
                 return ApiIntegrationConfigBL.Ok(new
                 {
                     saved = true,
-                    provider = ApiIntegrationConfigBL.SummarizeProvider(saved, includeApis: false)
+                    providerId = savedId,
+                    provider = ApiIntegrationConfigBL.SummarizeProvider(saved, includeApis: false),
+                    nextStep = "Pass providerId=" + savedId + " in every api_cfg_upsert_api dtoJson for this provider's HTTP APIs."
                 });
             }
             catch (Exception ex) { return ApiIntegrationConfigBL.Fail(ex.Message); }
@@ -227,10 +254,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         [AgentTool("api_cfg_upsert_api",
-            "Create or update one API operation (Standard / 3rd-party HTTP / patch fields). " +
-            "dtoJson fields: actionCode, actionDescription, httpMethod, providerId, jsonQuery, isSimpleQuery, " +
-            "dataSourceId, transactionId, apiConfig{baseUrl,url,method,headers,queryParams,pathParams,authenticationParameters,excelDataImportDataSetId}. " +
-            "Prefer typed create_* tools for Data Model / Search / SP. Preview → ask_user → confirmed=true.")]
+            "Create or update one API operation. dtoJson: actionCode, description|actionDescription (UI Description column), httpMethod, providerId, " +
+            "apiConfig{apiUrl|baseUrl+url, method, headers, queryParams, pathParams}. " +
+            "3rd-party HTTP REQUIRES providerId (>1) AND absolute apiUrl (or baseUrl+url) AND httpMethod — " +
+            "empty shells are rejected. Prefer typed create_* for Data Model/Search/SP/Excel. " +
+            "Preview → ask_user → confirmed=true.")]
         public string UpsertApi(
             AgentToolContext context = null,
             [AgentParam("Existing settingParameterId for update; omit to create.")] int? settingParameterId = null,
@@ -257,24 +285,53 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
                 else
                 {
+                    // Do not default HttpMethd=Post — App typed tools set their own; 3rd-party must pass method.
                     target = new AppIntergrationSettingParameterExDto
                     {
-                        IntergrationSettingId = AppIntergrationSettingBL.AppBuiltInProviderId,
-                        MappingInternalCode = EmAppIntergrationSettingParameterUsageType.ApiOperation.ToString(),
-                        HttpMethd = "Post"
+                        MappingInternalCode = EmAppIntergrationSettingParameterUsageType.ApiOperation.ToString()
                     };
-                    var hostPid = ReadHostInt(context, "providerId", "ProviderId");
-                    if (hostPid.HasValue) target.IntergrationSettingId = hostPid.Value;
+                    if (ApiIntegrationConfigBL.TryGetInt(patch, out var patchPid,
+                            "providerId", "intergrationSettingId", "IntergrationSettingId")
+                        && patchPid > 0)
+                    {
+                        target.IntergrationSettingId = patchPid;
+                    }
+                    else
+                    {
+                        var hostPid = ReadHostInt(context, "providerId", "ProviderId");
+                        if (hostPid.HasValue && hostPid.Value > 0)
+                            target.IntergrationSettingId = hostPid.Value;
+                    }
                 }
 
                 ApiIntegrationConfigBL.ApplyApiPatch(target, patch);
-                if (!target.IntergrationSettingId.HasValue || target.IntergrationSettingId.Value <= 0)
-                    target.IntergrationSettingId = AppIntergrationSettingBL.AppBuiltInProviderId;
+
+                if (isCreate)
+                {
+                    var bindErr = ResolveCreateProviderBinding(target, patch, context);
+                    if (bindErr != null) return ApiIntegrationConfigBL.Fail(bindErr);
+                }
+
                 if (string.IsNullOrWhiteSpace(target.MappingInternalCode))
                     target.MappingInternalCode = EmAppIntergrationSettingParameterUsageType.ApiOperation.ToString();
 
+                // App Standard create without method → Post (legacy App default); 3rd-party validated below.
+                if (isCreate
+                    && string.IsNullOrWhiteSpace(target.HttpMethd)
+                    && (target.IntergrationSettingId ?? 0) == AppIntergrationSettingBL.AppBuiltInProviderId
+                    && !ApiIntegrationConfigBL.LooksLikeThirdPartyHttpOp(patch))
+                {
+                    target.HttpMethd = "Post";
+                }
+
+                ApiIntegrationConfigBL.FinalizeHttpApiConfig(target);
+
+                var cfgErr = ApiIntegrationConfigBL.ValidateThirdPartyHttpConfig(target);
+                if (cfgErr != null) return ApiIntegrationConfigBL.Fail(cfgErr);
+
                 if (ApiIntegrationConfigBL.NeedsConfirm(confirmed, dryRun))
                 {
+                    var cfg = target.APIConfigParameters;
                     return ApiIntegrationConfigBL.Preview(new
                     {
                         isCreate,
@@ -282,12 +339,17 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         actionCode = target.ActionCode,
                         providerId = target.IntergrationSettingId,
                         httpMethod = target.HttpMethd,
+                        apiUrl = ApiIntegrationConfigBL.JoinApiUrl(cfg?.BaseUrl, cfg?.Url),
+                        queryParamKeys = cfg?.QueryParams?.Keys?.ToList(),
+                        headerKeys = cfg?.Headers?.Keys?.Where(k => k != "CurrentUserSessionId").ToList(),
                         apiType = ApiIntegrationConfigBL.ResolveApiType(target)
                     });
                 }
 
                 if (string.IsNullOrWhiteSpace(target.ActionCode))
                     return ApiIntegrationConfigBL.Fail("actionCode is required.");
+                if (!target.IntergrationSettingId.HasValue || target.IntergrationSettingId.Value <= 0)
+                    return ApiIntegrationConfigBL.Fail("providerId (IntergrationSettingId) is required.");
 
                 var result = AppIntergrationSettingBL.SaveAppIntergrationSettingParameterExDto(target);
                 if (result?.ValidationResult?.HasErrors == true)
@@ -298,10 +360,49 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 return ApiIntegrationConfigBL.Ok(new
                 {
                     saved = true,
+                    providerId = saved?.IntergrationSettingId ?? target.IntergrationSettingId,
                     api = ApiIntegrationConfigBL.SummarizeApiDetail(saved)
                 });
             }
             catch (Exception ex) { return ApiIntegrationConfigBL.Fail(ex.Message); }
+        }
+
+        /// <summary>
+        /// Bind create to the correct provider. Never silently park 3rd-party HTTP under App Provider (id=1).
+        /// </summary>
+        static string ResolveCreateProviderBinding(
+            AppIntergrationSettingParameterExDto target,
+            JObject patch,
+            AgentToolContext context)
+        {
+            var pid = target.IntergrationSettingId ?? 0;
+            var hostPid = ReadHostInt(context, "providerId", "ProviderId");
+            var looks3p = ApiIntegrationConfigBL.LooksLikeThirdPartyHttpOp(patch);
+            var looksApp = ApiIntegrationConfigBL.LooksLikeAppProviderOp(patch);
+
+            if (pid <= 0)
+            {
+                if (looksApp)
+                {
+                    target.IntergrationSettingId = AppIntergrationSettingBL.AppBuiltInProviderId;
+                    return null;
+                }
+                return "providerId is required in dtoJson when creating an API. " +
+                       "For 3rd-party HTTP: call api_cfg_upsert_provider first, then pass the returned providerId. " +
+                       "For App APIs prefer typed create_* tools (they bind to provider id=1).";
+            }
+
+            if (pid == AppIntergrationSettingBL.AppBuiltInProviderId && looks3p && !looksApp)
+            {
+                // HostContext on App API page often injects id=1 — refuse mis-filing external HTTP ops
+                if (!hostPid.HasValue || hostPid.Value == AppIntergrationSettingBL.AppBuiltInProviderId)
+                {
+                    return "This looks like a 3rd-party HTTP API (apiConfig url/baseUrl) but providerId is 1 (App API Provider). " +
+                           "Pass the 3rd-party providerId from api_cfg_upsert_provider. Do not attach external REST ops to App Provider.";
+                }
+            }
+
+            return null;
         }
 
         [AgentTool("api_cfg_delete_api",

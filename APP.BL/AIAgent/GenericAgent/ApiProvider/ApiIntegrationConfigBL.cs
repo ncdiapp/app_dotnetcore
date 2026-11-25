@@ -252,8 +252,11 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
 
             SetIf(patch, "actionCode", "ActionCode", v => target.ActionCode = v);
             SetIf(patch, "ActionCode", "ActionCode", v => target.ActionCode = v);
+            // UI column ActionDescription — agents often send "description" (not actionDescription)
             SetIf(patch, "actionDescription", "ActionDescription", v => target.ActionDescription = v);
             SetIf(patch, "ActionDescription", "ActionDescription", v => target.ActionDescription = v);
+            SetIf(patch, "description", "ActionDescription", v => target.ActionDescription = v);
+            SetIf(patch, "Description", "ActionDescription", v => target.ActionDescription = v);
             SetIf(patch, "httpMethod", "HttpMethd", v => target.HttpMethd = v);
             SetIf(patch, "HttpMethd", "HttpMethd", v => target.HttpMethd = v);
             SetIf(patch, "jsonQuery", "JsonQuery", v => target.JsonQuery = v);
@@ -278,10 +281,19 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
             if (cfgToken is JObject cfgObj)
             {
                 var cfg = target.APIConfigParameters ?? new APIConfigParameterDTO();
-                if (cfgObj["baseUrl"] != null || cfgObj["BaseUrl"] != null)
-                    cfg.BaseUrl = (cfgObj["baseUrl"] ?? cfgObj["BaseUrl"])?.ToString();
-                if (cfgObj["url"] != null || cfgObj["Url"] != null)
-                    cfg.Url = (cfgObj["url"] ?? cfgObj["Url"])?.ToString();
+
+                // Single absolute apiUrl (UI form field) → BaseUrl + Url, same as apiConfigForm.splitApiUrl
+                var apiUrl = (cfgObj["apiUrl"] ?? cfgObj["ApiUrl"] ?? patch["apiUrl"])?.ToString();
+                if (!string.IsNullOrWhiteSpace(apiUrl) && apiUrl.Trim().StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                    SplitAbsoluteApiUrl(apiUrl.Trim(), cfg);
+                else
+                {
+                    if (cfgObj["baseUrl"] != null || cfgObj["BaseUrl"] != null)
+                        cfg.BaseUrl = (cfgObj["baseUrl"] ?? cfgObj["BaseUrl"])?.ToString();
+                    if (cfgObj["url"] != null || cfgObj["Url"] != null)
+                        cfg.Url = (cfgObj["url"] ?? cfgObj["Url"])?.ToString();
+                }
+
                 if (cfgObj["method"] != null || cfgObj["Method"] != null)
                 {
                     var m = (cfgObj["method"] ?? cfgObj["Method"])?.ToString();
@@ -303,14 +315,229 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
                     cfgObj["authenticationParameters"] as JObject);
 
                 target.APIConfigParameters = cfg;
+                if (cfgObj["method"] != null || cfgObj["Method"] != null)
+                    target.HttpMethd = cfg.Method.ToString();
+            }
+            else if (patch["apiUrl"] != null && patch["apiUrl"].Type != JTokenType.Null)
+            {
+                var apiUrl = patch["apiUrl"].ToString();
+                if (!string.IsNullOrWhiteSpace(apiUrl))
+                {
+                    var cfg = target.APIConfigParameters ?? new APIConfigParameterDTO();
+                    SplitAbsoluteApiUrl(apiUrl.Trim(), cfg);
+                    target.APIConfigParameters = cfg;
+                }
             }
 
             target.IsModified = true;
         }
 
+        /// <summary>
+        /// After patch: inherit provider RestApiurl as BaseUrl, sync HttpMethd↔Method,
+        /// flush typed config into ApiconfigParameters JSON (UI/save contract).
+        /// </summary>
+        public static void FinalizeHttpApiConfig(AppIntergrationSettingParameterExDto target)
+        {
+            if (target == null) return;
+            var cfg = target.APIConfigParameters;
+            if (cfg == null) return;
+
+            if (string.IsNullOrWhiteSpace(cfg.BaseUrl)
+                && target.IntergrationSettingId.HasValue
+                && target.IntergrationSettingId.Value > 0
+                && target.IntergrationSettingId.Value != AppIntergrationSettingBL.AppBuiltInProviderId)
+            {
+                try
+                {
+                    var provider = AppIntergrationSettingBL.RetrieveOneAppIntergrationSettingExDto(
+                        target.IntergrationSettingId.Value);
+                    if (!string.IsNullOrWhiteSpace(provider?.RestApiurl))
+                        cfg.BaseUrl = provider.RestApiurl.Trim().TrimEnd('/');
+                }
+                catch { /* ignore inherit failures */ }
+            }
+
+            // Absolute Url with empty BaseUrl → split
+            if (string.IsNullOrWhiteSpace(cfg.BaseUrl)
+                && !string.IsNullOrWhiteSpace(cfg.Url)
+                && cfg.Url.Trim().StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            {
+                SplitAbsoluteApiUrl(cfg.Url.Trim(), cfg);
+            }
+
+            cfg.Headers ??= new Dictionary<string, string>();
+            if (!cfg.Headers.ContainsKey("CurrentUserSessionId"))
+                cfg.Headers["CurrentUserSessionId"] = null;
+
+            if (!string.IsNullOrWhiteSpace(target.HttpMethd)
+                && Enum.TryParse(target.HttpMethd, true, out EnumHttpMethod fromCol))
+                cfg.Method = fromCol;
+            else if (cfg.Method != default)
+                target.HttpMethd = cfg.Method.ToString();
+
+            target.APIConfigParameters = cfg;
+            // Mirror UI: persist JSON string; converter also serializes when object non-null.
+            try
+            {
+                target.ApiconfigParameters = JsonConvert.SerializeObject(cfg, Formatting.Indented);
+            }
+            catch { /* leave existing */ }
+        }
+
+        /// <summary>
+        /// 3rd-party HTTP ops must have absolute call URL + HttpMethd (same bar as UI save).
+        /// </summary>
+        public static string ValidateThirdPartyHttpConfig(AppIntergrationSettingParameterExDto target)
+        {
+            if (target == null) return "API dto is null.";
+            var pid = target.IntergrationSettingId ?? 0;
+            if (pid <= 0 || pid == AppIntergrationSettingBL.AppBuiltInProviderId)
+                return null;
+
+            var cfg = target.APIConfigParameters;
+            if (cfg == null)
+                return "apiConfig is required for 3rd-party APIs. Include apiUrl (https://…) or baseUrl+url, method, and queryParams/headers as needed.";
+
+            var joined = JoinApiUrl(cfg.BaseUrl, cfg.Url);
+            if (string.IsNullOrWhiteSpace(joined)
+                || !joined.Trim().StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            {
+                return "3rd-party API needs an absolute http(s) URL. Set apiConfig.apiUrl (full URL) or apiConfig.baseUrl + apiConfig.url. "
+                    + "Example: {\"apiUrl\":\"https://api.weatherapi.com/v1/forecast.json\",\"method\":\"Get\",\"queryParams\":{\"q\":\"{{QueryParams.q}}\",\"key\":\"{{Env.ApiKey}}\"}}";
+            }
+
+            if (string.IsNullOrWhiteSpace(target.HttpMethd))
+                return "httpMethod is required (Get/Post/Put/Delete). Do not leave blank — weather/read APIs are usually Get.";
+
+            return null;
+        }
+
+        public static string JoinApiUrl(string baseUrl, string url)
+        {
+            var b = (baseUrl ?? "").Trim().TrimEnd('/');
+            var u = (url ?? "").Trim().TrimStart('/');
+            if (string.IsNullOrEmpty(b)) return u;
+            if (string.IsNullOrEmpty(u)) return b;
+            return b + "/" + u;
+        }
+
+        public static void SplitAbsoluteApiUrl(string apiUrl, APIConfigParameterDTO cfg)
+        {
+            if (cfg == null || string.IsNullOrWhiteSpace(apiUrl)) return;
+            var text = apiUrl.Trim();
+            // https://host[:port]/rest
+            var m = System.Text.RegularExpressions.Regex.Match(
+                text, @"^(https?://[^/\s?#]+)/?(.*)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!m.Success)
+            {
+                cfg.Url = text;
+                return;
+            }
+            cfg.BaseUrl = m.Groups[1].Value;
+            var rest = m.Groups[2].Value ?? "";
+            var q = rest.IndexOf('?');
+            if (q >= 0)
+            {
+                cfg.Url = rest.Substring(0, q).TrimStart('/');
+                var query = rest.Substring(q + 1);
+                cfg.QueryParams ??= new Dictionary<string, string>();
+                foreach (var part in query.Split('&'))
+                {
+                    if (string.IsNullOrEmpty(part)) continue;
+                    var eq = part.IndexOf('=');
+                    if (eq <= 0) continue;
+                    var key = Uri.UnescapeDataString(part.Substring(0, eq));
+                    var val = Uri.UnescapeDataString(part.Substring(eq + 1));
+                    if (!string.IsNullOrEmpty(key))
+                        cfg.QueryParams[key] = val;
+                }
+            }
+            else
+            {
+                cfg.Url = rest.TrimStart('/');
+            }
+        }
+
+        /// <summary>
+        /// Find 3rd-party providers by InternalCode (preferred) or Name.
+        /// Excludes App built-in id=1. Used for idempotent provider upsert.
+        /// </summary>
+        public static List<AppIntergrationSettingExDto> FindThirdPartyProviders(
+            string internalCode,
+            string name)
+        {
+            var all = AppIntergrationSettingBL.RetrieveAllAppIntergrationSettingDto(isIncludeAppBuiltInApi: false)
+                ?? new List<AppIntergrationSettingExDto>();
+            IEnumerable<AppIntergrationSettingExDto> q = all.Where(p =>
+                p != null && Convert.ToInt32(p.Id) != AppIntergrationSettingBL.AppBuiltInProviderId);
+
+            if (!string.IsNullOrWhiteSpace(internalCode))
+            {
+                var code = internalCode.Trim();
+                var byCode = q.Where(p =>
+                    string.Equals(p.InternalCode?.Trim(), code, StringComparison.OrdinalIgnoreCase)).ToList();
+                if (byCode.Count > 0) return byCode;
+            }
+
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                var n = name.Trim();
+                return q.Where(p =>
+                    string.Equals(p.Name?.Trim(), n, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+
+            return new List<AppIntergrationSettingExDto>();
+        }
+
+        /// <summary>
+        /// True when dtoJson looks like an external/3rd-party HTTP op (must not default to provider id=1).
+        /// </summary>
+        public static bool LooksLikeThirdPartyHttpOp(JObject patch)
+        {
+            if (patch == null) return false;
+            var cfg = patch["apiConfig"] as JObject
+                ?? patch["APIConfigParameters"] as JObject
+                ?? patch["config"] as JObject;
+            if (cfg == null) return false;
+            var url = (cfg["url"] ?? cfg["Url"])?.ToString();
+            var baseUrl = (cfg["baseUrl"] ?? cfg["BaseUrl"])?.ToString();
+            if (string.IsNullOrWhiteSpace(url) && string.IsNullOrWhiteSpace(baseUrl))
+                return false;
+            // App-typed fields → treat as App API even if apiConfig present
+            if (TryGetInt(patch, out _, "transactionId", "TranscationId")) return false;
+            if (TryGetInt(patch, out _, "transcationFieId", "TranscationFieId", "searchOrViewFieldId")) return false;
+            if (TryGetBool(patch, out var simple, "isSimpleQuery", "IsSimpleQuery") && simple) return false;
+            if (cfg["isStoredProcedureApi"]?.Value<bool>() == true) return false;
+            if (TryGetInt(cfg, out _, "excelDataImportDataSetId", "ExcelDataImportDataSetId")) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// True when patch clearly targets App Provider create types (safe to bind provider id=1).
+        /// </summary>
+        public static bool LooksLikeAppProviderOp(JObject patch)
+        {
+            if (patch == null) return false;
+            if (TryGetInt(patch, out _, "transactionId", "TranscationId")) return true;
+            if (TryGetInt(patch, out _, "transcationFieId", "TranscationFieId", "searchOrViewFieldId")) return true;
+            if (TryGetBool(patch, out var simple, "isSimpleQuery", "IsSimpleQuery") && simple) return true;
+            var cfg = patch["apiConfig"] as JObject
+                ?? patch["APIConfigParameters"] as JObject
+                ?? patch["config"] as JObject;
+            if (cfg?["isStoredProcedureApi"]?.Value<bool>() == true) return true;
+            if (cfg != null && TryGetInt(cfg, out _, "excelDataImportDataSetId", "ExcelDataImportDataSetId"))
+                return true;
+            return false;
+        }
+
         public static void ApplyProviderPatch(AppIntergrationSettingExDto target, JObject patch)
         {
             if (target == null || patch == null) return;
+
+            // Column APICredentialConfig persists OtherSettingsDto JSON (converter OnCopyDtoToEntityDone).
+            // Always initialize so create never serializes null → JSON "null" in DB.
+            target.OtherSettingsDto ??= new AppIntergrationOtherSettingsDto();
+
             SetIf(patch, "name", "Name", v => target.Name = v);
             SetIf(patch, "Name", "Name", v => target.Name = v);
             SetIf(patch, "internalCode", "InternalCode", v => target.InternalCode = v);
@@ -319,24 +546,40 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
             SetIf(patch, "restApiUrl", "RestApiurl", v => target.RestApiurl = v);
             SetIf(patch, "RestApiurl", "RestApiurl", v => target.RestApiurl = v);
 
-            // Write-only credential blob — only set when caller supplies non-empty (never clear via "***")
-            var cred = patch["apicredentialConfig"] ?? patch["ApicredentialConfig"] ?? patch["credentialConfig"];
-            if (cred != null && cred.Type != JTokenType.Null)
-            {
-                var s = cred.Type == JTokenType.String ? cred.ToString() : cred.ToString(Formatting.None);
-                if (!string.IsNullOrWhiteSpace(s) && s != "***")
-                    target.ApicredentialConfig = s;
-            }
-
             if (TryGetInt(patch, out var dsReg, "dataSourceRegisterId", "DataSourceRegisterId"))
                 target.DataSourceRegisterId = dsReg;
 
             var env = patch["environmentVariables"] as JObject ?? patch["DictEnvironmentVariable"] as JObject;
             if (env != null)
             {
-                target.OtherSettingsDto ??= new AppIntergrationOtherSettingsDto();
                 target.OtherSettingsDto.DictEnvironmentVariable ??= new Dictionary<string, string>();
                 MergeStringDict(target.OtherSettingsDto.DictEnvironmentVariable, env);
+            }
+
+            // Nested otherSettings / apicredentialConfig object → merge into OtherSettingsDto
+            var other = patch["otherSettings"] as JObject
+                ?? patch["OtherSettingsDto"] as JObject
+                ?? patch["apicredentialConfig"] as JObject
+                ?? patch["ApicredentialConfig"] as JObject;
+            if (other != null)
+            {
+                if (other["databaseTablePrefix"] != null || other["DatabaseTablePrefix"] != null)
+                    target.OtherSettingsDto.DatabaseTablePrefix =
+                        (other["databaseTablePrefix"] ?? other["DatabaseTablePrefix"])?.ToString();
+                var envNested = other["dictEnvironmentVariable"] as JObject
+                    ?? other["DictEnvironmentVariable"] as JObject
+                    ?? other["environmentVariables"] as JObject;
+                if (envNested != null)
+                {
+                    target.OtherSettingsDto.DictEnvironmentVariable ??= new Dictionary<string, string>();
+                    MergeStringDict(target.OtherSettingsDto.DictEnvironmentVariable, envNested);
+                }
+                var cookies = other["dictCookieSetting"] as JObject ?? other["DictCookieSetting"] as JObject;
+                if (cookies != null)
+                {
+                    target.OtherSettingsDto.DictCookieSetting ??= new Dictionary<string, string>();
+                    MergeStringDict(target.OtherSettingsDto.DictCookieSetting, cookies);
+                }
             }
 
             target.IsModified = true;
@@ -355,9 +598,10 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
             set(t.ToString());
         }
 
-        private static bool TryGetInt(JObject patch, out int value, params string[] keys)
+        public static bool TryGetInt(JObject patch, out int value, params string[] keys)
         {
             value = 0;
+            if (patch == null || keys == null) return false;
             foreach (var k in keys)
             {
                 var t = patch[k];
