@@ -93,15 +93,16 @@ const TransactionDataTransferSettingEditor: React.FC<TransactionDataTransferSett
   }, [mappingCV, mappings]);
 
   // Keep Root → Sibling → Child order from buildFieldLookupsFromTransaction (do not A–Z by field name).
-  const srcFieldDataMap = useMemo(
-    () => (srcFields.length ? new DataMap(srcFields, 'Id', 'Display2') : null),
-    [srcFields],
-  );
+  // Leading blank row so DataMap DDL can clear (with isRequired={false}).
+  const srcFieldDataMap = useMemo(() => {
+    if (!srcFields.length) return null;
+    return new DataMap([{ Id: null, Display2: '' }, ...srcFields] as any[], 'Id', 'Display2');
+  }, [srcFields]);
 
-  const destFieldDataMap = useMemo(
-    () => (destFields.length ? new DataMap(destFields, 'Id', 'Display2') : null),
-    [destFields],
-  );
+  const destFieldDataMap = useMemo(() => {
+    if (!destFields.length) return null;
+    return new DataMap([{ Id: null, Display2: '' }, ...destFields] as any[], 'Id', 'Display2');
+  }, [destFields]);
 
   const loadTransactionFields = useCallback(async (txId: number | null | undefined) => {
     if (!txId) return [] as TransactionFieldLookup[];
@@ -545,7 +546,7 @@ const TransactionDataTransferSettingEditor: React.FC<TransactionDataTransferSett
                       headersVisibility="Column"
                     >
                       {isType3 ? (
-                        <FlexGridColumn binding="JsonPropertyPathName" header="API JSON Path" width={280} />
+                        <FlexGridColumn binding="JsonPropertyPathName" header="API JSON Path" width={280} isRequired={false} />
                       ) : (
                         <FlexGridColumn
                           binding="SourceFiledId"
@@ -553,19 +554,21 @@ const TransactionDataTransferSettingEditor: React.FC<TransactionDataTransferSett
                           width={320}
                           dataMap={srcFieldDataMap}
                           isReadOnly={isType1 || isType2}
+                          isRequired={false}
                         />
                       )}
                       {isType1 ? (
-                        <FlexGridColumn binding="Name" header="Message Token Name" width={220} />
+                        <FlexGridColumn binding="Name" header="Message Token Name" width={220} isRequired={false} />
                       ) : (
                         <FlexGridColumn
                           binding="TargetFiledId"
                           header="Target Field"
                           width={320}
                           dataMap={destFieldDataMap}
+                          isRequired={false}
                         />
                       )}
-                      {isType2 ? <FlexGridColumn binding="Name" header="Note" width={160} /> : null}
+                      {isType2 ? <FlexGridColumn binding="Name" header="Note" width={160} isRequired={false} /> : null}
                       <FlexGridColumn header="" binding="" width="*" isReadOnly={true} />
                     </FlexGrid>
                   </div>

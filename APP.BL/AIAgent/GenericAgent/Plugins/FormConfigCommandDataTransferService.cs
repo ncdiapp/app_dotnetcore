@@ -139,6 +139,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 warnings.AddRange(BuildCommandFormulaWarnings(cmd));
                 warnings.AddRange(BuildPrintFromMessageTemplateWarnings(cmd));
                 warnings.AddRange(BuildSendMessageDestinationWarnings(cmd));
+                warnings.AddRange(BuildExecuteDataTransferWarnings(cmd));
                 var navHard = BuildNavigateSearchHardWarnings(tx, cmd);
                 var navSoft = BuildNavigateSearchSoftWarnings(cmd);
                 warnings.AddRange(navHard);
@@ -308,7 +309,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 {
                     transactionId,
                     dataTransfer = SummarizeDataTransferDetail(dto),
-                    mappingHints = BuildDataTransferMappingHints(dto)
+                    mappingHints = BuildDataTransferMappingHints(dto),
+                    sourceFields = BuildTransactionFieldCatalog(dto.TransactionId),
+                    destinationFields = BuildTransactionFieldCatalog(dto.DestinationTransactionId),
+                    fieldCatalogNote =
+                        "For DM→DM mappings use sourceFields[].fieldId and destinationFields[].fieldId only. " +
+                        "Never invent ids or reuse source ids as targetFieldId."
                 });
             }
             catch (Exception ex) { return Fail(ex.Message); }
@@ -383,6 +389,15 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     dto.TransactionId = transactionId;
                 }
 
+                if ((tType == (int)EmAppTransactionDataTransferType.FromDataModelToDataModel
+                     || tType == (int)EmAppTransactionDataTransferType.FromApiToDataModel)
+                    && (!dto.DestinationTransactionId.HasValue || Convert.ToInt32(dto.DestinationTransactionId) <= 0))
+                {
+                    return Fail(
+                        "destinationTransactionId is required for transferType " + tType +
+                        " (To Data Model). Pass the Campaign/target transaction id — do not invent field ids.");
+                }
+
                 string mappingApplyNote = null;
                 if (mappingsJson != null)
                 {
@@ -421,6 +436,16 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
                 dto.IsModified = true;
 
+                var mappingErrors = ValidateDataTransferFieldMappings(dto);
+                if (mappingErrors.Count > 0)
+                {
+                    return Fail(
+                        string.Join(" ", mappingErrors) +
+                        " Never invent targetFieldId or copy sourceFieldId. " +
+                        "Resolve destination fields via get_data_transfer_detail.destinationFields " +
+                        "or find_fields(name, transactionId=destinationTransactionId).");
+                }
+
                 if (dryRun == true || confirmed != true)
                 {
                     return Ok(new
@@ -440,7 +465,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                             mappings = (dto.AppTransactionSaveAsMappingList ?? new ObservableSet<AppTransactionSaveAsMappingExDto>())
                                 .Select(SummarizeMapping).ToList()
                         },
-                        mappingHints = BuildDataTransferMappingHints(dto)
+                        mappingHints = BuildDataTransferMappingHints(dto),
+                        destinationFields = BuildTransactionFieldCatalog(dto.DestinationTransactionId),
+                        sourceFields = BuildTransactionFieldCatalog(dto.TransactionId ?? transactionId)
                     });
                 }
 
@@ -527,7 +554,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 rowShape = new
                 {
                     sourceFieldId = "Source transaction field id (DDL Id). Required for most FromDataModel* rows.",
-                    targetFieldId = "Destination transaction field id (DM↔DM / API response→field).",
+                    targetFieldId = "Destination transaction field id (DM↔DM / API response→field). MUST belong to destinationTransactionId — never invent or copy sourceFieldId.",
                     name = "API input param name (path/query/env) OR message-template token; also used for mapToInputParam.",
                     jsonPropertyPathName = "Absolute JSON path for API payload/response leaf (e.g. order.customerId).",
                     isBlankTargetField = "true = API response mapping (IsBlankTargetField); false = request/payload/DM mapping.",
@@ -536,7 +563,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 },
                 byType = new
                 {
-                    FromDataModelToDataModel = "Rows: sourceFieldId (from TX) + targetFieldId (destination TX). transferTypeId=2, destinationTransactionId required.",
+                    FromDataModelToDataModel = "Rows: sourceFieldId (from TX) + targetFieldId (destination TX). transferTypeId=2, destinationTransactionId required. Load destinationFields from get_data_transfer_detail / upsert preview before mapping.",
                     FromDataModelToMessageTemplate = "Rows: sourceFieldId + name (template token). transferTypeId=1. internalCode may identify template.",
                     FromApiToDataModel = "Rows: jsonPropertyPathName (API) + targetFieldId (DM). transferTypeId=3. internalCode = API operation id. destinationTransactionId = target DM.",
                     FromDataModelToApi = "Rows mix: (1) name=API input param + sourceFieldId; (2) jsonPropertyPathName + sourceFieldId for payload; (3) isBlankTargetField=true + jsonPropertyPathName + targetFieldId for response. transferTypeId=4. internalCode = API operation id. Call get_data_transfer_detail after create to see targetApiInputParameters / structure."
@@ -545,6 +572,127 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 hasPayloadStructure = dto?.TargetApiPayloadDataStructure != null,
                 hasResponseStructure = dto?.TargetApiResponseDataStructure != null
             };
+        }
+
+        /// <summary>
+        /// Compact field list for agent mapping (prevents inventing targetFieldId from wrong transactions).
+        /// </summary>
+        static List<object> BuildTransactionFieldCatalog(int? transactionId)
+        {
+            var list = new List<object>();
+            if (!transactionId.HasValue || transactionId.Value <= 0) return list;
+            try
+            {
+                AppCacheManagerBL.RefreshOnetHierarchyTranscation(transactionId.Value);
+                var tx = AppTransactionBL.GetHierarchyTranscationFromDatabase(transactionId.Value);
+                if (tx == null) return list;
+                var units = EntityMapWiring.FlattenUnits(
+                    tx.AppTransactionUnitList ?? Enumerable.Empty<AppTransactionUnitExDto>());
+                foreach (var u in units)
+                {
+                    foreach (var f in u.AppTransactionFieldList ?? Enumerable.Empty<AppTransactionFieldExDto>())
+                    {
+                        if (f?.Id == null) continue;
+                        list.Add(new
+                        {
+                            fieldId = Convert.ToInt32(f.Id),
+                            name = f.DisplayName ?? f.DataBaseFieldName,
+                            dbName = f.DataBaseFieldName,
+                            unitName = u.UnitDisplayName
+                        });
+                    }
+                }
+            }
+            catch { /* return empty catalog */ }
+            return list;
+        }
+
+        static HashSet<int> BuildTransactionFieldIdSetCore(int? transactionId)
+        {
+            var set = new HashSet<int>();
+            if (!transactionId.HasValue || transactionId.Value <= 0) return set;
+            try
+            {
+                var tx = AppTransactionBL.GetHierarchyTranscationFromDatabase(transactionId.Value);
+                if (tx?.DictAllTransactionField == null) return set;
+                foreach (var id in tx.DictAllTransactionField.Keys)
+                    set.Add(id);
+            }
+            catch { /* empty */ }
+            return set;
+        }
+
+        /// <summary>
+        /// Agents invent targetFieldId (copy source id or wrong TX ids) — reject before save/preview.
+        /// </summary>
+        static List<string> ValidateDataTransferFieldMappings(AppTransactionDataTransferSettingExDto dto)
+        {
+            var errors = new List<string>();
+            if (dto == null) return errors;
+            var maps = dto.AppTransactionSaveAsMappingList;
+            if (maps == null || maps.Count == 0) return errors;
+
+            var tType = dto.TransferTypeId ?? 0;
+            var srcIds = BuildTransactionFieldIdSetCore(dto.TransactionId);
+            var destIds = BuildTransactionFieldIdSetCore(dto.DestinationTransactionId);
+
+            var badSrc = new List<int>();
+            var badDest = new List<int>();
+            var copied = new List<string>();
+            var i = 0;
+            foreach (var m in maps)
+            {
+                i++;
+                if (m == null) continue;
+
+                if ((tType == (int)EmAppTransactionDataTransferType.FromDataModelToDataModel
+                     || tType == (int)EmAppTransactionDataTransferType.FromDataModelToMessageTemplate
+                     || tType == (int)EmAppTransactionDataTransferType.FromDataModelToApi)
+                    && m.SourceFiledId.HasValue && m.SourceFiledId.Value > 0
+                    && srcIds.Count > 0 && !srcIds.Contains(m.SourceFiledId.Value))
+                    badSrc.Add(m.SourceFiledId.Value);
+
+                var isResp = m.IsBlankTargetField == true;
+
+                if (tType == (int)EmAppTransactionDataTransferType.FromDataModelToDataModel
+                    && m.TargetFiledId.HasValue && m.TargetFiledId.Value > 0)
+                {
+                    if (destIds.Count > 0 && !destIds.Contains(m.TargetFiledId.Value))
+                        badDest.Add(m.TargetFiledId.Value);
+                    if (m.SourceFiledId.HasValue && m.SourceFiledId.Value == m.TargetFiledId.Value
+                        && dto.TransactionId.HasValue && dto.DestinationTransactionId.HasValue
+                        && Convert.ToInt32(dto.TransactionId) != Convert.ToInt32(dto.DestinationTransactionId))
+                        copied.Add($"row{i}:sourceFieldId=targetFieldId={m.SourceFiledId.Value}");
+                }
+                else if (tType == (int)EmAppTransactionDataTransferType.FromApiToDataModel
+                         && m.TargetFiledId.HasValue && m.TargetFiledId.Value > 0
+                         && destIds.Count > 0 && !destIds.Contains(m.TargetFiledId.Value))
+                {
+                    badDest.Add(m.TargetFiledId.Value);
+                }
+                else if (tType == (int)EmAppTransactionDataTransferType.FromDataModelToApi
+                         && isResp && m.TargetFiledId.HasValue && m.TargetFiledId.Value > 0
+                         && srcIds.Count > 0 && !srcIds.Contains(m.TargetFiledId.Value))
+                {
+                    badDest.Add(m.TargetFiledId.Value);
+                }
+            }
+
+            if (badSrc.Count > 0)
+                errors.Add(
+                    "Invalid sourceFieldId(s) not on source transaction " + dto.TransactionId + ": " +
+                    string.Join(",", badSrc.Distinct()) + ".");
+            if (badDest.Count > 0)
+                errors.Add(
+                    "Invalid targetFieldId(s) not on destination transaction " + dto.DestinationTransactionId + ": " +
+                    string.Join(",", badDest.Distinct()) +
+                    ". UI shows raw numbers when id is missing from To Data Model.");
+            if (copied.Count > 0)
+                errors.Add(
+                    "DM→DM cannot use the same id for source and target across different transactions (" +
+                    string.Join("; ", copied) + ").");
+
+            return errors;
         }
 
         public static string DeleteDataTransfer(int transactionId, int dataTransferId, bool? confirmed, bool? dryRun)
@@ -1278,6 +1426,22 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (jo["childCommandsSwitchConditionFieldId"] != null)
                 attr.ChildCommandsSwitchConditionFieldId = jo.Value<int?>("childCommandsSwitchConditionFieldId");
 
+            // Execute Data Transfer (43): UI binds command.DataTransferSettingId (column), NOT ParamId1 / ActionAttribute.
+            // Agents often pass optionsJson.dataTransferSettingId — must map explicitly (same bug class as SMS phone field).
+            var dtSettingId = FirstNullableInt(jo,
+                "dataTransferSettingId", "DataTransferSettingId",
+                "dataTransferId", "DataTransferId");
+            if (dtSettingId.HasValue)
+                cmd.DataTransferSettingId = dtSettingId.Value > 0 ? dtSettingId : null;
+
+            // UI: Need To Open Form (Execute Data Transfer / related) → ActionAttribute.IsNeedToOpenNewForm
+            var openNewForm = FirstNullableBool(jo,
+                "isNeedToOpenNewForm", "IsNeedToOpenNewForm",
+                "needToOpenForm", "NeedToOpenForm",
+                "openTargetForm", "OpenTargetForm");
+            if (openNewForm.HasValue)
+                attr.IsNeedToOpenNewForm = openNewForm.Value;
+
             // Print From Message Template (74) / Send Message types: top-level MessageTemplateId column
             // (NOT ActionAttribute). UI: PrintFromMessageTemplateSection / NotificationExpressionSection.
             var msgTplId = jo.Value<int?>("messageTemplateId")
@@ -1542,6 +1706,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             notificationSubject = c.NotificationSubject,
             notificationMessage = c.NotificationMessage,
             messageTemplateId = c.MessageTemplateId,
+            dataTransferSettingId = c.DataTransferSettingId,
             commandTransactionId = c.CommandTransactionId,
             actionAttribute = c.ActionAttribute
         };
@@ -1682,6 +1847,27 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
             }
 
+            return warnings;
+        }
+
+        /// <summary>
+        /// Execute Data Transfer (43): UI Data Transfer Setting = command.DataTransferSettingId column.
+        /// </summary>
+        static List<string> BuildExecuteDataTransferWarnings(AppProjectWorkFlowActionExDto cmd)
+        {
+            var warnings = new List<string>();
+            if (cmd?.ActionType != (int)EmAppTransactionCommandType.ExecuteFormDataTransfer
+                && cmd?.ActionType != 43)
+                return warnings;
+
+            if (cmd.DataTransferSettingId == null || Convert.ToInt32(cmd.DataTransferSettingId) <= 0)
+            {
+                warnings.Add(
+                    "Execute Data Transfer (43) requires optionsJson.dataTransferSettingId = an existing " +
+                    "Data Transfer setting Id (UI: Data Transfer Setting). " +
+                    "Flow: upsert_data_transfer → upsert_command(optionsJson:{dataTransferSettingId, isNeedToOpenNewForm?}). " +
+                    "Do NOT use ParamId1 for this — UI binds the DataTransferSettingId column.");
+            }
             return warnings;
         }
 

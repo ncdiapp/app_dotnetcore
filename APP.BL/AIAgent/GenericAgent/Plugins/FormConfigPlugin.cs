@@ -94,21 +94,47 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         [AgentTool("find_fields",
-            "Search the open form(s) for fields by display name or DB column name across ALL units. " +
-            "Returns sqlToken/messageToken/formulaToken/isPrimaryKey (same as Query Builder token buttons). " +
-            "Use this when the user asks which table/column a field is on — do NOT guess unitId. " +
-            "For 'current record' / root PK SQL WHERE clauses, prefer isPrimaryKey=true on unitKind=rootMaster (or rootPrimaryKeys from get_current_transaction_config). " +
-            "Template multi-transaction hosts: results grouped by transaction then unit. " +
-            "Single transaction: grouped by unit only. If multiple matches, list them all or ask_user.")]
+            "Search fields by display name or DB column across units. " +
+            "Default: open HostContext form(s). Optional transactionId searches that Data Model " +
+            "(required for Data Transfer target fields on destinationTransactionId — never invent targetFieldId). " +
+            "Returns sqlToken/messageToken/formulaToken/isPrimaryKey. Do NOT guess unitId/fieldId. " +
+            "For root PK SQL WHERE, prefer isPrimaryKey=true on unitKind=rootMaster.")]
         public string FindFields(
             AgentToolContext context,
             [AgentParam("Display name or DB column name to search (e.g. Country Of Origin, Country_Of_Origin).", isRequired: true)]
-            string name = null)
+            string name = null,
+            [AgentParam("Optional Data Model transactionId (e.g. Data Transfer destination). When set, search that TX instead of only HostContext.")]
+            int? transactionId = null)
         {
             if (string.IsNullOrWhiteSpace(name))
                 return Fail("name is required.");
-            if (!TryResolveHostTransactions(context, out var hosts, out var err))
-                return Fail(err);
+
+            List<HostTxnInfo> hosts;
+            if (transactionId.HasValue && transactionId.Value > 0)
+            {
+                string txName = null;
+                try
+                {
+                    var txOnly = AppTransactionBL.GetHierarchyTranscationFromDatabase(transactionId.Value);
+                    txName = txOnly?.TransactionName;
+                }
+                catch { /* ignore */ }
+                hosts = new List<HostTxnInfo>
+                {
+                    new HostTxnInfo
+                    {
+                        TransactionId = transactionId.Value,
+                        TransactionName = txName,
+                        FormRole = "explicit"
+                    }
+                };
+            }
+            else
+            {
+                if (!TryResolveHostTransactions(context, out var hostList, out var err))
+                    return Fail(err);
+                hosts = hostList;
+            }
 
             try
             {
@@ -328,6 +354,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             "actionType MUST be EmAppTransactionCommandType (NOT Link Target 1=Edit/2=Create). " +
             "Common: 50=Refresh, 49=Save, 42=Execute SQL, 43=Data Transfer, 59=Call API, " +
             "200=Composition, 54=Close Window, 60/61/62=Send Message, 57=Command Formula, 205=Validate Required. " +
+            "For actionType 43 (Execute Data Transfer): optionsJson.dataTransferSettingId = setting id from " +
+            "upsert_data_transfer / get_data_transfers (UI Data Transfer Setting column — NOT ParamId1). " +
+            "Optional isNeedToOpenNewForm:true (UI Need To Open Form). " +
             "For actionType 42: put SQL in notificationMessage; resolve live tokens via find_fields/get_unit_fields/get_current_transaction_config " +
             "(sqlToken like [TF_3499_OpportunityId]). UPDATE/DELETE must WHERE the current row — usually rootPrimaryKeys[].sqlToken. " +
             "Never invent [rootid] or omit WHERE. Message templates use messageToken. " +
@@ -393,7 +422,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         [AgentTool("get_data_transfer_detail",
-            "Detail + mappings + type-specific hints (API input params / response vs request split) for one Data Transfer.")]
+            "Detail + mappings + mappingHints + sourceFields/destinationFields catalogs (fieldId,name,dbName,unitName). " +
+            "For DM→DM use only destinationFields[].fieldId as targetFieldId — never invent ids.")]
         public string GetDataTransferDetail(
             AgentToolContext context,
             [AgentParam("DataTransfer setting id.", isRequired: true)] int? dataTransferId = null,
@@ -407,11 +437,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
         [AgentTool("upsert_data_transfer",
             "Create/update Internal Data Transfer. Types: 1=ToMessageTemplate, 2=DataModel→DataModel (default create), " +
-            "3=Api→DataModel, 4=DataModel→Api. mappingsJson is FULL REPLACE of AppTransactionSaveAsMapping " +
-            "([{sourceFieldId,targetFieldId,name,jsonPropertyPathName,isBlankTargetField,mappingUnitId},…]); " +
-            "pass [] to clear; omit to leave mappings unchanged. For type 4, internalCode=API operation id; " +
-            "use get_data_transfer_detail for targetApiInputParameters / mappingHints. " +
-            "Preview → ask_user → confirmed=true → request_form_reload.")]
+            "3=Api→DataModel, 4=DataModel→Api. Type 2/3 require destinationTransactionId. " +
+            "mappingsJson FULL REPLACE: [{sourceFieldId,targetFieldId,…}]; [] clears; omit=unchanged. " +
+            "targetFieldId MUST be a field on destinationTransactionId (get_data_transfer_detail.destinationFields " +
+            "or find_fields(name, transactionId=destination)). Never invent ids or copy sourceFieldId as target. " +
+            "Invalid ids are rejected. Type 4: internalCode=API op id. Preview→ask_user→confirmed=true→request_form_reload.")]
         public string UpsertDataTransfer(
             AgentToolContext context,
             [AgentParam("Existing id for update; omit to create.")] int? dataTransferId = null,
