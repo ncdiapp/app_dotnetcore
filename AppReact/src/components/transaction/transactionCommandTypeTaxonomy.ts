@@ -64,50 +64,41 @@ function leaf(actionTypeId: number): CommandTypeLeaf {
   } as CommandTypeLeaf;
 }
 
-/** Full Master–Detail taxonomy (before context / exclusion filters). */
+/**
+ * Full Master–Detail taxonomy (before context / exclusion filters).
+ * L1 order: Composition → Form & Data → Messaging → API → Import & File → UI.
+ * Form & Data / Import & File are flat L1→leaf (former L2 groups removed or promoted).
+ */
 export const COMMAND_TYPE_TAXONOMY_ROOT: CommandTypeCategory[] = [
   {
     kind: 'category',
-    id: 'ui',
-    label: 'UI Operations',
-    // Save As is a UI dialog/window action (Angular Display still "UI: Save As")
-    children: [leaf(54), leaf(53), leaf(48), leaf(74), leaf(47)],
+    id: 'composition',
+    label: 'Composition',
+    autoActionTypeId: 200,
+    children: [leaf(200)],
   },
   {
     kind: 'category',
     id: 'data',
-    /** Short name: server pipeline (save/refresh/SQL/import/…), not window chrome */
-    label: 'Backend Operations',
+    /** Save / refresh / validate / formulas / SQL / data transfer (not UI chrome, not import). */
+    label: 'Form & Data Operations',
     children: [
-      {
-        kind: 'group',
-        id: 'formPersistence',
-        label: 'Form Refresh, Validate & Save',
-        children: [leaf(49), leaf(50), leaf(205)],
-      },
-      {
-        kind: 'group',
-        id: 'formDataProcessing',
-        label: 'Form Data Processing',
-        children: [leaf(44), leaf(57), leaf(45), leaf(46), leaf(42), leaf(43)],
-      },
-      {
-        kind: 'group',
-        id: 'importFileGeneration',
-        label: 'Import & File Generation',
-        children: [
-          leaf(66),
-          leaf(67),
-          leaf(71),
-          leaf(72),
-          leaf(76),
-          leaf(77),
-          leaf(73),
-          leaf(81),
-          leaf(82),
-        ],
-      },
+      leaf(49),
+      leaf(50),
+      leaf(205),
+      leaf(44),
+      leaf(57),
+      leaf(45),
+      leaf(46),
+      leaf(42),
+      leaf(43),
     ],
+  },
+  {
+    kind: 'category',
+    id: 'messaging',
+    label: 'Messaging',
+    children: [leaf(60), leaf(61), leaf(62), leaf(63)],
   },
   {
     kind: 'category',
@@ -118,16 +109,26 @@ export const COMMAND_TYPE_TAXONOMY_ROOT: CommandTypeCategory[] = [
   },
   {
     kind: 'category',
-    id: 'messaging',
-    label: 'Messaging',
-    children: [leaf(60), leaf(61), leaf(62), leaf(63)],
+    id: 'importFile',
+    label: 'Import & File Processing',
+    children: [
+      leaf(66),
+      leaf(67),
+      leaf(71),
+      leaf(72),
+      leaf(76),
+      leaf(77),
+      leaf(73),
+      leaf(81),
+      leaf(82),
+    ],
   },
   {
     kind: 'category',
-    id: 'composition',
-    label: 'Composition',
-    autoActionTypeId: 200,
-    children: [leaf(200)],
+    id: 'ui',
+    label: 'UI Operations',
+    // Save As is a UI dialog/window action (Angular Display still "UI: Save As")
+    children: [leaf(54), leaf(53), leaf(48), leaf(74), leaf(47)],
   },
 ];
 

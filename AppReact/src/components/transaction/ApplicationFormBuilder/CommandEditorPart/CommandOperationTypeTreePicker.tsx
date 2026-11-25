@@ -23,6 +23,7 @@ function resolveActionTypeId(actionType: number | string | null | undefined): nu
   return Number.isFinite(n) ? n : null;
 }
 
+/** Single L2 flyout: L1 children, with groups expanded inline (L2 header + L3 leaves). */
 type CascadeColumn = {
   key: string;
   nodes: CommandTypeNode[];
@@ -55,6 +56,21 @@ function nodeLabel(n: CommandTypeNode): string {
   return n.label;
 }
 
+/** L2 flyout may use up to 90% of the viewport height. */
+function maxL2PanelHeight(): number {
+  return Math.floor(window.innerHeight * 0.9);
+}
+
+/** Preferred L2 panel height from content, capped at 90% of screen. */
+function estimateMergedPanelHeight(nodes: CommandTypeNode[]): number {
+  let rows = 0;
+  for (const n of nodes) {
+    if (n.kind === 'group') rows += 1 + (n.children?.length ?? 0);
+    else rows += 1;
+  }
+  return Math.min(maxL2PanelHeight(), Math.max(120, rows * 28 + 16));
+}
+
 export function CommandOperationTypeTreePicker(props: {
   actionType: number | null | undefined;
   taxonomyContext: CommandTypeTaxonomyContext;
@@ -72,7 +88,7 @@ export function CommandOperationTypeTreePicker(props: {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [rootStyle, setRootStyle] = useState<React.CSSProperties | null>(null);
-  /** Cascading columns beyond L1 (L2, L3…). Cleared when search is active. */
+  /** At most one L2 flyout (L2+L3 merged). Cleared when search is active. */
   const [cascade, setCascade] = useState<CascadeColumn[]>([]);
   const [hoveredPath, setHoveredPath] = useState<string[]>([]);
 
@@ -169,51 +185,85 @@ export function CommandOperationTypeTreePicker(props: {
   };
 
   /**
-   * Hover a row that has children → open/replace cascade column at `depth` (0 = first flyout).
-   * depth 0 replaces all cascade; depth 1 keeps first column and replaces from second, etc.
+   * Hover L1 branch → one flyout only.
+   * L2 groups + L3 leaves render in that same panel (no third cascade column).
    */
-  const onHoverBranch = (depth: number, pathKeys: string[], children: CommandTypeNode[], rowEl: HTMLElement) => {
+  const onHoverL1Branch = (pathKeys: string[], children: CommandTypeNode[], rowEl: HTMLElement) => {
     clearHoverTimer();
     hoverTimerRef.current = window.setTimeout(() => {
       const rect = rowEl.getBoundingClientRect();
-      const colWidth = 280;
+      const colWidth = 300;
       let left = rect.right + 2;
       if (left + colWidth > window.innerWidth - 8) {
         left = Math.max(8, rect.left - colWidth - 2);
       }
+      const approxH = estimateMergedPanelHeight(children);
       let top = rect.top;
-      const approxH = Math.min(320, Math.max(120, children.length * 28 + 16));
-      if (top + approxH > window.innerHeight - 8) {
-        top = Math.max(8, window.innerHeight - approxH - 8);
-      }
+      // Keep panel fully on-screen; prefer aligning to L1 row, else shift up.
+      const maxTop = Math.max(8, window.innerHeight - approxH - 8);
+      if (top > maxTop) top = maxTop;
+      if (top < 8) top = 8;
       setHoveredPath(pathKeys);
-      setCascade((prev) => {
-        const kept = prev.slice(0, depth);
-        return [
-          ...kept,
-          {
-            key: pathKeys.join('/'),
-            nodes: children,
-            anchorTop: top,
-            anchorLeft: left,
-          },
-        ];
-      });
+      setCascade([
+        {
+          key: pathKeys.join('/'),
+          nodes: children,
+          anchorTop: top,
+          anchorLeft: left,
+        },
+      ]);
     }, 60);
   };
 
-  const onLeaveToParent = () => {
-    // Do not clear immediately — allow moving into flyout
+  const renderLeafButton = (t: CommandTypeLeaf, indentClass = '') => {
+    const selected = actionTypeId === t.actionTypeId;
+    return (
+      <button
+        key={t.actionTypeId}
+        type="button"
+        onClick={() => selectLeaf(t.actionTypeId)}
+        className={`w-full text-left px-2 py-1.5 text-xs flex items-center gap-1 rounded-[2px] ${indentClass} ${
+          selected ? theme.button_default : `hover:bg-gray-50 ${theme.label}`
+        }`}
+      >
+        <span className="truncate flex-auto w-1">{leafLabel(t)}</span>
+      </button>
+    );
   };
 
-  const renderRow = (
-    n: CommandTypeNode,
-    index: number,
-    depth: number,
-    pathPrefix: string[]
-  ) => {
+  /**
+   * Second menu panel: L2 group headers + L3 leaves in one list (structure stays 3-layer).
+   * Direct L1→leaf children also render here as plain selectable rows.
+   */
+  const renderMergedL2L3Body = (nodes: CommandTypeNode[]) =>
+    nodes.map((n, i) => {
+      if (n.kind === 'type') {
+        return renderLeafButton(n);
+      }
+      if (n.kind === 'group') {
+        return (
+          <div key={nodeKey(n, i)} className="mt-0.5 mb-1">
+            <div className={`px-2 py-1 text-xs font-semibold ${theme.title}`}>{n.label}</div>
+            <div className="flex flex-col">{n.children.map((t) => renderLeafButton(t, 'pl-4'))}</div>
+          </div>
+        );
+      }
+      // Nested category under L1 (rare): treat like a group header + recurse once
+      if (n.kind === 'category') {
+        return (
+          <div key={nodeKey(n, i)} className="mt-0.5 mb-1">
+            <div className={`px-2 py-1 text-xs font-semibold ${theme.title}`}>{n.label}</div>
+            <div className="flex flex-col">{renderMergedL2L3Body(childNodes(n))}</div>
+          </div>
+        );
+      }
+      return null;
+    });
+
+  /** L1 rows only (root panel). */
+  const renderL1Row = (n: CommandTypeNode, index: number) => {
     const key = nodeKey(n, index);
-    const pathKeys = [...pathPrefix, key];
+    const pathKeys = [key];
     const pathStr = pathKeys.join('/');
     const isHover = hoveredPath.join('/').startsWith(pathStr) || hoveredPath.join('/') === pathStr;
     const branch = hasChildren(n);
@@ -230,7 +280,7 @@ export function CommandOperationTypeTreePicker(props: {
           type="button"
           onMouseEnter={() => {
             clearHoverTimer();
-            setCascade((prev) => prev.slice(0, depth));
+            setCascade([]);
             setHoveredPath(pathKeys);
           }}
           onClick={() => selectLeaf(typeId)}
@@ -251,7 +301,7 @@ export function CommandOperationTypeTreePicker(props: {
           type="button"
           onMouseEnter={() => {
             clearHoverTimer();
-            setCascade((prev) => prev.slice(0, depth));
+            setCascade([]);
             setHoveredPath(pathKeys);
           }}
           onClick={() => selectLeaf(n.actionTypeId)}
@@ -269,11 +319,10 @@ export function CommandOperationTypeTreePicker(props: {
         key={key}
         type="button"
         onMouseEnter={(e) => {
-          onHoverBranch(depth, pathKeys, childNodes(n), e.currentTarget);
+          onHoverL1Branch(pathKeys, childNodes(n), e.currentTarget);
         }}
         onClick={(e) => {
-          // Click also opens cascade (touch / keyboard friendly)
-          onHoverBranch(depth, pathKeys, childNodes(n), e.currentTarget);
+          onHoverL1Branch(pathKeys, childNodes(n), e.currentTarget);
         }}
         className={`w-full text-left px-2 py-1.5 text-xs flex items-center gap-1 rounded-[2px] ${
           isHover ? 'bg-gray-100' : `hover:bg-gray-50 ${theme.label}`
@@ -285,21 +334,14 @@ export function CommandOperationTypeTreePicker(props: {
     );
   };
 
-  const renderColumn = (
-    nodes: CommandTypeNode[],
-    depth: number,
-    pathPrefix: string[],
-    style: React.CSSProperties,
-    colKey: string
-  ) => (
+  const renderL2MergedColumn = (col: CascadeColumn, style: React.CSSProperties) => (
     <div
-      key={colKey}
+      key={col.key}
       style={style}
       className="flex flex-col border border-gray-300 rounded-[4px] overflow-hidden bg-white"
-      onMouseLeave={onLeaveToParent}
     >
-      <div className="overflow-y-auto p-1" style={{ maxHeight: 320 }}>
-        {nodes.map((n, i) => renderRow(n, i, depth, pathPrefix))}
+      <div className="overflow-y-auto p-1 h-1 flex-auto">
+        {renderMergedL2L3Body(col.nodes)}
       </div>
     </div>
   );
@@ -331,7 +373,8 @@ export function CommandOperationTypeTreePicker(props: {
             <i className="fa-solid fa-chevron-down text-[10px] opacity-70 mr-1" />
             {cat.label}
           </div>
-          <div className="ml-2">
+          {/* L2 leaves indented past L1 label for clear hierarchy while searching */}
+          <div className="ml-5 pl-1">
             {cat.children.map((child) => {
               if (child.kind === 'type') {
                 const selected = actionTypeId === child.actionTypeId;
@@ -350,12 +393,12 @@ export function CommandOperationTypeTreePicker(props: {
               }
               if (child.kind === 'group') {
                 return (
-                  <div key={child.id} className="ml-1 mt-0.5">
+                  <div key={child.id} className="mt-0.5">
                     <div className={`px-1 py-1 text-xs font-semibold ${theme.label}`}>
                       <i className="fa-solid fa-chevron-down text-[10px] opacity-70 mr-1" />
                       {child.label}
                     </div>
-                    <div className="ml-3 flex flex-col gap-0.5">
+                    <div className="ml-4 flex flex-col gap-0.5">
                       {child.children.map((t) => {
                         const selected = actionTypeId === t.actionTypeId;
                         return (
@@ -426,31 +469,28 @@ export function CommandOperationTypeTreePicker(props: {
                   ) : tree.length === 0 ? (
                     <div className={`px-2 py-2 text-xs opacity-70 ${theme.label}`}>No categories</div>
                   ) : (
-                    tree.map((n, i) => renderRow(n, i, 0, []))
+                    tree.map((n, i) => renderL1Row(n, i))
                   )}
                 </div>
               </div>
 
-              {/* Flyout columns only when not searching */}
+              {/* One flyout: L2 headers + L3 leaves merged (no third cascade column) */}
               {!isSearching &&
-                cascade.map((col, depth) =>
-                  renderColumn(
-                    col.nodes,
-                    depth + 1,
-                    col.key.split('/').filter(Boolean),
-                    {
-                      position: 'fixed',
-                      top: col.anchorTop,
-                      left: col.anchorLeft,
-                      width: 280,
-                      maxHeight: 320,
-                      zIndex: z + depth + 1,
-                      backgroundColor: '#fff',
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-                    },
-                    col.key
-                  )
-                )}
+                cascade.map((col) => {
+                  const panelMaxH = maxL2PanelHeight();
+                  const panelH = Math.min(panelMaxH, estimateMergedPanelHeight(col.nodes));
+                  return renderL2MergedColumn(col, {
+                    position: 'fixed',
+                    top: col.anchorTop,
+                    left: col.anchorLeft,
+                    width: 300,
+                    height: panelH,
+                    maxHeight: panelMaxH,
+                    zIndex: z + 1,
+                    backgroundColor: '#fff',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+                  });
+                })}
             </div>
           </>,
           document.body

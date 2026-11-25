@@ -3,10 +3,6 @@ import { useTheme } from '../../../../redux/hooks/useTheme';
 import type { CommandEditorHostContext } from '../commandEditorContext';
 import { isWorkflowAutomationEditorContext } from '../commandEditorContext';
 import type { CommandTypeTaxonomyContext } from '../../transactionCommandTypeTaxonomy';
-import {
-  formatCategoryPathBreadcrumb,
-  shouldShowCommandCategoryField,
-} from '../../transactionCommandTypeTaxonomy';
 import { CommandOperationTypeTreePicker } from './CommandOperationTypeTreePicker';
 
 export function CommandBasicOptions(props: {
@@ -33,8 +29,6 @@ export function CommandBasicOptions(props: {
   } = props;
   const hideFlowOrder = isWorkflowAutomationEditorContext(hostContext);
   const actionTypeNum = action?.ActionType != null ? Number(action.ActionType) : null;
-  const showCategory = shouldShowCommandCategoryField(actionTypeNum);
-  const categoryPath = showCategory ? formatCategoryPathBreadcrumb(actionTypeNum) : '';
 
   return (
     <>
@@ -79,21 +73,6 @@ export function CommandBasicOptions(props: {
           }}
         />
       </div>
-
-      {showCategory && categoryPath ? (
-        <div className="grid grid-cols-[14rem_1fr] items-center gap-2 py-1">
-          <label className={`text-xs ${theme.label}`}>Category</label>
-          <div
-            className={`w-72 h-7 px-2 text-xs border flex items-center overflow-hidden ${theme.inputBox}`}
-            title={categoryPath}
-            aria-readonly="true"
-          >
-            <span className={`whitespace-nowrap overflow-hidden text-ellipsis opacity-60 ${theme.label}`}>
-              {categoryPath}
-            </span>
-          </div>
-        </div>
-      ) : null}
 
       {!hideFlowOrder ? (
         <div className="grid grid-cols-[14rem_1fr] items-center gap-2 py-1">
