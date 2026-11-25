@@ -39,7 +39,8 @@ export interface TransactionDataTransferSettingEditorProps {
     destinationTransactionId: number | null;
   };
   onClose: () => void;
-  onSaved: () => void;
+  /** Called after successful save; editor stays open. Optional saved setting id (create → edit). */
+  onSaved: (savedSettingId?: number | null) => void;
 }
 
 const TransactionDataTransferSettingEditor: React.FC<TransactionDataTransferSettingEditorProps> = ({
@@ -331,6 +332,7 @@ const TransactionDataTransferSettingEditor: React.FC<TransactionDataTransferSett
         }
         await type4SaveRef.current(() => {
           showInfo('Data transfer setting saved.');
+          // Stay open — parent onSaved refreshes list only (Cancel closes).
           onSaved();
         });
         return;
@@ -354,19 +356,14 @@ const TransactionDataTransferSettingEditor: React.FC<TransactionDataTransferSett
       const savedObj = result?.Object;
       if (savedObj != null || result?.IsSuccessful) {
         showInfo('Data transfer setting saved.');
-        const newId = savedObj?.Id;
-        // Type 4 create: stay open and load Full Editor after Id exists
-        if (
-          typeId === EmAppTransactionDataTransferType.FromDataModelToApi &&
-          newId != null &&
-          effectiveSettingId == null
-        ) {
-          setEffectiveSettingId(Number(newId));
+        const newId = savedObj?.Id != null ? Number(savedObj.Id) : effectiveSettingId;
+        // Keep editor open after Save; reload in-place (create → continue editing with new Id).
+        if (newId != null && Number.isFinite(newId) && newId > 0) {
+          setEffectiveSettingId(newId);
           setType4Dirty(false);
-          await loadData(Number(newId));
-        } else {
-          onSaved();
+          await loadData(newId);
         }
+        onSaved(newId);
       }
     } catch (e: any) {
       showError(e?.message || 'Failed to save');
@@ -430,6 +427,15 @@ const TransactionDataTransferSettingEditor: React.FC<TransactionDataTransferSett
               title="Cancel"
             >
               <i className="fa-solid fa-xmark" aria-hidden /> Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void loadData(effectiveSettingId)}
+              disabled={loading || saving}
+              className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default} flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed`}
+              title="Refresh"
+            >
+              <i className="fa-solid fa-rotate" aria-hidden /> Refresh
             </button>
             <button
               type="button"

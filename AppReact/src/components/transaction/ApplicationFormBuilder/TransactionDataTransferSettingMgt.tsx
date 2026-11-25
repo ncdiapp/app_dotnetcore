@@ -206,8 +206,17 @@ const TransactionDataTransferSettingMgt: React.FC<TransactionDataTransferSetting
     setEditorState({ isOpen: false, mode: 'create' });
   }, []);
 
-  const handleEditorSaved = useCallback(() => {
-    setEditorState({ isOpen: false, mode: 'create' });
+  /** Refresh list only — keep editor open after Save (Cancel still closes). */
+  const handleEditorSaved = useCallback((savedSettingId?: number | null) => {
+    setEditorState((prev) => ({
+      ...prev,
+      isOpen: true,
+      mode: 'edit',
+      settingId:
+        savedSettingId != null && Number(savedSettingId) > 0
+          ? Number(savedSettingId)
+          : prev.settingId,
+    }));
     loadData();
   }, [loadData]);
 
