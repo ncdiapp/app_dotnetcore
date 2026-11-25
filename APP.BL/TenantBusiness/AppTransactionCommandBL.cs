@@ -3056,8 +3056,9 @@ namespace App.BL
 
 
                 object rootKeyValue = appformDataDto.RootPrimaryKeyValue;
+                string notificationBody = AppMessageBL.NormalizeAgentLiteralNewlines(action.NotificationMessage);
                 string subject = AppProjectWorkFlowDataFormSynchBL.ReplaceMessageTemplatePlaceHolderWithActualValue(rootKeyValue, allFreshRootValue, action.NotificationSubject, currentDatetime, currentUserName, workflowName, taskName, taskStatus, appTransactionExDto, null, action.MessageTemplateId, true);
-                string messageBody = AppProjectWorkFlowDataFormSynchBL.ReplaceMessageTemplatePlaceHolderWithActualValue(rootKeyValue, allFreshRootValue, action.NotificationMessage, currentDatetime, currentUserName, workflowName, taskName, taskStatus, appTransactionExDto, null, action.MessageTemplateId, false);
+                string messageBody = AppProjectWorkFlowDataFormSynchBL.ReplaceMessageTemplatePlaceHolderWithActualValue(rootKeyValue, allFreshRootValue, notificationBody, currentDatetime, currentUserName, workflowName, taskName, taskStatus, appTransactionExDto, null, action.MessageTemplateId, false);
 
 
 
@@ -3109,8 +3110,9 @@ namespace App.BL
 
 
                 object rootKeyValue = appformDataDto.RootPrimaryKeyValue;
+                string notificationBody = AppMessageBL.NormalizeAgentLiteralNewlines(action.NotificationMessage);
                 string subject = AppProjectWorkFlowDataFormSynchBL.ReplaceMessageTemplatePlaceHolderWithActualValue(rootKeyValue, allFreshRootValue, action.NotificationSubject, currentDatetime, currentUserName, workflowName, taskName, taskStatus, appTransactionExDto, null, action.MessageTemplateId, true);
-                string messageBody = AppProjectWorkFlowDataFormSynchBL.ReplaceMessageTemplatePlaceHolderWithActualValue(rootKeyValue, allFreshRootValue, action.NotificationMessage, currentDatetime, currentUserName, workflowName, taskName, taskStatus, appTransactionExDto, null, action.MessageTemplateId, false);
+                string messageBody = AppProjectWorkFlowDataFormSynchBL.ReplaceMessageTemplatePlaceHolderWithActualValue(rootKeyValue, allFreshRootValue, notificationBody, currentDatetime, currentUserName, workflowName, taskName, taskStatus, appTransactionExDto, null, action.MessageTemplateId, false);
 
 
 
@@ -3169,8 +3171,9 @@ namespace App.BL
                 }
 
                 object rootKeyValue = appformDataDto.RootPrimaryKeyValue;
+                string notificationBody = AppMessageBL.NormalizeAgentLiteralNewlines(action.NotificationMessage);
                 string subject = AppProjectWorkFlowDataFormSynchBL.ReplaceMessageTemplatePlaceHolderWithActualValue(rootKeyValue, allFreshRootValue, action.NotificationSubject, currentDatetime, currentUserName, workflowName, taskName, taskStatus, appTransactionExDto, childRowData, action.MessageTemplateId, true);
-                string messageBody = AppProjectWorkFlowDataFormSynchBL.ReplaceMessageTemplatePlaceHolderWithActualValue(rootKeyValue, allFreshRootValue, action.NotificationMessage, currentDatetime, currentUserName, workflowName, taskName, taskStatus, appTransactionExDto, childRowData, action.MessageTemplateId, false);
+                string messageBody = AppProjectWorkFlowDataFormSynchBL.ReplaceMessageTemplatePlaceHolderWithActualValue(rootKeyValue, allFreshRootValue, notificationBody, currentDatetime, currentUserName, workflowName, taskName, taskStatus, appTransactionExDto, childRowData, action.MessageTemplateId, false);
 
                 if (action.ActionAttribute.ChildActionList != null && action.ActionAttribute.ChildActionList.Count > 0)
                 {
@@ -3431,7 +3434,8 @@ namespace App.BL
 
                 object rootKeyValue = appformDataDto.RootPrimaryKeyValue;
                 string subject = "SMS Message";
-                string messageBody = AppProjectWorkFlowDataFormSynchBL.ReplaceMessageTemplatePlaceHolderWithActualValue(rootKeyValue, allFreshRootValue, action.NotificationMessage, currentDatetime, currentUserName, workflowName, taskName, taskStatus, appTransactionExDto, childRowData, action.MessageTemplateId, false);
+                string notificationBody = AppMessageBL.NormalizeAgentLiteralNewlines(action.NotificationMessage);
+                string messageBody = AppProjectWorkFlowDataFormSynchBL.ReplaceMessageTemplatePlaceHolderWithActualValue(rootKeyValue, allFreshRootValue, notificationBody, currentDatetime, currentUserName, workflowName, taskName, taskStatus, appTransactionExDto, childRowData, action.MessageTemplateId, false);
 
                 var messageDto = new AppMessageDto();
                 messageDto.ToList = phoneNumber;

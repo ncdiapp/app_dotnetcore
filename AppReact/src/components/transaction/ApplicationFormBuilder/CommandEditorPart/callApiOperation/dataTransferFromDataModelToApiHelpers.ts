@@ -13,6 +13,57 @@ export type ApiParamMappingRow = {
   SourceFiledId: number | null;
 };
 
+/**
+ * Unit order for field DDLs: Root → Root Sibling → Child (depth-first under each).
+ * Matches Angular Data Transfer mapping picker hierarchy.
+ */
+export function collectUnitsInHierarchyOrder(unitList: any[] | null | undefined): any[] {
+  const list = Array.isArray(unitList) ? unitList : [];
+  const roots: any[] = [];
+  const siblings: any[] = [];
+  const topOthers: any[] = [];
+
+  list.forEach((u) => {
+    if (!u) return;
+    if (u.IsMasterSiblingUnit) siblings.push(u);
+    else if (u.ParentTransactionUnitId == null || u.ParentTransactionUnitId === undefined) roots.push(u);
+    else topOthers.push(u);
+  });
+
+  const out: any[] = [];
+  const seen = new Set<number>();
+
+  const pushUnit = (u: any) => {
+    if (!u || u.Id == null) return;
+    const id = Number(u.Id);
+    if (seen.has(id)) return;
+    seen.add(id);
+    out.push(u);
+  };
+
+  const visitChildren = (u: any) => {
+    (u?.Children || []).forEach((c: any) => {
+      pushUnit(c);
+      visitChildren(c);
+    });
+  };
+
+  // 1) Root unit(s)
+  roots.forEach((u) => pushUnit(u));
+  // 2) Root sibling units
+  siblings.forEach((u) => pushUnit(u));
+  // 3) Children under root, then under siblings (depth-first)
+  roots.forEach((u) => visitChildren(u));
+  siblings.forEach((u) => visitChildren(u));
+  // Leftovers (flat lists that already include children at top level)
+  topOthers.forEach((u) => {
+    pushUnit(u);
+    visitChildren(u);
+  });
+
+  return out;
+}
+
 export function buildSourceTransactionFieldLookups(srcTransactionData: any): {
   allSrcTransactionFieldList: TransactionFieldLookup[];
   allSrcTransactionInputParamList: { Id: string; Display: string }[];
@@ -20,7 +71,8 @@ export function buildSourceTransactionFieldLookups(srcTransactionData: any): {
 } {
   const allSrcTransactionFieldList: TransactionFieldLookup[] = [];
   const allSrcTransactionInputParamList: { Id: string; Display: string }[] = [];
-  const unitList = srcTransactionData?.AppTransactionUnitList || [];
+  const rawUnitList = srcTransactionData?.AppTransactionUnitList || [];
+  const unitList = collectUnitsInHierarchyOrder(rawUnitList);
 
   unitList.forEach((unit: any) => {
     (unit.AppTransactionFieldList || []).forEach((field: any) => {

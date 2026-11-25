@@ -339,15 +339,23 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             "If get_linked_searches is empty: list_available_searches → upsert_linked_search first. " +
             "For actionType 200: create Private children first, then optionsJson.childActionList:[{commandId,sort},…]. " +
             "Empty ChildActionList = empty Child Operations grid; do not put SQL on the composition parent. " +
+            "For Send Message/SMS 60–63: destination field ids + notificationMessage body; 60–62 also need notificationSubject " +
+            "(or rich text: isUseRichTextMessageTemplate:true + messageTemplateId). " +
+            "Message body: use real line breaks in JSON (escaped as \\n in JSON → real newline after parse), or HTML <br />. " +
+            "Never put the two characters backslash-n as visible text — that shows as \\n in the sent email. " +
+            "63 SMS: smsMessageToPhoneNumberFiledId (or phoneNumberFieldId); body only (no subject UI). " +
+            "61 Email: emailAddressFieldId. 60 UserId: userIdFieldId. 62 Partner: partnerIdFieldId and/or toEmailAddress. " +
+            "Optional 60–62: isAttachAllFormFilesToMessage. Message Link childActionList is Partner (62) only — not 61. " +
             "optionsJson: linkToUI, isShowOnTopMenu, isAutoExecuteOnFormOpen, actionFlowOrder, childActionList, " +
-            "executionFormulaUI (57), linkedSearchId (53), actionAttribute{…}. Does NOT execute the command.")]
+            "executionFormulaUI (57), linkedSearchId (53), notificationSubject, smsMessageToPhoneNumberFiledId (63), " +
+            "isUseRichTextMessageTemplate, isAttachAllFormFilesToMessage, actionAttribute{…}. Does NOT execute the command.")]
         public string UpsertCommand(
             AgentToolContext context,
             [AgentParam("Existing command id for update; omit to create.")] int? commandId = null,
             [AgentParam("Command display name (required on create).")] string name = null,
             [AgentParam("EmAppTransactionCommandType int (required on create). Examples: Refresh=50, Save=49, ExecuteSQLStatement=42, CommandFormula=57. NEVER use 1 (that is Link Target Edit, not a command type).")] int? actionType = null,
             [AgentParam("SQL body for type 42, or message/notification body for messaging types. NOT for type 57 — use optionsJson.executionFormulaUI. Use [TF_{fieldId}_{dbName}] from sqlToken/messageToken — never [rootid].")] string notificationMessage = null,
-            [AgentParam("JSON options: linkToUI, childActionList, executionFormulaUI (required for 57), actionAttribute{…}.")] string optionsJson = null,
+            [AgentParam("JSON options: linkToUI, childActionList, executionFormulaUI (57), notificationSubject, destination field ids (60–63), isUseRichTextMessageTemplate, messageTemplateId, isAttachAllFormFilesToMessage, toEmailAddress (62), actionAttribute{…}.")] string optionsJson = null,
             [AgentParam("Must be true to persist.")] bool? confirmed = null,
             [AgentParam("If true, never persist.")] bool? dryRun = null,
             [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)

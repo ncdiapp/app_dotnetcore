@@ -74,8 +74,8 @@ export function DataTransferFromDataModelToApiEmbeddedEditor(props: {
   }, [allSrcFields, filterByUnitId]);
 
   const sourceFieldDataMap = useMemo(() => {
-    const sorted = [...filteredSrcFields].sort((a, b) => a.Display2.localeCompare(b.Display2));
-    return new DataMap(sorted, 'Id', 'Display2');
+    // Preserve Root → Sibling → Child order (do not A–Z by field name).
+    return new DataMap(filteredSrcFields, 'Id', 'Display2');
   }, [filteredSrcFields]);
 
   const srcApiParamDataMap = useMemo(() => {

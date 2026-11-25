@@ -626,6 +626,13 @@ namespace App.BL
 
             var allUsers = AppSecurityUserBL.DictAllUserDto.Values;
 
+            // Inbox / Form Message preview uses dangerouslySetInnerHTML — plain newlines collapse.
+            // Persist <br /> for non-template messages so preview matches outbound HTML email.
+            if (!(aAppMessageDto.MessgaeScopeType.HasValue
+                && aAppMessageDto.MessgaeScopeType.Value == (int)EmAppMessgaeScopeType.MessageTemplate))
+            {
+                aAppMessageDto.Message = FormatPlainTextForHtmlEmailBody(aAppMessageDto.Message);
+            }
 
             AppMessageConverter.CopyDtoToEntity(aAppMessageEntity, aAppMessageDto);
 
@@ -700,33 +707,6 @@ namespace App.BL
 
 
             return aOperationCallResult;
-        }
-
-
-        private static string BuildFormHtmlPrintLayout(int? transactionId, string transactionRId)
-        {
-            if (transactionId.HasValue && !string.IsNullOrWhiteSpace(transactionRId))
-            {
-                string domainAndApplcationpath = AppSystemSettingBL.GetStringValue(EmSystemSettings.ApplicationURL);
-
-                //string sessionId = ServerContext.Instance.CurrentSessionId as string;
-
-                //string compnayId = sessionId;
-
-                //string url = domainAndApplcationpath + "/FormMgt/FormSimplePrint?transactionId=" + transactionId.Value.ToString() + "&rootPrimaryKeyValue=" + transactionRId;
-
-                string url = domainAndApplcationpath + "/FormMgt/FormMasterDetailPrint?transactionId=" + transactionId.Value.ToString() + "&rootPrimaryKeyValue=" + transactionRId;
-
-
-                AppClientIdentity aAppClientIdentity = (AppClientIdentity)ServerContext.Instance.CurrnetClientIdentity;
-
-                string fromPrintLayoutString = DocumentHelper.GetHttpUrlContentString(url, aAppClientIdentity);
-
-                return fromPrintLayoutString;
-
-            }
-
-            return string.Empty;
         }
 
 
@@ -1544,6 +1524,35 @@ namespace App.BL
             return aValidationResult;
         }
 
+        /// <summary>
+        /// Agents often write the two characters '\'+'n' into message bodies; JSON may also leave them as literals.
+        /// Convert those to real newlines. Does not change SQL (42) unless caller scopes it.
+        /// </summary>
+        public static string NormalizeAgentLiteralNewlines(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+            // Order matters: \\r\\n before \\n
+            return text.Replace("\\r\\n", "\n").Replace("\\n", "\n").Replace("\\r", "\n");
+        }
+
+        /// <summary>
+        /// Outbound email is HTML (SmtpEamilSend IsBodyHtml). Plain newlines collapse; use &lt;br /&gt;.
+        /// If body already looks like HTML with breaks/blocks, only normalize literal \n.
+        /// </summary>
+        public static string FormatPlainTextForHtmlEmailBody(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+            text = NormalizeAgentLiteralNewlines(text);
+            bool looksHtml = text.IndexOf('<') >= 0
+                && (text.IndexOf("<br", StringComparison.OrdinalIgnoreCase) >= 0
+                    || text.IndexOf("<p", StringComparison.OrdinalIgnoreCase) >= 0
+                    || text.IndexOf("<div", StringComparison.OrdinalIgnoreCase) >= 0
+                    || text.IndexOf("<table", StringComparison.OrdinalIgnoreCase) >= 0);
+            if (looksHtml)
+                return text;
+            return text.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "<br />\n");
+        }
+
         public static bool SendEmailFromAppMessageDto(AppMessageDto aAppMessageDto)
         {
             if (aAppMessageDto != null && !string.IsNullOrEmpty(aAppMessageDto.Subject) && !string.IsNullOrEmpty(aAppMessageDto.ToList))
@@ -1558,6 +1567,8 @@ namespace App.BL
                 //    }
                 //}
 
+                aAppMessageDto.Message = FormatPlainTextForHtmlEmailBody(aAppMessageDto.Message);
+
                 string messageLinks = BuildMessageLinkString(aAppMessageDto);
 
                 if (!string.IsNullOrWhiteSpace(messageLinks))
@@ -1567,7 +1578,8 @@ namespace App.BL
 
                 if (aAppMessageDto.TransactionId.HasValue && !string.IsNullOrWhiteSpace(aAppMessageDto.TransactionRootValueId))
                 {
-                    aAppMessageDto.Message += "<br />" + BuildFormHtmlPrintLayout(aAppMessageDto.TransactionId, aAppMessageDto.TransactionRootValueId);
+                    // Do not embed form print HTML in outbound email (legacy MVC /FormMgt/FormMasterDetailPrint removed).
+                    // Message body = notification subject/body or rich-text Message Template only.
 
                     //List<int> printFileIdList = AppMasterDetailFormPrintBL.GetTransactionFormFileIDList(aAppMessageDto.TransactionId.Value, aAppMessageDto.TransactionRootValueId);
                     //if (printFileIdList != null)
@@ -1991,7 +2003,7 @@ namespace App.BL
                     {
                         var userDto = dictUserDto[userId];
 
-                        if (!string.IsNullOrEmpty(userDto.Email.Trim()))
+                        if (!string.IsNullOrWhiteSpace(userDto.Email))
                         {
                             messageDto.ToList += userDto.Email.Trim() + ";";
                         }

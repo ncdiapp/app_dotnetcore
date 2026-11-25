@@ -166,6 +166,26 @@ namespace App.BL
                 + "<style>.RichTextMessageBody img, .RichTextMessageBody iframe {max-width: 100% !important;}</style>";
 
 
+            if (string.IsNullOrWhiteSpace(toEmailAdress))
+                return false;
+
+            List<string> toEmailAddressList = toEmailAdress
+                .Split(new[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(e => e.Trim())
+                .Where(e => !string.IsNullOrEmpty(e))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (toEmailAddressList.Count == 0)
+                return false;
+
+            string fromAddress = AppTenantSettingBL.GetStringValue(EmTenantSettings.SystemEmailFromAddress);
+            if (string.IsNullOrWhiteSpace(fromAddress))
+            {
+                throw new InvalidOperationException(
+                    "Tenant setting SystemEmailFromAddress is empty. " +
+                    "Configure System Email From Address (and SMTP) before sending Message commands.");
+            }
+
             MailMessage smtpmessage = new MailMessage();
 
             //smtpmessage.Subject = subject;
@@ -179,22 +199,17 @@ namespace App.BL
                 try
                 {
                     string agentUsername = AppCacheManagerBL.GetOneAppSecurityUserEntityFromCache(agentUserId.Value).UserName;
-                    smtpmessage.From = new MailAddress(AppTenantSettingBL.GetStringValue(EmTenantSettings.SystemEmailFromAddress), agentUsername);
+                    smtpmessage.From = new MailAddress(fromAddress.Trim(), agentUsername);
                 }
                 catch (Exception ex)
                 {
-                    smtpmessage.From = new MailAddress(AppTenantSettingBL.GetStringValue(EmTenantSettings.SystemEmailFromAddress));
+                    smtpmessage.From = new MailAddress(fromAddress.Trim());
                 }
             }
             else
             {
-                smtpmessage.From = new MailAddress(AppTenantSettingBL.GetStringValue(EmTenantSettings.SystemEmailFromAddress));
+                smtpmessage.From = new MailAddress(fromAddress.Trim());
             }
-
-
-
-
-            List<string> toEmailAddressList = toEmailAdress.Split(';').ToList();
 
             //toEmailAddressList.Add("abaha001@hotmail.com");
 

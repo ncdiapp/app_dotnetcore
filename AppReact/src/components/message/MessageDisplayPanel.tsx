@@ -6,6 +6,17 @@ import { MESSAGE_TEMPLATE_SCOPE_TYPE } from './messageScopeConstants';
 
 export type MessageDisplayMode = 'management' | 'standalone';
 
+/** Inbox preview is HTML; plain \\n / newlines collapse unless converted to <br />. */
+function formatMessageHtmlForPreview(raw: string | null | undefined): string {
+  if (raw == null || raw === '') return '';
+  let text = String(raw)
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\n');
+  if (/<(br|p|div|table)\b/i.test(text)) return text;
+  return text.replace(/\r\n|\r|\n/g, '<br />\n');
+}
+
 type MessageDisplayPanelProps = {
   mode: MessageDisplayMode;
   currentMessage: any;
@@ -200,7 +211,7 @@ const MessageDisplayPanel: React.FC<MessageDisplayPanelProps> = ({
 
         <div
           className={`prose prose-sm max-w-none text-sm mt-2 ${theme.default}`}
-          dangerouslySetInnerHTML={{ __html: m.Message ?? m.message ?? '' }}
+          dangerouslySetInnerHTML={{ __html: formatMessageHtmlForPreview(m.Message ?? m.message) }}
         />
       </div>
 

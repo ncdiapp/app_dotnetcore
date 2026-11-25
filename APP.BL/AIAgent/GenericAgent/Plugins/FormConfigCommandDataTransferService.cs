@@ -128,6 +128,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     catch (Exception ex) { return Fail("optionsJson invalid: " + ex.Message); }
                 }
 
+                NormalizeSendMessageNotificationBodyNewlines(cmd);
+
                 var formulaRescueNotes = NormalizeCommandFormulaStorage(cmd);
 
                 var preview = new { action = isCreate ? "create" : "update", command = DetailCommand(cmd) };
@@ -136,6 +138,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 warnings.AddRange(formulaRescueNotes);
                 warnings.AddRange(BuildCommandFormulaWarnings(cmd));
                 warnings.AddRange(BuildPrintFromMessageTemplateWarnings(cmd));
+                warnings.AddRange(BuildSendMessageDestinationWarnings(cmd));
                 var navHard = BuildNavigateSearchHardWarnings(tx, cmd);
                 var navSoft = BuildNavigateSearchSoftWarnings(cmd);
                 warnings.AddRange(navHard);
@@ -1248,6 +1251,14 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             IList<AppProjectWorkFlowActionExDto> allCommands = null)
         {
             if (jo["notificationMessage"] != null) cmd.NotificationMessage = jo.Value<string>("notificationMessage");
+            // UI: Notification Subject (Send Message 60–62). Column on command row — NOT ActionAttribute.
+            if (TryGetPropertyIgnoreCase(jo, out var subjProp, "notificationSubject", "subject")
+                && subjProp?.Value != null)
+            {
+                cmd.NotificationSubject = subjProp.Value.Type == JTokenType.Null
+                    ? null
+                    : subjProp.Value.ToString();
+            }
             if (jo["name"] != null) cmd.Name = jo.Value<string>("name");
             if (jo["actionType"] != null) cmd.ActionType = jo.Value<int?>("actionType");
             if (jo["sql"] != null || jo["sqlStatement"] != null)
@@ -1295,8 +1306,54 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (formulaUi != null)
                 attr.ExecutionFormulaUI = formulaUi;
 
+            // Send SMS / Message destination fields (UI: Notification Message → Phone Number / Email / Partner Field).
+            // Agents often pass these at optionsJson top-level (not under actionAttribute); must map explicitly.
+            // DB/DTO typo is "FiledId" — also accept corrected "FieldId" spellings.
+            var smsPhoneFieldId = FirstNullableInt(jo,
+                "smsMessageToPhoneNumberFiledId", "SmsMessageToPhoneNumberFiledId",
+                "smsMessageToPhoneNumberFieldId", "SmsMessageToPhoneNumberFieldId",
+                "phoneNumberFieldId", "PhoneNumberFieldId");
+            if (smsPhoneFieldId.HasValue)
+                attr.SmsMessageToPhoneNumberFiledId = smsPhoneFieldId.Value > 0 ? smsPhoneFieldId : null;
+
+            var emailFieldId = FirstNullableInt(jo,
+                "notificationDestinationEmailAddressTransactionFiledId",
+                "NotificationDestinationEmailAddressTransactionFiledId",
+                "notificationDestinationEmailAddressTransactionFieldId",
+                "emailAddressFieldId", "EmailAddressFieldId");
+            if (emailFieldId.HasValue)
+                attr.NotificationDestinationEmailAddressTransactionFiledId = emailFieldId.Value > 0 ? emailFieldId : null;
+
+            var partnerOrUserFieldId = FirstNullableInt(jo,
+                "notificationDestinationPartnerIdTransactionFiledId",
+                "NotificationDestinationPartnerIdTransactionFiledId",
+                "notificationDestinationPartnerIdTransactionFieldId",
+                "partnerIdFieldId", "PartnerIdFieldId",
+                "userIdFieldId", "UserIdFieldId",
+                "messageToUserIdFieldId", "MessageToUserIdFieldId");
+            if (partnerOrUserFieldId.HasValue)
+                attr.NotificationDestinationPartnerIdTransactionFiledId = partnerOrUserFieldId.Value > 0 ? partnerOrUserFieldId : null;
+
+            var toEmail = FirstNonEmptyString(jo, "toEmailAddress", "ToEmailAddress");
+            if (toEmail != null)
+                attr.ToEmailAddress = toEmail;
+
+            // UI: Use Rich Text Message Template / Attach Form Files (Send Message 60–62).
+            var useRich = FirstNullableBool(jo,
+                "isUseRichTextMessageTemplate", "IsUseRichTextMessageTemplate",
+                "useRichTextMessageTemplate", "useRichText");
+            if (useRich.HasValue)
+                attr.IsUseRichTextMessageTemplate = useRich.Value;
+
+            var attachFiles = FirstNullableBool(jo,
+                "isAttachAllFormFilesToMessage", "IsAttachAllFormFilesToMessage",
+                "attachAllFormFilesToMessage", "attachFormFiles");
+            if (attachFiles.HasValue)
+                attr.IsAttachAllFormFilesToMessage = attachFiles.Value;
+
             // Explicit Composition / Message-link children (same shape as UI Child Operations grid).
             // Prefer top-level childActionList; also accept actionAttribute.childActionList via merge above.
+            // Message Link Operations UI/runtime: Partner (62) only — not Email (61).
             var childTok = jo["childActionList"] ?? jo["ChildActionList"];
             if (childTok is JArray childArr)
                 attr.ChildActionList = ParseChildActionList(childArr, allCommands);
@@ -1309,12 +1366,61 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (jo == null || keys == null) return null;
             foreach (var key in keys)
             {
-                var tok = jo[key];
-                if (tok == null || tok.Type == JTokenType.Null) continue;
+                if (!TryGetTokenIgnoreCase(jo, key, out var tok)) continue;
                 var s = tok.Type == JTokenType.String ? tok.Value<string>() : tok.ToString();
                 if (!string.IsNullOrWhiteSpace(s)) return s;
             }
             return null;
+        }
+
+        static int? FirstNullableInt(JObject jo, params string[] keys)
+        {
+            if (jo == null || keys == null) return null;
+            foreach (var key in keys)
+            {
+                if (!TryGetTokenIgnoreCase(jo, key, out var tok)) continue;
+                if (tok.Type == JTokenType.Integer) return tok.Value<int>();
+                if (int.TryParse(tok.ToString(), out var v)) return v;
+            }
+            return null;
+        }
+
+        static bool? FirstNullableBool(JObject jo, params string[] keys)
+        {
+            if (jo == null || keys == null) return null;
+            foreach (var key in keys)
+            {
+                if (!TryGetTokenIgnoreCase(jo, key, out var tok)) continue;
+                if (tok.Type == JTokenType.Boolean) return tok.Value<bool>();
+                if (bool.TryParse(tok.ToString(), out var v)) return v;
+                if (tok.Type == JTokenType.Integer) return tok.Value<int>() != 0;
+            }
+            return null;
+        }
+
+        static bool TryGetTokenIgnoreCase(JObject jo, string key, out JToken tok)
+        {
+            tok = null;
+            if (jo == null || string.IsNullOrEmpty(key)) return false;
+            if (jo.TryGetValue(key, StringComparison.OrdinalIgnoreCase, out tok)
+                && tok != null && tok.Type != JTokenType.Null)
+                return true;
+            tok = null;
+            return false;
+        }
+
+        static bool TryGetPropertyIgnoreCase(JObject jo, out JProperty prop, params string[] keys)
+        {
+            prop = null;
+            if (jo == null || keys == null) return false;
+            foreach (var key in keys)
+            {
+                if (string.IsNullOrEmpty(key)) continue;
+                prop = jo.Property(key, StringComparison.OrdinalIgnoreCase);
+                if (prop != null) return true;
+            }
+            prop = null;
+            return false;
         }
 
         /// <summary>
@@ -1433,6 +1539,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             name = c.Name,
             displayName = c.DisplayName,
             actionType = c.ActionType,
+            notificationSubject = c.NotificationSubject,
             notificationMessage = c.NotificationMessage,
             messageTemplateId = c.MessageTemplateId,
             commandTransactionId = c.CommandTransactionId,
@@ -1469,6 +1576,129 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
 
             return warnings;
+        }
+
+        /// <summary>
+        /// Send Message / SMS (60–63): destination fields + subject/body/rich-text/content checks.
+        /// </summary>
+        static List<string> BuildSendMessageDestinationWarnings(AppProjectWorkFlowActionExDto cmd)
+        {
+            var warnings = new List<string>();
+            if (cmd?.ActionType == null) return warnings;
+            var t = cmd.ActionType.Value;
+            var attr = cmd.ActionAttribute;
+            var isSms = t == (int)EmAppTransactionCommandType.SendSmsToTransFieldPhoneNumber;
+            var isEmail = t == (int)EmAppTransactionCommandType.SendMessageToTransFieldEmailAddress;
+            var isPartner = t == (int)EmAppTransactionCommandType.SendMessageToTransFieldPartnerId;
+            var isUserId = t == (int)EmAppTransactionCommandType.SendMessageToTransFieldUserId;
+            if (!isSms && !isEmail && !isPartner && !isUserId) return warnings;
+
+            if (isSms)
+            {
+                if (attr?.SmsMessageToPhoneNumberFiledId == null || attr.SmsMessageToPhoneNumberFiledId <= 0)
+                {
+                    warnings.Add(
+                        "Send SMS (63) requires optionsJson.smsMessageToPhoneNumberFiledId = form fieldId " +
+                        "(UI: Phone Number Field). Also accept smsMessageToPhoneNumberFieldId / phoneNumberFieldId. " +
+                        "Stored on ActionAttribute.SmsMessageToPhoneNumberFiledId (DTO spelling FiledId).");
+                }
+                if (string.IsNullOrWhiteSpace(cmd.NotificationMessage))
+                {
+                    warnings.Add(
+                        "Send SMS (63) requires notificationMessage (SMS body). Runtime will not send an empty body.");
+                }
+            }
+            else if (isEmail)
+            {
+                if (attr?.NotificationDestinationEmailAddressTransactionFiledId == null
+                    || attr.NotificationDestinationEmailAddressTransactionFiledId <= 0)
+                {
+                    warnings.Add(
+                        "Send Email (61) requires optionsJson.emailAddressFieldId " +
+                        "(or notificationDestinationEmailAddressTransactionFiledId) = form fieldId. UI: Email Address Field.");
+                }
+                if (attr?.ChildActionList != null && attr.ChildActionList.Count > 0)
+                {
+                    warnings.Add(
+                        "Message Link Operations (childActionList) apply only to Partner Send Message (62). " +
+                        "UI hides Message Link for Email (61); runtime does not append links on 61. Clear childActionList.");
+                }
+            }
+            else if (isPartner)
+            {
+                var hasPartnerField = attr?.NotificationDestinationPartnerIdTransactionFiledId != null
+                    && attr.NotificationDestinationPartnerIdTransactionFiledId > 0;
+                var hasToEmail = !string.IsNullOrWhiteSpace(attr?.ToEmailAddress);
+                if (!hasPartnerField && !hasToEmail)
+                {
+                    warnings.Add(
+                        "Send Message Partner (62) needs optionsJson.partnerIdFieldId " +
+                        "(notificationDestinationPartnerIdTransactionFiledId) OR toEmailAddress. " +
+                        "UI: Message To Partner Field / Additional To Email Address.");
+                }
+            }
+            else if (isUserId)
+            {
+                if (attr?.NotificationDestinationPartnerIdTransactionFiledId == null
+                    || attr.NotificationDestinationPartnerIdTransactionFiledId <= 0)
+                {
+                    warnings.Add(
+                        "Send Message UserId (60) requires optionsJson.userIdFieldId " +
+                        "(or notificationDestinationPartnerIdTransactionFiledId) = form fieldId. UI: Message To UserId Field.");
+                }
+            }
+
+            // Shared content for email-style types 60–62 (not SMS).
+            if (isEmail || isPartner || isUserId)
+            {
+                var useRich = attr != null && attr.IsUseRichTextMessageTemplate;
+                var hasTpl = cmd.MessageTemplateId != null && Convert.ToInt32(cmd.MessageTemplateId) > 0;
+                var hasSubject = !string.IsNullOrWhiteSpace(cmd.NotificationSubject);
+                var hasBody = !string.IsNullOrWhiteSpace(cmd.NotificationMessage);
+
+                if (hasTpl && !useRich)
+                {
+                    warnings.Add(
+                        "messageTemplateId is set but isUseRichTextMessageTemplate is false — runtime clears MessageTemplateId. " +
+                        "Set optionsJson.isUseRichTextMessageTemplate:true (UI: Use Rich Text Message Template).");
+                }
+                if (useRich && !hasTpl)
+                {
+                    warnings.Add(
+                        "isUseRichTextMessageTemplate is true but messageTemplateId is empty. " +
+                        "Flow: upsert_message_template → optionsJson.messageTemplateId + isUseRichTextMessageTemplate:true.");
+                }
+                if (!useRich && !hasTpl && (!hasSubject || !hasBody))
+                {
+                    warnings.Add(
+                        "Plain Send Message (60/61/62) needs optionsJson.notificationSubject AND notificationMessage " +
+                        "(or rich-text path: isUseRichTextMessageTemplate + messageTemplateId).");
+                }
+                if (hasBody && cmd.NotificationMessage.IndexOf("\\n", StringComparison.Ordinal) >= 0)
+                {
+                    warnings.Add(
+                        "notificationMessage contains literal \\n text. Emails are HTML — use real line breaks in the JSON string " +
+                        "(or <br />). upsert_command normalizes literal \\n → newline on save; prefer writing real newlines.");
+                }
+            }
+
+            return warnings;
+        }
+
+        /// <summary>
+        /// Send Message/SMS bodies: agents often store the characters '\'+'n' instead of a real newline.
+        /// Normalize on upsert so the Operation editor and runtime see actual line breaks.
+        /// </summary>
+        static void NormalizeSendMessageNotificationBodyNewlines(AppProjectWorkFlowActionExDto cmd)
+        {
+            if (cmd?.ActionType == null || string.IsNullOrEmpty(cmd.NotificationMessage)) return;
+            var t = cmd.ActionType.Value;
+            if (t != (int)EmAppTransactionCommandType.SendMessageToTransFieldUserId
+                && t != (int)EmAppTransactionCommandType.SendMessageToTransFieldEmailAddress
+                && t != (int)EmAppTransactionCommandType.SendMessageToTransFieldPartnerId
+                && t != (int)EmAppTransactionCommandType.SendSmsToTransFieldPhoneNumber)
+                return;
+            cmd.NotificationMessage = AppMessageBL.NormalizeAgentLiteralNewlines(cmd.NotificationMessage);
         }
 
         static AppTransactionExDto LoadTx(int transactionId, out string error)

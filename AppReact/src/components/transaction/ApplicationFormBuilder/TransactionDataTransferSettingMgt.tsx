@@ -53,7 +53,7 @@ const TransactionDataTransferSettingMgt: React.FC<TransactionDataTransferSetting
   onRefresh,
 }) => {
   const { theme } = useTheme();
-  const { showError, showValidationMessages, showInfo } = useErrorMessage();
+  const { showError, showValidationMessages, showInfo, showWarning } = useErrorMessage();
   const { showConfirm } = useAlertConfirm();
   const dispatch = useDispatch();
 
@@ -71,6 +71,16 @@ const TransactionDataTransferSettingMgt: React.FC<TransactionDataTransferSetting
   }>({ isOpen: false, mode: 'create' });
 
   const gridRef = useRef<any>(null);
+
+  /** Wijmo React FlexGrid ref → control; group headers have no setting Id. */
+  const getSelectedSettingRow = useCallback((): any | null => {
+    const flex = gridRef.current?.control ?? gridRef.current;
+    const rowIndex = flex?.selection?.row;
+    if (typeof rowIndex !== 'number' || rowIndex < 0) return null;
+    const item = flex?.rows?.[rowIndex]?.dataItem;
+    if (!item || item.Id == null) return null;
+    return item;
+  }, []);
 
   const transferTypeDataMap = React.useMemo(() => new DataMap(TRANSFER_TYPE_LIST, 'Id', 'Display'), []);
 
@@ -155,25 +165,25 @@ const TransactionDataTransferSettingMgt: React.FC<TransactionDataTransferSetting
   );
 
   const handleEdit = useCallback(() => {
-    const flex = gridRef.current;
-    if (!flex?.selection) return;
-    const rowIndex = flex.selection.row;
-    const row = flex.rows?.[rowIndex]?.dataItem;
-    if (!row) return;
+    const row = getSelectedSettingRow();
+    if (!row) {
+      showWarning('Please select a data transfer setting to edit');
+      return;
+    }
     setEditorState({
       isOpen: true,
       mode: 'edit',
       settingId: row.Id,
     });
     setCreateDropdownOpen(false);
-  }, []);
+  }, [getSelectedSettingRow, showWarning]);
 
   const handleDelete = useCallback(async () => {
-    const flex = gridRef.current;
-    if (!flex?.selection) return;
-    const rowIndex = flex.selection.row;
-    const row = flex.rows?.[rowIndex]?.dataItem;
-    if (!row?.Id) return;
+    const row = getSelectedSettingRow();
+    if (!row?.Id) {
+      showWarning('Please select a data transfer setting to delete');
+      return;
+    }
     const confirmed = await showConfirm('Confirm To Delete', { title: 'Delete Data Transfer Setting' });
     if (!confirmed) return;
     dispatch(setIsBusy());
@@ -190,7 +200,7 @@ const TransactionDataTransferSettingMgt: React.FC<TransactionDataTransferSetting
     } finally {
       dispatch(setIsNotBusy());
     }
-  }, [showConfirm, dispatch, showError, showValidationMessages, showInfo, loadData]);
+  }, [getSelectedSettingRow, showWarning, showConfirm, dispatch, showError, showValidationMessages, showInfo, loadData]);
 
   const handleEditorClose = useCallback(() => {
     setEditorState({ isOpen: false, mode: 'create' });

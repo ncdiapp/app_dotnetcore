@@ -149,8 +149,8 @@ export function CommandEditor(props: {
 
   const currentActionType = Number(currentEditAction?.ActionType);
   const showNotificationExpression = [60, 61, 62, 63].includes(currentActionType);
-  const showMessageLinkCommands =
-    currentActionType === 61 || currentActionType === 62;
+  // Runtime only appends Message Link HTML for Partner (62); hide for Email (61).
+  const showMessageLinkCommands = currentActionType === 62;
 
   // (ActionType 74: Print From Message Template) moved into CommandEditorPart/PrintFromMessageTemplateSection
 

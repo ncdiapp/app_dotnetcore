@@ -449,9 +449,15 @@ namespace App.BL
             List<int> deletDetailIDs = aSettingExDto.AppTransactionSaveAsMappingList.FindDeletedItemIds().Cast<int>().ToList();
 
 
+            // Full replace when type is FromDataModelToApi, or client sent only new rows (no Ids) — React Full Editor.
+            bool replaceAllMappings =
+                (aSettingExDto.TransferTypeId.HasValue
+                    && aSettingExDto.TransferTypeId.Value == (int)EmAppTransactionDataTransferType.FromDataModelToApi)
+                || !aSettingExDto.AppTransactionSaveAsMappingList.Any(o => !o.IsNew);
+
             foreach (var mappingEntity in orgSettingEntity.AppTransactionSaveAsMapping)
             {
-                if (aSettingExDto.TransferTypeId.HasValue && aSettingExDto.TransferTypeId.Value == (int)EmAppTransactionDataTransferType.FromDataModelToApi)
+                if (replaceAllMappings)
                 {
                     deletDetailIDs.Add(mappingEntity.MappingId);
                 }
