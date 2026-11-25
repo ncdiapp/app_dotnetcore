@@ -70,6 +70,8 @@ export function CommandEditor(props: {
   onOpenTypeHelp?: () => void;
   /** Extra classes on the editor shell (e.g. flush next to a resize splitter). */
   panelClassName?: string;
+  /** Bumped on Refresh / reload — child DDLs (e.g. Data Transfer Setting) re-fetch. */
+  listReloadToken?: number | string | null;
 }) {
   const { theme } = useTheme();
   const { showError } = useErrorMessage();
@@ -317,7 +319,12 @@ export function CommandEditor(props: {
                 collapsed={!!collapsedBySectionId['executeDataTransfer']}
                 onToggle={toggleSection}
               >
-                <ExecuteDataTransferSection action={currentEditAction} transactionId={transactionId} onMarkChange={onMarkChange} />
+                <ExecuteDataTransferSection
+                  action={currentEditAction}
+                  transactionId={transactionId}
+                  onMarkChange={onMarkChange}
+                  listReloadToken={props.listReloadToken}
+                />
               </CollapsibleSection>
             ) : null}
 

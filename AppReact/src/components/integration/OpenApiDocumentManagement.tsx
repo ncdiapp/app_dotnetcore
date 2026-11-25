@@ -14,6 +14,7 @@ import { addTab } from '../../redux/features/ui/navigation/tabnavSlice';
 import { adminSvc } from '../../webapi/adminsvc';
 import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
 import { openApiDocumentService, OpenApiDocument } from '../../webapi/openApiDocumentSvc';
+import ApiProviderConfiguratorLayout from '../aiskill/ApiProviderConfiguratorLayout';
 
 function publicUrl(root: string, code?: string, status?: string): string {
   if (status !== 'Published' || !code || !root) return '';
@@ -92,6 +93,12 @@ const OpenApiDocumentManagement: React.FC = () => {
   const actionButtonClass = `w-8 h-6 ${theme.button_default} rounded-[4px] text-xs`;
 
   return (
+    <ApiProviderConfiguratorLayout
+      scope="list:openapi"
+      banner="OpenAPI Documents"
+      hostContext={{ mode: 'api-configurator', surface: 'api-management' }}
+      onReload={loadData}
+    >
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
         <div className={`text-md font-semibold ${theme.title}`}>OpenAPI (Swagger) Documents Management</div>
@@ -169,6 +176,7 @@ const OpenApiDocumentManagement: React.FC = () => {
         </FlexGrid>
       </div>
     </div>
+    </ApiProviderConfiguratorLayout>
   );
 };
 

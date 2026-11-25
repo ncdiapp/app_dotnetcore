@@ -51,6 +51,12 @@ namespace APP.Components.Dto
         public string Scope { get; set; }
     }
 
+    public class ApiProviderConfigChatRequestDto
+    {
+        /// <summary>Host scope token, e.g. provider:1, api:4401, openapi:3, list:app-api.</summary>
+        public string Scope { get; set; }
+    }
+
     public class AppBuilderEditorChatRequestDto
     {
         public int SaasApplicationId { get; set; }

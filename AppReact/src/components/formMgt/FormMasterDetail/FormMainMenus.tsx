@@ -894,25 +894,68 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
           }
         }
 
-        // Composition command: open requested forms (subset of Angular executeServerCommandCallBack)
+        // Open forms (Angular executeServerCommandCallBack): root + composition children.
+        // Data Transfer + Need To Open Form (default, no save): open NEW destination with
+        // newFormLinkTargetPreLoadSettingObj → GetNewFormDataFromDataTransfer.
+        // If TransactionRId is set (Target task saved the row), open that saved record.
+        const openTransferredForm = (item: any) => {
+          if (!item?.IsNeedToOpenTransactionForm || !item?.TransactionId) return;
+          const routeBase = getReactPathForRouteCode('FormMasterDetail');
+          const cmdDto = (transactionDto?.CommandActionList || []).find(
+            (x: any) => Number(x?.Id) === Number(commandId),
+          );
+          const dtSettingId =
+            item?.CommandActionExDto?.DataTransferSettingId ??
+            item?.CommandActionExDto?.dataTransferSettingId ??
+            cmdDto?.DataTransferSettingId ??
+            cmdDto?.dataTransferSettingId ??
+            null;
+          const savedRid = item?.TransactionRId;
+          const hasSavedRid = savedRid != null && String(savedRid).trim() !== '';
+          const srcRid =
+            dataModel.currentFormData?.RootPrimaryKeyValue ??
+            serverFormData?.RootPrimaryKeyValue ??
+            controllerModel?.rootPrimaryKeyValue ??
+            null;
+
+          let tabPath: string;
+          if (!hasSavedRid && dtSettingId && srcRid != null && String(srcRid).trim() !== '') {
+            const param2 = JSON.stringify({
+              newFormLinkTargetPreLoadSettingObj: {
+                dataTransferSettingId: Number(dtSettingId),
+                srcTransactionRid: srcRid,
+              },
+            });
+            tabPath = buildRoutePathFromParamObj(routeBase, {
+              id: Number(item.TransactionId),
+              param1: null,
+              param2,
+            });
+          } else if (hasSavedRid) {
+            tabPath = buildRoutePathFromParamObj(routeBase, {
+              id: Number(item.TransactionId),
+              param1: String(savedRid),
+            });
+          } else {
+            tabPath = buildRoutePathFromParamObj(routeBase, {
+              id: Number(item.TransactionId),
+              param1: null,
+            });
+          }
+
+          dispatch(
+            addTab({
+              tabPath,
+              label: String(item.FormTitleDisplay || item.TransactionId || 'Open Form'),
+              isClosable: true,
+            })
+          );
+          navigate(tabPath);
+        };
+        openTransferredForm(obj);
         const childList = obj?.ChildCommandResultDtoList ?? null;
         if (Array.isArray(childList)) {
-          childList.forEach((child: any) => {
-            if (child?.IsNeedToOpenTransactionForm && child?.TransactionId && child?.TransactionRId) {
-              const routeBase = getReactPathForRouteCode('FormMasterDetail');
-              const tabPath = buildRoutePathFromParamObj(routeBase, {
-                id: Number(child.TransactionId),
-                param1: String(child.TransactionRId),
-              });
-              dispatch(
-                addTab({
-                  tabPath,
-                  label: String(child.FormTitleDisplay || child.TransactionRId || 'Open Form'),
-                  isClosable: true,
-                })
-              );
-            }
-          });
+          childList.forEach((child: any) => openTransferredForm(child));
         }
       } catch (e) {
         showError('Operation execution failed: ' + ((e as Error)?.message || String(e)));

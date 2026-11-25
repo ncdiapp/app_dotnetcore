@@ -2224,6 +2224,19 @@ namespace App.BL
                 if (tgtFormData != null)
                 {
                     DataTransferCommand_ExecuteTargetTransactionCommand(actionDto, toReturn, tgtFormData, rootCommandDto);
+
+                    // Angular: Need To Open Form opens the prepared NEW destination (unsaved) — not a DB insert.
+                    // If TargetTransactionCommand already saved and set TransactionRId, client opens that saved row.
+                    // Otherwise TransactionRId stays null and client opens create + GetNewFormDataFromDataTransfer.
+                    if (actionDto.ActionAttribute != null && actionDto.ActionAttribute.IsNeedToOpenNewForm == true)
+                    {
+                        toReturn.Object.IsNeedToOpenTransactionForm = true;
+                        toReturn.Object.CommandActionExDto = actionDto;
+                        if (toReturn.Object.TransactionId == null)
+                            toReturn.Object.TransactionId = tgtFormData.TransactionId;
+                        if (toReturn.Object.FormTitleDisplay == null)
+                            toReturn.Object.FormTitleDisplay = tgtFormData.FormTitleDisplay;
+                    }
                 }
                 else
                 {
@@ -2283,6 +2296,16 @@ namespace App.BL
                     if (tgtFormData != null)
                     {
                         DataTransferCommand_ExecuteTargetTransactionCommand(actionDto, toReturn, tgtFormData, null);
+
+                        if (actionDto.ActionAttribute != null && actionDto.ActionAttribute.IsNeedToOpenNewForm == true)
+                        {
+                            toReturn.Object.IsNeedToOpenTransactionForm = true;
+                            toReturn.Object.CommandActionExDto = actionDto;
+                            if (toReturn.Object.TransactionId == null)
+                                toReturn.Object.TransactionId = tgtFormData.TransactionId;
+                            if (toReturn.Object.FormTitleDisplay == null)
+                                toReturn.Object.FormTitleDisplay = tgtFormData.FormTitleDisplay;
+                        }
                     }
                     else
                     {
@@ -4473,10 +4496,7 @@ namespace App.BL
             }
             else if (actionDto.ActionType.Value == (int)EmAppTransactionCommandType.ExecuteFormDataTransfer)
             {
-                //DataModelDateTimeConverterBL.ConvertMasterDetailFromClientToUtc(toReturn.Object.FormData);
                 AppTransactionCommandBL.ExecuteCommand_DataTransfer(actionDto, toReturn, rootCommandDto);
-
-                //DataModelDateTimeConverterBL.ConvertMasterDetailFromUtcToClient(toReturn.Object.FormData);
             }
             else if (actionDto.ActionType.Value == (int)EmAppTransactionCommandType.DataModelAllFormulaCalculation)
             {

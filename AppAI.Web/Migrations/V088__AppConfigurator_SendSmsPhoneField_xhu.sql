@@ -12,7 +12,7 @@ WHERE LibraryKey = N'platform-form-config' AND ToolName = N'upsert_command';
 GO
 
 UPDATE dbo.AppAgentLibraryTool SET ToolDescription =
-N'Create/update Internal Data Transfer. Types: 1=ToMessageTemplate, 2=DM→DM (needs destinationTransactionId), 3=Api→DM, 4=DM→Api. mappingsJson FULL REPLACE [{sourceFieldId,targetFieldId,…}]; [] clears. targetFieldId MUST exist on destinationTransactionId — use get_data_transfer_detail.destinationFields or find_fields(name, transactionId=destination). Never invent ids or copy sourceFieldId as target (rejected). Preview→ask_user→confirmed=true→request_form_reload. Runtime run = command actionType 43 + dataTransferSettingId.'
+N'Create/update Internal Data Transfer. Types: 1=ToMessageTemplate, 2=DM→DM (needs destinationTransactionId), 3=Api→DM, 4=DM→Api. mappingsJson FULL REPLACE [{sourceFieldId,targetFieldId,…}]; [] clears. targetFieldId MUST exist on destinationTransactionId — use destinationFields / find_fields(transactionId=destination). Never invent ids. Creating a setting alone does NOT set Operation→Data Transfer Setting (stays None). Pass bindToCommandId=<Execute Data Transfer command id> (+ optional isNeedToOpenNewForm) to bind in the same save, OR upsert_command(optionsJson.dataTransferSettingId). Do not claim success until get_command_detail shows dataTransferSettingId. Preview→ask_user→confirmed=true→request_form_reload.'
 WHERE LibraryKey = N'platform-form-config' AND ToolName = N'upsert_data_transfer';
 GO
 

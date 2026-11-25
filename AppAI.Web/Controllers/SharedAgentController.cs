@@ -632,6 +632,43 @@ public class SharedAgentController : SecureBaseController
     }
 
     [HttpPost]
+    public OperationCallResult<string> EnsureApiProviderConfigChat([FromBody] ApiProviderConfigChatRequestDto request)
+    {
+        var result = new OperationCallResult<string>();
+        if (request == null || string.IsNullOrWhiteSpace(request.Scope))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(SharedAgentController), "EnsureApiProviderConfigChat",
+                ValidationItemType.Error, "Scope is required."));
+            return result;
+        }
+        if (ServerContext.Instance.CurrnetClientIdentity is not AppClientIdentity ai || ai.UserId == null)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(SharedAgentController), "EnsureApiProviderConfigChat",
+                ValidationItemType.Error, "Sign in is required."));
+            return result;
+        }
+        var userId = Convert.ToInt32(ai.UserId);
+        var key = ApiProviderConfigConstants.MakeChatKey(userId, request.Scope);
+        if (!SessionBL.EnsureApiProviderConfigSession(key, userId, ai.DataSourceId))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(SharedAgentController), "EnsureApiProviderConfigChat",
+                ValidationItemType.Error, "API Provider Configurator Agent is not installed for this tenant."));
+            return result;
+        }
+        var companyId = ai.CurrentWorkingCompanyId != null ? Convert.ToInt32(ai.CurrentWorkingCompanyId) : 0;
+        if (companyId > 0)
+        {
+            try { GenericAgentFileBL.EnsureRoot(key, companyId, ApiProviderConfigConstants.SkillKey); }
+            catch { /* seed sync must not block opening Configurator */ }
+        }
+        result.Object = key;
+        return result;
+    }
+
+    [HttpPost]
     public OperationCallResult<string> EnsureAppBuilderEditorChat([FromBody] AppBuilderEditorChatRequestDto request)
     {
         var result = new OperationCallResult<string>();

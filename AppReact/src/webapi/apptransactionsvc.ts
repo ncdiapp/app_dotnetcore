@@ -723,6 +723,19 @@ class AppTransactionService {
     return response.json();
   }
 
+  /** Angular: new destination form with Data Transfer field mapping applied (unsaved). */
+  async getNewFormDataFromDataTransfer(
+    dataTransferSettingId: number | string,
+    srcTransactionRid: string | number,
+  ): Promise<any> {
+    const response = await fetch(
+      `${endpoints.BASE_URL}/webapi/AppTransaction/GetNewFormDataFromDataTransfer?dataTransferSettingId=${dataTransferSettingId}&srcTransactionRid=${encodeURIComponent(String(srcTransactionRid))}`,
+      { headers: getHeaders() },
+    );
+    if (!response.ok) throw new Error('Failed to get new form data from data transfer');
+    return response.json();
+  }
+
   /** Angular appTransactionSvc.RetrieveTransactionDefaultNavigationDto */
   async retrieveTransactionDefaultNavigationDto(
     transactionId: number | string,
@@ -1032,11 +1045,23 @@ class AppTransactionService {
   }
 
   // Internal Data Transfer Data Model
-  async retrieveAllAppTransactionDataTransferSettingExDto(transactionId: string | number, destinationTransactionId?: string | number | null): Promise<any> {
-    const dest = destinationTransactionId !== undefined && destinationTransactionId !== null ? `&destinationTransactionId=${destinationTransactionId}` : `&destinationTransactionId=${transactionId}`;
-    const response = await fetch(`${endpoints.BASE_URL}/webapi/AppTransaction/RetrieveAllAppTransactionDataTransferSettingExDto?transactionId=${transactionId}${dest}`, {
-      headers: getHeaders()
-    });
+  /**
+   * List Internal Data Transfer settings.
+   * - One arg / omit destination: source TransactionId only (Command Execute Data Transfer DDL).
+   * - Pass destinationTransactionId explicitly (Mgt page often passes same id) for source OR destination filter.
+   */
+  async retrieveAllAppTransactionDataTransferSettingExDto(
+    transactionId: string | number,
+    destinationTransactionId?: string | number | null,
+  ): Promise<any> {
+    let qs = `transactionId=${encodeURIComponent(String(transactionId))}`;
+    if (destinationTransactionId !== undefined && destinationTransactionId !== null && String(destinationTransactionId) !== '') {
+      qs += `&destinationTransactionId=${encodeURIComponent(String(destinationTransactionId))}`;
+    }
+    const response = await fetch(
+      `${endpoints.BASE_URL}/webapi/AppTransaction/RetrieveAllAppTransactionDataTransferSettingExDto?${qs}`,
+      { headers: getHeaders() },
+    );
     if (!response.ok) throw new Error('Failed to retrieve data transfer settings');
     return response.json();
   }

@@ -95,6 +95,17 @@ IF COL_LENGTH('dbo.AppGenericAgentSession', 'AgentID') IS NOT NULL
                 nameof(EnsureSearchViewConfigSession));
         }
 
+        /// <summary>Insert empty API Provider Config chat if missing. Key api-config:{userId}:…</summary>
+        public static bool EnsureApiProviderConfigSession(string sessionKey, int userId, int dataSourceId)
+        {
+            if (!ApiProviderConfigConstants.IsApiProviderConfigChatKeyForUser(sessionKey, userId) || dataSourceId <= 0)
+                return false;
+            return EnsureHostedSkillSession(
+                sessionKey, userId, dataSourceId,
+                ApiProviderConfigConstants.SkillKey,
+                nameof(EnsureApiProviderConfigSession));
+        }
+
         /// <summary>Insert empty App Builder Editor chat if missing. Key app-builder-editor:{userId}:…</summary>
         public static bool EnsureAppBuilderEditorSession(string sessionKey, int userId, int dataSourceId)
         {

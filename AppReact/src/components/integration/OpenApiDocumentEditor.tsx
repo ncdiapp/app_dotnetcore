@@ -12,6 +12,7 @@ import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
 import { openApiDocumentService, OpenApiDocumentMember, OpenApiSelectableApi } from '../../webapi/openApiDocumentSvc';
 import OpenApiAddApisDialog from './OpenApiAddApisDialog';
 import { openOpenApiSwaggerView } from './openApiSwaggerView';
+import ApiProviderConfiguratorLayout from '../aiskill/ApiProviderConfiguratorLayout';
 
 function repairCode(code: string, name: string): string {
   const source = code.trim() ? code : name;
@@ -232,6 +233,17 @@ const OpenApiDocumentEditor: React.FC = () => {
   const showPublishedUrl = savedStatus === 'Published';
 
   return (
+    <ApiProviderConfiguratorLayout
+      scope={id > 0 ? `openapi:${id}` : 'openapi:new'}
+      banner={name || 'OpenAPI Document'}
+      hostContext={{
+        openApiDocId: id > 0 ? id : undefined,
+        openApiDocName: name || undefined,
+      }}
+      onReload={async () => {
+        if (id > 0) await load(id);
+      }}
+    >
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
         <div className="flex items-center gap-4">
@@ -343,6 +355,7 @@ const OpenApiDocumentEditor: React.FC = () => {
         <OpenApiAddApisDialog apis={selectable} onApply={applyApis} onClose={() => setPickerOpen(false)} />
       )}
     </div>
+    </ApiProviderConfiguratorLayout>
   );
 };
 

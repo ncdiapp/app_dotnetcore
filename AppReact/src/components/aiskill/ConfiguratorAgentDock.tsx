@@ -134,24 +134,18 @@ const ConfiguratorAgentDock: React.FC<ConfiguratorAgentDockProps> = (props) => {
     const reload = onReloadRef.current;
     if (!reload) return;
     void (async () => {
-      // If still dirty after agent write, force Save or Discard before reload.
+      // Dirty editor after agent DB write: never "Save then Reload" — that pushes stale local
+      // values (e.g. Data Transfer Setting = None) and wipes the agent's persisted bind.
       if (isDirty) {
-        const saveFirst = await showConfirm(
-          'The Configurator updated the database, but this editor still has unsaved local changes. Save local first (may overwrite agent changes on conflict), or Discard local and reload from database?',
+        const discardAndReload = await showConfirm(
+          'Configurator updated the database, but this editor still has unsaved local changes. Discard local edits and reload from the database (recommended). Saving local first can overwrite agent changes (e.g. clear Data Transfer Setting).',
           {
-            title: 'Unsaved local changes',
-            confirmLabel: 'Save then Reload',
-            cancelLabel: 'Discard & Reload',
+            title: 'Reload from database',
+            confirmLabel: 'Discard & Reload',
+            cancelLabel: 'Keep local (Later)',
           },
         );
-        if (saveFirst) {
-          const ok = await onSaveDirtyRef.current?.();
-          if (!ok) {
-            showAlert?.('Save failed. Local changes were kept; reload cancelled.');
-            return;
-          }
-        }
-        await reload();
+        if (discardAndReload) await reload();
         return;
       }
 

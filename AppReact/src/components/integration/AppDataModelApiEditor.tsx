@@ -30,6 +30,7 @@ import { IsUsedByMcpCheckbox, McpUsageFields, TransactionApiConfigForm } from '.
 import { ApiEditorWorkArea } from './ApiEditorWorkArea';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
 import { JsonCodeEditor } from '../common/JsonCodeEditor';
+import ApiProviderConfiguratorLayout from '../aiskill/ApiProviderConfiguratorLayout';
 
 const API_BUILDER_INTEGRATION_SETTING_ID = 1;
 const HTTP_METHODS = ['Get', 'Post'];
@@ -386,6 +387,23 @@ const AppDataModelApiEditor: React.FC = () => {
   const apiUrl = buildApiUrl(op);
 
   return (
+    <ApiProviderConfiguratorLayout
+      scope={settingParameterId != null ? `api:${settingParameterId}` : 'api:new-datamodel'}
+      banner={op?.ActionCode || 'App Data Model API'}
+      hostContext={{
+        providerId: API_BUILDER_INTEGRATION_SETTING_ID,
+        providerKind: 'App',
+        providerName: 'App API Provider',
+        settingParameterId: settingParameterId ?? undefined,
+        actionCode: op?.ActionCode ?? undefined,
+      }}
+      onReload={loadData}
+      isDirty={isModified}
+      onSaveDirty={async () => {
+        await handleSave();
+        return true;
+      }}
+    >
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
         <div className={`text-md font-semibold ${theme.title}`}>API: {op.ActionCode ?? '—'}</div>
@@ -540,6 +558,7 @@ const AppDataModelApiEditor: React.FC = () => {
      
       </div>
     </div>
+    </ApiProviderConfiguratorLayout>
   );
 };
 

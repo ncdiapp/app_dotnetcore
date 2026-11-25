@@ -7,14 +7,33 @@ export const EmAppTransactionCommandTypeExecuteFormDataTransfer = 43;
 
 type DataTransferSettingItem = { Id: number; Description: string; DestinationTransactionId?: number | null };
 
+function normalizeSettingList(raw: any): DataTransferSettingItem[] {
+  const arr = Array.isArray(raw) ? raw : raw?.ObjectList ?? raw?.objectList ?? [];
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((s: any) => ({
+      Id: Number(s?.Id ?? s?.id),
+      Description: String(s?.Description ?? s?.description ?? ''),
+      DestinationTransactionId:
+        s?.DestinationTransactionId != null
+          ? Number(s.DestinationTransactionId)
+          : s?.destinationTransactionId != null
+            ? Number(s.destinationTransactionId)
+            : null,
+    }))
+    .filter((s) => Number.isFinite(s.Id) && s.Id > 0);
+}
+
 export function ExecuteDataTransferSection(props: {
   action: any;
   transactionId: number | null;
   onMarkChange: () => void;
+  /** Bumped on Command editor Refresh / reload so DDL re-fetches after Agent creates a setting. */
+  listReloadToken?: number | string | null;
 }) {
   const { theme } = useTheme();
   const { showError } = useErrorMessage();
-  const { action, transactionId, onMarkChange } = props;
+  const { action, transactionId, onMarkChange, listReloadToken = 0 } = props;
 
   const [dataTransferSettingList, setDataTransferSettingList] = useState<DataTransferSettingItem[]>([]);
   const [targetCommandList, setTargetCommandList] = useState<any[]>([]);
@@ -32,9 +51,9 @@ export function ExecuteDataTransferSection(props: {
   const loadDataTransferSettings = useCallback(async () => {
     if (!transactionId) return;
     try {
-      const list = await appTransactionService.retrieveAllAppTransactionDataTransferSettingExDto(transactionId);
-      const arr = Array.isArray(list) ? list : list?.ObjectList ?? [];
-      setDataTransferSettingList(arr);
+      // Source-only list (do not default destination=source — that was for Mgt OR-filter).
+      const list = await appTransactionService.retrieveAllAppTransactionDataTransferSettingExDto(transactionId, null);
+      setDataTransferSettingList(normalizeSettingList(list));
     } catch (e: any) {
       showError(e?.message || 'Failed to load data transfer settings');
     }
@@ -65,7 +84,14 @@ export function ExecuteDataTransferSection(props: {
   useEffect(() => {
     if (!show) return;
     void loadDataTransferSettings();
-  }, [loadDataTransferSettings, show]);
+  }, [loadDataTransferSettings, show, listReloadToken]);
+
+  // Agent may bind a brand-new setting id before this DDL has re-fetched — reload once.
+  useEffect(() => {
+    if (!show || dataTransferSettingId == null) return;
+    if (selectedSetting) return;
+    void loadDataTransferSettings();
+  }, [show, dataTransferSettingId, selectedSetting, loadDataTransferSettings]);
 
   useEffect(() => {
     if (!show) return;
@@ -93,9 +119,14 @@ export function ExecuteDataTransferSection(props: {
           }}
         >
           <option value="">(None)</option>
+          {dataTransferSettingId != null && !selectedSetting ? (
+            <option value={String(dataTransferSettingId)}>
+              {`Id ${dataTransferSettingId} (loading…)`}
+            </option>
+          ) : null}
           {dataTransferSettingList.map((s) => (
             <option key={s.Id} value={String(s.Id)}>
-              {s.Description}
+              {s.Description || `Id ${s.Id}`}
             </option>
           ))}
         </select>
@@ -139,4 +170,3 @@ export function ExecuteDataTransferSection(props: {
     </>
   );
 }
-

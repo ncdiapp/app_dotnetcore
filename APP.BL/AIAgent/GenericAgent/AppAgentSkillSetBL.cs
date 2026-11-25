@@ -68,6 +68,7 @@ namespace App.BL.AIAgent.GenericAgent
 
                 if (dto.AgentId <= 0 && (FormAgentConstants.IsFormAgentKey(code)
                     || FormConfigConstants.IsFormConfigKey(code)
+                    || ApiProviderConfigConstants.IsApiProviderConfigKey(code)
                     || AgentInstructionDesignerConstants.IsDesignerKey(code)))
                     return false;
 
@@ -83,10 +84,13 @@ namespace App.BL.AIAgent.GenericAgent
                             dto.AgentCode = code = FormAgentConstants.SkillKey;
                         else if (FormConfigConstants.IsFormConfigKey(existingCode))
                             dto.AgentCode = code = FormConfigConstants.SkillKey;
+                        else if (ApiProviderConfigConstants.IsApiProviderConfigKey(existingCode))
+                            dto.AgentCode = code = ApiProviderConfigConstants.SkillKey;
                         else if (AgentInstructionDesignerConstants.IsDesignerKey(existingCode))
                             dto.AgentCode = code = AgentInstructionDesignerConstants.SkillKey;
                         else if (FormAgentConstants.IsFormAgentKey(code)
                             || FormConfigConstants.IsFormConfigKey(code)
+                            || ApiProviderConfigConstants.IsApiProviderConfigKey(code)
                             || AgentInstructionDesignerConstants.IsDesignerKey(code))
                             return false;
                     }
@@ -175,6 +179,11 @@ ELSE IF @AgentID <= 0
             if (FormConfigConstants.IsFormConfigKey(skillKey))
             {
                 error = "App Configurator Agent is built in and cannot be deleted.";
+                return false;
+            }
+            if (ApiProviderConfigConstants.IsApiProviderConfigKey(skillKey))
+            {
+                error = "API Provider Configurator Agent is built in and cannot be deleted.";
                 return false;
             }
             if (AgentInstructionDesignerConstants.IsDesignerKey(skillKey))

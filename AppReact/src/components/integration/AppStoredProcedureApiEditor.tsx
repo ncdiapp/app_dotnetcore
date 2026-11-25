@@ -24,6 +24,7 @@ import { ApiEditorWorkArea } from './ApiEditorWorkArea';
 import { JsonCodeEditor } from '../common/JsonCodeEditor';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
 import type { RootState } from '../../redux/store';
+import ApiProviderConfiguratorLayout from '../aiskill/ApiProviderConfiguratorLayout';
 
 const API_BUILDER_INTEGRATION_SETTING_ID = 1;
 
@@ -528,6 +529,23 @@ const AppStoredProcedureApiEditor: React.FC = () => {
   const apiUrl = toApiDisplayUrl(serverRoot, buildApiUrl(op));
 
   return (
+    <ApiProviderConfiguratorLayout
+      scope={settingParameterId != null ? `api:${settingParameterId}` : 'api:new-sp'}
+      banner={op?.ActionCode || 'Stored Procedure API'}
+      hostContext={{
+        providerId: API_BUILDER_INTEGRATION_SETTING_ID,
+        providerKind: 'App',
+        providerName: 'App API Provider',
+        settingParameterId: settingParameterId ?? undefined,
+        actionCode: op?.ActionCode ?? undefined,
+      }}
+      onReload={loadData}
+      isDirty={isModified}
+      onSaveDirty={async () => {
+        await handleSave();
+        return true;
+      }}
+    >
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
         <div className={`text-md font-semibold ${theme.title}`}>Stored Procedure API: {op.ActionCode ?? '—'}</div>
@@ -847,6 +865,7 @@ const AppStoredProcedureApiEditor: React.FC = () => {
         />
       </div>
     </div>
+    </ApiProviderConfiguratorLayout>
   );
 };
 

@@ -24,6 +24,7 @@ import { IsUsedByMcpCheckbox, McpUsageFields, SearchApiConfigForm, type ApiConfi
 import { ApiEditorWorkArea } from './ApiEditorWorkArea';
 import { buildRoutePathFromParamObj } from '../../helper/navigationHelper';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
+import ApiProviderConfiguratorLayout from '../aiskill/ApiProviderConfiguratorLayout';
 
 const API_BUILDER_INTEGRATION_SETTING_ID = 1;
 const HTTP_METHODS = ['Get', 'Post'];
@@ -436,6 +437,23 @@ const AppDataPresentationApiEditor: React.FC = () => {
   if (!op) return null;
 
   return (
+    <ApiProviderConfiguratorLayout
+      scope={settingParameterId != null ? `api:${settingParameterId}` : 'api:new-search'}
+      banner={op?.ActionCode || 'App Report & View API'}
+      hostContext={{
+        providerId: API_BUILDER_INTEGRATION_SETTING_ID,
+        providerKind: 'App',
+        providerName: 'App API Provider',
+        settingParameterId: settingParameterId ?? undefined,
+        actionCode: op?.ActionCode ?? undefined,
+      }}
+      onReload={loadData}
+      isDirty={isModified}
+      onSaveDirty={async () => {
+        await handleSave();
+        return true;
+      }}
+    >
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
         <div className={`text-md font-semibold ${theme.title}`}>Data Search API: {op.ActionCode ?? '—'}</div>
@@ -587,6 +605,7 @@ const AppDataPresentationApiEditor: React.FC = () => {
         
       </div>
     </div>
+    </ApiProviderConfiguratorLayout>
   );
 };
 

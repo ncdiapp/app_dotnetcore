@@ -75,7 +75,9 @@ namespace App.BL
 
                     List<AppTransactionSaveAsMappingExDto> mappingList = dataTransferDto.DataTransferMappingList.ToList();
 
-
+                    // Agent / incomplete UI saves often omit MappingUnitId. TransferOneUnitOneRow keys by
+                    // source unit id — without it every row is skipped and the target form stays blank.
+                    EnsureMappingUnitIdsFromSourceFields(mappingList, srcTransactionExDto);
 
                     Dictionary<int, List<AppTransactionSaveAsMappingExDto>> dictUnitSaveAsMapping = mappingList.Where(o => o.MappingUnitId.HasValue)
                         .GroupBy(o => o.MappingUnitId).ToDictionary(o => o.Key.Value, o => o.ToList());
@@ -229,6 +231,7 @@ namespace App.BL
                         var tgtRootMasterUnit = tgtTransactionExDto.RootMasterUnit;
 
                         List<AppTransactionSaveAsMappingExDto> mappingList = dataTransferDto.DataTransferMappingList.ToList();
+                        EnsureMappingUnitIdsFromSourceFields(mappingList, srcTransactionExDto);
 
 
                         AppMasterDetailDto tgtFormBlankData = AppMasterDetailFormDataLoadBL.GetNewFormData(dataTransferDto.DestinationTransactionId.Value);
@@ -277,7 +280,8 @@ namespace App.BL
 
 
 
-                        Dictionary<int, List<AppTransactionSaveAsMappingExDto>> dictUnitSaveAsMapping = mappingList.GroupBy(o => o.MappingUnitId).ToDictionary(o => o.Key.Value, o => o.ToList());
+                        Dictionary<int, List<AppTransactionSaveAsMappingExDto>> dictUnitSaveAsMapping = mappingList.Where(o => o.MappingUnitId.HasValue)
+                            .GroupBy(o => o.MappingUnitId).ToDictionary(o => o.Key.Value, o => o.ToList());
 
                         Dictionary<int, int?> dictSrcUnitIdAndTgtUnitId = new Dictionary<int, int?>();
 
@@ -1373,6 +1377,25 @@ namespace App.BL
             }
 
             return tgtPkValue;
+        }
+
+        /// <summary>
+        /// Fill MappingUnitId from SourceFiledId ownership when missing (required by TransferOneUnitOneRow).
+        /// </summary>
+        static void EnsureMappingUnitIdsFromSourceFields(
+            List<AppTransactionSaveAsMappingExDto> mappingList,
+            AppTransactionExDto srcTransactionExDto)
+        {
+            if (mappingList == null || srcTransactionExDto?.DictAllTransactionField == null) return;
+            foreach (var m in mappingList)
+            {
+                if (m == null || m.MappingUnitId.HasValue) continue;
+                if (!m.SourceFiledId.HasValue) continue;
+                if (!srcTransactionExDto.DictAllTransactionField.TryGetValue(m.SourceFiledId.Value, out var srcField)
+                    || srcField?.TransactionUnitId == null)
+                    continue;
+                m.MappingUnitId = srcField.TransactionUnitId;
+            }
         }
 
         private static void TransferOneUnitOneRow(Dictionary<int, List<AppTransactionSaveAsMappingExDto>> dictUnitMapping,

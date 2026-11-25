@@ -447,6 +447,20 @@ class GenericAgentService {
         return String(data?.Object || '');
     }
 
+    async EnsureApiProviderConfigChat(scope: string): Promise<string> {
+        const res = await fetch(`${BASE}/EnsureApiProviderConfigChat`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ Scope: scope }),
+        });
+        const data = await res.json();
+        if (!res.ok || data?.ValidationResult?.IsValid === false) {
+            const msg = data?.ValidationResult?.Items?.[0]?.Message || 'Could not open API Provider Configurator chat.';
+            throw new Error(msg);
+        }
+        return String(data?.Object || '');
+    }
+
     async EnsureAppBuilderEditorChat(saasApplicationId: number, scope: string): Promise<string> {
         const res = await fetch(`${BASE}/EnsureAppBuilderEditorChat`, {
             method: 'POST',

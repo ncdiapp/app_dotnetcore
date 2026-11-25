@@ -519,18 +519,32 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
             const isNew = rootPrimaryKeyValue == null || String(rootPrimaryKeyValue).trim() === '';
 
             // Angular parity:
-            // - New form uses GetNewFormData (properly initialized DTO: TransactionId/defaults/etc.)
+            // - New form uses GetNewFormData (or GetNewFormDataFromDataTransfer when Link Target / DT command preloads)
             // - Edit form uses GetFormData (including IsAutoExecuteOnFormOpen / open command)
             const transGroupId = controllerModel.param2Obj?.transGroupId ?? controllerModel.param2Obj?.LinkTargetTransactionGroupId;
-            const rawFormData = isNew
-                ? await appTransactionService.getNewFormData(transactionId, controllerModel.isConfigTestRun === true)
-                : await appTransactionService.getFormData({
+            const dtPreload = param2Obj?.newFormLinkTargetPreLoadSettingObj;
+            const dtSettingId = dtPreload?.dataTransferSettingId ?? dtPreload?.DataTransferSettingId;
+            const dtSrcRid = dtPreload?.srcTransactionRid ?? dtPreload?.SrcTransactionRid;
+            let rawFormData: any;
+            if (
+                isNew &&
+                dtSettingId != null &&
+                String(dtSettingId).trim() !== '' &&
+                dtSrcRid != null &&
+                String(dtSrcRid).trim() !== ''
+            ) {
+                rawFormData = await appTransactionService.getNewFormDataFromDataTransfer(dtSettingId, dtSrcRid);
+            } else if (isNew) {
+                rawFormData = await appTransactionService.getNewFormData(transactionId, controllerModel.isConfigTestRun === true);
+            } else {
+                rawFormData = await appTransactionService.getFormData({
                     transactionId: transactionId,
                     rootPrimaryKeyValue: rootPrimaryKeyValue != null ? String(rootPrimaryKeyValue) : undefined,
                     transGroupId: transGroupId != null && transGroupId !== '' ? Number(transGroupId) : undefined,
                     autoExecuteCommandId: controllerModel.opennedFormAutoExecuteCommandId || null,
                     selectDataRow: param2Obj?.selecedDataRow ?? null,
                 });
+            }
 
             if (isStale()) return;
 

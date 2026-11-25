@@ -179,6 +179,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 if (cmd.ActionType == (int)EmAppTransactionCommandType.CommnadFormulaCalculation)
                     PrepareCommandFormulaForPersist(tx, cmd);
 
+                var expectedDataTransferSettingId = cmd.DataTransferSettingId;
+
                 AppProjectWorkFlowActionExDto saved;
                 if (isCreate)
                 {
@@ -211,13 +213,28 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
                 AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId);
 
+                // Type 43: Agent previously reported saved while UI Data Transfer Setting stayed (None).
+                if (cmd.ActionType == (int)EmAppTransactionCommandType.ExecuteFormDataTransfer
+                    && expectedDataTransferSettingId != null
+                    && Convert.ToInt32(expectedDataTransferSettingId) > 0)
+                {
+                    var persisted = saved?.DataTransferSettingId;
+                    if (persisted == null || Convert.ToInt32(persisted) != Convert.ToInt32(expectedDataTransferSettingId))
+                    {
+                        return Fail(
+                            "Command save did not persist DataTransferSettingId " +
+                            $"(expected {expectedDataTransferSettingId}, got {persisted?.ToString() ?? "null"}). " +
+                            "UI Data Transfer Setting would stay (None). Retry upsert_command or upsert_data_transfer(bindToCommandId=…).");
+                    }
+                }
+
                 return Ok(new
                 {
                     saved = true,
                     commandId = saved?.Id ?? commandId,
                     command = saved != null ? DetailCommand(saved) : null,
                     changed = new[] { new { type = "command", id = saved?.Id ?? commandId } },
-                    NextStep = "Call request_form_reload."
+                    NextStep = "Call request_form_reload. For actionType 43 confirm get_command_detail.dataTransferSettingId before claiming success."
                 });
             }
             catch (Exception ex) { return Fail(ex.Message); }
@@ -329,7 +346,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             int? destinationTransactionId,
             string mappingsJson,
             bool? confirmed,
-            bool? dryRun)
+            bool? dryRun,
+            int? bindToCommandId = null,
+            bool? isNeedToOpenNewForm = null)
         {
             try
             {
@@ -427,6 +446,21 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                                 ?? m.Value<bool?>("isResponseMapping")
                                 ?? false
                         };
+                        // Runtime transfer keys by MappingUnitId (= source field's unit). Infer when Agent omits it.
+                        if (!mapDto.MappingUnitId.HasValue && mapDto.SourceFiledId.HasValue)
+                        {
+                            try
+                            {
+                                var srcTxId = dto.TransactionId ?? transactionId;
+                                AppCacheManagerBL.RefreshOnetHierarchyTranscation(srcTxId);
+                                var srcTx = AppTransactionBL.GetHierarchyTranscationFromDatabase(srcTxId);
+                                if (srcTx?.DictAllTransactionField != null
+                                    && srcTx.DictAllTransactionField.TryGetValue(mapDto.SourceFiledId.Value, out var sf)
+                                    && sf?.TransactionUnitId != null)
+                                    mapDto.MappingUnitId = sf.TransactionUnitId;
+                            }
+                            catch { /* leave null; runtime EnsureMappingUnitIdsFromSourceFields also fills */ }
+                        }
                         dto.AppTransactionSaveAsMappingList.Add(mapDto);
                     }
                     mappingApplyNote = maps.Count == 0
@@ -462,12 +496,17 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                             destinationTransactionId = dto.DestinationTransactionId,
                             mappingCount = dto.AppTransactionSaveAsMappingList?.Count ?? 0,
                             mappingApplyNote,
+                            bindToCommandId,
+                            isNeedToOpenNewForm,
                             mappings = (dto.AppTransactionSaveAsMappingList ?? new ObservableSet<AppTransactionSaveAsMappingExDto>())
                                 .Select(SummarizeMapping).ToList()
                         },
                         mappingHints = BuildDataTransferMappingHints(dto),
                         destinationFields = BuildTransactionFieldCatalog(dto.DestinationTransactionId),
-                        sourceFields = BuildTransactionFieldCatalog(dto.TransactionId ?? transactionId)
+                        sourceFields = BuildTransactionFieldCatalog(dto.TransactionId ?? transactionId),
+                        NextStep = bindToCommandId.HasValue && bindToCommandId.Value > 0
+                            ? "After confirm, this will also bind dataTransferSettingId onto command " + bindToCommandId.Value + "."
+                            : "After confirm, pass bindToCommandId=<Execute Data Transfer command id> (or upsert_command optionsJson.dataTransferSettingId) — creating the setting alone leaves UI Data Transfer Setting as (None)."
                     });
                 }
 
@@ -480,16 +519,105 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
                 AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId);
                 var savedId = result?.Object?.Id ?? dto.Id;
+                var savedIdInt = Convert.ToInt32(savedId);
+
+                object commandBind = null;
+                string nextStep =
+                    "Creating/updating a Data Transfer setting does NOT set Operation→Data Transfer Setting (UI stays None). " +
+                    "REQUIRED next: upsert_command(commandId=<Execute Data Transfer cmd>, actionType=43, " +
+                    "optionsJson:{dataTransferSettingId:" + savedIdInt + ", isNeedToOpenNewForm:true}, confirmed=true) " +
+                    "OR re-call upsert_data_transfer with bindToCommandId=<cmdId>. " +
+                    "Then get_command_detail and confirm dataTransferSettingId=" + savedIdInt + " before claiming success. " +
+                    "Finally request_form_reload.";
+
+                if (bindToCommandId.HasValue && bindToCommandId.Value > 0)
+                {
+                    var bindResult = BindDataTransferSettingToCommand(
+                        transactionId,
+                        bindToCommandId.Value,
+                        savedIdInt,
+                        isNeedToOpenNewForm ?? true);
+                    if (!bindResult.Ok)
+                        return Fail(
+                            "DataTransfer " + savedIdInt + " was saved, but binding to command " +
+                            bindToCommandId.Value + " failed: " + bindResult.Error);
+                    commandBind = bindResult.Detail;
+                    nextStep =
+                        "Bound dataTransferSettingId=" + savedIdInt + " on command " + bindToCommandId.Value +
+                        ". Call request_form_reload. Do not claim success unless get_command_detail shows that id.";
+                }
+
                 return Ok(new
                 {
                     saved = true,
                     dataTransferId = savedId,
                     mappingApplyNote,
+                    commandBind,
                     changed = new[] { new { type = "dataTransfer", id = savedId } },
-                    NextStep = "Call request_form_reload."
+                    NextStep = nextStep
                 });
             }
             catch (Exception ex) { return Fail(ex.Message); }
+        }
+
+        /// <summary>
+        /// Sets command.DataTransferSettingId (UI Data Transfer Setting column) and optional Need To Open Form.
+        /// Verifies the column actually persisted — Agent previously claimed success while UI stayed (None).
+        /// </summary>
+        internal static (bool Ok, string Error, object Detail) BindDataTransferSettingToCommand(
+            int transactionId,
+            int commandId,
+            int dataTransferSettingId,
+            bool isNeedToOpenNewForm)
+        {
+            try
+            {
+                var tx = LoadTx(transactionId, out var err);
+                if (tx == null) return (false, err ?? "Transaction not found.", null);
+                tx.CommandActionList ??= new List<AppProjectWorkFlowActionExDto>();
+                var cmd = tx.CommandActionList.FirstOrDefault(c => c.Id != null && Convert.ToInt32(c.Id) == commandId);
+                if (cmd == null) return (false, $"Command {commandId} not found on transaction {transactionId}.", null);
+
+                cmd.DataTransferSettingId = dataTransferSettingId;
+                cmd.ActionAttribute ??= new AppActionAttributeDto { ChildActionList = new List<ChildTransactionCommandDto>() };
+                cmd.ActionAttribute.IsNeedToOpenNewForm = isNeedToOpenNewForm;
+                if (cmd.ActionType == null || Convert.ToInt32(cmd.ActionType) != (int)EmAppTransactionCommandType.ExecuteFormDataTransfer)
+                    cmd.ActionType = (int)EmAppTransactionCommandType.ExecuteFormDataTransfer;
+
+                var saveResult = AppTransactionCommandBL.SaveOneTransactionCommandActionList(tx);
+                if (saveResult?.ValidationResult?.HasErrors == true)
+                {
+                    var msgs = saveResult.ValidationResult.Items?.Select(i => i.Message).Where(m => !string.IsNullOrWhiteSpace(m));
+                    return (false, msgs != null && msgs.Any() ? string.Join("; ", msgs) : "Save command failed.", null);
+                }
+
+                AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId);
+                var fresh = AppTransactionBL.GetHierarchyTranscationFromDatabase(transactionId);
+                var saved = (fresh?.CommandActionList ?? new List<AppProjectWorkFlowActionExDto>())
+                    .FirstOrDefault(c => c.Id != null && Convert.ToInt32(c.Id) == commandId);
+                if (saved == null)
+                    return (false, $"Command {commandId} missing after save.", null);
+                if (saved.DataTransferSettingId == null
+                    || Convert.ToInt32(saved.DataTransferSettingId) != dataTransferSettingId)
+                {
+                    return (false,
+                        "Save returned OK but command.DataTransferSettingId did not persist " +
+                        $"(expected {dataTransferSettingId}, got {saved.DataTransferSettingId?.ToString() ?? "null"}). " +
+                        "UI Data Transfer Setting would stay (None).",
+                        null);
+                }
+
+                return (true, null, new
+                {
+                    commandId,
+                    dataTransferSettingId = saved.DataTransferSettingId,
+                    isNeedToOpenNewForm = saved.ActionAttribute?.IsNeedToOpenNewForm
+                });
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message, null);
+            }
         }
 
         static bool IsValidTransferType(int typeId) =>

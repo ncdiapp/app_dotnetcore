@@ -12,6 +12,7 @@ import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLo
 import { addTab } from '../../redux/features/ui/navigation/tabnavSlice';
 import { integrationService } from '../../webapi/integrationsvc';
 import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
+import ApiProviderConfiguratorLayout from '../aiskill/ApiProviderConfiguratorLayout';
 
 const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
 const CONTEXT_MENU_ESTIMATED_HEIGHT = 140;
@@ -180,6 +181,16 @@ const ThirdPartyApiProviderManagement: React.FC = () => {
   useRefineContextMenuPosition(contextMenuOpen, contextMenuRef, setContextMenuPos);
 
   return (
+    <ApiProviderConfiguratorLayout
+      scope="list:third-party"
+      banner="3rd Party API Providers"
+      hostContext={{
+        providerId: selectedRowData?.Id ?? undefined,
+        providerName: selectedRowData?.Name ?? undefined,
+        providerKind: 'ThirdParty',
+      }}
+      onReload={loadData}
+    >
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
         <div className={`text-md font-semibold ${theme.title}`}>API Provider List (3rd Part API Provider)</div>
@@ -276,6 +287,7 @@ const ThirdPartyApiProviderManagement: React.FC = () => {
         </div>
       )}
     </div>
+    </ApiProviderConfiguratorLayout>
   );
 };
 

@@ -441,7 +441,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             "mappingsJson FULL REPLACE: [{sourceFieldId,targetFieldId,…}]; [] clears; omit=unchanged. " +
             "targetFieldId MUST be a field on destinationTransactionId (get_data_transfer_detail.destinationFields " +
             "or find_fields(name, transactionId=destination)). Never invent ids or copy sourceFieldId as target. " +
-            "Invalid ids are rejected. Type 4: internalCode=API op id. Preview→ask_user→confirmed=true→request_form_reload.")]
+            "Invalid ids are rejected. Creating a setting alone does NOT set Operation→Data Transfer Setting (stays None). " +
+            "Pass bindToCommandId (Execute Data Transfer command id, e.g. 38) to set command.DataTransferSettingId in the same save; " +
+            "optional isNeedToOpenNewForm. Or call upsert_command(optionsJson.dataTransferSettingId) after. " +
+            "Do NOT claim command bound until get_command_detail shows dataTransferSettingId. " +
+            "Type 4: internalCode=API op id. Preview→ask_user→confirmed=true→request_form_reload.")]
         public string UpsertDataTransfer(
             AgentToolContext context,
             [AgentParam("Existing id for update; omit to create.")] int? dataTransferId = null,
@@ -450,6 +454,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             [AgentParam("EmAppTransactionDataTransferType: 1 MessageTemplate, 2 DM↔DM, 3 Api→DM, 4 DM→Api.")] int? transferTypeId = null,
             [AgentParam("Destination transaction id (DM target for types 2/3).")] int? destinationTransactionId = null,
             [AgentParam("JSON array full-replace of mappings; [] clears; omit = leave unchanged.")] string mappingsJson = null,
+            [AgentParam("Execute Data Transfer command id to bind (sets UI Data Transfer Setting). Preferred over a separate upsert_command).")]
+            int? bindToCommandId = null,
+            [AgentParam("When bindToCommandId is set: UI Need To Open Form (default true for DM→DM).")] bool? isNeedToOpenNewForm = null,
             [AgentParam("Must be true to persist.")] bool? confirmed = null,
             [AgentParam("If true, never persist.")] bool? dryRun = null,
             [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
@@ -458,7 +465,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 return Fail(err);
             return FormConfigCommandDataTransferService.UpsertDataTransfer(
                 txnId, dataTransferId, description, internalCode, transferTypeId,
-                destinationTransactionId, mappingsJson, confirmed, dryRun);
+                destinationTransactionId, mappingsJson, confirmed, dryRun,
+                bindToCommandId, isNeedToOpenNewForm);
         }
 
         [AgentTool("delete_data_transfer",

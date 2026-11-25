@@ -18,6 +18,7 @@ import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLo
 import { addTab, updateActiveTabPath, updateCurrentTabLabel } from '../../redux/features/ui/navigation/tabnavSlice';
 import { integrationService } from '../../webapi/integrationsvc';
 import { adminSvc } from '../../webapi/adminsvc';
+import ApiProviderConfiguratorLayout from '../aiskill/ApiProviderConfiguratorLayout';
 import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
 
 const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
@@ -360,7 +361,24 @@ const ThirdPartyApiProviderEditor: React.FC = () => {
     );
   }
 
+  const providerIdNum = currentSetting?.Id != null ? Number(currentSetting.Id) : null;
+
   return (
+    <ApiProviderConfiguratorLayout
+      scope={providerIdNum && providerIdNum > 0 ? `provider:${providerIdNum}` : 'provider:new'}
+      banner={currentSetting?.Name || '3rd Party Provider'}
+      hostContext={{
+        providerId: providerIdNum && providerIdNum > 0 ? providerIdNum : undefined,
+        providerName: currentSetting?.Name ?? undefined,
+        providerKind: 'ThirdParty',
+      }}
+      onReload={loadData}
+      isDirty={isModified}
+      onSaveDirty={async () => {
+        await handleSave();
+        return true;
+      }}
+    >
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
         <div className={`text-md font-semibold ${theme.title}`}>
@@ -661,6 +679,7 @@ const ThirdPartyApiProviderEditor: React.FC = () => {
         </div>
       )}
     </div>
+    </ApiProviderConfiguratorLayout>
   );
 };
 

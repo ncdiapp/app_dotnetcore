@@ -25,6 +25,7 @@ import { ensureSessionHeader, isUsedByMcpValue } from '../../helper/apiConfigFor
 import { IsUsedByMcpCheckbox, McpUsageFields } from './ApiConfigParametersForm';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
 import { JsonCodeEditor } from '../common/JsonCodeEditor';
+import ApiProviderConfiguratorLayout from '../aiskill/ApiProviderConfiguratorLayout';
 
 const API_BUILDER_INTEGRATION_SETTING_ID = 1;
 const HTTP_METHODS = ['Get', 'Post', 'Put', 'Delete'];
@@ -372,6 +373,23 @@ const AppJsonQueryApiEditor: React.FC = () => {
     : '';
 
   return (
+    <ApiProviderConfiguratorLayout
+      scope={settingParameterId != null ? `api:${settingParameterId}` : 'api:new-sql'}
+      banner={currentOperation?.ActionCode || 'SQL JSON Query API'}
+      hostContext={{
+        providerId: API_BUILDER_INTEGRATION_SETTING_ID,
+        providerKind: 'App',
+        providerName: 'App API Provider',
+        settingParameterId: settingParameterId ?? undefined,
+        actionCode: currentOperation?.ActionCode ?? undefined,
+      }}
+      onReload={loadData}
+      isDirty={isModified}
+      onSaveDirty={async () => {
+        await handleSave();
+        return true;
+      }}
+    >
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
         <div className={`text-md font-semibold ${theme.title}`}>API: {currentOperation?.ActionCode ?? '—'}</div>
@@ -755,6 +773,7 @@ WHEN NOT MATCHED THEN
         )}
       </div>
     </div>
+    </ApiProviderConfiguratorLayout>
   );
 };
 

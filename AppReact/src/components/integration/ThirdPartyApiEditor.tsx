@@ -23,6 +23,7 @@ import { integrationService } from '../../webapi/integrationsvc';
 import { adminSvc } from '../../webapi/adminsvc';
 import { schemaMetadataService } from '../../webapi/schemaMetaDataSvc';
 import { normalizeIntegrationSettingParameterForSave, prettyPrintJsonForDisplay } from '../../helper/integrationPayloadHelper';
+import ApiProviderConfiguratorLayout from '../aiskill/ApiProviderConfiguratorLayout';
 import {
   isAbsoluteHttpUrl,
   isUsedByMcpValue,
@@ -455,6 +456,22 @@ const ThirdPartyApiEditor: React.FC = () => {
 
 
   return (
+    <ApiProviderConfiguratorLayout
+      scope={settingParameterId != null ? `api:${settingParameterId}` : 'api:new-third-party'}
+      banner={op?.ActionCode || '3rd Party API'}
+      hostContext={{
+        providerId: integrationSettingId ?? undefined,
+        providerKind: 'ThirdParty',
+        settingParameterId: settingParameterId ?? undefined,
+        actionCode: op?.ActionCode ?? undefined,
+      }}
+      onReload={loadData}
+      isDirty={isModified}
+      onSaveDirty={async () => {
+        await handleSave();
+        return true;
+      }}
+    >
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
         <div className={`text-md font-semibold ${theme.title}`}>API: {op?.ActionCode ?? '—'}</div>
@@ -641,6 +658,7 @@ const ThirdPartyApiEditor: React.FC = () => {
         />
       </div>
     </div>
+    </ApiProviderConfiguratorLayout>
   );
 
 };

@@ -726,6 +726,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
           onFlowOrderChanged={() => applyCommandListToGrid(commandCV.sourceCollection as any[])}
           onSelectChildCommand={(commandId) => selectCommandById(commandId)}
           onCommandAdded={handleCommandAdded}
+          listReloadToken={editTick}
           panelClassName="border-l-0 rounded-l-none rounded-r"
           onOpenTypeHelp={() => {
             setHelpAskPrompt(buildCommandHelpAskPrompt(currentEditAction?.ActionType));

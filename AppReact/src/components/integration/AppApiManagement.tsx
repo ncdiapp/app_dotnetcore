@@ -21,6 +21,7 @@ import { integrationService } from '../../webapi/integrationsvc';
 import { adminSvc } from '../../webapi/adminsvc';
 import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
 import CreateStoredProcedureApisModal from './CreateStoredProcedureApisModal';
+import ApiProviderConfiguratorLayout from '../aiskill/ApiProviderConfiguratorLayout';
 
 const API_BUILDER_INTEGRATION_SETTING_ID = 1;
 const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
@@ -327,6 +328,18 @@ const AppApiManagement: React.FC = () => {
   }, []);
 
   return (
+    <ApiProviderConfiguratorLayout
+      scope="list:app-api"
+      banner="App API Provider"
+      hostContext={{
+        providerId: API_BUILDER_INTEGRATION_SETTING_ID,
+        providerKind: 'App',
+        providerName: 'App API Provider',
+        settingParameterId: selectedRowData?.Id ?? undefined,
+        actionCode: selectedRowData?.ActionCode ?? undefined,
+      }}
+      onReload={loadData}
+    >
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
         <div className={`text-md font-semibold ${theme.title}`}>App API Provider</div>
@@ -530,6 +543,7 @@ const AppApiManagement: React.FC = () => {
         onCreated={loadData}
       />
     </div>
+    </ApiProviderConfiguratorLayout>
   );
 };
 
