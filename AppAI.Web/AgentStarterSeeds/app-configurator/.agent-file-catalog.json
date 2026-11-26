@@ -2,11 +2,7 @@
   "files": [
     {
       "path": "commands-knowledge.md",
-      "description": "Deep Data Model Operation manual for agents: every Operation Type's editor controls/buttons/tokens, actionType ids, storage, upsert_command / optionsJson / notificationMessage. Read before configuring or upsert_command. Canonical: Document/KnowledgeBase/AgentKnowledge/app-configurator/commands-knowledge.md."
-    },
-    {
-      "path": "commands-taxonomy-plan.md",
-      "description": "Taxonomy / picker / KB feeding plan (design). Optional context."
+      "description": "REQUIRED once per chat before upsert_command / upsert_data_load / upsert_data_transfer / upsert_message_template / upsert_linked_search: file_read source/commands-knowledge.md (server hard-blocks those upserts until loaded). First read returns full manual; do NOT file_read the same KB again in this chat (AlreadyLoaded stub). SystemPrompt only has a short Operation taxonomy index."
     }
   ]
 }

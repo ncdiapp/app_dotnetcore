@@ -5,7 +5,7 @@
 | Not here | Where |
 |----------|--------|
 | Design / architecture / implementation plans | `Document/AgentDesign/` |
-| Agent-facing knowledge (actionType, tools, storage) | `Document/KnowledgeBase/AgentKnowledge/{skillKey}/` |
+| Agent-facing knowledge (actionType, tools, storage) | `AppAI.Web/AgentStarterSeeds/{skillKey}/` (runtime KB; not under Document) |
 | Deployed Help fetch copy | `AppReact/public/help/` (generated) |
 
 ## Current manuals
@@ -20,4 +20,4 @@ After editing a canonical file, run from repo root:
 .\Document\KnowledgeBase\SyncRuntimeDocs.ps1
 ```
 
-Then rebuild/redeploy React (and Web if Agent seeds changed).
+Then rebuild/redeploy React. Agent KB edits go directly under `AppAI.Web/AgentStarterSeeds/` (rebuild/redeploy Web).

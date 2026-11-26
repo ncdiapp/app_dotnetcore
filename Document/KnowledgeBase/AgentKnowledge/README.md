@@ -1,31 +1,22 @@
-# AgentKnowledge — manuals for agents (machine + developers)
+# AgentKnowledge — pointer only (not the edit source)
 
-**Canonical** English knowledge bases consumed by Configurator / other agents via AgentStarter chat `source/`.
-
-| Not here | Where |
-|----------|--------|
-| Human User Help | `Document/KnowledgeBase/UserGuide/` |
-| Design plans | `Document/AgentDesign/` |
-| Packaged seed (runtime) | `AppAI.Web/AgentStarterSeeds/{skillKey}/` |
-
-## Layout
+Runtime agent KB bodies **do not live here**. Edit and ship them from:
 
 ```
-Document/KnowledgeBase/AgentKnowledge/{skillKey}/commands-knowledge.md
+AppAI.Web/AgentStarterSeeds/{skillKey}/
 ```
 
-`{skillKey}` matches Agent code (e.g. `app-configurator`).
+That folder is packaged with the web app, appears in Agent Management → **Files** (Default Source), and syncs to company `AgentStarter/{skillKey}/` → chat `source/`.
 
-## Current packs
+| skillKey | Canonical runtime KB |
+|----------|----------------------|
+| `app-configurator` | `AppAI.Web/AgentStarterSeeds/app-configurator/commands-knowledge.md` |
 
-| skillKey | Canonical | Packaged seed |
-|----------|-----------|-----------------|
-| `app-configurator` | `app-configurator/commands-knowledge.md` | `AppAI.Web/AgentStarterSeeds/app-configurator/commands-knowledge.md` |
-
-Sync after edits:
+Design / taxonomy plans: `Document/AgentDesign/` (never under `AgentStarterSeeds`).  
+Human Help: `Document/KnowledgeBase/UserGuide/` → `SyncRuntimeDocs.ps1` → `AppReact/public/help/`.
 
 ```powershell
 .\Document\KnowledgeBase\SyncRuntimeDocs.ps1
 ```
 
-Web app auto-copies packaged seeds → `FileRepository/Company_{id}/AgentStarter/{skillKey}/` on Ensure (PreserveNewest).
+Syncs User Help only; verifies agent seed KB exists and no design-plan file is under `AgentStarterSeeds`.

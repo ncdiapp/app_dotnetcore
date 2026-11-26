@@ -61,6 +61,7 @@ namespace App.BL.TenantBusiness
 
             foreach (var item in (items ?? Enumerable.Empty<AppAgentToolExclusionDto>())
                          .Where(i => !string.IsNullOrWhiteSpace(i?.LibraryKey) && !string.IsNullOrWhiteSpace(i?.ToolName))
+                         .Where(i => !IsNeverExclude(i.LibraryKey, i.ToolName))
                          .GroupBy(i => (i.LibraryKey.Trim().ToLowerInvariant(), i.ToolName.Trim().ToLowerInvariant()))
                          .Select(g => g.First()))
             {
@@ -75,6 +76,12 @@ namespace App.BL.TenantBusiness
             }
             return true;
         }
+
+        /// <summary>file_read must stay available for KB / source files (app-configurator hard gate).</summary>
+        public static bool IsNeverExclude(string libraryKey, string toolName) =>
+            string.Equals(toolName?.Trim(), "file_read", StringComparison.OrdinalIgnoreCase)
+            && (string.IsNullOrWhiteSpace(libraryKey)
+                || string.Equals(libraryKey.Trim(), "agent-files", StringComparison.OrdinalIgnoreCase));
 
         private static List<AppAgentToolExclusionDto> Load(string skillKey, DatabaseSchemaMrg.DatabaseFixture fixture)
         {

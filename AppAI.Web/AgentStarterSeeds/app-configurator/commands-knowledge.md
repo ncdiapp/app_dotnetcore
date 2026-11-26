@@ -1,11 +1,11 @@
 # Data Model Operation — Agent Knowledge Base
 
 Audience: `app-configurator` agent and developers. Not in-app user Help.  
-Canonical path: `Document/KnowledgeBase/AgentKnowledge/app-configurator/commands-knowledge.md`  
+Canonical (edit here): `AppAI.Web/AgentStarterSeeds/app-configurator/commands-knowledge.md`  
+Runtime: packaged with web app → company `AgentStarter/app-configurator/` → chat `source/` (Agent Management Files tab).  
 User Help: `Document/KnowledgeBase/UserGuide/DataModelOperation-Help.md` → `AppReact/public/help/commands-user-help.md`  
-Design plan: `Document/AgentDesign/AppConfigurator-Commands-Knowledge-Plan.md`  
-Read before: `upsert_command`, `get_command_detail`.  
-Sync: `Document/KnowledgeBase/SyncRuntimeDocs.ps1`
+Design plan (not agent runtime): `Document/AgentDesign/AppConfigurator-Commands-Knowledge-Plan.md`  
+Read before: `upsert_command`, `get_command_detail`.
 
 `actionType` is `EmAppTransactionCommandType` (int). Not link-target codes (1=Edit, 2=Create).
 
@@ -500,10 +500,17 @@ Formatted printouts driven by template design rather than the default form print
 | **actionType** | 74 |
 
 #### Storage mapping
-`ActionAttribute.MessageTemplateId` (or template id field used by section).
+Top-level **`AppProjectWorkFlowAction.MessageTemplateId`** (NOT `ActionAttribute`, NOT `notificationMessage`).
+UI: `PrintFromMessageTemplateSection` → picker from `retrieveTransactionMessageTemplates(transactionId)`.
 
 #### `upsert_command`
-`actionType`: 74; set template id in attribute JSON.
+`actionType`: 74; set **`optionsJson.messageTemplateId`** to an existing AppMessage template Id for this transaction.
+Do **not** put the template body in `notificationMessage` — that does not bind the Message Template dropdown.
+
+#### Message Template tools (platform-form-config)
+1. `upsert_message_template(name?, subject, body)` → `messageTemplateId` (or `get_message_templates` to reuse).
+2. `upsert_command(..., optionsJson:{messageTemplateId})` for actionType 74.
+3. `request_form_reload` — UI Message Template must show the name, not `(None)`.
 
 #### Runtime behavior
 Server invoked from menu; template render path (verify master-detail branch).
@@ -1688,12 +1695,48 @@ Message link children: types 61, 62; links encrypted at send; executed when reci
 
 ## 14. `upsert_command` checklist
 
-1. Read this KB + `get_command_detail` shape.
+1. **MUST** `file_read` this file (`source/commands-knowledge.md`) **once per chat** before `upsert_command` / `upsert_data_load` / `upsert_data_transfer` / `upsert_message_template` / `upsert_linked_search`. Server returns `COMMANDS_KB_REQUIRED` until loaded. Do **not** re-read the same KB later in the chat (`AlreadyLoaded` stub). SystemPrompt only has a short taxonomy index.
 2. Correct actionType (`EmAppTransactionCommandType`), never menu link targets 1/2.
-3. SQL (42): `notificationMessage` column.
-4. SMS (63) / notifications: often `notificationMessage` for body.
+3. SQL (42): `notificationMessage` column + `sqlToken` WHERE (see Field tokens + §5.5).
+4. SMS (63) / notifications: often `notificationMessage` for body; destinations see §8 + Agent tool hard flows below.
 5. Public flags: `optionsJson` → `linkToUI`, `isShowOnTopMenu`, `isAutoExecuteOnFormOpen`, `actionFlowOrder`.
 6. Preview → `ask_user` → `confirmed=true` → `request_form_reload`.
+
+## 14b. Agent tool hard flows (Config tools — not in SystemPrompt)
+
+### Data Load CRUD (`AppTransactionDataLoad`) — not actionType 45
+
+Defines Form Builder DataLoad rules. ActionType **45** only *runs* existing rules.
+
+1. `get_unit_fields` / `find_fields` — unitId + transactionFieldIds.
+2. `list_available_datasets` — real dataSetId (never invent).
+3. `get_dataset_columns(dataSetId)` — dbColumnName values.
+4. `upsert_data_load(unitId, loadName, dataSetId, conditionMappingsJson?, fieldMappingsJson?)` preview→ask_user→confirmed=true.
+5. `request_form_reload`.
+
+Mapping JSON (full-replace per side; `[]` clears; omit = leave):
+- `conditionMappingsJson`: `[{transactionFieldId, dbColumnName, whereClause}]`
+- `fieldMappingsJson`: `[{transactionFieldId, dbColumnName}]`
+
+Inspect: `get_data_loads` → `get_data_load_detail`. Delete: `delete_data_load` (HITL).
+
+### Internal Data Transfer CRUD (`AppTransactionDataTransferSetting`) — not actionType 43
+
+1. `get_data_transfers` (or create header via `upsert_data_transfer`).
+2. `get_data_transfer_detail` — mappingHints, targetApiInputParameters (type 4), **destinationFields**.
+3. `upsert_data_transfer` with `mappingsJson` full replace (or `[]` to clear). `targetFieldId` MUST come from `destinationFields` / `find_fields(transactionId=destination)` — never invent.
+4. Creating a setting alone does **not** bind Operation → Data Transfer Setting; use `bindToCommandId` or `upsert_command(optionsJson.dataTransferSettingId)`.
+5. `request_form_reload`.
+
+`transferTypeId`: 1=ToMessageTemplate, 2=DM→DM (needs destinationTransactionId), 3=Api→DM, 4=DM→Api. ActionType **43** runs a setting; this CRUD defines it.
+
+### Send Message / SMS options (60–63)
+
+- 60–62: `notificationSubject` + `notificationMessage` **or** `isUseRichTextMessageTemplate:true` + `messageTemplateId`.
+- Destination: `userIdFieldId` (60) / `emailAddressFieldId` (61) / `partnerIdFieldId`|`toEmailAddress` (62); optional `isAttachAllFormFilesToMessage`.
+- Body: real newlines or HTML `<br />` — never literal `\n` text.
+- Message Link `childActionList` = Partner **62** only (not Email 61).
+- 63 SMS: `smsMessageToPhoneNumberFiledId` + `notificationMessage`.
 
 ## 15. Scenarios (I want to…) — agent
 
@@ -1717,3 +1760,5 @@ Message link children: types 61, 62; links encrypted at send; executed when reci
 | 2026-11-17 | Replaced § cross-references with plain section names (mirrors User Help). |
 | 2026-11-17 | Restructured to mirror User Help chapter order (step-by-step before controls); retained agent metadata/storage/upsert; renumbered agent-only chapters 12–16. |
 | 2026-11-17 | Full UI depth (mirrors User Help) + per-type actionType/storage/upsert. |
+| 2026-11-26 | SystemPrompt Command details slimmed; §14 MUST file_read; §14b tool hard flows (DataLoad/DT/SMS) moved from Prompt. |
+| 2026-11-26 | Server hard gate `COMMANDS_KB_REQUIRED` on upsert_*; `file_read` KB once/chat (`AlreadyLoaded` stub). |

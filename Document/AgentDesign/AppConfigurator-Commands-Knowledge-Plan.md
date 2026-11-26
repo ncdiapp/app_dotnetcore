@@ -51,9 +51,8 @@ This plan covers:
 | **This design / plan (canonical)** | `Document/AgentDesign/AppConfigurator-Commands-Knowledge-Plan.md` | English |
 | **User Help (canonical)** | `Document/KnowledgeBase/UserGuide/DataModelOperation-Help.md` | English |
 | **User Help (runtime copy)** | `AppReact/public/help/commands-user-help.md` | English |
-| **Agent KB (canonical)** | `Document/KnowledgeBase/AgentKnowledge/app-configurator/commands-knowledge.md` | English |
-| **Agent KB (packaged seed)** | `AppAI.Web/AgentStarterSeeds/app-configurator/` → auto-sync to `FileRepository/Company_{id}/AgentStarter/app-configurator/` | English |
-| **Sync script** | `Document/KnowledgeBase/SyncRuntimeDocs.ps1` | — |
+| **Agent KB (canonical = packaged seed)** | `AppAI.Web/AgentStarterSeeds/app-configurator/commands-knowledge.md` → auto-sync to `FileRepository/Company_{id}/AgentStarter/app-configurator/` (Agent Management Files) | English |
+| **Sync script** | `Document/KnowledgeBase/SyncRuntimeDocs.ps1` (User Help copy + seed presence check; does **not** copy Agent KB from Document) | — |
 | Chinese reading draft | **Not** under `Document/` | Human review only |
 
 ---
@@ -231,10 +230,10 @@ Before publishing user help or agent KB, **fully analyze frontend + backend** fo
 4. Composition / Message link **master → child** rules and defaults  
 5. Menu / security filtering as implemented  
 
-Delivered under `Document/KnowledgeBase/` (plus runtime copies):  
-- User: `Document/KnowledgeBase/UserGuide/DataModelOperation-Help.md`  
-- Agent: `Document/KnowledgeBase/AgentKnowledge/app-configurator/commands-knowledge.md`  
-- Sync: `Document/KnowledgeBase/SyncRuntimeDocs.ps1`  
+Delivered as:  
+- User: `Document/KnowledgeBase/UserGuide/DataModelOperation-Help.md` → sync → `AppReact/public/help/`  
+- Agent: `AppAI.Web/AgentStarterSeeds/app-configurator/commands-knowledge.md` (edit in place; not under Document)  
+- Sync: `Document/KnowledgeBase/SyncRuntimeDocs.ps1` (User Help + verify seed)  
 - Config Agent open: `AgentStarterSeeds/app-configurator` → company `AgentStarter` → chat `source/` (`EnsureRoot`)
 
 ---
@@ -312,3 +311,4 @@ Configurator must **not** execute runtime commands (`run_command` stays Form Age
 | 2026-11-17 | Wrap paired manuals under `Document/KnowledgeBase/` (`UserGuide` + `AgentKnowledge` + sync script); Config Agent still auto-copies from packaged `AgentStarterSeeds/{skillKey}`. |
 | 2026-11-17 | Field tokens: tools expose sqlToken/messageToken/formulaToken + rootPrimaryKeys; SystemPrompt hard rules; **V085** merges former V086 token migration. |
 | 2026-11-23 | Command Formula (57) + Navigate/Linked Search (53): executionFormulaUI storage; `list_available_searches`; orphan `linkedSearchId` blocked. **V086** merges former V086+V087. |
+| 2026-11-26 | Agent KB canonical = `AgentStarterSeeds/app-configurator/` only; removed Document/AgentKnowledge body + seed copy of this design plan (`commands-taxonomy-plan.md`). |

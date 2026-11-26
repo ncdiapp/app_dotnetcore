@@ -30,7 +30,6 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 
 $files = @(
   "commands-knowledge.md",
-  "commands-taxonomy-plan.md",
   ".agent-file-catalog.json"
 )
 foreach ($f in $files) {

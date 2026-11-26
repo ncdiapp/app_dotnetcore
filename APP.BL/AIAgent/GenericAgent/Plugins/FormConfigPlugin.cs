@@ -389,6 +389,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             [AgentParam("If true, never persist.")] bool? dryRun = null,
             [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
         {
+            var kbErr = AgentCommandsKbSessionStore.RequireLoadedOrError(context?.ChatSessionKey);
+            if (kbErr != null) return Fail(kbErr);
             if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
                 return Fail(err);
             return FormConfigCommandDataTransferService.UpsertCommand(
@@ -461,6 +463,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             [AgentParam("If true, never persist.")] bool? dryRun = null,
             [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
         {
+            var kbErr = AgentCommandsKbSessionStore.RequireLoadedOrError(context?.ChatSessionKey);
+            if (kbErr != null) return Fail(kbErr);
             if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
                 return Fail(err);
             return FormConfigCommandDataTransferService.UpsertDataTransfer(
@@ -554,6 +558,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             [AgentParam("If true, never persist.")] bool? dryRun = null,
             [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
         {
+            var kbErr = AgentCommandsKbSessionStore.RequireLoadedOrError(context?.ChatSessionKey);
+            if (kbErr != null) return Fail(kbErr);
             if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
                 return Fail(err);
             return FormConfigDataLoadService.UpsertDataLoad(
@@ -621,6 +627,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             [AgentParam("If true, never persist.")] bool? dryRun = null,
             [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
         {
+            var kbErr = AgentCommandsKbSessionStore.RequireLoadedOrError(context?.ChatSessionKey);
+            if (kbErr != null) return Fail(kbErr);
             if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
                 return Fail(err);
             return FormConfigMessageTemplateService.UpsertMessageTemplate(
@@ -696,6 +704,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             [AgentParam("If true, never persist.")] bool? dryRun = null,
             [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
         {
+            var kbErr = AgentCommandsKbSessionStore.RequireLoadedOrError(context?.ChatSessionKey);
+            if (kbErr != null) return Fail(kbErr);
             if (!unitId.HasValue) return Fail("unitId is required.");
             if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
                 return Fail(err);

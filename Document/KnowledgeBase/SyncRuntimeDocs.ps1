@@ -1,5 +1,5 @@
-﻿# Sync canonical KnowledgeBase manuals → runtime publish copies.
-# Does not change business logic — copy only.
+﻿# Sync canonical User Help manuals → runtime publish copies.
+# Agent KB is NOT synced from Document — edit AppAI.Web/AgentStarterSeeds/{skillKey}/ directly.
 #
 # Usage (repo root or any cwd):
 #   .\Document\KnowledgeBase\SyncRuntimeDocs.ps1
@@ -7,14 +7,14 @@
 # Copies:
 #   UserGuide/DataModelOperation-Help.md
 #     → AppReact/public/help/commands-user-help.md
-#   AgentKnowledge/app-configurator/commands-knowledge.md
-#     → AppAI.Web/AgentStarterSeeds/app-configurator/commands-knowledge.md
-#   ../AgentDesign/AppConfigurator-Commands-Knowledge-Plan.md
-#     → AppAI.Web/AgentStarterSeeds/app-configurator/commands-taxonomy-plan.md
 #
-# Config Agent auto-copy (unchanged): on EnsureRoot / open chat,
+# Verifies (does not copy):
+#   AppAI.Web/AgentStarterSeeds/app-configurator/commands-knowledge.md exists
+#   Design plan stays only under Document/AgentDesign/ (must NOT be under AgentStarterSeeds)
+#
+# Config Agent auto-copy (unchanged): on EnsureRoot / open chat / Files list,
 #   AgentStarterSeeds/{skillKey} → FileRepository/.../AgentStarter/{skillKey}
-#   → chat source/ (PreserveNewest / missing-only). Keep seeds updated via this script.
+#   → chat source/ (PreserveNewest / missing-only).
 
 $ErrorActionPreference = "Stop"
 $kbRoot = $PSScriptRoot
@@ -34,14 +34,19 @@ Copy-Tracked `
   (Join-Path $kbRoot "UserGuide\DataModelOperation-Help.md") `
   (Join-Path $repoRoot "AppReact\public\help\commands-user-help.md")
 
-Copy-Tracked `
-  (Join-Path $kbRoot "AgentKnowledge\app-configurator\commands-knowledge.md") `
-  (Join-Path $repoRoot "AppAI.Web\AgentStarterSeeds\app-configurator\commands-knowledge.md")
+$agentKb = Join-Path $repoRoot "AppAI.Web\AgentStarterSeeds\app-configurator\commands-knowledge.md"
+if (-not (Test-Path $agentKb)) {
+  throw "Missing agent KB (canonical seed): $agentKb"
+}
+Write-Host "OK  agent KB present (edit in place, not synced from Document):"
+Write-Host "    $agentKb"
 
-Copy-Tracked `
-  (Join-Path $docRoot "AgentDesign\AppConfigurator-Commands-Knowledge-Plan.md") `
-  (Join-Path $repoRoot "AppAI.Web\AgentStarterSeeds\app-configurator\commands-taxonomy-plan.md")
+$staleTaxonomy = Join-Path $repoRoot "AppAI.Web\AgentStarterSeeds\app-configurator\commands-taxonomy-plan.md"
+if (Test-Path $staleTaxonomy) {
+  throw "Design plan must not live under AgentStarterSeeds. Move/delete: $staleTaxonomy (canonical: Document/AgentDesign/AppConfigurator-Commands-Knowledge-Plan.md)"
+}
+Write-Host "OK  no design-plan file under AgentStarterSeeds/app-configurator/"
 
 Write-Host ""
-Write-Host "Done. Rebuild/redeploy AppReact + AppAI.Web so Help UI and AgentStarterSeeds pick up changes."
+Write-Host "Done. Rebuild/redeploy AppReact for Help UI; rebuild/redeploy AppAI.Web for AgentStarterSeeds."
 Write-Host "Config Agent EnsureRoot will then sync AgentStarterSeeds → company AgentStarter → chat source/."

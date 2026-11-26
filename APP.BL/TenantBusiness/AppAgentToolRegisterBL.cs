@@ -127,7 +127,9 @@ ORDER BY IsLibraryTool, ToolRegisterId",
             if (excluded.Count > 0)
             {
                 var blocked = new System.Collections.Generic.HashSet<string>(
-                    excluded.Select(e => e.LibraryKey + "\u0001" + e.ToolName), StringComparer.OrdinalIgnoreCase);
+                    excluded
+                        .Where(e => !AppAgentToolExclusionBL.IsNeverExclude(e.LibraryKey, e.ToolName))
+                        .Select(e => e.LibraryKey + "\u0001" + e.ToolName), StringComparer.OrdinalIgnoreCase);
                 rows = rows.Where(r => string.Equals(r.SkillKey, skillKey.Trim(), StringComparison.OrdinalIgnoreCase)
                                        || !blocked.Contains(r.SkillKey + "\u0001" + r.ToolName)).ToList();
             }

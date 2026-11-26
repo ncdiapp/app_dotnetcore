@@ -88,9 +88,12 @@
   </ItemGroup>
 
   <!-- Packaged AgentStarter seeds — synced into FileRepository/Company_{id}/AgentStarter/{skillKey}/ on Ensure.
-       Use Update (not Include): SDK already globs Content under the project dir (NETSDK1022). -->
+       Web SDK treats *.json as Content but *.md/*.ps1 as None, so Content Update alone never copied the KB.
+       Remove from both globs, then Include all as Content with CopyToOutput. -->
   <ItemGroup>
-    <Content Update="AgentStarterSeeds\**\*">
+    <Content Remove="AgentStarterSeeds\**\*" />
+    <None Remove="AgentStarterSeeds\**\*" />
+    <Content Include="AgentStarterSeeds\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>

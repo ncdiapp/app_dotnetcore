@@ -1060,7 +1060,7 @@ A render button click arrives as a user message. If the user picked a row or a f
                     var result = await AppAgentToolEngine.Dispatch(toolType, toolConfig, strArgs, context, ct, instancePool, row.ToolName)
                                                          .ConfigureAwait(false);
                     result = DataAnalyze.AgentDataAnalyzeHook.MaybeCacheAndRewrite(context, toolType, row.ToolName, result, strArgs);
-                    return AttachCallNotes(CapResult(result, cap), callNotes);
+                    return AttachCallNotes(CapResultForTool(row.ToolName, result, cap, context), callNotes);
                 },
                 functionName: SanitizeName(row.ToolName),
                 description:  row.Description ?? row.ToolName,
@@ -1525,6 +1525,28 @@ A render button click arrives as a user message. If the user picked a row or a f
             if (trimmed.StartsWith("{") || trimmed.StartsWith("["))
                 return $"{{\"note\":\"Result truncated ({omitted} chars omitted)\",\"preview\":{Newtonsoft.Json.JsonConvert.ToString(preview)}}}";
             return preview + $"… [{omitted} chars truncated]";
+        }
+
+        /// <summary>
+        /// Caps tool results, but never clips a full <c>commands-knowledge.md</c> <c>file_read</c>
+        /// body (agent MaxToolResultChars is often 4–8K; KB is ~60K). If a KB body is still clipped
+        /// by a future change, clear AlreadyLoaded so the next read can retry.
+        /// </summary>
+        private static string CapResultForTool(string toolName, string? result, int max, AgentToolContext context)
+        {
+            if (AgentCommandsKbSessionStore.LooksLikeFullKbFileReadResult(toolName, result))
+                return result ?? "";
+
+            var capped = CapResult(result, max);
+            if (!string.IsNullOrEmpty(result)
+                && capped.Length < result.Length
+                && result.IndexOf(AgentCommandsKbSessionStore.KbFileName, StringComparison.OrdinalIgnoreCase) >= 0
+                && context != null
+                && !string.IsNullOrWhiteSpace(context.ChatSessionKey))
+            {
+                AgentCommandsKbSessionStore.Clear(context.ChatSessionKey);
+            }
+            return capped;
         }
 
         private static bool MessageHasFunctionCall(ChatMessageContent msg)

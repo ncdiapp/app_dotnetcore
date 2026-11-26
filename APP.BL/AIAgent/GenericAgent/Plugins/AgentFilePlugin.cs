@@ -38,7 +38,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
         // Managed Agent: description/params also in AppAgentLibraryTool; attribute documents the BuiltIn contract.
         [AgentTool("file_read",
-            "Read a file from the chat file area. Text: UTF-8 content. .xlsx/.xls: returns SheetNames and Sheets for all worksheets.")]
+            "Read a file from the chat file area. Text: UTF-8 content. .xlsx/.xls: returns SheetNames and Sheets for all worksheets. " +
+            "For source/commands-knowledge.md: full body only on the first successful (non-truncated) read in this chat; " +
+            "later calls return AlreadyLoaded=true with Content=null — do NOT re-read (avoids re-injecting ~60KB every turn).")]
         public Task<string> Read(
             AgentToolContext context,
             CancellationToken ct,
@@ -80,6 +82,29 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
 
                 GenericAgentFileBL.EnsureRoot(context.ChatSessionKey, context.CompanyId, context.SkillKey);
+
+                // commands-knowledge.md: load full body once per chat; later reads return a stub
+                // so the model does not re-inject ~60KB into every turn's tool results.
+                // MarkLoaded only for usable bodies — CapResult clip clears the mark in SharedAgentEngine.
+                if (AgentCommandsKbSessionStore.IsCommandsKnowledgePath(path))
+                {
+                    if (AgentCommandsKbSessionStore.HasLoaded(context.ChatSessionKey))
+                    {
+                        return Task.FromResult(JsonConvert.SerializeObject(new
+                        {
+                            RelativePath = path.Replace('\\', '/'),
+                            AlreadyLoaded = true,
+                            Content = (string)null,
+                            Message = "commands-knowledge.md was already loaded earlier in this chat. Do NOT file_read it again. Use the prior tool result; proceed with upsert_* using that knowledge."
+                        }));
+                    }
+
+                    var kb = GenericAgentFileBL.ReadText(context.ChatSessionKey, path, context.CompanyId, context.SkillKey);
+                    if (AgentCommandsKbSessionStore.IsUsableKbContent(kb?.Content))
+                        AgentCommandsKbSessionStore.MarkLoaded(context.ChatSessionKey);
+                    return Task.FromResult(JsonConvert.SerializeObject(kb));
+                }
+
                 var content = GenericAgentFileBL.ReadText(context.ChatSessionKey, path, context.CompanyId, context.SkillKey);
                 return Task.FromResult(JsonConvert.SerializeObject(content));
             }
