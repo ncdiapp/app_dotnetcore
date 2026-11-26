@@ -2967,6 +2967,13 @@ namespace App.BL
                     tgtOneToOneFields[targetTransFieldExDto.DataBaseFieldName] = (object)ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(jsonPropertyValue);
                 }
             }
+            else
+            {
+                // Field meta may omit DataType (common on lookup/FK fields). Still apply the inbound
+                // JSON value so API POST / data-transfer mapping does not leave NOT NULL columns as null.
+                object raw = jsonPropertyValue is Newtonsoft.Json.Linq.JValue jv ? jv.Value : jsonPropertyValue;
+                tgtOneToOneFields[targetTransFieldExDto.DataBaseFieldName] = raw;
+            }
 
             return tgtOneToOneFields;
         }

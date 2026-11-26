@@ -1499,7 +1499,7 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
                     isVisible = visible.Any(v => string.Equals(v, col.Name, StringComparison.OrdinalIgnoreCase));
                 }
 
-                int? dataType = ControlTypeValueConverter.ConvertValueToInt(col.Tag);
+                int? dataType = AppTransactionBL.TryParseEmAppDataTypeFromColumnTag(col.Tag);
                 using (var cmd = conn.CreateCommand())
                 {
                     cmd.Transaction = tran;

@@ -231,19 +231,7 @@ namespace App.BL
 
 
                 dbtable.DataSourceRegisterId = dataSourceRegisterId;
-
-                foreach (var column in dbtable.Columns)
-                {
-                    //column.DbDataType
-                    column.Tag = AppMetaDataSqlTypeConvertBL.ConvertSqlTypeToNetType(column, databaseFixtureInstance.SqlServerType);
-
-
-                    column.NetName = ExtensionMethodhelper.RandomId();
-                    // column.DataType.TypeName
-                    // column.DataType.NetDataType
-                }
-
-
+                ApplyColumnNetTypeTags(dbtable, databaseFixtureInstance);
                 dbtable.Tag = ExtensionMethodhelper.RandomId();
             }
 
@@ -251,6 +239,32 @@ namespace App.BL
 
             return dbtable;
 
+        }
+
+        /// <summary>
+        /// Sets each column.Tag to EmAppDataType name (Integer/String/…) via ConvertSqlTypeToNetType.
+        /// Schema cache from AllTables() does not populate Tag — agent create_application refreshes
+        /// cache then builds transactions from that cache, so Tag must be applied here or DataType stays null.
+        /// </summary>
+        public static void ApplyColumnNetTypeTags(DatabaseTable dbtable, DatabaseFixture databaseFixtureInstance)
+        {
+            if (dbtable?.Columns == null || databaseFixtureInstance == null)
+                return;
+
+            foreach (var column in dbtable.Columns)
+            {
+                column.Tag = AppMetaDataSqlTypeConvertBL.ConvertSqlTypeToNetType(column, databaseFixtureInstance.SqlServerType);
+                if (string.IsNullOrWhiteSpace(column.NetName))
+                    column.NetName = ExtensionMethodhelper.RandomId();
+            }
+        }
+
+        public static void ApplyColumnNetTypeTags(DatabaseTable dbtable, int dataSourceRegisterId)
+        {
+            if (dbtable == null)
+                return;
+
+            ApplyColumnNetTypeTags(dbtable, AppCacheManagerBL.GetOneDatabaseFixture(dataSourceRegisterId));
         }
 
 
@@ -447,7 +461,10 @@ namespace App.BL
 
                     if (dictOwnerTablenameDataTable.ContainsKey(key))
                     {
-                        dictDatabaseTable.Add(key, dictOwnerTablenameDataTable[key]);
+                        var cached = dictOwnerTablenameDataTable[key];
+                        // Cache from Refresh/AllTables has DbDataType but no Tag — required for field DataType.
+                        ApplyColumnNetTypeTags(cached, dataSourceRegisterId.Value);
+                        dictDatabaseTable.Add(key, cached);
                     }
                     else
                     {

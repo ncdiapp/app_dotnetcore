@@ -3693,6 +3693,12 @@ namespace App.BL
 
                 AppTransactionUnitExDto rootUnitDto = CreateTransactionUnitFromDatabaseTable(databaseTble);
 
+                // Cached schema tables often lack column.Tag after fixture refresh.
+                if (databaseTble.DataSourceRegisterId.HasValue)
+                    AppMetaDataBL.ApplyColumnNetTypeTags(databaseTble, databaseTble.DataSourceRegisterId.Value);
+                else if (dataSourceRegisterId.HasValue)
+                    AppMetaDataBL.ApplyColumnNetTypeTags(databaseTble, dataSourceRegisterId.Value);
+
                 foreach (var aTableColumn in databaseTble.Columns)
                 {
                     if (ShouldExcludeDatabaseColumnFromTransactionField(aTableColumn))
@@ -3707,7 +3713,7 @@ namespace App.BL
 
                     aTransactionField.ControlType = (int)EmAppControlType.TextBox;
 
-                    int? dataType = ControlTypeValueConverter.ConvertValueToInt(aTableColumn.Tag);
+                    int? dataType = TryParseEmAppDataTypeFromColumnTag(aTableColumn.Tag);
                     if (dataType.HasValue)
                     {
                         aTransactionField.DataType = dataType.Value;
@@ -4058,6 +4064,10 @@ namespace App.BL
             AppTransactionUnitExDto unit = CreateTransactionUnitFromDatabaseTable(dbTable);
             unit.AppTransactionFieldList = new ObservableSet<AppTransactionFieldExDto>();
 
+            // Cached schema tables often lack column.Tag; resolve EmAppDataType names before field build.
+            if (dbTable != null && dbTable.DataSourceRegisterId.HasValue)
+                AppMetaDataBL.ApplyColumnNetTypeTags(dbTable, dbTable.DataSourceRegisterId.Value);
+
             foreach (var col in dbTable.Columns)
             {
                 if (ShouldExcludeDatabaseColumnFromTransactionField(col))
@@ -4070,7 +4080,7 @@ namespace App.BL
                 field.DisplayName = ConvertDbNameToDisplayName(col.Name);
                 field.ControlType = (int)EmAppControlType.TextBox;
 
-                int? dataType = ControlTypeValueConverter.ConvertValueToInt(col.Tag);
+                int? dataType = TryParseEmAppDataTypeFromColumnTag(col.Tag);
                 if (dataType.HasValue) field.DataType = dataType.Value;
 
                 field.DisplayWidth = "100";
@@ -4113,6 +4123,27 @@ namespace App.BL
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Maps DatabaseColumn.Tag (set by AppMetaDataBL.ConvertSqlTypeToNetType as EmAppDataType name,
+        /// e.g. "Integer" / "String") to EmAppDataType. Must use Enum.Parse — ConvertValueToInt only
+        /// accepts numeric strings and leaves DataType null for agent/DbGenie hierarchy creates.
+        /// Matches ConvertTableColumnToTransactionFieldExDto (manual UI / table-import path).
+        /// </summary>
+        public static int? TryParseEmAppDataTypeFromColumnTag(object tag)
+        {
+            if (tag == null)
+                return null;
+
+            string tagText = tag.ToString();
+            if (string.IsNullOrWhiteSpace(tagText))
+                return null;
+
+            if (Enum.TryParse(tagText, ignoreCase: true, out EmAppDataType parsed))
+                return (int)parsed;
+
+            return ControlTypeValueConverter.ConvertValueToInt(tag);
         }
 
         /// <summary>
