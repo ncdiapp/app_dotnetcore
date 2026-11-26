@@ -473,8 +473,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         [AgentTool("api_cfg_create_from_datamodel",
-            "Ensure App Data Model GET/POST APIs for a Transaction (same as App API Provider Create Data Model API). " +
-            "Uses GetAppTransactionDefaultProviderApi. Preview → ask_user → confirmed=true.")]
+            "Idempotent: ensure one GET + one POST Data Model API for transactionId on App API Provider. " +
+            "If APIs already exist for that transaction, returns them — does not insert duplicates. " +
+            "Call once after confirm (do not parallel double-call). For recreate: delete old APIs first, then call once. " +
+            "Preview → ask_user → confirmed=true.")]
         public string CreateFromDataModel(
             AgentToolContext context = null,
             [AgentParam("Transaction id", isRequired: true)] int? transactionId = null,
@@ -490,33 +492,91 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 var tx = AppTransactionBL.RetrieveOneAppTransactionExDto(transactionId.Value);
                 if (tx == null) return ApiIntegrationConfigBL.Fail($"Transaction {transactionId} not found.");
 
+                var existing = ApiIntegrationConfigBL.FindExistingDataModelApis(transactionId.Value);
+                var existingGet = existing.FirstOrDefault(a =>
+                    string.Equals(a.HttpMethd, "Get", StringComparison.OrdinalIgnoreCase));
+                var existingPost = existing.FirstOrDefault(a =>
+                    string.Equals(a.HttpMethd, "Post", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(a.HttpMethd, "Put", StringComparison.OrdinalIgnoreCase));
+
                 if (ApiIntegrationConfigBL.NeedsConfirm(confirmed, dryRun))
                 {
                     return ApiIntegrationConfigBL.Preview(new
                     {
                         transactionId,
                         transactionName = tx.TransactionName,
-                        note = "Will ensure GET and POST Data Model APIs on App API Provider."
+                        alreadyExists = existing.Count > 0,
+                        existingApis = existing.Select(ApiIntegrationConfigBL.SummarizeApiBrief).ToList(),
+                        note = existingGet != null && existingPost != null
+                            ? "GET and POST already exist — confirmed call will return them (no new rows)."
+                            : "Will ensure GET and POST Data Model APIs. Call this tool only once after confirm."
                     });
                 }
 
-                var created = AppIntergrationSettingBL.GetAppTransactionDefaultProviderApi(
-                    transactionId.Value, true, appBaseUrl ?? "");
-                return ApiIntegrationConfigBL.Ok(new
+                lock (ApiIntegrationConfigBL.EnterEnsureGate("datamodel:" + transactionId.Value))
                 {
-                    created = true,
-                    transactionId,
-                    apis = (created ?? new List<AppIntergrationSettingParameterExDto>())
-                        .Where(a => a != null)
-                        .Select(ApiIntegrationConfigBL.SummarizeApiDetail)
-                        .ToList()
-                });
+                    existing = ApiIntegrationConfigBL.FindExistingDataModelApis(transactionId.Value);
+                    existingGet = existing.FirstOrDefault(a =>
+                        string.Equals(a.HttpMethd, "Get", StringComparison.OrdinalIgnoreCase));
+                    existingPost = existing.FirstOrDefault(a =>
+                        string.Equals(a.HttpMethd, "Post", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(a.HttpMethd, "Put", StringComparison.OrdinalIgnoreCase));
+
+                    if (existingGet != null && existingPost != null)
+                    {
+                        return ApiIntegrationConfigBL.Ok(new
+                        {
+                            created = false,
+                            alreadyExisted = true,
+                            transactionId,
+                            message = "Data Model APIs already exist for this transaction; no new rows inserted.",
+                            apis = existing.Select(ApiIntegrationConfigBL.SummarizeApiDetail).ToList()
+                        });
+                    }
+
+                    // Any rows already present → do not call BL generate (it keys off TransactionApiSettings
+                    // and can insert Get…1 / Post duplicates). Return what exists + missing methods.
+                    if (existing.Count > 0)
+                    {
+                        var missing = new List<string>();
+                        if (existingGet == null) missing.Add("Get");
+                        if (existingPost == null) missing.Add("Post");
+                        return ApiIntegrationConfigBL.Ok(new
+                        {
+                            created = false,
+                            alreadyExisted = true,
+                            partial = true,
+                            missingHttpMethods = missing,
+                            transactionId,
+                            message = "Partial Data Model APIs already exist; skipped insert to avoid duplicates. "
+                                + "Delete extras then call once, or upsert_api for missing method only.",
+                            apis = existing.Select(ApiIntegrationConfigBL.SummarizeApiDetail).ToList()
+                        });
+                    }
+
+                    var created = AppIntergrationSettingBL.GetAppTransactionDefaultProviderApi(
+                        transactionId.Value, true, appBaseUrl ?? "");
+                    var after = ApiIntegrationConfigBL.FindExistingDataModelApis(transactionId.Value);
+                    if (after.Count == 0 && created != null)
+                        after = created.Where(a => a != null).ToList();
+
+                    return ApiIntegrationConfigBL.Ok(new
+                    {
+                        created = true,
+                        alreadyExisted = false,
+                        transactionId,
+                        apis = after.Select(ApiIntegrationConfigBL.SummarizeApiDetail).ToList()
+                    });
+                }
             }
             catch (Exception ex) { return ApiIntegrationConfigBL.Fail(ex.Message); }
         }
 
         [AgentTool("api_cfg_create_from_search",
-            "Ensure App Report/View (Search) API for searchId. Preview → ask_user → confirmed=true.")]
+            "Idempotent: ensure one Search/Presentation API for searchId on App API Provider. " +
+            "If an API already exists for that search, returns it — no duplicate insert. " +
+            "Call once after confirm. For recreate: delete old API first, then call once. " +
+            "Preview → ask_user → confirmed=true.")]
         public string CreateFromSearch(
             AgentToolContext context = null,
             [AgentParam("Search id", isRequired: true)] int? searchId = null,
@@ -532,26 +592,52 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 var search = AppSearchConfigBL.RetrieveOneAppSearchExDto(searchId.Value);
                 if (search == null) return ApiIntegrationConfigBL.Fail($"Search {searchId} not found.");
 
+                var existing = ApiIntegrationConfigBL.FindExistingSearchApi(searchId.Value);
+
                 if (ApiIntegrationConfigBL.NeedsConfirm(confirmed, dryRun))
                 {
                     return ApiIntegrationConfigBL.Preview(new
                     {
                         searchId,
                         searchName = search.Name,
-                        note = "Will ensure App Data Presentation API for this Search."
+                        alreadyExists = existing != null,
+                        existingApi = existing == null ? null : ApiIntegrationConfigBL.SummarizeApiBrief(existing),
+                        note = existing != null
+                            ? "Search API already exists — confirmed call will return it (no new row)."
+                            : "Will ensure App Data Presentation API. Call this tool only once after confirm."
                     });
                 }
 
-                var created = AppIntergrationSettingBL.GetAppSearchDefaultProviderApi(
-                    searchId.Value, true, appBaseUrl ?? "");
-                if (created == null)
-                    return ApiIntegrationConfigBL.Fail("Failed to create/retrieve Search API.");
-                return ApiIntegrationConfigBL.Ok(new
+                lock (ApiIntegrationConfigBL.EnterEnsureGate("search:" + searchId.Value))
                 {
-                    created = true,
-                    searchId,
-                    api = ApiIntegrationConfigBL.SummarizeApiDetail(created)
-                });
+                    existing = ApiIntegrationConfigBL.FindExistingSearchApi(searchId.Value);
+                    if (existing != null)
+                    {
+                        return ApiIntegrationConfigBL.Ok(new
+                        {
+                            created = false,
+                            alreadyExisted = true,
+                            searchId,
+                            message = "Search API already exists for this searchId; no new row inserted.",
+                            api = ApiIntegrationConfigBL.SummarizeApiDetail(existing)
+                        });
+                    }
+
+                    var created = AppIntergrationSettingBL.GetAppSearchDefaultProviderApi(
+                        searchId.Value, true, appBaseUrl ?? "");
+                    if (created == null)
+                        return ApiIntegrationConfigBL.Fail("Failed to create/retrieve Search API.");
+
+                    // Prefer re-read in case parallel call already inserted
+                    var after = ApiIntegrationConfigBL.FindExistingSearchApi(searchId.Value) ?? created;
+                    return ApiIntegrationConfigBL.Ok(new
+                    {
+                        created = true,
+                        alreadyExisted = false,
+                        searchId,
+                        api = ApiIntegrationConfigBL.SummarizeApiDetail(after)
+                    });
+                }
             }
             catch (Exception ex) { return ApiIntegrationConfigBL.Fail(ex.Message); }
         }

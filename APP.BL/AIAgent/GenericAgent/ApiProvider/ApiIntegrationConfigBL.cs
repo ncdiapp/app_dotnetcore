@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -20,6 +21,48 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
         private static readonly Regex SecretKeyRx = new Regex(
             @"(password|secret|token|apikey|api_key|authorization|clientsecret|client_secret|accesskey|access_key|bearer)",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        /// <summary>Serialize parallel confirmed creates for the same transaction/search (LLM often double-calls).</summary>
+        private static readonly ConcurrentDictionary<string, object> EnsureCreateGates = new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+        public static object EnterEnsureGate(string key) =>
+            EnsureCreateGates.GetOrAdd(key ?? "", _ => new object());
+
+        /// <summary>
+        /// App Provider (id=1) Data Model APIs for a transaction — by parameter TranscationId
+        /// (more reliable than TransactionApiSettings.OperationId after delete/recreate).
+        /// </summary>
+        public static List<AppIntergrationSettingParameterExDto> FindExistingDataModelApis(int transactionId)
+        {
+            AppIntergrationSettingBL.EnsureAppBuiltInProviderExists();
+            var provider = AppIntergrationSettingBL.RetrieveOneAppIntergrationSettingExDto(
+                AppIntergrationSettingBL.AppBuiltInProviderId);
+            if (provider?.AppIntergrationSettingParameterList == null)
+                return new List<AppIntergrationSettingParameterExDto>();
+
+            return provider.AppIntergrationSettingParameterList
+                .Where(p => p != null
+                    && p.TranscationId == transactionId
+                    && p.IsSimpleQuery != true
+                    && !p.TranscationFieId.HasValue)
+                .OrderBy(p => p.HttpMethd == "Get" ? 0 : 1)
+                .ThenBy(p => Convert.ToInt32(p.Id))
+                .ToList();
+        }
+
+        /// <summary>App Provider Search/Presentation API by TranscationFieId (= searchId).</summary>
+        public static AppIntergrationSettingParameterExDto FindExistingSearchApi(int searchId)
+        {
+            AppIntergrationSettingBL.EnsureAppBuiltInProviderExists();
+            var provider = AppIntergrationSettingBL.RetrieveOneAppIntergrationSettingExDto(
+                AppIntergrationSettingBL.AppBuiltInProviderId);
+            if (provider?.AppIntergrationSettingParameterList == null) return null;
+
+            return provider.AppIntergrationSettingParameterList
+                .Where(p => p != null && p.TranscationFieId == searchId)
+                .OrderBy(p => Convert.ToInt32(p.Id))
+                .FirstOrDefault();
+        }
 
         public static string Ok(object payload)
         {
