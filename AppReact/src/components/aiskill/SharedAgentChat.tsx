@@ -1126,7 +1126,19 @@ const SharedAgentChat: React.FC<Props> = ({
             const args = (() => {
                 try { return evt.ArgsJson ? JSON.parse(evt.ArgsJson) : {}; } catch { return {}; }
             })();
-            if (!onHostToolRef.current) return { ok: false, error: 'This tool only runs inside an open transaction form.' };
+            if (!onHostToolRef.current) {
+                const tool = String(evt.ToolName || '');
+                // Soft no-op for API dock reload when chat is not hosted in API MANAGEMENT.
+                if (tool === 'request_api_mgmt_reload') {
+                    return {
+                        ok: true,
+                        skipped: true,
+                        reloadRequested: false,
+                        message: 'Reload skipped — open API MANAGEMENT Configurator dock to refresh the list.',
+                    };
+                }
+                return { ok: false, error: `Host tool "${tool || 'unknown'}" is not available in this chat (no page host).` };
+            }
             return await onHostToolRef.current(String(evt.ToolName || ''), args);
         },
         onAskUser: (ask: AskUserEvent) => {

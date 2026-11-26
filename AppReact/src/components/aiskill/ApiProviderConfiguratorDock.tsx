@@ -4,6 +4,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme } from '../../redux/hooks/useTheme';
+import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
 import { useAlertConfirm } from '../common/AlertConfirmProvider';
 import { genericAgentSvc } from '../../webapi/genericAgentSvc';
 import AgentUiChatHost from './AgentUiChatHost';
@@ -21,6 +22,8 @@ export type ApiProviderHostContext = {
   openApiDocId?: number | null;
   openApiDocName?: string | null;
   saasApplicationId?: number | null;
+  /** App HTTP root (scheme://host:port) for create-from-datamodel/search sample calls */
+  serverRoot?: string | null;
 };
 
 export type ApiProviderConfiguratorDockProps = {
@@ -36,6 +39,7 @@ export type ApiProviderConfiguratorDockProps = {
 
 const ApiProviderConfiguratorDock: React.FC<ApiProviderConfiguratorDockProps> = (props) => {
   const { theme } = useTheme();
+  const serverRoot = useApiServerRoot();
   const { showConfirm, showAlert } = useAlertConfirm();
   const [chatKey, setChatKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +77,7 @@ const ApiProviderConfiguratorDock: React.FC<ApiProviderConfiguratorDockProps> = 
 
   const hostContextJson = useMemo(() => {
     const h = props.hostContext || {};
+    const root = (h.serverRoot || serverRoot || '').replace(/\/$/, '') || undefined;
     return JSON.stringify({
       surface: h.surface || 'api-management',
       mode: h.mode || 'api-configurator',
@@ -84,8 +89,10 @@ const ApiProviderConfiguratorDock: React.FC<ApiProviderConfiguratorDockProps> = 
       openApiDocId: h.openApiDocId ?? undefined,
       openApiDocName: h.openApiDocName || undefined,
       saasApplicationId: h.saasApplicationId ?? undefined,
+      serverRoot: root,
+      appBaseUrl: root,
     });
-  }, [props.hostContext]);
+  }, [props.hostContext, serverRoot]);
 
   const handleHostTool = useCallback(async (toolName: string, _args: any) => {
     if (toolName === 'request_api_mgmt_reload') {

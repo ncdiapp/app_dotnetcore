@@ -16,6 +16,7 @@ using App.BL.GenericAgent;
 using App.BL.TenantBusiness;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
+using APP.Framework;
 using APP.Framework.Plugin;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.SemanticKernel;
@@ -262,7 +263,9 @@ A render button click arrives as a user message. If the user picked a row or a f
                     LoginUserType    = identity.HasValue ? identity.Value.CurrentLoginUserType : 0,
                     IsDeterministic  = string.Equals(skillSet.ExecutionMode, "Deterministic", StringComparison.OrdinalIgnoreCase),
                     WorkflowId       = string.IsNullOrEmpty(workflowId) ? Guid.NewGuid().ToString("N") : workflowId,
-                    ChatSessionKey   = resolvedChatKey
+                    ChatSessionKey   = resolvedChatKey,
+                    // Capture before tools run on Task.Run (HttpContext cleared). Prefer HostContext.serverRoot.
+                    AppBaseUrl       = ResolveAgentAppBaseUrl(hostContextJson)
                 };
                 agentLoopScope = AgentLoopLog.Begin(context.SessionId, skillKey, resolvedChatKey);
                 AgentLoopLog.Write("RUN_START", "");
@@ -1470,6 +1473,47 @@ A render button click arrives as a user message. If the user picked a row or a f
             }
             catch { /* not JSON */ }
             return result;
+        }
+
+        /// <summary>
+        /// Prefer HostContext.serverRoot / appBaseUrl from the SPA; else capture current HTTP request
+        /// authority (scheme://host:port) while still on the request thread.
+        /// </summary>
+        private static string ResolveAgentAppBaseUrl(string hostContextJson)
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(hostContextJson))
+                {
+                    var root = JObject.Parse(hostContextJson);
+                    foreach (var key in new[] { "serverRoot", "ServerRoot", "appBaseUrl", "AppBaseUrl" })
+                    {
+                        var t = root[key];
+                        if (t == null || t.Type == JTokenType.Null) continue;
+                        var s = t.ToString()?.Trim().TrimEnd('/');
+                        if (!string.IsNullOrWhiteSpace(s)
+                            && Uri.TryCreate(s, UriKind.Absolute, out var hostUri)
+                            && hostUri.IsAbsoluteUri
+                            && !string.IsNullOrWhiteSpace(hostUri.Host))
+                        {
+                            // Prefer authority when SPA sent a full URL; keep as-is if already authority-like
+                            return hostUri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+                        }
+                    }
+                }
+            }
+            catch { /* ignore bad host JSON */ }
+
+            try
+            {
+                var requestRoot = ServerContext.CurrentRequestRoot;
+                if (!string.IsNullOrWhiteSpace(requestRoot)
+                    && Uri.TryCreate(requestRoot, UriKind.Absolute, out var reqUri))
+                    return reqUri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+            }
+            catch { /* no HTTP context */ }
+
+            return "";
         }
 
         private static string CapResult(string? s, int max)

@@ -1094,6 +1094,129 @@ END";
             return baseUrl;
         }
 
+        /// <summary>
+        /// Resolves app root for PrepareApiGetUrl. Prefers a usable absolute caller URL;
+        /// replaces bare http://localhost (no port) with the current request authority when available.
+        /// </summary>
+        public static string ResolveAppBaseUrl(string appBaseUrl, string preferredFromAgentContext = null)
+        {
+            string candidate = (appBaseUrl ?? "").Trim().TrimEnd('/');
+            string inferred = !string.IsNullOrWhiteSpace(preferredFromAgentContext)
+                ? preferredFromAgentContext.Trim().TrimEnd('/')
+                : TryInferAppBaseUrlFromCurrentRequest();
+
+            if (string.IsNullOrWhiteSpace(candidate))
+                return inferred ?? "";
+
+            if (IsLikelyIncompleteAppBaseUrl(candidate) && !string.IsNullOrWhiteSpace(inferred))
+                return inferred;
+
+            return candidate;
+        }
+
+        private static string TryInferAppBaseUrlFromCurrentRequest()
+        {
+            try
+            {
+                string root = ServerContext.CurrentRequestRoot;
+                if (string.IsNullOrWhiteSpace(root))
+                    return "";
+                if (Uri.TryCreate(root, UriKind.Absolute, out Uri uri))
+                    return uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+                return root.TrimEnd('/');
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        /// <summary>
+        /// Agent often passes http://localhost without :52740 — default port is not the AppAI.Web port.
+        /// </summary>
+        private static bool IsLikelyIncompleteAppBaseUrl(string url)
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out Uri uri) || !uri.IsAbsoluteUri)
+                return true;
+            if (string.IsNullOrWhiteSpace(uri.Host))
+                return true;
+            bool isLoopback = uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                || uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase);
+            return isLoopback && uri.IsDefaultPort;
+        }
+
+        /// <summary>
+        /// After the API row is saved: try GET sample + schema. On any failure, keep the saved API
+        /// (schema can be filled later via Send Request / regenerate).
+        /// </summary>
+        private static OperationCallResult<AppIntergrationSettingParameterExDto> TryEnrichGetApiWithSampleSchema(
+            AppIntergrationSettingParameterExDto apiDto,
+            string appBaseUrl)
+        {
+            if (apiDto == null)
+                return new OperationCallResult<AppIntergrationSettingParameterExDto>();
+
+            string resolvedBase = ResolveAppBaseUrl(appBaseUrl);
+            if (string.IsNullOrWhiteSpace(resolvedBase)
+                || !Uri.TryCreate(resolvedBase, UriKind.Absolute, out _))
+            {
+                var keep = new OperationCallResult<AppIntergrationSettingParameterExDto>
+                {
+                    Object = apiDto,
+                    ValidationResult = new ValidationResult()
+                };
+                keep.ValidationResult.Items.Add(new ValidationItem(
+                    typeof(AppIntergrationSettingParameterExDto),
+                    "App_ApiProvider_SampleSkipped_NoBaseUrl",
+                    ValidationItemType.Warning,
+                    "API created; sample/schema skipped (no absolute appBaseUrl). Use Send Request later."));
+                return keep;
+            }
+
+            try
+            {
+                string apiUrl = PrepareApiGetUrl(
+                    resolvedBase,
+                    apiDto.ActionCode,
+                    apiDto.APIConfigParameters?.QueryParams ?? new Dictionary<string, string>());
+                string apiResult = CallGetApiByUrl(
+                    apiUrl,
+                    apiDto.APIConfigParameters?.Headers ?? new Dictionary<string, string>());
+                apiDto.JsonSampleData = apiResult;
+                var generateResult = DataExchangeSettingBL.GenerateDefaultSchemaAndDataSetMappingFromSampleJson(apiDto);
+                if (generateResult != null && generateResult.IsSuccessfulWithResult)
+                    return generateResult;
+
+                var keepAfterGenerate = new OperationCallResult<AppIntergrationSettingParameterExDto>
+                {
+                    Object = apiDto,
+                    ValidationResult = generateResult?.ValidationResult ?? new ValidationResult()
+                };
+                if (keepAfterGenerate.ValidationResult == null)
+                    keepAfterGenerate.ValidationResult = new ValidationResult();
+                keepAfterGenerate.ValidationResult.Items.Add(new ValidationItem(
+                    typeof(AppIntergrationSettingParameterExDto),
+                    "App_ApiProvider_SampleSchemaIncomplete",
+                    ValidationItemType.Warning,
+                    "API created; sample fetch succeeded but schema generation did not complete."));
+                return keepAfterGenerate;
+            }
+            catch (Exception ex)
+            {
+                var keep = new OperationCallResult<AppIntergrationSettingParameterExDto>
+                {
+                    Object = apiDto,
+                    ValidationResult = new ValidationResult()
+                };
+                keep.ValidationResult.Items.Add(new ValidationItem(
+                    typeof(AppIntergrationSettingParameterExDto),
+                    "App_ApiProvider_SampleFetchFailed",
+                    ValidationItemType.Warning,
+                    "API created; sample/schema skipped: " + ex.Message));
+                return keep;
+            }
+        }
+
         public static OperationCallResult<AppIntergrationSettingExDto> SaveAppIntergrationSettingExDto(AppIntergrationSettingExDto aAppIntergrationSettingExDto)
         {
             OperationCallResult<AppIntergrationSettingExDto> aOperationCallResult = new OperationCallResult<AppIntergrationSettingExDto>();
@@ -1374,6 +1497,7 @@ END";
 
         public static AppIntergrationSettingParameterExDto GetAppSearchDefaultProviderApi(int searchId, bool isInlucdeApiDataStructure, string appBaseUrl)
         {
+            appBaseUrl = ResolveAppBaseUrl(appBaseUrl);
             AppIntergrationSettingParameterExDto toReturn = null;
 
 
@@ -1400,6 +1524,7 @@ END";
 
         public static List<AppIntergrationSettingParameterExDto> GetAppTransactionDefaultProviderApi(int transactionId, bool isInlucdeApiDataStructure, string appBaseUrl)
         {
+            appBaseUrl = ResolveAppBaseUrl(appBaseUrl);
             List<AppIntergrationSettingParameterExDto> toReturn = new List<AppIntergrationSettingParameterExDto>();
             
             List<TransactionApiSettingDto> transactionApiSettingDtoList = AppTransactionBL.RetrieveTransactionApiSettings(transactionId);
@@ -3575,29 +3700,15 @@ IF COL_LENGTH('dbo.AppIntergrationSettingParameter', 'McpUsageNotes') IS NULL
 
         private static AppIntergrationSettingParameterExDto PrepareExistingGetApiWithDataSchema(bool isInlucdeApiDataStructure, string appBaseUrl, int operationId)
         {
-            AppIntergrationSettingParameterExDto toReturn = null;
-
             var existingApiDto = RetrieveOneAppIntergrationSettingParameterExDto(operationId, isInlucdeApiDataStructure);
+            if (existingApiDto == null)
+                return null;
 
             if (!string.IsNullOrWhiteSpace(existingApiDto.JsonSchema))
-            {
-                toReturn = existingApiDto;
-            }
-            else
-            {
-                string apiUrl = PrepareApiGetUrl(appBaseUrl, existingApiDto.ActionCode, existingApiDto.APIConfigParameters.QueryParams);
-                var apiResult = CallGetApiByUrl(apiUrl, existingApiDto.APIConfigParameters.Headers);
-                existingApiDto.JsonSampleData = apiResult;
+                return existingApiDto;
 
-                var generateResult = DataExchangeSettingBL.GenerateDefaultSchemaAndDataSetMappingFromSampleJson(existingApiDto);
-
-                if (generateResult.IsSuccessfulWithResult)
-                {
-                    toReturn = generateResult.Object;
-                }
-            }
-
-            return toReturn;
+            var enrich = TryEnrichGetApiWithSampleSchema(existingApiDto, appBaseUrl);
+            return enrich?.Object ?? existingApiDto;
         }
 
 
@@ -3684,23 +3795,10 @@ IF COL_LENGTH('dbo.AppIntergrationSettingParameter', 'McpUsageNotes') IS NULL
 }}";
             var saveResult = SaveAppIntergrationSettingParameterExDto(newDto);
 
-
-            if (saveResult.IsSuccessfulWithResult)
-            {
-                var apiDto = saveResult.Object;
-                string apiUrl = PrepareApiGetUrl(appBaseUrl, apiDto.ActionCode, apiDto.APIConfigParameters.QueryParams);
-
-                //var apiResult = CallGetApiByUrlAsync(apiUrl, apiDto.APIConfigParameters.Headers).GetAwaiter().GetResult();
-                var apiResult = CallGetApiByUrl(apiUrl, apiDto.APIConfigParameters.Headers);
-                apiDto.JsonSampleData = apiResult;
-
-                var generateResult = DataExchangeSettingBL.GenerateDefaultSchemaAndDataSetMappingFromSampleJson(apiDto);
-                return generateResult;
-            }
-            else
-            {
+            if (!saveResult.IsSuccessfulWithResult)
                 return saveResult;
-            }
+
+            return TryEnrichGetApiWithSampleSchema(saveResult.Object, appBaseUrl);
         }
 
 
@@ -3739,23 +3837,10 @@ IF COL_LENGTH('dbo.AppIntergrationSettingParameter', 'McpUsageNotes') IS NULL
 }}";
             var saveResult = SaveAppIntergrationSettingParameterExDto(newDto);
 
-
-            if (saveResult.IsSuccessfulWithResult)
-            {
-                var apiDto = saveResult.Object;
-                string apiUrl = PrepareApiGetUrl(appBaseUrl, apiDto.ActionCode, apiDto.APIConfigParameters.QueryParams);
-
-                //var apiResult = CallGetApiByUrlAsync(apiUrl, apiDto.APIConfigParameters.Headers).GetAwaiter().GetResult();
-                var apiResult = CallGetApiByUrl(apiUrl, apiDto.APIConfigParameters.Headers);
-                apiDto.JsonSampleData = apiResult;
-
-                var generateResult = DataExchangeSettingBL.GenerateDefaultSchemaAndDataSetMappingFromSampleJson(apiDto);
-                return generateResult;
-            }
-            else
-            {
+            if (!saveResult.IsSuccessfulWithResult)
                 return saveResult;
-            }
+
+            return TryEnrichGetApiWithSampleSchema(saveResult.Object, appBaseUrl);
         }
 
 

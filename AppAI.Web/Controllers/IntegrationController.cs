@@ -91,6 +91,8 @@ public class IntegrationController : SecureBaseController
     {
         if (searchId.HasValue)
         {
+            if (string.IsNullOrWhiteSpace(appBaseUrl))
+                appBaseUrl = $"{Request.Scheme}://{Request.Host}";
             return AppIntergrationSettingBL.GetAppSearchDefaultProviderApi(searchId.Value, isInlucdeApiDataStructure, appBaseUrl);
         }
 
@@ -102,6 +104,8 @@ public class IntegrationController : SecureBaseController
     {
         if (transactionId.HasValue)
         {
+            if (string.IsNullOrWhiteSpace(appBaseUrl))
+                appBaseUrl = $"{Request.Scheme}://{Request.Host}";
             return AppIntergrationSettingBL.GetAppTransactionDefaultProviderApi(transactionId.Value, isInlucdeApiDataStructure, appBaseUrl);
         }
 

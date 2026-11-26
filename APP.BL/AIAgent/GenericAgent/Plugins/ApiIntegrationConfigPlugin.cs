@@ -554,8 +554,31 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         });
                     }
 
-                    var created = AppIntergrationSettingBL.GetAppTransactionDefaultProviderApi(
-                        transactionId.Value, true, appBaseUrl ?? "");
+                    string resolvedBase = ResolveCreateAppBaseUrl(context, appBaseUrl);
+                    List<AppIntergrationSettingParameterExDto> created;
+                    try
+                    {
+                        created = AppIntergrationSettingBL.GetAppTransactionDefaultProviderApi(
+                            transactionId.Value, true, resolvedBase);
+                    }
+                    catch (Exception enrichEx)
+                    {
+                        // Sample GET URI/network failures must not fail the tool if rows were saved.
+                        var partial = ApiIntegrationConfigBL.FindExistingDataModelApis(transactionId.Value);
+                        if (partial.Count > 0)
+                        {
+                            return ApiIntegrationConfigBL.Ok(new
+                            {
+                                created = true,
+                                alreadyExisted = false,
+                                transactionId,
+                                appBaseUrlUsed = resolvedBase,
+                                sampleWarning = enrichEx.Message,
+                                apis = partial.Select(ApiIntegrationConfigBL.SummarizeApiDetail).ToList()
+                            });
+                        }
+                        throw;
+                    }
                     var after = ApiIntegrationConfigBL.FindExistingDataModelApis(transactionId.Value);
                     if (after.Count == 0 && created != null)
                         after = created.Where(a => a != null).ToList();
@@ -565,6 +588,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         created = true,
                         alreadyExisted = false,
                         transactionId,
+                        appBaseUrlUsed = resolvedBase,
                         apis = after.Select(ApiIntegrationConfigBL.SummarizeApiDetail).ToList()
                     });
                 }
@@ -623,8 +647,30 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         });
                     }
 
-                    var created = AppIntergrationSettingBL.GetAppSearchDefaultProviderApi(
-                        searchId.Value, true, appBaseUrl ?? "");
+                    string resolvedBase = ResolveCreateAppBaseUrl(context, appBaseUrl);
+                    AppIntergrationSettingParameterExDto created;
+                    try
+                    {
+                        created = AppIntergrationSettingBL.GetAppSearchDefaultProviderApi(
+                            searchId.Value, true, resolvedBase);
+                    }
+                    catch (Exception enrichEx)
+                    {
+                        var partial = ApiIntegrationConfigBL.FindExistingSearchApi(searchId.Value);
+                        if (partial != null)
+                        {
+                            return ApiIntegrationConfigBL.Ok(new
+                            {
+                                created = true,
+                                alreadyExisted = false,
+                                searchId,
+                                appBaseUrlUsed = resolvedBase,
+                                sampleWarning = enrichEx.Message,
+                                api = ApiIntegrationConfigBL.SummarizeApiDetail(partial)
+                            });
+                        }
+                        throw;
+                    }
                     if (created == null)
                         return ApiIntegrationConfigBL.Fail("Failed to create/retrieve Search API.");
 
@@ -635,6 +681,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         created = true,
                         alreadyExisted = false,
                         searchId,
+                        appBaseUrlUsed = resolvedBase,
                         api = ApiIntegrationConfigBL.SummarizeApiDetail(after)
                     });
                 }
@@ -1113,11 +1160,56 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         [AgentTool("request_api_mgmt_reload",
-            "After successful API Management writes, signal the host page to prompt Reload.")]
-        public Task<string> RequestApiMgmtReload(AgentToolContext context = null) =>
-            AskHost(context, "request_api_mgmt_reload", new { });
+            "ONLY when HostContext.surface=api-management (API MANAGEMENT Configurator dock). " +
+            "After durable API writes, signal the host Reload prompt. " +
+            "If not in that dock (New Chat / no surface), do NOT call — or call is a soft no-op success.")]
+        public async Task<string> RequestApiMgmtReload(AgentToolContext context = null)
+        {
+            // Soft no-op outside API MANAGEMENT dock (New Chat has no OnHostTool / wrong host).
+            string surface = ReadHostString(context, "surface", "Surface");
+            bool looksLikeApiDock = string.Equals(surface, "api-management", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(ReadHostString(context, "mode", "Mode"), "api-configurator", StringComparison.OrdinalIgnoreCase);
+
+            var callbacks = AgentHitlBridge.Resolve(context?.ChatSessionKey);
+            if (callbacks?.OnHostTool == null || !looksLikeApiDock)
+            {
+                return ApiIntegrationConfigBL.Ok(new
+                {
+                    skipped = true,
+                    reloadRequested = false,
+                    message = "Reload skipped — open the API MANAGEMENT Configurator dock (HostContext.surface=api-management) if the list must refresh."
+                });
+            }
+
+            var result = await AskHost(context, "request_api_mgmt_reload", new { }).ConfigureAwait(false);
+            // Host stub may return "open transaction form" when dock handler missing — treat as soft skip.
+            if (!string.IsNullOrWhiteSpace(result)
+                && result.IndexOf("only runs inside", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return ApiIntegrationConfigBL.Ok(new
+                {
+                    skipped = true,
+                    reloadRequested = false,
+                    message = "Reload skipped — API MANAGEMENT dock host tool not wired for this chat."
+                });
+            }
+            return result;
+        }
 
         // ── helpers ────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Tool arg → HostContext.serverRoot → AgentToolContext.AppBaseUrl (captured on request thread).
+        /// Replaces bare http://localhost (no port) when a better root is available.
+        /// </summary>
+        static string ResolveCreateAppBaseUrl(AgentToolContext context, string appBaseUrlFromTool)
+        {
+            string fromHost = ReadHostString(context, "serverRoot", "ServerRoot", "appBaseUrl", "AppBaseUrl");
+            string preferred = !string.IsNullOrWhiteSpace(fromHost)
+                ? fromHost
+                : (context?.AppBaseUrl ?? "");
+            return AppIntergrationSettingBL.ResolveAppBaseUrl(appBaseUrlFromTool, preferred);
+        }
 
         static async Task<string> AskHost(AgentToolContext context, string toolName, object args)
         {

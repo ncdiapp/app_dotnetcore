@@ -94,4 +94,10 @@ public sealed class AgentToolContext
     /// Must be restored on background tool threads so IsAdminUser / RequirePlmMigrationAdmin work.
     /// </summary>
     public int LoginUserType { get; init; }
+
+    /// <summary>
+    /// App HTTP root (scheme://host[:port]) captured on the request thread before tools run in Task.Run.
+    /// Used when create-from-datamodel/search omit appBaseUrl (HttpContext is gone on the tool thread).
+    /// </summary>
+    public string AppBaseUrl { get; init; } = string.Empty;
 }
