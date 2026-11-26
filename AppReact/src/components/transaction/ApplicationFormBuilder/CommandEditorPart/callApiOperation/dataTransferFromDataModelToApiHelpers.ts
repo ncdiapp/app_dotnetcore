@@ -100,11 +100,19 @@ function findMappingByInputParamName(mappingData: any[], paramName: string) {
   return mappingData.find((x) => x.Name === paramName) ?? null;
 }
 
+function isBlankTargetFieldFlag(value: any): boolean {
+  return value === true || value === 1 || value === '1' || value === 'true';
+}
+
 function findMappingByJsonPath(mappingData: any[], jsonPropertyPathName: string, isResponseMapping: boolean) {
+  const wantResponse = !!isResponseMapping;
+  const path = String(jsonPropertyPathName || '');
   return (
-    mappingData.find(
-      (x) => x.JsonPropertyPathName === jsonPropertyPathName && x.IsBlankTargetField === (isResponseMapping || false),
-    ) ?? null
+    mappingData.find((x) => {
+      const rowPath = String(x?.JsonPropertyPathName ?? x?.jsonPropertyPathName ?? '');
+      const rowIsResponse = isBlankTargetFieldFlag(x?.IsBlankTargetField ?? x?.isBlankTargetField);
+      return rowPath === path && rowIsResponse === wantResponse;
+    }) ?? null
   );
 }
 
@@ -139,12 +147,22 @@ function processTreeNodeMappings(
 }
 
 export function buildFromDataModelToApiMappingState(settingData: any, srcTransactionData: any) {
-  settingData.orgAppTransactionSaveAsMappingList = settingData.AppTransactionSaveAsMappingList || [];
-  const orgMappings = settingData.orgAppTransactionSaveAsMappingList as any[];
+  const fromSaveAs = Array.isArray(settingData.AppTransactionSaveAsMappingList)
+    ? settingData.AppTransactionSaveAsMappingList
+    : [];
+  // Fallback if SaveAs list missing but retrieve split lists are present.
+  const fromApiResponse = Array.isArray(settingData.ApiResponseMappingList)
+    ? settingData.ApiResponseMappingList
+    : [];
+  const fromPayload = Array.isArray(settingData.DataTransferMappingList)
+    ? settingData.DataTransferMappingList
+    : [];
+  const orgMappings = (fromSaveAs.length ? fromSaveAs : [...fromPayload, ...fromApiResponse]) as any[];
+  settingData.orgAppTransactionSaveAsMappingList = orgMappings;
 
   const nameMappings = orgMappings.filter((m) => m.Name);
-  const payloadMappings = orgMappings.filter((m) => !m.IsBlankTargetField);
-  const responseMappings = orgMappings.filter((m) => m.IsBlankTargetField);
+  const payloadMappings = orgMappings.filter((m) => !isBlankTargetFieldFlag(m.IsBlankTargetField ?? m.isBlankTargetField));
+  const responseMappings = orgMappings.filter((m) => isBlankTargetFieldFlag(m.IsBlankTargetField ?? m.isBlankTargetField));
 
   const targetApiParamMappingList: ApiParamMappingRow[] = [];
   (settingData.TargetApiInputParameterList || []).forEach((paramName: string) => {

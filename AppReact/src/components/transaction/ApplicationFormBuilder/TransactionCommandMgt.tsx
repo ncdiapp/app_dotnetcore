@@ -89,6 +89,8 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [isModified, setIsModified] = useState(false);
   const [editTick, setEditTick] = useState(0);
+  /** Only bumped on loadTransaction (Refresh / Form Reload) — remount Call API mapping from DB. */
+  const [dbReloadToken, setDbReloadToken] = useState(0);
   const [dataReady, setDataReady] = useState(false);
   const [rootLevelTransFieldLookUpList, setRootLevelTransFieldLookUpList] = useState<any[]>([]);
   const [rootLevelConditionTransFieldLookUpList, setRootLevelConditionTransFieldLookUpList] = useState<any[]>([]);
@@ -187,6 +189,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
         setSelectedId(null);
       }
       setEditTick((t) => t + 1);
+      setDbReloadToken((t) => t + 1);
       setDataReady(true);
     } catch (e: any) {
       showError(e?.message || 'Failed to load operations');
@@ -727,6 +730,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
           onSelectChildCommand={(commandId) => selectCommandById(commandId)}
           onCommandAdded={handleCommandAdded}
           listReloadToken={editTick}
+          mappingReloadToken={dbReloadToken}
           panelClassName="border-l-0 rounded-l-none rounded-r"
           onOpenTypeHelp={() => {
             setHelpAskPrompt(buildCommandHelpAskPrompt(currentEditAction?.ActionType));

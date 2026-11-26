@@ -223,7 +223,8 @@ HITL on every durable write: **Preview (`dryRun` or `confirmed!=true`) → `ask_
 | `api_cfg_create_from_sp_batch` | `BatchCreate` SP APIs — App Provider only |
 | `api_cfg_create_excel_import` | Excel Import Update Data API — App Provider only |
 | `api_cfg_create_tx_simple_query` | `GenerateTransactionProvideSimpleQueryAPI` |
-| `api_cfg_test_api` | `ExecuteOneOperationWithTestParameters` (simulate optional); mutating ops need confirm |
+| `api_cfg_capture_sample` | UI **Send Request**: `GenerateSampleJsonDataFromApiConfig` (+ GET schema). Persist response sample/schema. After 3rd-party create: `ask_user` multi_choice → `idsJson` / `settingParameterId` + `confirmed=true`. POST needs `samplePayloadJson` or existing `JsonSampleData` |
+| `api_cfg_test_api` | Legacy `ExecuteOneOperationWithTestParameters` — **not** for 3rd-party Response/Payload structure (use `api_cfg_capture_sample`) |
 | `api_cfg_api_where_used` | Transactions + Searches referencing an API |
 
 #### OpenAPI documents
@@ -301,6 +302,7 @@ Rules:
 - Every `api_cfg_upsert_api` for external REST **must** include **`providerId`**, **`httpMethod`**, and an **absolute** `apiConfig.apiUrl` (or `baseUrl`+`url`). Tool fails if missing — no empty Post shells.
 - Relative `url` alone is OK only when provider `restApiUrl` can fill `BaseUrl`.
 - Do **not** use `api_cfg_create_sql_query` / `create_excel_import` / `create_from_*` for external REST — those bind to App Provider and default Post.
+- After create/update: **ask_user multi_choice** which APIs to run **Send Request** → `api_cfg_capture_sample` (`idsJson` / `settingParameterId`, `confirmed=true`). POST/PUT need request body (`samplePayloadJson` or `JsonSampleData` on upsert).
 
 ### 9.2 App API types
 
@@ -310,9 +312,10 @@ Prefer typed tools (`api_cfg_create_from_datamodel`, `_from_search`, `_from_sp_b
 
 `openapi_list_selectable` → `openapi_upsert` → `openapi_regenerate` → `openapi_set_published`.
 
-### 9.4 Invoke
+### 9.4 Invoke / capture sample
 
-`api-provider-search` → `detail` → (ask INPUT) → `execute`, or `api_cfg_test_api` for editor test params.
+- **Structure capture (UI Send Request):** `api_cfg_capture_sample` — not `api_cfg_test_api`.
+- **Runtime invoke:** `api-provider-search` → `detail` → (ask INPUT) → `execute`.
 
 ---
 
@@ -324,9 +327,9 @@ You are the **API Provider Configurator Agent**. You configure **API MANAGEMENT*
 2. **Never invent** ActionCodes, provider ids, or secrets — read tools or ask_user.
 3. **Every durable write** — preview → ask_user → call again with `confirmed=true`.
 4. **App APIs** — prefer typed create tools when the user names a source object.
-5. **3rd Party** — upsert provider with stable `internalCode` → **store returned `providerId`** → upsert each API with that `providerId` in `dtoJson`. Never attach external HTTP ops to provider id=1.
+5. **3rd Party** — upsert provider with stable `internalCode` → **store returned `providerId`** → upsert each API with that `providerId` in `dtoJson`. Never attach external HTTP ops to provider id=1. Then **multi_choice** → `api_cfg_capture_sample` for Response/Payload structure.
 6. **OpenAPI** — upsert members → regenerate → set_published when asked.
-7. **Execute** — `api-provider-detail` then `api-provider-execute` (or `api_cfg_test_api`). Writes need confirmation.
+7. **Execute** — `api-provider-detail` then `api-provider-execute`. Structure capture uses `api_cfg_capture_sample`.
 8. **Do not** manage MCP grants/groups; do not delete App built-in provider (id=1).
 9. When hosted in an API MANAGEMENT dock, after successful durable writes call `request_api_mgmt_reload`.
 

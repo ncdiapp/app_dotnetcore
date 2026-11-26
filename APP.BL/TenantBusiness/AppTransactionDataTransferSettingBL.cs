@@ -17,6 +17,7 @@ using APP.Components.Dto;
 using APP.Components.EntityConverter;
 using APP.Components.EntityDto;
 using Google.Protobuf.WellKnownTypes;
+using ExchangeBL;
 
 using APP.Framework;
 namespace App.BL
@@ -322,13 +323,31 @@ namespace App.BL
                         aSettingExDto.TargetApiResponseDataStructure = new List<ApiDataStructureNodeDto>() { responseStructureNodeDto };
                     }
                 }
-                else if ((operationDto.HttpMethd == "Get" || operationDto.HttpMethd == "Delete")
-                    && !string.IsNullOrWhiteSpace(operationDto.JsonSchema))
+                else if (operationDto.HttpMethd == "Get" || operationDto.HttpMethd == "Delete")
                 {
-                    var responseStructureNodeDto = AppTransactionBL.PrepareApiDataStrucureFromJsonSchema(operationDto.JsonSchema);
+                    // Prefer persisted JsonSchema; if missing, derive in-memory from JsonSampleData (do not save).
+                    string responseSchema = operationDto.JsonSchema;
+                    if (string.IsNullOrWhiteSpace(responseSchema)
+                        && !string.IsNullOrWhiteSpace(operationDto.JsonSampleData)
+                        && JsonSchemaBL.IsValidJson(operationDto.JsonSampleData))
+                    {
+                        try
+                        {
+                            responseSchema = JsonSchemaBL.GenerateSchemFromSample(operationDto.JsonSampleData).ToJson();
+                        }
+                        catch
+                        {
+                            responseSchema = null;
+                        }
+                    }
 
-                    AppIntergrationSettingBL.InitApiNodeAbolutePath(responseStructureNodeDto, null);
-                    aSettingExDto.TargetApiResponseDataStructure = new List<ApiDataStructureNodeDto>() { responseStructureNodeDto };
+                    if (!string.IsNullOrWhiteSpace(responseSchema))
+                    {
+                        var responseStructureNodeDto = AppTransactionBL.PrepareApiDataStrucureFromJsonSchema(responseSchema);
+
+                        AppIntergrationSettingBL.InitApiNodeAbolutePath(responseStructureNodeDto, null);
+                        aSettingExDto.TargetApiResponseDataStructure = new List<ApiDataStructureNodeDto>() { responseStructureNodeDto };
+                    }
                 }
 
             }

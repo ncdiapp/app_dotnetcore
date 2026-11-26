@@ -7,6 +7,7 @@ using App.BL.AIAgent.GenericAgent.ApiProvider;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.Framework.Plugin;
+using ExchangeBL;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -858,9 +859,208 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             catch (Exception ex) { return ApiIntegrationConfigBL.Fail(ex.Message); }
         }
 
+        [AgentTool("api_cfg_capture_sample",
+            "UI Send Request for 3rd-party (and REST) APIs: live HTTP with saved config, persist response sample + schema. " +
+            "GET → JsonSampleData + JsonSchema. POST/PUT → body from samplePayloadJson or existing JsonSampleData; response → PostResponseDto. " +
+            "After create/update 3rd-party APIs: ask_user multi_choice which to run, then confirmed=true (settingParameterId or idsJson). " +
+            "Do not use api_cfg_test_api for Response/Payload structure — that tool is a different pipeline.")]
+        public string CaptureSample(
+            AgentToolContext context = null,
+            [AgentParam("API settingParameterId")] int? settingParameterId = null,
+            [AgentParam("Or ActionCode")] string actionCode = null,
+            [AgentParam("JSON array of settingParameterIds for batch capture after multi_choice")] string idsJson = null,
+            [AgentParam("Optional POST/PUT request body JSON (sets JsonSampleData before call)")] string samplePayloadJson = null,
+            [AgentParam("true after ask_user")] bool? confirmed = null,
+            [AgentParam("true = preview only")] bool? dryRun = null)
+        {
+            _ = context;
+            try
+            {
+                var ids = new List<int>();
+                if (!string.IsNullOrWhiteSpace(idsJson))
+                {
+                    try
+                    {
+                        var arr = JArray.Parse(idsJson);
+                        foreach (var t in arr)
+                        {
+                            if (t == null || t.Type == JTokenType.Null) continue;
+                            if (int.TryParse(t.ToString(), out var id) && id > 0)
+                                ids.Add(id);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        return ApiIntegrationConfigBL.Fail("Invalid idsJson: " + ex.Message);
+                    }
+                }
+                else
+                {
+                    if (!TryResolveApiIds(context, settingParameterId, actionCode, out var sid, out var code, out var err))
+                        return ApiIntegrationConfigBL.Fail(err);
+                    var one = ApiIntegrationConfigBL.ResolveApi(sid, code, out err);
+                    if (one == null) return ApiIntegrationConfigBL.Fail(err);
+                    ids.Add(Convert.ToInt32(one.Id));
+                }
+
+                if (ids.Count == 0)
+                    return ApiIntegrationConfigBL.Fail("Provide settingParameterId, actionCode, or idsJson.");
+
+                var previews = new List<object>();
+                foreach (var id in ids.Distinct())
+                {
+                    var dto = AppIntergrationSettingBL.RetrieveOneAppIntergrationSettingParameterExDto(id);
+                    if (dto == null)
+                        return ApiIntegrationConfigBL.Fail($"API id {id} not found.");
+                    var method = (dto.HttpMethd ?? "").Trim();
+                    bool isWrite = method.Equals("Post", StringComparison.OrdinalIgnoreCase)
+                        || method.Equals("Put", StringComparison.OrdinalIgnoreCase);
+                    bool hasPayload = !string.IsNullOrWhiteSpace(samplePayloadJson)
+                        || !string.IsNullOrWhiteSpace(dto.JsonSampleData);
+                    previews.Add(new
+                    {
+                        settingParameterId = id,
+                        actionCode = dto.ActionCode,
+                        httpMethod = dto.HttpMethd,
+                        providerId = dto.IntergrationSettingId,
+                        needsRequestPayload = isWrite,
+                        hasRequestPayload = !isWrite || hasPayload,
+                        hasResponseSample = !string.IsNullOrWhiteSpace(dto.JsonSampleData)
+                            || !string.IsNullOrWhiteSpace(dto.PostResponseDto?.ResponseJsonData),
+                        hasJsonSchema = !string.IsNullOrWhiteSpace(dto.JsonSchema)
+                            || !string.IsNullOrWhiteSpace(dto.PostResponseDto?.ResponseJsonSchema)
+                    });
+                }
+
+                if (ApiIntegrationConfigBL.NeedsConfirm(confirmed, dryRun))
+                {
+                    return ApiIntegrationConfigBL.Preview(new
+                    {
+                        count = previews.Count,
+                        apis = previews,
+                        note = "Will call each API live (UI Send Request). POST/PUT need samplePayloadJson or existing JsonSampleData. ask_user then confirmed=true."
+                    });
+                }
+
+                if (!string.IsNullOrWhiteSpace(samplePayloadJson) && ids.Count > 1)
+                    return ApiIntegrationConfigBL.Fail("samplePayloadJson applies to a single API only; omit it for batch or call once per API.");
+
+                var results = new List<object>();
+                var okCount = 0;
+                foreach (var id in ids.Distinct())
+                {
+                    var one = CaptureOneApiSample(id, ids.Count == 1 ? samplePayloadJson : null);
+                    results.Add(one);
+                    if (JObject.FromObject(one).Value<bool?>("ok") == true)
+                        okCount++;
+                }
+
+                return ApiIntegrationConfigBL.Ok(new
+                {
+                    capturedCount = okCount,
+                    failedCount = results.Count - okCount,
+                    results
+                });
+            }
+            catch (Exception ex) { return ApiIntegrationConfigBL.Fail(ex.Message); }
+        }
+
+        static object CaptureOneApiSample(int settingParameterId, string samplePayloadJson)
+        {
+            var dto = AppIntergrationSettingBL.RetrieveOneAppIntergrationSettingParameterExDto(settingParameterId);
+            if (dto == null)
+                return new { settingParameterId, ok = false, error = "Not found." };
+
+            string method = (dto.HttpMethd ?? "").Trim();
+            bool isWrite = method.Equals("Post", StringComparison.OrdinalIgnoreCase)
+                || method.Equals("Put", StringComparison.OrdinalIgnoreCase);
+
+            if (!string.IsNullOrWhiteSpace(samplePayloadJson))
+                dto.JsonSampleData = samplePayloadJson;
+
+            if (isWrite && string.IsNullOrWhiteSpace(dto.JsonSampleData))
+            {
+                return new
+                {
+                    settingParameterId,
+                    actionCode = dto.ActionCode,
+                    httpMethod = dto.HttpMethd,
+                    ok = false,
+                    error = "POST/PUT requires request payload. Pass samplePayloadJson or set JsonSampleData via upsert_api first (UI Generate Default Payload / sample body)."
+                };
+            }
+
+            var callResult = DataExchangeSettingBL.GenerateSampleJsonDataFromApiConfig(dto);
+            if (callResult?.ValidationResult?.HasErrors == true)
+            {
+                return new
+                {
+                    settingParameterId,
+                    actionCode = dto.ActionCode,
+                    httpMethod = dto.HttpMethd,
+                    ok = false,
+                    error = ApiIntegrationConfigBL.ValidationMessages(callResult.ValidationResult),
+                    requestInfo = callResult.Object?.APIConfigParameters?.RequestInfo
+                };
+            }
+
+            // GET: ensure JsonSchema + mapping exist (downstream Response Structure).
+            string schemaWarning = null;
+            if (!isWrite)
+            {
+                try
+                {
+                    var refreshed = AppIntergrationSettingBL.RetrieveOneAppIntergrationSettingParameterExDto(settingParameterId);
+                    if (refreshed != null && !string.IsNullOrWhiteSpace(refreshed.JsonSampleData)
+                        && string.IsNullOrWhiteSpace(refreshed.JsonSchema))
+                    {
+                        var schemaResult = DataExchangeSettingBL.GenerateDefaultSchemaAndDataSetMappingFromSampleJson(refreshed);
+                        if (schemaResult?.ValidationResult?.HasErrors == true)
+                            schemaWarning = ApiIntegrationConfigBL.ValidationMessages(schemaResult.ValidationResult);
+                    }
+                    else if (refreshed != null && !string.IsNullOrWhiteSpace(refreshed.JsonSampleData))
+                    {
+                        try { JsonSchemaBL.GenerateSchemaFromSampleAsync(settingParameterId); }
+                        catch (Exception ex) { schemaWarning = ex.Message; }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    schemaWarning = ex.Message;
+                }
+            }
+
+            var after = AppIntergrationSettingBL.RetrieveOneAppIntergrationSettingParameterExDto(settingParameterId);
+            return new
+            {
+                settingParameterId,
+                actionCode = after?.ActionCode ?? dto.ActionCode,
+                httpMethod = after?.HttpMethd ?? dto.HttpMethd,
+                ok = true,
+                captured = true,
+                schemaWarning,
+                hasJsonSampleData = !string.IsNullOrWhiteSpace(after?.JsonSampleData),
+                hasJsonSchema = !string.IsNullOrWhiteSpace(after?.JsonSchema),
+                hasPostResponse = !string.IsNullOrWhiteSpace(after?.PostResponseDto?.ResponseJsonData),
+                hasPostResponseSchema = !string.IsNullOrWhiteSpace(after?.PostResponseDto?.ResponseJsonSchema),
+                samplePreview = TruncateSample(
+                    isWrite
+                        ? after?.PostResponseDto?.ResponseJsonData
+                        : after?.JsonSampleData,
+                    800)
+            };
+        }
+
+        static string TruncateSample(string s, int max)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            return s.Length <= max ? s : s.Substring(0, max) + "…";
+        }
+
         [AgentTool("api_cfg_test_api",
-            "Test an API with stored test parameters (UI Send Request). isSimulate=true for dry simulate when supported. " +
-            "Mutating APIs: ask_user then confirmed=true.")]
+            "Legacy/staging test path (ExecuteOneOperationWithTestParameters). " +
+            "For 3rd-party Response/Payload structure use api_cfg_capture_sample (UI Send Request). " +
+            "isSimulate=true for dry simulate when supported. Mutating: ask_user then confirmed=true.")]
         public string TestApi(
             AgentToolContext context = null,
             [AgentParam("Setting parameter id")] int? settingParameterId = null,

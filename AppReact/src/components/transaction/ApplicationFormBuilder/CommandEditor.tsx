@@ -72,6 +72,8 @@ export function CommandEditor(props: {
   panelClassName?: string;
   /** Bumped on Refresh / reload — child DDLs (e.g. Data Transfer Setting) re-fetch. */
   listReloadToken?: number | string | null;
+  /** Bumped only when hierarchy reloads from DB — remount Call API response mapping editor. */
+  mappingReloadToken?: number | string | null;
 }) {
   const { theme } = useTheme();
   const { showError } = useErrorMessage();
@@ -275,6 +277,7 @@ export function CommandEditor(props: {
                   hierarchy={hierarchy}
                   action={currentEditAction}
                   onMarkChange={onMarkChange}
+                  mappingReloadToken={props.mappingReloadToken}
                 />
               </CollapsibleSection>
             ) : null}

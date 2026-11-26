@@ -21,8 +21,10 @@ export function CallApiOperationSection(props: {
   hierarchy: any;
   action: any;
   onMarkChange: () => void;
+  /** Bumped on Form Reload / Refresh — remount embedded mapping so Agent DB writes appear. */
+  mappingReloadToken?: number | string | null;
 }) {
-  const { transactionId, hierarchy, action, onMarkChange } = props;
+  const { transactionId, hierarchy, action, onMarkChange, mappingReloadToken = 0 } = props;
   const { theme } = useTheme();
   const { showError, showValidationMessages } = useErrorMessage();
   const dispatch = useDispatch();
@@ -227,7 +229,7 @@ export function CallApiOperationSection(props: {
         <div className="w-full min-h-[360px] border rounded-[4px] p-2 mt-1">
           {transactionId != null ? (
             <DataTransferFromDataModelToApiEmbeddedEditor
-              key={dataTransferSettingId}
+              key={`${dataTransferSettingId ?? 'none'}-${mappingReloadToken ?? 0}`}
               settingId={dataTransferSettingId}
               srcTransactionId={transactionId}
               onMarkChange={onMarkChange}

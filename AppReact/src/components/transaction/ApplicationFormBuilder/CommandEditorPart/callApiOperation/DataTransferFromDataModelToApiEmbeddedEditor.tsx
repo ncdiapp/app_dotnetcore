@@ -73,17 +73,21 @@ export function DataTransferFromDataModelToApiEmbeddedEditor(props: {
     return allSrcFields.filter((f) => f.UnitId === filterByUnitId);
   }, [allSrcFields, filterByUnitId]);
 
+  // Leading blank row so DataMap DDL can clear (with isRequired={false}).
   const sourceFieldDataMap = useMemo(() => {
     // Preserve Root → Sibling → Child order (do not A–Z by field name).
-    return new DataMap(filteredSrcFields, 'Id', 'Display2');
+    return new DataMap([{ Id: null, Display2: '' }, ...filteredSrcFields] as any[], 'Id', 'Display2');
   }, [filteredSrcFields]);
 
   const srcApiParamDataMap = useMemo(() => {
     const list = (srcTransactionData?.ApiInputParameterList || []).map((p: string) => ({ Id: p, Display: p }));
-    return list.length ? new DataMap(list, 'Id', 'Display') : null;
+    return list.length ? new DataMap([{ Id: null, Display: '' }, ...list] as any[], 'Id', 'Display') : null;
   }, [srcTransactionData]);
 
-  const yesOrEmptyDataMap = useMemo(() => new DataMap(YES_LOOKUP, 'Id', 'Display'), []);
+  const yesOrEmptyDataMap = useMemo(
+    () => new DataMap([{ Id: null, Display: '' }, ...YES_LOOKUP] as any[], 'Id', 'Display'),
+    [],
+  );
 
   const applyMappingState = useCallback((setting: any, srcData: any) => {
     const built = buildFromDataModelToApiMappingState(setting, srcData);
@@ -374,6 +378,7 @@ export function DataTransferFromDataModelToApiEmbeddedEditor(props: {
                   header="Mapping To Current Data Model Field"
                   width={400}
                   dataMap={sourceFieldDataMap}
+                  isRequired={false}
                 />
                 <FlexGridColumn header="" binding="" width="*" isReadOnly />
               </FlexGrid>
@@ -396,6 +401,7 @@ export function DataTransferFromDataModelToApiEmbeddedEditor(props: {
                 header="Mapping To Current Data Model Field"
                 width={400}
                 dataMap={sourceFieldDataMap}
+                isRequired={false}
               />
               {hasSrcApiInputParams && srcApiParamDataMap ? (
                 <FlexGridColumn
@@ -403,6 +409,7 @@ export function DataTransferFromDataModelToApiEmbeddedEditor(props: {
                   header="Mapping To Data Model Input Parameter"
                   width={250}
                   dataMap={srcApiParamDataMap}
+                  isRequired={false}
                 />
               ) : null}
               <FlexGridColumn header="" binding="" width="*" isReadOnly />
@@ -427,12 +434,14 @@ export function DataTransferFromDataModelToApiEmbeddedEditor(props: {
               header="Mapping To Current Data Model Field"
               width={300}
               dataMap={sourceFieldDataMap}
+              isRequired={false}
             />
             <FlexGridColumn
               binding="SourceFiledId"
               header="Is Array Logic Key"
               width={200}
               dataMap={yesOrEmptyDataMap}
+              isRequired={false}
             />
             {hasSrcApiInputParams && srcApiParamDataMap ? (
               <FlexGridColumn
@@ -440,6 +449,7 @@ export function DataTransferFromDataModelToApiEmbeddedEditor(props: {
                 header="Mapping To Data Model Input Parameter"
                 width={250}
                 dataMap={srcApiParamDataMap}
+                isRequired={false}
               />
             ) : null}
             <FlexGridColumn header="" binding="" width="*" isReadOnly />

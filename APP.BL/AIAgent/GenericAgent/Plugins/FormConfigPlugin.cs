@@ -325,6 +325,83 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             return ApplyVisibilityAndFlags(txnId, fieldId, fieldName, unitName, changes);
         }
 
+        [AgentTool("create_transaction_field",
+            "UI Add Temp Field: create an IsTempVariable field on a unit (no ALTER TABLE / no DB column). " +
+            "Use for API response staging then formula-merge into Notes. Prefer unitId; omit unitId = root unit. " +
+            "Preview → ask_user → confirmed=true → request_form_reload. Idempotent on same displayName.")]
+        public string CreateTransactionField(
+            AgentToolContext context,
+            [AgentParam("Field display name, e.g. Sunrise Time.", isRequired: true)] string displayName = null,
+            [AgentParam("Unit id (prefer from get_current_transaction_config). Omit = root unit.")] int? unitId = null,
+            [AgentParam("Unit name/table fallback.")] string unitName = null,
+            [AgentParam("EmAppControlType; default TextBox=2.")] int? controlType = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("If true, never persist.")] bool? dryRun = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigUnitFieldService.CreateTempField(
+                txnId, displayName, unitId, unitName, controlType, confirmed, dryRun);
+        }
+
+        [AgentTool("add_existing_table_fields",
+            "UI Add Table Existing Field: map existing DB columns on the unit table to AppTransactionFields. " +
+            "columnNamesJson = JSON array of column names. Columns must already exist on the table — " +
+            "if missing, call alter_table (ADD COLUMN) first, then this tool. " +
+            "Preview → ask_user → confirmed=true → request_form_reload.")]
+        public string AddExistingTableFields(
+            AgentToolContext context,
+            [AgentParam("JSON array of DB column names, e.g. [\"LocationName\",\"SunriseTime\"].", isRequired: true)]
+            string columnNamesJson = null,
+            [AgentParam("Unit id (prefer). Omit = root unit.")] int? unitId = null,
+            [AgentParam("Unit name/table fallback.")] string unitName = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("If true, never persist.")] bool? dryRun = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigUnitFieldService.AddExistingTableFields(
+                txnId, unitId, unitName, columnNamesJson, confirmed, dryRun);
+        }
+
+        [AgentTool("remove_transaction_field",
+            "UI Remove Field: delete an AppTransactionField definition (and layout/mapping refs). " +
+            "Does NOT DROP the database column. Prefer set_field_visibility for soft-hide when unsure. " +
+            "Preview → ask_user → confirmed=true → request_form_reload.")]
+        public string RemoveTransactionField(
+            AgentToolContext context,
+            [AgentParam("Field id from find_fields.", isRequired: true)] int? fieldId = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("If true, never persist.")] bool? dryRun = null,
+            [AgentParam("Optional when fieldId uniquely identifies; required if ambiguous.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err, fieldId))
+                return Fail(err);
+            return FormConfigUnitFieldService.RemoveTransactionField(txnId, fieldId, confirmed, dryRun);
+        }
+
+        [AgentTool("alter_table",
+            "UI Alter Table: run a single ALTER TABLE statement (prefer ADD COLUMN). DDL only — " +
+            "after ADD COLUMN, call add_existing_table_fields with the new column name(s). " +
+            "Example alterSql: ALTER TABLE [dbo].[Crm126_Opportunity] ADD LocationName NVARCHAR(200) NULL. " +
+            "Preview → ask_user → confirmed=true → add_existing_table_fields → request_form_reload.")]
+        public string AlterTable(
+            AgentToolContext context,
+            [AgentParam("Table name, e.g. Crm126_Opportunity or dbo.Crm126_Opportunity.", isRequired: true)]
+            string tableName = null,
+            [AgentParam("Single ALTER TABLE statement beginning with ALTER TABLE.", isRequired: true)]
+            string alterSql = null,
+            [AgentParam("Must be true to persist.")] bool? confirmed = null,
+            [AgentParam("If true, never persist.")] bool? dryRun = null,
+            [AgentParam("Required when multi-transaction HostContext.")] int? transactionId = null)
+        {
+            if (!TryResolveTransactionId(context, transactionId, out var txnId, out var err))
+                return Fail(err);
+            return FormConfigUnitFieldService.AlterTable(txnId, tableName, alterSql, confirmed, dryRun);
+        }
+
         [AgentTool("get_commands",
             "List Operation Task commands on the open transaction (id, name, actionType).")]
         public string GetCommands(
