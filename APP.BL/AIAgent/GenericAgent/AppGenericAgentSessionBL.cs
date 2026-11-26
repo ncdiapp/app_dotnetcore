@@ -832,6 +832,9 @@ ELSE
                         P(fixture, "@S", agentId),
                         P(fixture, "@U", userId)
                     });
+                // Always drop in-memory KB mark for this key (even if DB row missing) —
+                // Refresh keeps SessionKey; history is gone so a new file_read must return full body.
+                AgentCommandsKbSessionStore.Clear(sessionKey.Trim());
                 if (n > 0)
                 {
                     AgentSchemaCacheBL.ClearSession(sessionKey.Trim());
@@ -866,6 +869,7 @@ ELSE
                         P(fixture, "@S", agentId),
                         P(fixture, "@U", userId)
                     });
+                AgentCommandsKbSessionStore.Clear(sessionKey.Trim());
                 if (n > 0)
                 {
                     AgentSchemaCacheBL.ClearSession(sessionKey.Trim());
