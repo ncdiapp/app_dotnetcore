@@ -167,9 +167,11 @@ namespace App.BL
 
                     if (dataTransferDto.TargetApiPayloadDataStructure != null)
                     {
-                        if (!string.IsNullOrWhiteSpace(targetApiOperationDto.JsonSchema))
+                        string requestPayloadSchema = AppTransactionDataTransferSettingBL.ResolveRequestPayloadJsonSchema(targetApiOperationDto);
+
+                        if (!string.IsNullOrWhiteSpace(requestPayloadSchema))
                         {
-                            var rootStructureNode = AppTransactionBL.PrepareApiDataStrucureFromJsonSchema(targetApiOperationDto.JsonSchema);
+                            var rootStructureNode = AppTransactionBL.PrepareApiDataStrucureFromJsonSchema(requestPayloadSchema);
                             AppIntergrationSettingBL.InitApiNodeAbolutePath(rootStructureNode, null);
 
 
@@ -1677,14 +1679,47 @@ namespace App.BL
         {
             var postRootData = ((IDictionary<String, Object>)postDynamicData);
 
-            PrepareApiPayloadData_ProcessOneObjOrArrayNodeChildNodes(1, srcFormData, dataTransferDto, srcTransactionExDto, rootStructureNode, postRootData, null, null);
+            // Base = API operation default payload (JsonSampleData); Data Transfer mappings override matching values.
+            JObject defaultRoot = ParseDefaultPayloadRoot(dataTransferDto?.TargetApiOperationDto?.JsonSampleData);
+
+            PrepareApiPayloadData_ProcessOneObjOrArrayNodeChildNodes(1, srcFormData, dataTransferDto, srcTransactionExDto, rootStructureNode, postRootData, null, null, defaultRoot);
 
             return postDynamicData;
         }
 
+        /// <summary>Parse default payload without converting date-like strings (keeps original text).</summary>
+        private static JObject ParseDefaultPayloadRoot(string jsonSampleData)
+        {
+            if (string.IsNullOrWhiteSpace(jsonSampleData)) return null;
+
+            try
+            {
+                using (var stringReader = new System.IO.StringReader(jsonSampleData))
+                using (var jsonReader = new Newtonsoft.Json.JsonTextReader(stringReader) { DateParseHandling = Newtonsoft.Json.DateParseHandling.None })
+                {
+                    return JToken.Load(jsonReader) as JObject;
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static JToken GetDefaultChild(JObject defaultObject, string propertyName)
+        {
+            if (defaultObject == null || string.IsNullOrEmpty(propertyName)) return null;
+            return defaultObject.TryGetValue(propertyName, StringComparison.Ordinal, out var token) ? token : null;
+        }
+
+        private static object DefaultLeafValue(JObject defaultObject, string propertyName)
+        {
+            return GetDefaultChild(defaultObject, propertyName) is JValue jValue ? jValue.Value : null;
+        }
+
         private static void PrepareApiPayloadData_ProcessOneObjOrArrayNodeChildNodes(int unitLevel, AppMasterDetailDto srcFormData, AppTransactionDataTransferSettingExDto dataTransferDto,
             AppTransactionExDto srcTransactionExDto, ApiDataStructureNodeDto structureNode, IDictionary<string, object> postDataNode,
-            AppTransactionUnitExDto mapToGridUnitDto, AppChildDataDto mapToGridUnitRow)
+            AppTransactionUnitExDto mapToGridUnitDto, AppChildDataDto mapToGridUnitRow, JObject defaultObject)
         {
             if (structureNode.Children != null)
             {
@@ -1695,15 +1730,18 @@ namespace App.BL
                         postDataNode[childStructureNode.Name] = new ExpandoObject();
                         var postDataChildNode = (IDictionary<string, object>)postDataNode[childStructureNode.Name];
 
-                        PrepareApiPayloadData_ProcessOneObjOrArrayNodeChildNodes(unitLevel, srcFormData, dataTransferDto, srcTransactionExDto, childStructureNode, postDataChildNode, mapToGridUnitDto, mapToGridUnitRow);
+                        PrepareApiPayloadData_ProcessOneObjOrArrayNodeChildNodes(unitLevel, srcFormData, dataTransferDto, srcTransactionExDto, childStructureNode, postDataChildNode, mapToGridUnitDto, mapToGridUnitRow,
+                            GetDefaultChild(defaultObject, childStructureNode.Name) as JObject);
                     }
                     else if (childStructureNode.IsArray)
                     {
-                        PrepareApiPayloadData_ProcessOneArrayNode(unitLevel + 1, srcFormData, dataTransferDto, srcTransactionExDto, postDataNode, childStructureNode, mapToGridUnitDto, mapToGridUnitRow);
+                        PrepareApiPayloadData_ProcessOneArrayNode(unitLevel + 1, srcFormData, dataTransferDto, srcTransactionExDto, postDataNode, childStructureNode, mapToGridUnitDto, mapToGridUnitRow,
+                            GetDefaultChild(defaultObject, childStructureNode.Name) as JArray);
                     }
                     else
                     {
-                        postDataNode[childStructureNode.Name] = null;
+                        // Unmapped leaf keeps the default payload value; mapped leaf (below) overrides it.
+                        postDataNode[childStructureNode.Name] = DefaultLeafValue(defaultObject, childStructureNode.Name);
 
                         string jsonPropertyPath = childStructureNode.AbsolutePath;
 
@@ -1759,7 +1797,7 @@ namespace App.BL
 
         private static void PrepareApiPayloadData_ProcessOneArrayNode(int unitLevel, AppMasterDetailDto srcFormData, AppTransactionDataTransferSettingExDto dataTransferDto, AppTransactionExDto srcTransactionExDto,
             IDictionary<string, object> postDataNode, ApiDataStructureNodeDto structureNode,
-            AppTransactionUnitExDto parentGridUnit, AppChildDataDto parentGridUnitRow)
+            AppTransactionUnitExDto parentGridUnit, AppChildDataDto parentGridUnitRow, JArray defaultArray)
         {
             if (structureNode.IsSimpleList)
             {
@@ -1773,6 +1811,10 @@ namespace App.BL
                 AppTransactionUnitExDto mapToGridUnitDto = null;
 
                 mapToGridUnitDto = FindMapToChildOrGrandChildUnit(unitLevel, srcFormData, dataTransferDto, srcTransactionExDto, postDataNode, structureNode);
+
+                // Array not mapped to a Data Model grid stays empty. When mapped, item count = Data Model row count,
+                // and the first default element is the template for each row (unmapped properties keep default values).
+                JObject defaultRowTemplate = defaultArray?.FirstOrDefault() as JObject;
 
                 if (mapToGridUnitDto != null)
                 {
@@ -1789,7 +1831,7 @@ namespace App.BL
 
                                 postChildDataRowList.Add(postChildDynamicDataRow);
 
-                                PrepareApiPayloadData_ProcessOneObjOrArrayNodeChildNodes(unitLevel, srcFormData, dataTransferDto, srcTransactionExDto, structureNode, postChildDataRow, mapToGridUnitDto, childRow);
+                                PrepareApiPayloadData_ProcessOneObjOrArrayNodeChildNodes(unitLevel, srcFormData, dataTransferDto, srcTransactionExDto, structureNode, postChildDataRow, mapToGridUnitDto, childRow, defaultRowTemplate);
                             }
                         }
                     }
@@ -1808,7 +1850,7 @@ namespace App.BL
 
                                     postChildDataRowList.Add(postChildDynamicDataRow);
 
-                                    PrepareApiPayloadData_ProcessOneObjOrArrayNodeChildNodes(unitLevel, srcFormData, dataTransferDto, srcTransactionExDto, structureNode, postChildDataRow, mapToGridUnitDto, grandchildRow);
+                                    PrepareApiPayloadData_ProcessOneObjOrArrayNodeChildNodes(unitLevel, srcFormData, dataTransferDto, srcTransactionExDto, structureNode, postChildDataRow, mapToGridUnitDto, grandchildRow, defaultRowTemplate);
                                 }
                             }
                         }

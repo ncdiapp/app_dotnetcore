@@ -193,6 +193,33 @@ namespace App.BL
             return aSettingExDto;
         }
 
+        /// <summary>
+        /// Request payload JSON schema of an API operation: saved JsonSchema, else derived in memory from JsonSampleData (not saved).
+        /// Used by Data Transfer (Data Model → API) design-time structure and run-time payload building.
+        /// </summary>
+        public static string ResolveRequestPayloadJsonSchema(AppIntergrationSettingParameterExDto operationDto)
+        {
+            if (operationDto == null) return null;
+
+            if (!string.IsNullOrWhiteSpace(operationDto.JsonSchema))
+                return operationDto.JsonSchema;
+
+            if (!string.IsNullOrWhiteSpace(operationDto.JsonSampleData)
+                && JsonSchemaBL.IsValidJson(operationDto.JsonSampleData))
+            {
+                try
+                {
+                    return JsonSchemaBL.GenerateSchemFromSample(operationDto.JsonSampleData).ToJson();
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            return null;
+        }
+
         private static void InitializeFromDataModelToApiDataTransfer_InitApiProperties(AppTransactionDataTransferSettingExDto aSettingExDto, AppTransactionExDto srcTransactionDto)
         {
             aSettingExDto.TargetApiOperationId = ControlTypeValueConverter.ConvertValueToInt(aSettingExDto.InternalCode);
@@ -270,16 +297,20 @@ namespace App.BL
                 }
                 else
                 {
-                    if (!string.IsNullOrWhiteSpace(operationDto.JsonSchema))
+                    // POST/PUT: request payload structure. Fall back to JsonSampleData when JsonSchema was never saved
+                    // (e.g. Send Request not run yet), so the Before-mapping tree is not empty.
+                    string requestSchema = ResolveRequestPayloadJsonSchema(operationDto);
+
+                    if (!string.IsNullOrWhiteSpace(requestSchema))
                     {
-                        var rootNodeDto = AppTransactionBL.PrepareApiDataStrucureFromJsonSchema(operationDto.JsonSchema);
+                        var rootNodeDto = AppTransactionBL.PrepareApiDataStrucureFromJsonSchema(requestSchema);
                         AppIntergrationSettingBL.InitApiNodeAbolutePath(rootNodeDto, null);
 
                         if (srcTransactionDto.TransactionOrganizedType.HasValue)
                         {
                             if ((operationDto.HttpMethd == "Post"
                                   || operationDto.HttpMethd == "Put")
-                                   && !string.IsNullOrWhiteSpace(operationDto.JsonSchema)
+                                   && !string.IsNullOrWhiteSpace(requestSchema)
                                    )
                             {
                                 if (srcTransactionDto.TransactionOrganizedType.Value == (int)EmTransactionOrganizedType.MasterDetail)
