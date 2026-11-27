@@ -58,6 +58,22 @@ namespace ExchangeBL
 
 
 
+        private static bool IsJsonText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            try
+            {
+                JToken.Parse(text);
+                return true;
+            }
+            catch (JsonReaderException)
+            {
+                return false;
+            }
+        }
+
         public static OperationCallResult<AppIntergrationSettingParameterExDto> GenerateSampleJsonDataFromApiConfig(AppIntergrationSettingParameterExDto dto)
         {
             OperationCallResult<AppIntergrationSettingParameterExDto> toReturn = new OperationCallResult<AppIntergrationSettingParameterExDto>();
@@ -159,8 +175,17 @@ namespace ExchangeBL
                             }
 
                             dto.PostResponseDto.ResponseJsonData = responses.FirstOrDefault();
-                            JsonSchema jsonSchema = JsonSchemaBL.GenerateSchemFromSample(dto.PostResponseDto.ResponseJsonData);
-                            dto.PostResponseDto.ResponseJsonSchema = jsonSchema.ToJson();
+
+                            if (IsJsonText(dto.PostResponseDto.ResponseJsonData))
+                            {
+                                JsonSchema jsonSchema = JsonSchemaBL.GenerateSchemFromSample(dto.PostResponseDto.ResponseJsonData);
+                                dto.PostResponseDto.ResponseJsonSchema = jsonSchema.ToJson();
+                            }
+                            else
+                            {
+                                // Successful response but not JSON (plain text): keep the raw text as the sample, no schema.
+                                dto.PostResponseDto.ResponseJsonSchema = null;
+                            }
 
                             validationResult.Merge(AppIntergrationSettingBL.SaveAppIntergrationSettingParameterExDto(dto).ValidationResult);
 

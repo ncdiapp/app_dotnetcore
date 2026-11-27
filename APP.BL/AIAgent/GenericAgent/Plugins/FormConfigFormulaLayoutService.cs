@@ -975,7 +975,17 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 return key;
             });
 
-            // Already-bracketed tokens: map display-ish content to FormulaDisplayName if possible
+            // Already-bracketed tokens: map display-ish content to FormulaDisplayName, then protect
+            // so the bare-identifier pass cannot re-wrap [TempLocation_4034] into [[TempLocation_4034]]
+            // (which InFormat's \[.+?\] then turns into transactionfieldid_4034]).
+            var protectedTokens = new Dictionary<string, string>();
+            string ProtectToken(string token)
+            {
+                var key = $"__B{protectedTokens.Count}__";
+                protectedTokens[key] = token;
+                return key;
+            }
+
             work = BracketToken.Replace(work, m =>
             {
                 var inner = m.Value;
@@ -987,9 +997,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 {
                     var tok = Token(hit);
                     result.FieldMap.Add(new { role = "ref", fieldId = hit.Id, from = inner, token = tok });
-                    return tok;
+                    return ProtectToken(tok);
                 }
-                return inner; // leave as-is (may already be correct)
+                return ProtectToken(inner); // leave as-is (may already be correct) and keep protected
             });
 
             // Bare identifiers / multi-word display names: longest-first match
@@ -1038,9 +1048,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 }
 
                 var tok = Token(c.Field);
-                work = rx.Replace(work, tok);
+                work = rx.Replace(work, ProtectToken(tok));
                 result.FieldMap.Add(new { role = "ref", fieldId = c.Field.Id, from = alias, token = tok });
             }
+
+            foreach (var kv in protectedTokens)
+                work = work.Replace(kv.Key, kv.Value);
 
             foreach (var kv in protectedMap)
                 work = work.Replace(kv.Key, kv.Value);
@@ -1180,7 +1193,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         static string Token(AppTransactionFieldExDto f) =>
             !string.IsNullOrWhiteSpace(f.FormulaDisplayName)
                 ? f.FormulaDisplayName
-                : $"[{f.DataBaseFieldName}_{f.Id}]";
+                : (f.IsTempVariable == true
+                    ? $"[{f.DataBaseFieldName}]"
+                    : $"[{f.DataBaseFieldName}_{f.Id}]");
 
         /// <summary>
         /// Convert Formula Editor / agent display tokens to runtime storage form.

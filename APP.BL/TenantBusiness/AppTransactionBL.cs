@@ -1289,6 +1289,20 @@ namespace App.BL
                     {
                         adapter.StartTransaction(IsolationLevel.ReadCommitted, "CreateTransactionField");
                         adapter.SaveEntity(entity, true); // refetchAfterSave = true → populates generated PK
+
+                        // Mirror SaveAppTransactionExDto: temp / extend fields need a unique DataBaseFieldName
+                        // (<DisplayNameNoSpaces>_<TransactionFieldId>), otherwise loading crashes on duplicate "" keys.
+                        if (string.IsNullOrWhiteSpace(entity.DataBaseFieldName)
+                            && (entity.IsTempVariable == true || entity.IsStoreToExtendTable == true))
+                        {
+                            string baseName = string.IsNullOrWhiteSpace(entity.DisplayName)
+                                ? "Field"
+                                : entity.DisplayName.Replace(" ", "");
+                            entity.DataBaseFieldName = baseName + "_" + entity.TransactionFieldId;
+                            adapter.SaveEntity(entity, false);
+                            transFieldExDto.DataBaseFieldName = entity.DataBaseFieldName;
+                        }
+
                         adapter.Commit();
                     }
                     catch (ORMQueryExecutionException ex)

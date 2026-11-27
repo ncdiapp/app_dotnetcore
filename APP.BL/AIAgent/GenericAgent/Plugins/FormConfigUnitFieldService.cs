@@ -93,7 +93,13 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 field.Nbdecimal = 0;
                 field.IsVisible = true;
                 field.IsReadonly = false;
+                field.IsGroupBy = false;
+                field.IsGridUseAvailableEntitySource = false;
+                field.IsNeedLog = false;
+                field.IsLogicalDisplay = false;
+                field.IsChangeTrigerNotification = false;
                 field.IsAllowEmpty = true;
+                field.IsConvertToUpperCase = false;
                 field.IsTempVariable = true;
                 field.IsStoreToExtendTable = false;
                 field.IsPrimaryKey = false;
@@ -115,6 +121,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     unitId = Convert.ToInt32(unit.Id),
                     fieldId = Convert.ToInt32(field.Id),
                     displayName = field.DisplayName,
+                    dataBaseFieldName = field.DataBaseFieldName,
                     isTempVariable = true,
                     formulaToken = TempFormulaToken(field),
                     nextStep = "Call request_form_reload. For API staging: map response paths to these temp fields, then update_unit_formula into Notes."
