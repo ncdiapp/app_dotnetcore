@@ -490,9 +490,23 @@ namespace App.BL
 
                     if (databaseColumn.DbDataType.ContainsExt("CHAR", StringComparison.InvariantCultureIgnoreCase))
                     {
-                        if (defaultValue.StartsWith("(N'") && defaultValue.EndsWith("')"))
+                        // SQL Server stores the DEFAULT definition text: ('') / (N'') / ('abc') / (N'abc') / (('abc')).
+                        // Unwrap to the real literal, otherwise the raw text (e.g. "('')") is written into the column.
+                        string unwrapped = defaultValue.Trim();
+
+                        while (unwrapped.Length >= 2 && unwrapped.StartsWith("(") && unwrapped.EndsWith(")"))
                         {
-                            finalDefaultValue = defaultValue.Substring("(N'".Length, defaultValue.Length - "(N'".Length - "')".Length);
+                            unwrapped = unwrapped.Substring(1, unwrapped.Length - 2).Trim();
+                        }
+
+                        if (unwrapped.StartsWith("N'") || unwrapped.StartsWith("n'"))
+                        {
+                            unwrapped = unwrapped.Substring(1);
+                        }
+
+                        if (unwrapped.Length >= 2 && unwrapped.StartsWith("'") && unwrapped.EndsWith("'"))
+                        {
+                            finalDefaultValue = unwrapped.Substring(1, unwrapped.Length - 2).Replace("''", "'");
                         }
 
                     }
