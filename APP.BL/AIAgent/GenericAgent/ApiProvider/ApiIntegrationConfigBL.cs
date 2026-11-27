@@ -300,8 +300,9 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
             SetIf(patch, "ActionDescription", "ActionDescription", v => target.ActionDescription = v);
             SetIf(patch, "description", "ActionDescription", v => target.ActionDescription = v);
             SetIf(patch, "Description", "ActionDescription", v => target.ActionDescription = v);
-            SetIf(patch, "httpMethod", "HttpMethd", v => target.HttpMethd = v);
-            SetIf(patch, "HttpMethd", "HttpMethd", v => target.HttpMethd = v);
+            SetIf(patch, "httpMethod", "HttpMethd", v => target.HttpMethd = NormalizeHttpMethod(v));
+            SetIf(patch, "HttpMethod", "HttpMethd", v => target.HttpMethd = NormalizeHttpMethod(v));
+            SetIf(patch, "method", "Method", v => target.HttpMethd = NormalizeHttpMethod(v));
             SetIf(patch, "jsonQuery", "JsonQuery", v => target.JsonQuery = v);
             SetIf(patch, "JsonQuery", "JsonQuery", v => target.JsonQuery = v);
             SetIf(patch, "whereClauseFormat", "WhereClauseFormat", v => target.WhereClauseFormat = v);
@@ -337,11 +338,11 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
                         cfg.Url = (cfgObj["url"] ?? cfgObj["Url"])?.ToString();
                 }
 
-                if (cfgObj["method"] != null || cfgObj["Method"] != null)
+                var rawCfgMethod = (cfgObj["method"] ?? cfgObj["Method"] ?? cfgObj["httpMethod"] ?? cfgObj["HttpMethod"] ?? cfgObj["HttpMethd"])?.ToString();
+                if (!string.IsNullOrWhiteSpace(rawCfgMethod) && Enum.TryParse(rawCfgMethod.Trim(), true, out EnumHttpMethod method))
                 {
-                    var m = (cfgObj["method"] ?? cfgObj["Method"])?.ToString();
-                    if (Enum.TryParse(m, true, out EnumHttpMethod method))
-                        cfg.Method = method;
+                    cfg.Method = method;
+                    target.HttpMethd = method.ToString();
                 }
                 if (TryGetInt(cfgObj, out var excelDs, "excelDataImportDataSetId", "ExcelDataImportDataSetId"))
                     cfg.ExcelDataImportDataSetId = excelDs;
@@ -350,26 +351,33 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
                 if (cfgObj["spName"] != null) cfg.SpName = cfgObj["spName"].ToString();
                 if (cfgObj["spSchema"] != null) cfg.SpSchema = cfgObj["spSchema"].ToString();
 
-                MergeStringDict(cfg.Headers ??= new Dictionary<string, string>(), cfgObj["headers"] as JObject);
-                MergeStringDict(cfg.QueryParams ??= new Dictionary<string, string>(), cfgObj["queryParams"] as JObject);
-                MergeStringDict(cfg.PathParams ??= new Dictionary<string, string>(), cfgObj["pathParams"] as JObject);
+                MergeStringDict(cfg.Headers ??= new Dictionary<string, string>(), cfgObj["headers"] ?? cfgObj["Headers"]);
+                MergeStringDict(cfg.QueryParams ??= new Dictionary<string, string>(), cfgObj["queryParams"] ?? cfgObj["QueryParams"]);
+                MergeStringDict(cfg.PathParams ??= new Dictionary<string, string>(), cfgObj["pathParams"] ?? cfgObj["PathParams"]);
                 MergeStringDict(
                     cfg.AuthenticationParameters ??= new Dictionary<string, string>(),
-                    cfgObj["authenticationParameters"] as JObject);
+                    cfgObj["authenticationParameters"] ?? cfgObj["AuthenticationParameters"]);
+
+                // Also merge top-level headers/queryParams/pathParams if agent placed them outside apiConfig
+                MergeStringDict(cfg.Headers, patch["headers"] ?? patch["Headers"]);
+                MergeStringDict(cfg.QueryParams, patch["queryParams"] ?? patch["QueryParams"]);
+                MergeStringDict(cfg.PathParams, patch["pathParams"] ?? patch["PathParams"]);
 
                 target.APIConfigParameters = cfg;
-                if (cfgObj["method"] != null || cfgObj["Method"] != null)
-                    target.HttpMethd = cfg.Method.ToString();
             }
-            else if (patch["apiUrl"] != null && patch["apiUrl"].Type != JTokenType.Null)
+            else if (patch["apiUrl"] != null && patch["apiUrl"].Type != JTokenType.Null
+                     || patch["headers"] != null || patch["Headers"] != null
+                     || patch["queryParams"] != null || patch["QueryParams"] != null
+                     || patch["pathParams"] != null || patch["PathParams"] != null)
             {
-                var apiUrl = patch["apiUrl"].ToString();
+                var cfg = target.APIConfigParameters ?? new APIConfigParameterDTO();
+                var apiUrl = patch["apiUrl"]?.ToString();
                 if (!string.IsNullOrWhiteSpace(apiUrl))
-                {
-                    var cfg = target.APIConfigParameters ?? new APIConfigParameterDTO();
                     SplitAbsoluteApiUrl(apiUrl.Trim(), cfg);
-                    target.APIConfigParameters = cfg;
-                }
+                MergeStringDict(cfg.Headers ??= new Dictionary<string, string>(), patch["headers"] ?? patch["Headers"]);
+                MergeStringDict(cfg.QueryParams ??= new Dictionary<string, string>(), patch["queryParams"] ?? patch["QueryParams"]);
+                MergeStringDict(cfg.PathParams ??= new Dictionary<string, string>(), patch["pathParams"] ?? patch["PathParams"]);
+                target.APIConfigParameters = cfg;
             }
 
             target.IsModified = true;
@@ -385,20 +393,21 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
             var cfg = target.APIConfigParameters;
             if (cfg == null) return;
 
-            if (string.IsNullOrWhiteSpace(cfg.BaseUrl)
-                && target.IntergrationSettingId.HasValue
+            AppIntergrationSettingExDto provider = null;
+            if (target.IntergrationSettingId.HasValue
                 && target.IntergrationSettingId.Value > 0
                 && target.IntergrationSettingId.Value != AppIntergrationSettingBL.AppBuiltInProviderId)
             {
                 try
                 {
-                    var provider = AppIntergrationSettingBL.RetrieveOneAppIntergrationSettingExDto(
+                    provider = AppIntergrationSettingBL.RetrieveOneAppIntergrationSettingExDto(
                         target.IntergrationSettingId.Value);
-                    if (!string.IsNullOrWhiteSpace(provider?.RestApiurl))
-                        cfg.BaseUrl = provider.RestApiurl.Trim().TrimEnd('/');
                 }
-                catch { /* ignore inherit failures */ }
+                catch { /* ignore lookup failures */ }
             }
+
+            if (string.IsNullOrWhiteSpace(cfg.BaseUrl) && !string.IsNullOrWhiteSpace(provider?.RestApiurl))
+                cfg.BaseUrl = provider.RestApiurl.Trim().TrimEnd('/');
 
             // Absolute Url with empty BaseUrl → split
             if (string.IsNullOrWhiteSpace(cfg.BaseUrl)
@@ -412,11 +421,28 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
             // Do not write CurrentUserSessionId:null — CallAPI env Replace NRE when provider has DictEnvironmentVariable.
             // UI may add the key on save; omit here so Agent-created ops stay safe for Send Request.
 
+            // Normalize {{VarName}} -> {{Env.VarName}} when VarName exists in provider DictEnvironmentVariable.
+            var envKeys = provider?.OtherSettingsDto?.DictEnvironmentVariable?.Keys;
+            if (envKeys != null && envKeys.Count > 0)
+            {
+                NormalizeEnvPlaceholders(cfg.Headers, envKeys);
+                NormalizeEnvPlaceholders(cfg.QueryParams, envKeys);
+                NormalizeEnvPlaceholders(cfg.PathParams, envKeys);
+                cfg.Url = NormalizeEnvPlaceholderString(cfg.Url, envKeys);
+                cfg.BaseUrl = NormalizeEnvPlaceholderString(cfg.BaseUrl, envKeys);
+            }
+
             if (!string.IsNullOrWhiteSpace(target.HttpMethd)
-                && Enum.TryParse(target.HttpMethd, true, out EnumHttpMethod fromCol))
+                && Enum.TryParse(target.HttpMethd.Trim(), true, out EnumHttpMethod fromCol))
+            {
                 cfg.Method = fromCol;
+                // Always persist canonical PascalCase ("Get"/"Post"/"Put"/"Delete") — EntityConverter & DataExchangeSettingBL use case-sensitive checks.
+                target.HttpMethd = fromCol.ToString();
+            }
             else if (cfg.Method != default)
+            {
                 target.HttpMethd = cfg.Method.ToString();
+            }
 
             target.APIConfigParameters = cfg;
             // Mirror UI: persist JSON string; converter also serializes when object non-null.
@@ -678,15 +704,64 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
             return false;
         }
 
-        private static void MergeStringDict(Dictionary<string, string> target, JObject source)
+        public static string NormalizeHttpMethod(string raw)
         {
-            if (target == null || source == null) return;
-            foreach (var p in source.Properties())
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            return Enum.TryParse(raw.Trim(), true, out EnumHttpMethod parsed)
+                ? parsed.ToString()
+                : raw.Trim();
+        }
+
+        private static void NormalizeEnvPlaceholders(Dictionary<string, string> dict, ICollection<string> envKeys)
+        {
+            if (dict == null || dict.Count == 0 || envKeys == null || envKeys.Count == 0) return;
+            foreach (var k in dict.Keys.ToList())
+                dict[k] = NormalizeEnvPlaceholderString(dict[k], envKeys);
+        }
+
+        private static string NormalizeEnvPlaceholderString(string text, ICollection<string> envKeys)
+        {
+            if (string.IsNullOrEmpty(text) || envKeys == null || envKeys.Count == 0 || !text.Contains("{{"))
+                return text;
+            var result = text;
+            foreach (var key in envKeys)
             {
-                if (p.Value == null || p.Value.Type == JTokenType.Null) continue;
-                var v = p.Value.ToString();
-                if (v == "***") continue; // do not overwrite secret with redacted placeholder
-                target[p.Name] = v;
+                if (string.IsNullOrWhiteSpace(key)) continue;
+                var bare = "{{" + key + "}}";
+                if (result.Contains(bare))
+                    result = result.Replace(bare, "{{Env." + key + "}}");
+            }
+            return result;
+        }
+
+        private static void MergeStringDict(Dictionary<string, string> target, JToken source)
+        {
+            if (target == null || source == null || source.Type == JTokenType.Null) return;
+
+            if (source is JObject obj)
+            {
+                foreach (var p in obj.Properties())
+                {
+                    if (p.Value == null || p.Value.Type == JTokenType.Null) continue;
+                    var v = p.Value.ToString();
+                    if (v == "***") continue; // do not overwrite secret with redacted placeholder
+                    target[p.Name] = v;
+                }
+                return;
+            }
+
+            // Also accept Postman-style array: [{"key":"...","value":"..."}] or [{"name":"...","value":"..."}]
+            if (source is JArray arr)
+            {
+                foreach (var item in arr.OfType<JObject>())
+                {
+                    var key = (item["key"] ?? item["Key"] ?? item["name"] ?? item["Name"])?.ToString()?.Trim();
+                    var valTok = item["value"] ?? item["Value"];
+                    if (string.IsNullOrWhiteSpace(key) || valTok == null || valTok.Type == JTokenType.Null) continue;
+                    var v = valTok.ToString();
+                    if (v == "***") continue;
+                    target[key] = v;
+                }
             }
         }
     }

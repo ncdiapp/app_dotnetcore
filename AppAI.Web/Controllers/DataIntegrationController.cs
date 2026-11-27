@@ -80,7 +80,7 @@ public class DataIntegrationController : SecureBaseController
         }
         catch (Exception ex)
         {
-            return StatusCode((int)HttpStatusCode.InternalServerError, ex.Message);
+            return JsonError(ex);
         }
     }
 
@@ -104,7 +104,34 @@ public class DataIntegrationController : SecureBaseController
         }
         catch (Exception ex)
         {
-            return StatusCode((int)HttpStatusCode.InternalServerError, ex.Message);
+            return JsonError(ex);
         }
+    }
+
+    /// <summary>
+    /// Errors are always JSON: {"error": ...}. A failed third-party call keeps its original HTTP status
+    /// and body (JSON body embedded as is, text body as a string); any other failure is a 500.
+    /// </summary>
+    private IActionResult JsonError(Exception ex)
+    {
+        for (Exception current = ex; current != null; current = current.InnerException)
+        {
+            if (current is ApiCallException apiEx)
+            {
+                return new ContentResult
+                {
+                    StatusCode = apiEx.StatusCode,
+                    ContentType = "application/json",
+                    Content = ApiResponseNormalizer.BuildErrorJson(apiEx.Body)
+                };
+            }
+        }
+
+        return new ContentResult
+        {
+            StatusCode = (int)HttpStatusCode.InternalServerError,
+            ContentType = "application/json",
+            Content = ApiResponseNormalizer.BuildErrorJson(ex.Message)
+        };
     }
 }

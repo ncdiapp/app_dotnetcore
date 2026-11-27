@@ -255,8 +255,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         [AgentTool("api_cfg_upsert_api",
-            "Create or update one API operation. dtoJson: actionCode, description|actionDescription (UI Description column), httpMethod, providerId, " +
-            "apiConfig{apiUrl|baseUrl+url, method, headers, queryParams, pathParams}. " +
+            "Create or update one API operation. dtoJson: actionCode, description|actionDescription (UI Description column), httpMethod (Get|Post|Put|Delete), providerId, " +
+            "apiConfig{apiUrl|baseUrl+url, method, headers:{\"Key\":\"Val\"}, queryParams:{\"k\":\"v\"}, pathParams:{\"k\":\"v\"}} (use {{Env.VarName}} for provider env vars), jsonSampleData. " +
             "3rd-party HTTP REQUIRES providerId (>1) AND absolute apiUrl (or baseUrl+url) AND httpMethod — " +
             "empty shells are rejected. Prefer typed create_* for Data Model/Search/SP/Excel. " +
             "Preview → ask_user → confirmed=true.")]

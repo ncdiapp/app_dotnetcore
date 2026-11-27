@@ -227,17 +227,78 @@ namespace ExchangeBL
 
                 List<string> lstResponse = await Helper.CallAPIAsync(dataExchangeSetting.APIConfigParameters, null, dataExchangeSetting.IntergrationSettingId).ConfigureAwait(false);
 
-                if (lstResponse.Count() > 0) // if new json, then update keys
-                {
-                    string jsonData = lstResponse.FirstOrDefault();
+                string thirdPartyJson = lstResponse.FirstOrDefault();
 
-                    return jsonData;
+                // Helper already guarantees JSON object/array for non-empty bodies. An empty body (e.g. 204)
+                // becomes [] or {} so it still binds (Search View result array, mapping, AI agent).
+                if (string.IsNullOrWhiteSpace(thirdPartyJson))
+                {
+                    return ApiResponseNormalizer.EmptyJsonFor(dataExchangeSetting.JsonSampleData);
                 }
+
+                return thirdPartyJson;
             }
 
             return "";
         }
 
+
+        /// <summary>
+        /// True for an OPERATION whose provider is a third-party provider (not the App built-in provider),
+        /// that is a plain HTTP POST/PUT (not Transaction / Simple Query / Excel import / Stored Procedure).
+        /// </summary>
+        private static bool IsThirdPartyHttpWriteOperation(AppIntergrationSettingParameterExDto setting)
+        {
+            if (setting == null || setting.APIConfigParameters == null)
+                return false;
+
+            if (!setting.IntergrationSettingId.HasValue || setting.IntergrationSettingId.Value == AppIntergrationSettingBL.AppBuiltInProviderId)
+                return false;
+
+            // App provider features keep their own branches.
+            if (setting.TranscationId.HasValue || setting.IsSimpleQuery == true || setting.APIConfigParameters.ExcelDataImportDataSetId.HasValue)
+                return false;
+
+            // Helper sends the request by APIConfigParameters.Method, so decide by the same value.
+            return setting.APIConfigParameters.Method == EnumHttpMethod.Post
+                || setting.APIConfigParameters.Method == EnumHttpMethod.Put;
+        }
+
+        private static string ExecuteThirdPartyHttpWriteApi(AppIntergrationSettingParameterExDto setting, string strJson, List<KeyValuePair<string, string>> parameters)
+        {
+            if (setting.OtherSettingsDto != null
+                && setting.OtherSettingsDto.PayloadDataType.HasValue
+                && setting.OtherSettingsDto.PayloadDataType.Value != EmAppApiPayloadDataType.JSON)
+            {
+                throw new Exception("Only JSON payload is supported for third-party POST/PUT through DataIntegration.");
+            }
+
+            var apiConfig = setting.APIConfigParameters;
+
+            // Same rule as the GET proxy: request query params override configured params with the same key.
+            if (parameters != null)
+            {
+                foreach (var kv in parameters)
+                {
+                    if (apiConfig.QueryParams.ContainsKey(kv.Key))
+                    {
+                        apiConfig.QueryParams[kv.Key] = kv.Value;
+                    }
+                }
+            }
+
+            // Synchronous method (string return), same pattern as other Helper.CallAPIAsync callers here.
+            List<string> responses = Helper.CallAPIAsync(apiConfig, strJson, setting.IntergrationSettingId).Result;
+
+            // Helper already returns JSON object/array for non-empty bodies. Empty body (e.g. 204) -> [] or {}.
+            string firstResponse = responses?.FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(firstResponse))
+            {
+                return ApiResponseNormalizer.EmptyJsonFor(setting.JsonSampleData);
+            }
+
+            return firstResponse;
+        }
 
         public static string ExecuteApiOperationSaveCommand(string actionCode, string strJson, List<KeyValuePair<string, string>> parameters)
         {
@@ -247,6 +308,13 @@ namespace ExchangeBL
             if (AppStoredProcedureApiBL.IsStoredProcedureApi(dataExchangeSetting))
             {
                 return ExecuteStoredProcedureApi(dataExchangeSetting, strJson);
+            }
+
+            // Third-party HTTP operation: forward the POST/PUT body to the third-party API.
+            // Must run before the DataSourceId access below (third-party operations may have no DataSource).
+            if (IsThirdPartyHttpWriteOperation(dataExchangeSetting))
+            {
+                return ExecuteThirdPartyHttpWriteApi(dataExchangeSetting, strJson, parameters);
             }
 
             DatabaseFixture dataBaseFixture = AppCacheManagerBL.GetOneDatabaseFixture(dataExchangeSetting.DataSourceId.Value);

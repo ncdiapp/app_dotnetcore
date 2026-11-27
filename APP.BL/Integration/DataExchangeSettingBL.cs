@@ -58,22 +58,6 @@ namespace ExchangeBL
 
 
 
-        private static bool IsJsonText(string text)
-        {
-            if (string.IsNullOrWhiteSpace(text))
-                return false;
-
-            try
-            {
-                JToken.Parse(text);
-                return true;
-            }
-            catch (JsonReaderException)
-            {
-                return false;
-            }
-        }
-
         public static OperationCallResult<AppIntergrationSettingParameterExDto> GenerateSampleJsonDataFromApiConfig(AppIntergrationSettingParameterExDto dto)
         {
             OperationCallResult<AppIntergrationSettingParameterExDto> toReturn = new OperationCallResult<AppIntergrationSettingParameterExDto>();
@@ -176,14 +160,14 @@ namespace ExchangeBL
 
                             dto.PostResponseDto.ResponseJsonData = responses.FirstOrDefault();
 
-                            if (IsJsonText(dto.PostResponseDto.ResponseJsonData))
+                            // Helper already normalizes non-JSON responses to JSON; only an empty body (e.g. 204) can reach here without JSON.
+                            if (!string.IsNullOrWhiteSpace(dto.PostResponseDto.ResponseJsonData))
                             {
                                 JsonSchema jsonSchema = JsonSchemaBL.GenerateSchemFromSample(dto.PostResponseDto.ResponseJsonData);
                                 dto.PostResponseDto.ResponseJsonSchema = jsonSchema.ToJson();
                             }
                             else
                             {
-                                // Successful response but not JSON (plain text): keep the raw text as the sample, no schema.
                                 dto.PostResponseDto.ResponseJsonSchema = null;
                             }
 

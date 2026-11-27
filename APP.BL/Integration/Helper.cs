@@ -172,11 +172,13 @@ namespace ExchangeBL
 
                 if (httpResponse.IsSuccessStatusCode)
                 {
-                    lstResponse.Add(strResponse);
+                    // Single entry point of third-party responses: always JSON object/array (plain text is wrapped).
+                    lstResponse.Add(ApiResponseNormalizer.NormalizeSuccessBody(strResponse));
                 }
                 else
                 {
-                    throw new Exception(strResponse);
+                    // Keep original HTTP status + raw body; message stays the raw body.
+                    throw new ApiCallException((int)httpResponse.StatusCode, strResponse);
                 }
 
               
